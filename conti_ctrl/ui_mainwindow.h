@@ -24,6 +24,7 @@
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QPlainTextEdit>
 #include <QtWidgets/QPushButton>
+#include <QtWidgets/QScrollArea>
 #include <QtWidgets/QSpacerItem>
 #include <QtWidgets/QSpinBox>
 #include <QtWidgets/QSplitter>
@@ -71,6 +72,9 @@ public:
     QSplitter *mainSplitter;
     QTabWidget *tabWidget;
     QWidget *contiTestTab;
+    QVBoxLayout *contiTestOuterLayout;
+    QScrollArea *contiTestScrollArea;
+    QWidget *contiTestScrollContent;
     QVBoxLayout *contiTestLayout;
     QHBoxLayout *settingsLayout;
     QGroupBox *testGroup;
@@ -116,6 +120,44 @@ public:
     QSpinBox *targetBufferSpin;
     QLabel *lowBufferLabel;
     QSpinBox *lowBufferSpin;
+    QLabel *timeSyncEnableLabel;
+    QCheckBox *timeSyncEnableCheck;
+    QLabel *criticalBufferLabel;
+    QSpinBox *criticalBufferSpin;
+    QLabel *ratioMinLabel;
+    QDoubleSpinBox *ratioMinSpin;
+    QLabel *phaseGainLabel;
+    QDoubleSpinBox *phaseGainSpin;
+    QLabel *ratioDeadbandLabel;
+    QDoubleSpinBox *ratioDeadbandSpin;
+    QLabel *ratioStepLabel;
+    QDoubleSpinBox *ratioStepSpin;
+    QLabel *ratioPeriodLabel;
+    QSpinBox *ratioPeriodSpin;
+    QLabel *markOffsetLabel;
+    QSpinBox *markOffsetSpin;
+    QLabel *bufferGainLabel;
+    QDoubleSpinBox *bufferGainSpin;
+    QLabel *executionDelayLabel;
+    QSpinBox *executionDelaySpin;
+    QLabel *phaseDeadbandLabel;
+    QSpinBox *phaseDeadbandSpin;
+    QLabel *ratioApiIntervalLabel;
+    QSpinBox *ratioApiIntervalSpin;
+    QLabel *ratioSafetyApiIntervalLabel;
+    QSpinBox *ratioSafetyApiIntervalSpin;
+    QGroupBox *timeSyncDiagnosticsGroup;
+    QGridLayout *timeSyncDiagnosticsLayout;
+    QLabel *expectedPlanTimeLabel;
+    QLabel *expectedPlanTimeValueLabel;
+    QLabel *phaseErrorLabel;
+    QLabel *phaseErrorValueLabel;
+    QLabel *bufferTimeLabel;
+    QLabel *bufferTimeValueLabel;
+    QLabel *ratioDiagLabel;
+    QLabel *ratioDiagValueLabel;
+    QLabel *ratioApiAgeLabel;
+    QLabel *ratioApiAgeValueLabel;
     QHBoxLayout *contiButtonLayout;
     QPushButton *startButton;
     QPushButton *stopButton;
@@ -340,11 +382,19 @@ public:
         tabWidget->setObjectName("tabWidget");
         contiTestTab = new QWidget();
         contiTestTab->setObjectName("contiTestTab");
-        contiTestLayout = new QVBoxLayout(contiTestTab);
+        contiTestOuterLayout = new QVBoxLayout(contiTestTab);
+        contiTestOuterLayout->setObjectName("contiTestOuterLayout");
+        contiTestScrollArea = new QScrollArea(contiTestTab);
+        contiTestScrollArea->setObjectName("contiTestScrollArea");
+        contiTestScrollArea->setWidgetResizable(true);
+        contiTestScrollContent = new QWidget();
+        contiTestScrollContent->setObjectName("contiTestScrollContent");
+        contiTestScrollContent->setGeometry(QRect(0, 0, 1040, 900));
+        contiTestLayout = new QVBoxLayout(contiTestScrollContent);
         contiTestLayout->setObjectName("contiTestLayout");
         settingsLayout = new QHBoxLayout();
         settingsLayout->setObjectName("settingsLayout");
-        testGroup = new QGroupBox(contiTestTab);
+        testGroup = new QGroupBox(contiTestScrollContent);
         testGroup->setObjectName("testGroup");
         testForm = new QFormLayout(testGroup);
         testForm->setObjectName("testForm");
@@ -482,7 +532,7 @@ public:
 
         settingsLayout->addWidget(testGroup);
 
-        contiGroup = new QGroupBox(contiTestTab);
+        contiGroup = new QGroupBox(contiTestScrollContent);
         contiGroup->setObjectName("contiGroup");
         contiForm = new QFormLayout(contiGroup);
         contiForm->setObjectName("contiForm");
@@ -550,10 +600,10 @@ public:
         speedRatioSpin = new QDoubleSpinBox(contiGroup);
         speedRatioSpin->setObjectName("speedRatioSpin");
         speedRatioSpin->setDecimals(2);
-        speedRatioSpin->setMinimum(0.010000000000000);
-        speedRatioSpin->setMaximum(1.000000000000000);
+        speedRatioSpin->setMinimum(0.200000000000000);
+        speedRatioSpin->setMaximum(2.000000000000000);
         speedRatioSpin->setSingleStep(0.050000000000000);
-        speedRatioSpin->setValue(0.500000000000000);
+        speedRatioSpin->setValue(1.000000000000000);
 
         contiForm->setWidget(4, QFormLayout::FieldRole, speedRatioSpin);
 
@@ -587,9 +637,9 @@ public:
 
         preloadSegmentsSpin = new QSpinBox(contiGroup);
         preloadSegmentsSpin->setObjectName("preloadSegmentsSpin");
-        preloadSegmentsSpin->setMinimum(2);
-        preloadSegmentsSpin->setMaximum(1000);
-        preloadSegmentsSpin->setValue(8);
+        preloadSegmentsSpin->setMinimum(10);
+        preloadSegmentsSpin->setMaximum(5000);
+        preloadSegmentsSpin->setValue(200);
 
         contiForm->setWidget(7, QFormLayout::FieldRole, preloadSegmentsSpin);
 
@@ -600,9 +650,9 @@ public:
 
         targetBufferSpin = new QSpinBox(contiGroup);
         targetBufferSpin->setObjectName("targetBufferSpin");
-        targetBufferSpin->setMinimum(2);
-        targetBufferSpin->setMaximum(1000);
-        targetBufferSpin->setValue(8);
+        targetBufferSpin->setMinimum(10);
+        targetBufferSpin->setMaximum(5000);
+        targetBufferSpin->setValue(200);
 
         contiForm->setWidget(8, QFormLayout::FieldRole, targetBufferSpin);
 
@@ -615,9 +665,179 @@ public:
         lowBufferSpin->setObjectName("lowBufferSpin");
         lowBufferSpin->setMinimum(1);
         lowBufferSpin->setMaximum(999);
-        lowBufferSpin->setValue(4);
+        lowBufferSpin->setValue(100);
 
         contiForm->setWidget(9, QFormLayout::FieldRole, lowBufferSpin);
+
+        timeSyncEnableLabel = new QLabel(contiGroup);
+        timeSyncEnableLabel->setObjectName("timeSyncEnableLabel");
+
+        contiForm->setWidget(10, QFormLayout::LabelRole, timeSyncEnableLabel);
+
+        timeSyncEnableCheck = new QCheckBox(contiGroup);
+        timeSyncEnableCheck->setObjectName("timeSyncEnableCheck");
+        timeSyncEnableCheck->setChecked(true);
+
+        contiForm->setWidget(10, QFormLayout::FieldRole, timeSyncEnableCheck);
+
+        criticalBufferLabel = new QLabel(contiGroup);
+        criticalBufferLabel->setObjectName("criticalBufferLabel");
+
+        contiForm->setWidget(11, QFormLayout::LabelRole, criticalBufferLabel);
+
+        criticalBufferSpin = new QSpinBox(contiGroup);
+        criticalBufferSpin->setObjectName("criticalBufferSpin");
+        criticalBufferSpin->setMinimum(1);
+        criticalBufferSpin->setMaximum(4999);
+        criticalBufferSpin->setValue(50);
+
+        contiForm->setWidget(11, QFormLayout::FieldRole, criticalBufferSpin);
+
+        ratioMinLabel = new QLabel(contiGroup);
+        ratioMinLabel->setObjectName("ratioMinLabel");
+
+        contiForm->setWidget(12, QFormLayout::LabelRole, ratioMinLabel);
+
+        ratioMinSpin = new QDoubleSpinBox(contiGroup);
+        ratioMinSpin->setObjectName("ratioMinSpin");
+        ratioMinSpin->setDecimals(2);
+        ratioMinSpin->setMinimum(0.010000000000000);
+        ratioMinSpin->setMaximum(1.000000000000000);
+        ratioMinSpin->setValue(0.200000000000000);
+
+        contiForm->setWidget(12, QFormLayout::FieldRole, ratioMinSpin);
+
+        phaseGainLabel = new QLabel(contiGroup);
+        phaseGainLabel->setObjectName("phaseGainLabel");
+
+        contiForm->setWidget(13, QFormLayout::LabelRole, phaseGainLabel);
+
+        phaseGainSpin = new QDoubleSpinBox(contiGroup);
+        phaseGainSpin->setObjectName("phaseGainSpin");
+        phaseGainSpin->setDecimals(3);
+        phaseGainSpin->setMaximum(10.000000000000000);
+        phaseGainSpin->setSingleStep(0.100000000000000);
+        phaseGainSpin->setValue(0.800000000000000);
+
+        contiForm->setWidget(13, QFormLayout::FieldRole, phaseGainSpin);
+
+        ratioDeadbandLabel = new QLabel(contiGroup);
+        ratioDeadbandLabel->setObjectName("ratioDeadbandLabel");
+
+        contiForm->setWidget(14, QFormLayout::LabelRole, ratioDeadbandLabel);
+
+        ratioDeadbandSpin = new QDoubleSpinBox(contiGroup);
+        ratioDeadbandSpin->setObjectName("ratioDeadbandSpin");
+        ratioDeadbandSpin->setDecimals(3);
+        ratioDeadbandSpin->setMaximum(1.000000000000000);
+        ratioDeadbandSpin->setSingleStep(0.005000000000000);
+        ratioDeadbandSpin->setValue(0.010000000000000);
+
+        contiForm->setWidget(14, QFormLayout::FieldRole, ratioDeadbandSpin);
+
+        ratioStepLabel = new QLabel(contiGroup);
+        ratioStepLabel->setObjectName("ratioStepLabel");
+
+        contiForm->setWidget(15, QFormLayout::LabelRole, ratioStepLabel);
+
+        ratioStepSpin = new QDoubleSpinBox(contiGroup);
+        ratioStepSpin->setObjectName("ratioStepSpin");
+        ratioStepSpin->setDecimals(3);
+        ratioStepSpin->setMinimum(0.001000000000000);
+        ratioStepSpin->setMaximum(1.000000000000000);
+        ratioStepSpin->setValue(0.020000000000000);
+
+        contiForm->setWidget(15, QFormLayout::FieldRole, ratioStepSpin);
+
+        ratioPeriodLabel = new QLabel(contiGroup);
+        ratioPeriodLabel->setObjectName("ratioPeriodLabel");
+
+        contiForm->setWidget(16, QFormLayout::LabelRole, ratioPeriodLabel);
+
+        ratioPeriodSpin = new QSpinBox(contiGroup);
+        ratioPeriodSpin->setObjectName("ratioPeriodSpin");
+        ratioPeriodSpin->setMinimum(5);
+        ratioPeriodSpin->setMaximum(1000);
+        ratioPeriodSpin->setValue(10);
+
+        contiForm->setWidget(16, QFormLayout::FieldRole, ratioPeriodSpin);
+
+        markOffsetLabel = new QLabel(contiGroup);
+        markOffsetLabel->setObjectName("markOffsetLabel");
+
+        contiForm->setWidget(17, QFormLayout::LabelRole, markOffsetLabel);
+
+        markOffsetSpin = new QSpinBox(contiGroup);
+        markOffsetSpin->setObjectName("markOffsetSpin");
+        markOffsetSpin->setMinimum(-20);
+        markOffsetSpin->setMaximum(20);
+
+        contiForm->setWidget(17, QFormLayout::FieldRole, markOffsetSpin);
+
+        bufferGainLabel = new QLabel(contiGroup);
+        bufferGainLabel->setObjectName("bufferGainLabel");
+
+        contiForm->setWidget(18, QFormLayout::LabelRole, bufferGainLabel);
+
+        bufferGainSpin = new QDoubleSpinBox(contiGroup);
+        bufferGainSpin->setObjectName("bufferGainSpin");
+        bufferGainSpin->setDecimals(3);
+        bufferGainSpin->setMaximum(2.000000000000000);
+        bufferGainSpin->setSingleStep(0.010000000000000);
+        bufferGainSpin->setValue(0.100000000000000);
+
+        contiForm->setWidget(18, QFormLayout::FieldRole, bufferGainSpin);
+
+        executionDelayLabel = new QLabel(contiGroup);
+        executionDelayLabel->setObjectName("executionDelayLabel");
+
+        contiForm->setWidget(19, QFormLayout::LabelRole, executionDelayLabel);
+
+        executionDelaySpin = new QSpinBox(contiGroup);
+        executionDelaySpin->setObjectName("executionDelaySpin");
+        executionDelaySpin->setMinimum(10);
+        executionDelaySpin->setMaximum(5000);
+        executionDelaySpin->setValue(250);
+
+        contiForm->setWidget(19, QFormLayout::FieldRole, executionDelaySpin);
+
+        phaseDeadbandLabel = new QLabel(contiGroup);
+        phaseDeadbandLabel->setObjectName("phaseDeadbandLabel");
+
+        contiForm->setWidget(20, QFormLayout::LabelRole, phaseDeadbandLabel);
+
+        phaseDeadbandSpin = new QSpinBox(contiGroup);
+        phaseDeadbandSpin->setObjectName("phaseDeadbandSpin");
+        phaseDeadbandSpin->setMaximum(1000);
+        phaseDeadbandSpin->setValue(20);
+
+        contiForm->setWidget(20, QFormLayout::FieldRole, phaseDeadbandSpin);
+
+        ratioApiIntervalLabel = new QLabel(contiGroup);
+        ratioApiIntervalLabel->setObjectName("ratioApiIntervalLabel");
+
+        contiForm->setWidget(21, QFormLayout::LabelRole, ratioApiIntervalLabel);
+
+        ratioApiIntervalSpin = new QSpinBox(contiGroup);
+        ratioApiIntervalSpin->setObjectName("ratioApiIntervalSpin");
+        ratioApiIntervalSpin->setMinimum(10);
+        ratioApiIntervalSpin->setMaximum(5000);
+        ratioApiIntervalSpin->setValue(100);
+
+        contiForm->setWidget(21, QFormLayout::FieldRole, ratioApiIntervalSpin);
+
+        ratioSafetyApiIntervalLabel = new QLabel(contiGroup);
+        ratioSafetyApiIntervalLabel->setObjectName("ratioSafetyApiIntervalLabel");
+
+        contiForm->setWidget(22, QFormLayout::LabelRole, ratioSafetyApiIntervalLabel);
+
+        ratioSafetyApiIntervalSpin = new QSpinBox(contiGroup);
+        ratioSafetyApiIntervalSpin->setObjectName("ratioSafetyApiIntervalSpin");
+        ratioSafetyApiIntervalSpin->setMinimum(10);
+        ratioSafetyApiIntervalSpin->setMaximum(5000);
+        ratioSafetyApiIntervalSpin->setValue(50);
+
+        contiForm->setWidget(22, QFormLayout::FieldRole, ratioSafetyApiIntervalSpin);
 
 
         settingsLayout->addWidget(contiGroup);
@@ -625,20 +845,81 @@ public:
 
         contiTestLayout->addLayout(settingsLayout);
 
+        timeSyncDiagnosticsGroup = new QGroupBox(contiTestScrollContent);
+        timeSyncDiagnosticsGroup->setObjectName("timeSyncDiagnosticsGroup");
+        timeSyncDiagnosticsLayout = new QGridLayout(timeSyncDiagnosticsGroup);
+        timeSyncDiagnosticsLayout->setObjectName("timeSyncDiagnosticsLayout");
+        expectedPlanTimeLabel = new QLabel(timeSyncDiagnosticsGroup);
+        expectedPlanTimeLabel->setObjectName("expectedPlanTimeLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(expectedPlanTimeLabel, 0, 0, 1, 1);
+
+        expectedPlanTimeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        expectedPlanTimeValueLabel->setObjectName("expectedPlanTimeValueLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(expectedPlanTimeValueLabel, 0, 1, 1, 1);
+
+        phaseErrorLabel = new QLabel(timeSyncDiagnosticsGroup);
+        phaseErrorLabel->setObjectName("phaseErrorLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(phaseErrorLabel, 0, 2, 1, 1);
+
+        phaseErrorValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        phaseErrorValueLabel->setObjectName("phaseErrorValueLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(phaseErrorValueLabel, 0, 3, 1, 1);
+
+        bufferTimeLabel = new QLabel(timeSyncDiagnosticsGroup);
+        bufferTimeLabel->setObjectName("bufferTimeLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(bufferTimeLabel, 1, 0, 1, 1);
+
+        bufferTimeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        bufferTimeValueLabel->setObjectName("bufferTimeValueLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(bufferTimeValueLabel, 1, 1, 1, 1);
+
+        ratioDiagLabel = new QLabel(timeSyncDiagnosticsGroup);
+        ratioDiagLabel->setObjectName("ratioDiagLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(ratioDiagLabel, 1, 2, 1, 1);
+
+        ratioDiagValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        ratioDiagValueLabel->setObjectName("ratioDiagValueLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(ratioDiagValueLabel, 1, 3, 1, 1);
+
+        ratioApiAgeLabel = new QLabel(timeSyncDiagnosticsGroup);
+        ratioApiAgeLabel->setObjectName("ratioApiAgeLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(ratioApiAgeLabel, 2, 0, 1, 1);
+
+        ratioApiAgeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        ratioApiAgeValueLabel->setObjectName("ratioApiAgeValueLabel");
+
+        timeSyncDiagnosticsLayout->addWidget(ratioApiAgeValueLabel, 2, 1, 1, 1);
+
+
+        contiTestLayout->addWidget(timeSyncDiagnosticsGroup);
+
         contiButtonLayout = new QHBoxLayout();
         contiButtonLayout->setObjectName("contiButtonLayout");
-        startButton = new QPushButton(contiTestTab);
+        startButton = new QPushButton(contiTestScrollContent);
         startButton->setObjectName("startButton");
 
         contiButtonLayout->addWidget(startButton);
 
-        stopButton = new QPushButton(contiTestTab);
+        stopButton = new QPushButton(contiTestScrollContent);
         stopButton->setObjectName("stopButton");
 
         contiButtonLayout->addWidget(stopButton);
 
 
         contiTestLayout->addLayout(contiButtonLayout);
+
+        contiTestScrollArea->setWidget(contiTestScrollContent);
+
+        contiTestOuterLayout->addWidget(contiTestScrollArea);
 
         tabWidget->addTab(contiTestTab, QString());
         axisFeedbackTab = new QWidget();
@@ -1063,14 +1344,48 @@ public:
         decelerationSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
         sCurveLabel->setText(QCoreApplication::translate("MainWindow", "S \346\233\262\347\272\277\346\227\266\351\227\264", nullptr));
         sCurveSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
-        speedRatioLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\345\200\215\347\216\207", nullptr));
+        speedRatioLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207\344\270\212\351\231\220", nullptr));
         lookaheadLabel->setText(QCoreApplication::translate("MainWindow", "\345\260\217\347\272\277\346\256\265\345\211\215\347\236\273", nullptr));
         lookaheadCheck->setText(QCoreApplication::translate("MainWindow", "\345\220\257\347\224\250", nullptr));
         pathErrorLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\345\205\201\350\256\270\350\257\257\345\267\256", nullptr));
         pathErrorSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
-        preloadSegmentsLabel->setText(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\351\242\204\345\216\213\346\256\265\346\225\260", nullptr));
-        targetBufferLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\347\274\223\345\206\262\346\256\265\346\225\260", nullptr));
-        lowBufferLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\216\346\260\264\344\275\215\346\256\265\346\225\260", nullptr));
+        preloadSegmentsLabel->setText(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\351\242\204\345\216\213\346\227\266\351\227\264", nullptr));
+        preloadSegmentsSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        targetBufferLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\347\274\223\345\206\262\346\227\266\351\227\264", nullptr));
+        targetBufferSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        lowBufferLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\216\346\260\264\344\275\215\346\227\266\351\227\264", nullptr));
+        lowBufferSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        timeSyncEnableLabel->setText(QCoreApplication::translate("MainWindow", "\346\227\266\351\227\264\345\220\214\346\255\245\345\200\215\347\216\207\346\216\247\345\210\266", nullptr));
+        timeSyncEnableCheck->setText(QCoreApplication::translate("MainWindow", "\345\220\257\347\224\250", nullptr));
+        criticalBufferLabel->setText(QCoreApplication::translate("MainWindow", "\345\215\261\351\231\251\346\260\264\344\275\215\346\227\266\351\227\264", nullptr));
+        criticalBufferSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        ratioMinLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207\344\270\213\351\231\220", nullptr));
+        phaseGainLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\344\275\215\345\242\236\347\233\212", nullptr));
+        ratioDeadbandLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207\345\217\230\345\214\226\346\255\273\345\214\272", nullptr));
+        ratioStepLabel->setText(QCoreApplication::translate("MainWindow", "\345\215\225\346\254\241\345\200\215\347\216\207\345\217\230\345\214\226\344\270\212\351\231\220", nullptr));
+        ratioPeriodLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207\346\216\247\345\210\266\345\221\250\346\234\237", nullptr));
+        ratioPeriodSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        markOffsetLabel->setText(QCoreApplication::translate("MainWindow", "mark \346\240\241\345\207\206\345\201\217\347\247\273", nullptr));
+        bufferGainLabel->setText(QCoreApplication::translate("MainWindow", "\347\274\223\345\206\262\346\260\264\344\275\215\345\242\236\347\233\212", nullptr));
+        executionDelayLabel->setText(QCoreApplication::translate("MainWindow", "\345\233\272\345\256\232\346\211\247\350\241\214\345\273\266\350\277\237", nullptr));
+        executionDelaySpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        phaseDeadbandLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\344\275\215\350\257\257\345\267\256\346\255\273\345\214\272", nullptr));
+        phaseDeadbandSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        ratioApiIntervalLabel->setText(QCoreApplication::translate("MainWindow", "\346\231\256\351\200\232\345\200\215\347\216\207 API \346\234\200\345\260\217\351\227\264\351\232\224", nullptr));
+        ratioApiIntervalSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        ratioSafetyApiIntervalLabel->setText(QCoreApplication::translate("MainWindow", "\345\256\211\345\205\250\345\200\215\347\216\207 API \346\234\200\345\260\217\351\227\264\351\232\224", nullptr));
+        ratioSafetyApiIntervalSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        timeSyncDiagnosticsGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\227\266\351\227\264\345\220\214\346\255\245\345\217\252\350\257\273\350\257\212\346\226\255", nullptr));
+        expectedPlanTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\237\346\234\233 / \345\215\241\344\276\247\350\256\241\345\210\222\346\227\266\345\210\273", nullptr));
+        expectedPlanTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 / 0.0 ms", nullptr));
+        phaseErrorLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\344\275\215\350\257\257\345\267\256", nullptr));
+        phaseErrorValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
+        bufferTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241\350\247\204\345\210\222\347\274\223\345\206\262", nullptr));
+        bufferTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
+        ratioDiagLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207 ref / phase / buffer / \345\221\275\344\273\244 / \345\267\262\344\270\213\345\217\221", nullptr));
+        ratioDiagValueLabel->setText(QCoreApplication::translate("MainWindow", "0.000 / 0.000 / 0.000 / 0.000 / 0.000", nullptr));
+        ratioApiAgeLabel->setText(QCoreApplication::translate("MainWindow", "\350\267\235\344\270\212\346\254\241\345\200\215\347\216\207 API", nullptr));
+        ratioApiAgeValueLabel->setText(QCoreApplication::translate("MainWindow", "-- ms", nullptr));
         startButton->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\277\236\347\273\255\346\217\222\350\241\245", nullptr));
         stopButton->setText(QCoreApplication::translate("MainWindow", "\345\207\217\351\200\237\345\201\234\346\255\242", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(contiTestTab), QCoreApplication::translate("MainWindow", "\350\277\236\347\273\255\346\217\222\350\241\245\346\265\213\350\257\225", nullptr));

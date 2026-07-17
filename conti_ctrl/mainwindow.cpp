@@ -119,9 +119,23 @@ ContiTestConfig MainWindow::collectConfig() const
     config.speedRatio = ui_->speedRatioSpin->value();
     config.lookaheadEnabled = ui_->lookaheadCheck->isChecked();
     config.pathErrorUnit = ui_->pathErrorSpin->value();
-    config.preloadSegments = ui_->preloadSegmentsSpin->value();
-    config.targetBufferSegments = ui_->targetBufferSpin->value();
-    config.lowBufferSegments = ui_->lowBufferSpin->value();
+    config.timeSyncEnabled = ui_->timeSyncEnableCheck->isChecked();
+    config.startupPreloadMs = ui_->preloadSegmentsSpin->value();
+    config.targetBufferMs = ui_->targetBufferSpin->value();
+    config.lowBufferMs = ui_->lowBufferSpin->value();
+    config.criticalBufferMs = ui_->criticalBufferSpin->value();
+    config.executionDelayMs = ui_->executionDelaySpin->value();
+    config.ratioUpdatePeriodMs = ui_->ratioPeriodSpin->value();
+    config.ratioApiMinIntervalMs = ui_->ratioApiIntervalSpin->value();
+    config.ratioSafetyApiIntervalMs = ui_->ratioSafetyApiIntervalSpin->value();
+    config.ratioMin = ui_->ratioMinSpin->value();
+    config.ratioMax = ui_->speedRatioSpin->value();
+    config.phaseGainPerSecond = ui_->phaseGainSpin->value();
+    config.phaseDeadbandMs = ui_->phaseDeadbandSpin->value();
+    config.bufferGain = ui_->bufferGainSpin->value();
+    config.ratioDeadband = ui_->ratioDeadbandSpin->value();
+    config.ratioMaxStep = ui_->ratioStepSpin->value();
+    config.markOffset = ui_->markOffsetSpin->value();
     return config;
 }
 
@@ -268,6 +282,22 @@ void MainWindow::updateStatus(const ContiStatus &status)
     ui_->bufferValueLabel->setText(QString::number(qMax(0L, status.pushedMark - status.currentMark)));
     ui_->spaceValueLabel->setText(QString::number(status.remainSpace));
     ui_->hostQueueValueLabel->setText(QString::number(status.hostQueueSize));
+    ui_->expectedPlanTimeValueLabel->setText(QStringLiteral("%1 / %2 ms")
+                                                 .arg(status.expectedPlanTimeS * 1000.0, 0, 'f', 1)
+                                                 .arg(status.currentPlanTimeS * 1000.0, 0, 'f', 1));
+    ui_->phaseErrorValueLabel->setText(QStringLiteral("%1 ms")
+                                            .arg(status.phaseErrorMs, 0, 'f', 1));
+    ui_->bufferTimeValueLabel->setText(QStringLiteral("%1 ms")
+                                            .arg(status.bufferTimeMs, 0, 'f', 1));
+    ui_->ratioDiagValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 / %5")
+                                           .arg(status.ratioRef, 0, 'f', 3)
+                                           .arg(status.ratioPhase, 0, 'f', 3)
+                                           .arg(status.ratioBuffer, 0, 'f', 3)
+                                           .arg(status.ratioCommand, 0, 'f', 3)
+                                           .arg(status.ratioApplied, 0, 'f', 3));
+    ui_->ratioApiAgeValueLabel->setText(status.ratioLastApiAgoMs < 0
+                                             ? QStringLiteral("-- ms")
+                                             : QStringLiteral("%1 ms").arg(status.ratioLastApiAgoMs));
     ui_->feedbackSummaryValueLabel->setText(status.boardInitialized
                                                 ? QStringLiteral("总线错误码：%1；%2；本次 Trace 帧：%3；API=%4")
                                                       .arg(status.busErrorCode)

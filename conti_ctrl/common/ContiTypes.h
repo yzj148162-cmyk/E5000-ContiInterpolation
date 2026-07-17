@@ -45,13 +45,28 @@ struct ContiTestConfig
     double accelerationTimeS = 0.05;
     double decelerationTimeS = 0.05;
     double sCurveTimeS = 0.02;
-    double speedRatio = 0.5;
+    // speedRatio 是即将下发给控制卡的当前倍率；时间同步运行中由控制器更新。
+    double speedRatio = 1.0;
     bool lookaheadEnabled = true;
     double pathErrorUnit = 0.0;
 
-    int preloadSegments = 8;
-    int targetBufferSegments = 8;
-    int lowBufferSegments = 4;
+    bool timeSyncEnabled = true;
+    int startupPreloadMs = 200;
+    int targetBufferMs = 200;
+    int lowBufferMs = 100;
+    int criticalBufferMs = 50;
+    int executionDelayMs = 250;
+    int ratioUpdatePeriodMs = 10;
+    int ratioApiMinIntervalMs = 100;
+    int ratioSafetyApiIntervalMs = 50;
+    double ratioMin = 0.20;
+    double ratioMax = 1.00;
+    double phaseGainPerSecond = 0.80;
+    int phaseDeadbandMs = 20;
+    double bufferGain = 0.10;
+    double ratioDeadband = 0.01;
+    double ratioMaxStep = 0.02;
+    int markOffset = 0;
 };
 
 struct ContiPoint
@@ -120,6 +135,16 @@ struct ContiStatus
     long pushedMark = 0;
     long remainSpace = 0;
     int hostQueueSize = 0;
+    double currentPlanTimeS = 0.0;
+    double expectedPlanTimeS = 0.0;
+    double phaseErrorMs = 0.0;
+    double bufferTimeMs = 0.0;
+    double ratioRef = 0.0;
+    double ratioPhase = 0.0;
+    double ratioBuffer = 0.0;
+    double ratioCommand = 0.0;
+    double ratioApplied = 0.0;
+    qint64 ratioLastApiAgoMs = -1;
     quint16 busErrorCode = 0;
     bool traceConfigured = false;
     bool traceEverRead = false;

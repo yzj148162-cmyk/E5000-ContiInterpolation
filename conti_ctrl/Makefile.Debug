@@ -353,6 +353,10 @@ debug\moc_ContiWorker.cpp: hardware\ContiWorker.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qbindingstorage.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QElapsedTimer \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qelapsedtimer.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QMap \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qmap.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qshareddata.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qshareddata_impl.h \
 		common\ContiTypes.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QString \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QMetaType \
@@ -1116,6 +1120,7 @@ debug\mainwindow.obj: mainwindow.cpp mainwindow.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qqueue.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QSet \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QElapsedTimer \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QMap \
 		hardware\E5000HardwareInterface.h \
 		planner\QuinticTrajectory.h \
 		telemetry\TelemetryRecorder.h \
@@ -1513,6 +1518,10 @@ debug\ContiWorker.obj: hardware\ContiWorker.cpp hardware\ContiWorker.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qbindingstorage.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QElapsedTimer \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qelapsedtimer.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QMap \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qmap.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qshareddata.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qshareddata_impl.h \
 		common\ContiTypes.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QString \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QMetaType \
@@ -1539,10 +1548,7 @@ debug\ContiWorker.obj: hardware\ContiWorker.cpp hardware\ContiWorker.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qtextstream.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qcontiguouscache.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qsharedpointer.h \
-		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qshareddata.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qsharedpointer_impl.h \
-		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qmap.h \
-		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qshareddata_impl.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qvarlengtharray.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qcoreapplication_platform.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qfuture.h \

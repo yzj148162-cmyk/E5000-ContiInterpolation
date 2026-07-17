@@ -290,9 +290,15 @@ void ContiWorker::startTest(const ContiTestConfig &config)
         }
     }
     if (config.durationS <= 0.0 || config.producerPeriodMs <= 0
-        || config.preloadSegments < 2 || config.targetBufferSegments < config.preloadSegments
-        || config.lowBufferSegments < 1 || config.lowBufferSegments >= config.targetBufferSegments) {
-        emit logMessage(QStringLiteral("测试参数不合法：请检查时长、预压段数和缓冲水位。"));
+        || config.startupPreloadMs < config.producerPeriodMs
+        || config.targetBufferMs < config.startupPreloadMs
+        || config.lowBufferMs <= config.criticalBufferMs
+        || config.criticalBufferMs < 1 || config.executionDelayMs < config.targetBufferMs
+        || config.ratioUpdatePeriodMs < 5 || config.ratioApiMinIntervalMs < config.ratioUpdatePeriodMs
+        || config.ratioSafetyApiIntervalMs < config.ratioUpdatePeriodMs
+        || config.ratioMin <= 0.0 || config.ratioMin > config.ratioMax || config.ratioMax > 2.0
+        || config.ratioDeadband < 0.0 || config.ratioMaxStep <= 0.0) {
+        emit logMessage(QStringLiteral("测试参数不合法：请检查预压/缓冲时间及倍率控制参数。"));
         return;
     }
     if (!bothAxesEnabled(config)) {
@@ -312,7 +318,26 @@ void ContiWorker::startTest(const ContiTestConfig &config)
 
     config_ = config;
     trajectory_.reset(config_, activeStart, holdStart);
+    trajectoryStartPoint_.timeS = 0.0;
+    trajectoryStartPoint_.targetUnit = {activeStart, holdStart};
     hostQueue_.clear();
+    pushedPointsByMark_.clear();
+    lastPushedPlanTimeS_ = 0.0;
+    latestGeneratedPlanTimeS_ = 0.0;
+    currentPlanTimeS_ = 0.0;
+    expectedPlanTimeS_ = 0.0;
+    phaseErrorMs_ = 0.0;
+    bufferTimeMs_ = 0.0;
+    ratioRef_ = 0.0;
+    ratioPhase_ = 0.0;
+    ratioBuffer_ = 0.0;
+    ratioCommand_ = config.ratioMin;
+    ratioApplied_ = config.ratioMin;
+    phaseClockStarted_ = false;
+    lastRatioControlMs_ = -1;
+    lastRatioApiMs_ = -1;
+    lastRatioApiMark_ = -1;
+    config_.speedRatio = config.ratioMin;
     lastQueuedTargetPulse_ = {unitToPulse(activeStart), unitToPulse(holdStart)};
     lastQueuedTargetPulseValid_ = true;
     skippedQuantizedPointCount_ = 0;
@@ -329,10 +354,10 @@ void ContiWorker::startTest(const ContiTestConfig &config)
     stateText_ = QStringLiteral("正在按 10 ms 周期预生成轨迹");
     producerTimer_->setInterval(config_.producerPeriodMs);
 
-    emit logMessage(QStringLiteral("轨迹已重置：轴 %1 指令起点=%2°，轴 %3 指令起点=%4°；等待预压 %5 段。")
+    emit logMessage(QStringLiteral("轨迹已重置：轴 %1 指令起点=%2°，轴 %3 指令起点=%4°；等待预压 %5 ms。")
                         .arg(config_.activeAxis).arg(activeStart, 0, 'f', 4)
                         .arg(config_.holdAxis).arg(holdStart, 0, 'f', 4)
-                        .arg(config_.preloadSegments));
+                        .arg(config_.startupPreloadMs));
     const double activeEnd = activeStart + config_.activeDeltaUnit;
     const double holdEnd = holdStart + (config_.stage == TestStage::DualAxis ? config_.holdDeltaUnit : 0.0);
     emit logMessage(QStringLiteral("插补量化诊断：1 pulse=%1°；起点脉冲=(%2,%3)，理论终点脉冲=(%4,%5)。")
@@ -341,6 +366,13 @@ void ContiWorker::startTest(const ContiTestConfig &config)
                         .arg(lastQueuedTargetPulse_[1])
                         .arg(unitToPulse(activeEnd))
                         .arg(unitToPulse(holdEnd)));
+    emit logMessage(QStringLiteral("时间同步参数：执行延迟=%1 ms，目标缓冲=%2 ms，低水位=%3 ms，危险水位=%4 ms，倍率范围=[%5,%6]。")
+                        .arg(config_.executionDelayMs)
+                        .arg(config_.targetBufferMs)
+                        .arg(config_.lowBufferMs)
+                        .arg(config_.criticalBufferMs)
+                        .arg(config_.ratioMin, 0, 'f', 2)
+                        .arg(config_.ratioMax, 0, 'f', 2));
     produceNextPoint(); // 第一个点为 t=0，不必额外等待一个周期。
     producerTimer_->start();
     publishStatus();
@@ -776,6 +808,7 @@ void ContiWorker::produceNextPoint()
     }
     if (trajectory_.hasNext()) {
         const ContiPoint point = trajectory_.nextPoint();
+        latestGeneratedPlanTimeS_ = point.timeS;
         const std::array<qint64, 2> targetPulse = {
             unitToPulse(point.targetUnit[0]),
             unitToPulse(point.targetUnit[1])
@@ -804,16 +837,18 @@ void ContiWorker::produceNextPoint()
     } else {
         producerFinished_ = true;
         producerTimer_->stop();
-        if (preparing_ && hostQueue_.size() < config_.preloadSegments) {
-            enterError(QStringLiteral("轨迹生成结束，但脉冲域仅得到 %1 个有效段（预压要求 %2 个，已跳过 %3 个重复点）；请增大位移、缩短轨迹时长或降低预压段数。")
-                           .arg(hostQueue_.size())
-                           .arg(config_.preloadSegments)
+        if (preparing_ && !hasStartupPreload()) {
+            const double queuedMs = hostQueue_.size() >= 2
+                ? (hostQueue_.back().timeS - hostQueue_.front().timeS) * 1000.0 : 0.0;
+            enterError(QStringLiteral("轨迹生成结束，但有效轨迹仅覆盖 %1 ms（预压要求 %2 ms，已跳过 %3 个重复点）；请增大位移、缩短轨迹时长或降低预压时间。")
+                           .arg(queuedMs, 0, 'f', 1)
+                           .arg(config_.startupPreloadMs)
                            .arg(skippedQuantizedPointCount_));
             return;
         }
     }
 
-    if (preparing_ && hostQueue_.size() >= config_.preloadSegments) {
+    if (preparing_ && hasStartupPreload()) {
         startAfterPreload();
     }
     publishStatus();
@@ -828,7 +863,7 @@ bool ContiWorker::startAfterPreload()
     }
     listOpen_ = true;
 
-    for (int i = 0; i < config_.preloadSegments; ++i) {
+    while (!hostQueue_.isEmpty()) {
         if (!pushOnePoint()) {
             return false;
         }
@@ -845,14 +880,15 @@ bool ContiWorker::startAfterPreload()
     speedRatioPending_ = true;
     speedRatioNotReadyCount_ = 0;
     contiRunElapsed_.start();
+    phaseClockStarted_ = false;
     lastContiDiagnosticMs_ = -1;
     stateText_ = QStringLiteral("连续插补运行中");
     feedTimer_->start();
-    emit logMessage(QStringLiteral("已预压 %1 个有效段并启动连续插补；已跳过 %2 个脉冲重复点，首个有效点 t=%3 s，速度倍率=%4。")
-                        .arg(config_.preloadSegments)
+    emit logMessage(QStringLiteral("已预压 %1 个有效段（%2 ms）并启动连续插补；已跳过 %3 个脉冲重复点，首个有效点 t=%4 s。")
+                        .arg(lastPushedMark_)
+                        .arg((lastPushedPlanTimeS_ - firstEffectivePointTimeS_) * 1000.0, 0, 'f', 1)
                         .arg(skippedQuantizedPointCount_)
-                        .arg(firstEffectivePointTimeS_, 0, 'f', 3)
-                        .arg(config_.speedRatio, 0, 'f', 2));
+                        .arg(firstEffectivePointTimeS_, 0, 'f', 3));
     return true;
 }
 
@@ -868,7 +904,157 @@ bool ContiWorker::pushOnePoint()
         return false;
     }
     lastPushedMark_ = nextMark_;
+    lastPushedPlanTimeS_ = point.timeS;
+    pushedPointsByMark_.insert(nextMark_, point);
     ++nextMark_;
+    return true;
+}
+
+bool ContiWorker::hasStartupPreload() const
+{
+    if (hostQueue_.size() < 2) {
+        return false;
+    }
+    const double queuedTimeS = hostQueue_.back().timeS - hostQueue_.front().timeS;
+    return queuedTimeS >= config_.startupPreloadMs / 1000.0;
+}
+
+double ContiWorker::planTimeForMark(long currentMark) const
+{
+    if (pushedPointsByMark_.isEmpty()) {
+        return 0.0;
+    }
+
+    const long lookupMark = std::max(0L, currentMark + static_cast<long>(config_.markOffset));
+    auto iterator = pushedPointsByMark_.upperBound(lookupMark);
+    if (iterator == pushedPointsByMark_.begin()) {
+        return iterator.value().timeS;
+    }
+    --iterator;
+    return iterator.value().timeS;
+}
+
+double ContiWorker::bufferedPlanTimeS(long currentMark) const
+{
+    return std::max(0.0, lastPushedPlanTimeS_ - planTimeForMark(currentMark));
+}
+
+double ContiWorker::referenceVectorSpeed(double planTimeS) const
+{
+    if (pushedPointsByMark_.isEmpty()) {
+        return 0.0;
+    }
+
+    constexpr double kReferenceWindowS = 0.10;
+    const double windowBegin = std::max(0.0, planTimeS - kReferenceWindowS / 2.0);
+    const double windowEnd = planTimeS + kReferenceWindowS / 2.0;
+
+    ContiPoint previousPoint = trajectoryStartPoint_;
+    bool collecting = false;
+    double beginTimeS = 0.0;
+    double endTimeS = 0.0;
+    double pathLength = 0.0;
+    for (auto iterator = pushedPointsByMark_.cbegin(); iterator != pushedPointsByMark_.cend(); ++iterator) {
+        const ContiPoint &point = iterator.value();
+        if (point.timeS < windowBegin) {
+            previousPoint = point;
+            continue;
+        }
+        if (!collecting) {
+            collecting = true;
+            beginTimeS = previousPoint.timeS;
+        }
+        const double dx = point.targetUnit[0] - previousPoint.targetUnit[0];
+        const double dy = point.targetUnit[1] - previousPoint.targetUnit[1];
+        pathLength += std::hypot(dx, dy);
+        endTimeS = point.timeS;
+        previousPoint = point;
+        if (point.timeS >= windowEnd) {
+            break;
+        }
+    }
+
+    if (!collecting || endTimeS <= beginTimeS) {
+        return 0.0;
+    }
+    return pathLength / (endTimeS - beginTimeS);
+}
+
+double ContiWorker::calculateRatioCommand(long currentMark, double bufferTimeS, qint64 elapsedMs)
+{
+    currentPlanTimeS_ = planTimeForMark(currentMark);
+    const double scheduledPlanTimeS = firstEffectivePointTimeS_ + elapsedMs / 1000.0;
+    const double sourceAvailablePlanTimeS = producerFinished_
+        ? config_.durationS
+        : std::max(firstEffectivePointTimeS_,
+            latestGeneratedPlanTimeS_ - config_.executionDelayMs / 1000.0);
+    expectedPlanTimeS_ = std::min({scheduledPlanTimeS, sourceAvailablePlanTimeS, config_.durationS});
+    phaseErrorMs_ = (expectedPlanTimeS_ - currentPlanTimeS_) * 1000.0;
+    bufferTimeMs_ = bufferTimeS * 1000.0;
+
+    if (!config_.timeSyncEnabled) {
+        ratioRef_ = config_.ratioMax;
+        ratioPhase_ = 0.0;
+        ratioBuffer_ = 0.0;
+        ratioCommand_ = config_.ratioMax;
+        config_.speedRatio = config_.ratioMax;
+        return config_.speedRatio;
+    }
+
+    ratioRef_ = std::clamp(referenceVectorSpeed(expectedPlanTimeS_) / config_.maxVectorVelocity,
+                            config_.ratioMin, config_.ratioMax);
+    ratioPhase_ = std::abs(phaseErrorMs_) <= config_.phaseDeadbandMs
+        ? 0.0
+        : std::clamp(config_.phaseGainPerSecond * phaseErrorMs_ / 1000.0, -0.15, 0.15);
+    const double targetBufferS = config_.targetBufferMs / 1000.0;
+    ratioBuffer_ = targetBufferS > 0.0
+        ? config_.bufferGain * std::clamp((bufferTimeS - targetBufferS) / targetBufferS, -1.0, 1.0)
+        : 0.0;
+
+    ratioCommand_ = std::clamp(ratioRef_ + ratioPhase_ + ratioBuffer_,
+                               config_.ratioMin, config_.ratioMax);
+    if (bufferTimeMs_ <= config_.criticalBufferMs) {
+        ratioCommand_ = config_.ratioMin;
+    } else if (bufferTimeMs_ < config_.lowBufferMs) {
+        const double safetyFraction = (bufferTimeMs_ - config_.criticalBufferMs)
+            / static_cast<double>(config_.lowBufferMs - config_.criticalBufferMs);
+        ratioCommand_ = std::min(ratioCommand_,
+                                 config_.ratioMin + std::clamp(safetyFraction, 0.0, 1.0) * 0.10);
+    }
+
+    const double filtered = 0.85 * ratioApplied_ + 0.15 * ratioCommand_;
+    config_.speedRatio = std::clamp(filtered,
+                                    ratioApplied_ - config_.ratioMaxStep,
+                                    ratioApplied_ + config_.ratioMaxStep);
+    return config_.speedRatio;
+}
+
+bool ContiWorker::applyRatioCommand(qint64 elapsedMs, QString &errorMessage)
+{
+    const ContiSpeedRatioResult result = card_.changeSpeedRatio(config_, errorMessage);
+    lastRatioApiMs_ = elapsedMs;
+    if (result == ContiSpeedRatioResult::Applied) {
+        ratioApplied_ = config_.speedRatio;
+        speedRatioPending_ = false;
+        if (config_.timeSyncEnabled && !phaseClockStarted_) {
+            phaseClock_.start();
+            phaseClockStarted_ = true;
+            emit logMessage(QStringLiteral("时间同步计划时钟已启动：以首段规划确认时刻作为 t=0。"));
+        }
+        emit logMessage(QStringLiteral("连续插补在线速度倍率已生效：%1。")
+                            .arg(ratioApplied_, 0, 'f', 3));
+        return true;
+    }
+    if (result == ContiSpeedRatioResult::Failed) {
+        return false;
+    }
+
+    speedRatioPending_ = true;
+    ++speedRatioNotReadyCount_;
+    if (speedRatioNotReadyCount_ == 1 || speedRatioNotReadyCount_ % 10 == 0) {
+        emit logMessage(QStringLiteral("在线速度倍率等待首段规划：返回 5049，已重试 %1 次。")
+                            .arg(speedRatioNotReadyCount_));
+    }
     return true;
 }
 
@@ -880,17 +1066,13 @@ void ContiWorker::feedCard()
 
     const long current = card_.currentMark(config_);
     long remaining = card_.remainSpace(config_);
-    long buffered = std::max(0L, lastPushedMark_ - current);
+    double bufferedTimeS = bufferedPlanTimeS(current);
 
-    if (buffered < config_.lowBufferSegments && hostQueue_.isEmpty() && !producerFinished_) {
-        emit logMessage(QStringLiteral("缓冲偏低（%1 段），等待下一周期轨迹点。") .arg(buffered));
-    }
-
-    while (buffered < config_.targetBufferSegments && remaining > 0 && !hostQueue_.isEmpty()) {
+    while (bufferedTimeS * 1000.0 < config_.targetBufferMs && remaining > 0 && !hostQueue_.isEmpty()) {
         if (!pushOnePoint()) {
             return;
         }
-        ++buffered;
+        bufferedTimeS = bufferedPlanTimeS(current);
         --remaining;
     }
 
@@ -900,36 +1082,47 @@ void ContiWorker::feedCard()
         return;
     }
 
-    if (speedRatioPending_ && state == 0) {
-        QString ratioError;
-        const ContiSpeedRatioResult result = card_.changeSpeedRatio(config_, ratioError);
-        if (result == ContiSpeedRatioResult::Applied) {
-            speedRatioPending_ = false;
-            emit logMessage(QStringLiteral("连续插补在线速度倍率已生效：%1。")
-                                .arg(config_.speedRatio, 0, 'f', 2));
-        } else if (result == ContiSpeedRatioResult::Failed) {
-            enterError(ratioError);
-            return;
-        } else {
-            ++speedRatioNotReadyCount_;
-            if (speedRatioNotReadyCount_ == 1 || speedRatioNotReadyCount_ % 40 == 0) {
-                emit logMessage(QStringLiteral("在线速度倍率等待首段规划：返回 5049，已重试 %1 次。")
-                                    .arg(speedRatioNotReadyCount_));
+    const qint64 elapsedMs = contiRunElapsed_.isValid() ? contiRunElapsed_.elapsed() : 0;
+    const qint64 phaseElapsedMs = phaseClockStarted_ ? phaseClock_.elapsed() : 0;
+    if (state == 0 && (lastRatioControlMs_ < 0
+                       || elapsedMs - lastRatioControlMs_ >= config_.ratioUpdatePeriodMs)) {
+        calculateRatioCommand(current, bufferedTimeS, phaseElapsedMs);
+        const bool safetyOverride = bufferTimeMs_ < config_.lowBufferMs;
+        const qint64 minApiIntervalMs = safetyOverride
+            ? config_.ratioSafetyApiIntervalMs : config_.ratioApiMinIntervalMs;
+        const bool apiIntervalElapsed = lastRatioApiMs_ < 0
+            || elapsedMs - lastRatioApiMs_ >= minApiIntervalMs;
+        const bool ratioChangeNeeded = std::abs(config_.speedRatio - ratioApplied_) >= config_.ratioDeadband;
+        if (apiIntervalElapsed && (speedRatioPending_ || ratioChangeNeeded)) {
+            QString ratioError;
+            if (!applyRatioCommand(elapsedMs, ratioError)) {
+                enterError(ratioError);
+                return;
             }
+            lastRatioApiMark_ = current;
         }
+        lastRatioControlMs_ = elapsedMs;
     }
 
-    const qint64 elapsedMs = contiRunElapsed_.isValid() ? contiRunElapsed_.elapsed() : 0;
     if (lastContiDiagnosticMs_ < 0 || elapsedMs - lastContiDiagnosticMs_ >= kContiDiagnosticPeriodMs) {
         lastContiDiagnosticMs_ = elapsedMs;
-        emit logMessage(QStringLiteral("连续插补诊断：t=%1 ms，runState=%2，currentMark=%3，pushedMark=%4，缓冲余量=%5，上位机队列=%6，重复点=%7。")
+        const qint64 apiAgoMs = lastRatioApiMs_ < 0 ? -1 : elapsedMs - lastRatioApiMs_;
+        emit logMessage(QStringLiteral("连续插补诊断：t=%1 ms，runState=%2，mark=%3/%4，卡侧计划=%5 ms，期望=%6 ms，相位=%7 ms，缓冲=%8 ms，倍率(ref/phase/buffer/cmd/applied)=%9/%10/%11/%12/%13，API距今=%14 ms，上位机队列=%15。")
                             .arg(elapsedMs)
                             .arg(state)
                             .arg(current)
                             .arg(lastPushedMark_)
-                            .arg(remaining)
-                            .arg(hostQueue_.size())
-                            .arg(skippedQuantizedPointCount_));
+                            .arg(currentPlanTimeS_ * 1000.0, 0, 'f', 1)
+                            .arg(expectedPlanTimeS_ * 1000.0, 0, 'f', 1)
+                            .arg(phaseErrorMs_, 0, 'f', 1)
+                            .arg(bufferTimeMs_, 0, 'f', 1)
+                            .arg(ratioRef_, 0, 'f', 3)
+                            .arg(ratioPhase_, 0, 'f', 3)
+                            .arg(ratioBuffer_, 0, 'f', 3)
+                            .arg(ratioCommand_, 0, 'f', 3)
+                            .arg(ratioApplied_, 0, 'f', 3)
+                            .arg(apiAgoMs)
+                            .arg(hostQueue_.size()));
     }
     if (current < 1 && elapsedMs >= kFirstSegmentTimeoutMs) {
         enterError(QStringLiteral("启动后 %1 ms 控制卡仍未消费首个有效段（currentMark=%2，pushedMark=%3，缓冲余量=%4）；已安全停止，需检查首段与控制卡插补状态。")
@@ -1001,6 +1194,17 @@ void ContiWorker::publishStatus()
     status.stateText = stateText_;
     status.hostQueueSize = hostQueue_.size();
     status.pushedMark = lastPushedMark_;
+    status.currentPlanTimeS = currentPlanTimeS_;
+    status.expectedPlanTimeS = expectedPlanTimeS_;
+    status.phaseErrorMs = phaseErrorMs_;
+    status.bufferTimeMs = bufferTimeMs_;
+    status.ratioRef = ratioRef_;
+    status.ratioPhase = ratioPhase_;
+    status.ratioBuffer = ratioBuffer_;
+    status.ratioCommand = ratioCommand_;
+    status.ratioApplied = ratioApplied_;
+    status.ratioLastApiAgoMs = lastRatioApiMs_ < 0 || !contiRunElapsed_.isValid()
+        ? -1 : contiRunElapsed_.elapsed() - lastRatioApiMs_;
     if (listOpen_) {
         status.currentMark = card_.currentMark(config_);
         status.remainSpace = card_.remainSpace(config_);

@@ -5,6 +5,7 @@
 #include <QSet>
 #include <QObject>
 #include <QElapsedTimer>
+#include <QMap>
 
 #include "common/ContiTypes.h"
 #include "hardware/E5000HardwareInterface.h"
@@ -49,6 +50,12 @@ private slots:
 private:
     bool startAfterPreload();
     bool pushOnePoint();
+    bool hasStartupPreload() const;
+    double planTimeForMark(long currentMark) const;
+    double bufferedPlanTimeS(long currentMark) const;
+    double referenceVectorSpeed(double planTimeS) const;
+    double calculateRatioCommand(long currentMark, double bufferTimeS, qint64 elapsedMs);
+    bool applyRatioCommand(qint64 elapsedMs, QString &errorMessage);
     void finishRun(const QString &message);
     void enterError(const QString &message);
     void publishStatus();
@@ -101,6 +108,24 @@ private:
     QElapsedTimer contiRunElapsed_;
     qint64 lastContiDiagnosticMs_ = -1;
     int speedRatioNotReadyCount_ = 0;
+    QMap<long, ContiPoint> pushedPointsByMark_;
+    ContiPoint trajectoryStartPoint_;
+    double lastPushedPlanTimeS_ = 0.0;
+    double latestGeneratedPlanTimeS_ = 0.0;
+    double currentPlanTimeS_ = 0.0;
+    double expectedPlanTimeS_ = 0.0;
+    double phaseErrorMs_ = 0.0;
+    double bufferTimeMs_ = 0.0;
+    double ratioRef_ = 0.0;
+    double ratioPhase_ = 0.0;
+    double ratioBuffer_ = 0.0;
+    double ratioCommand_ = 1.0;
+    double ratioApplied_ = 1.0;
+    QElapsedTimer phaseClock_;
+    bool phaseClockStarted_ = false;
+    qint64 lastRatioControlMs_ = -1;
+    qint64 lastRatioApiMs_ = -1;
+    long lastRatioApiMark_ = -1;
     long nextMark_ = 1;
     long lastPushedMark_ = 0;
     int traceFramesRead_ = 0;
