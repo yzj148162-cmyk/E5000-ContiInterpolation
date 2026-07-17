@@ -1,0 +1,96 @@
+#ifndef MAINWINDOW_H
+#define MAINWINDOW_H
+
+#include <QMainWindow>
+#include <QList>
+
+#include "common/ContiTypes.h"
+
+QT_BEGIN_NAMESPACE
+namespace Ui { class MainWindow; }
+QT_END_NAMESPACE
+
+class QThread;
+class QTimer;
+class ContiWorker;
+class QChart;
+class QLineSeries;
+class QValueAxis;
+
+class MainWindow : public QMainWindow
+{
+    Q_OBJECT
+
+public:
+    explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow() override;
+
+signals:
+    void initializeBoardRequested(const ContiTestConfig &config);
+    void closeBoardRequested();
+    void enableAxesRequested(const ContiTestConfig &config);
+    void disableAxesRequested(const ContiTestConfig &config);
+    void startTestRequested(const ContiTestConfig &config);
+    void stopTestRequested(bool emergency);
+    void refreshFeedbackRequested();
+    void enableJogAxisRequested(const SingleAxisJogConfig &config);
+    void disableJogAxisRequested(const SingleAxisJogConfig &config);
+    void setJogAxisZeroRequested(const SingleAxisJogConfig &config);
+    void startPointMoveRequested(const SingleAxisJogConfig &config);
+    void stopPointMoveRequested(bool emergency);
+    void startTelemetryRecordingRequested();
+    void stopTelemetryRecordingRequested();
+
+private slots:
+    void onStageChanged(int index);
+    void onInitializeClicked();
+    void onCloseBoardClicked();
+    void onEnableAxesClicked();
+    void onDisableAxesClicked();
+    void onStartClicked();
+    void onStopClicked();
+    void onEmergencyStopClicked();
+    void onRefreshFeedbackClicked();
+    void onClearLogClicked();
+    void onEnableJogAxisClicked();
+    void onDisableJogAxisClicked();
+    void onSetJogAxisZeroClicked();
+    void onStartPointMoveClicked();
+    void onStopPointMoveClicked();
+    void onEmergencyStopPointMoveClicked();
+    void onUseActualPositionClicked();
+    void onJogPositionDisplayModeChanged();
+    void onStartRecordingClicked();
+    void onStopRecordingClicked();
+    void appendLog(const QString &message);
+    void updateStatus(const ContiStatus &status);
+
+private:
+    ContiTestConfig collectConfig() const;
+    SingleAxisJogConfig collectJogConfig() const;
+    void connectWorker();
+    void initializeTelemetryCharts();
+    void updateTelemetryCharts();
+    void updateChartRanges(QChart *chart, QValueAxis *timeAxis, QValueAxis *valueAxis,
+                           const QList<QLineSeries *> &series, double timeSeconds,
+                           double minimumSpan) const;
+
+private:
+    Ui::MainWindow *ui_ = nullptr;
+    QThread *workerThread_ = nullptr;
+    ContiWorker *worker_ = nullptr;
+    ContiStatus latestStatus_;
+    bool hasLatestStatus_ = false;
+    QTimer *telemetryPlotTimer_ = nullptr;
+    QChart *positionChart_ = nullptr;
+    QChart *followingErrorChart_ = nullptr;
+    QLineSeries *positionSeries_[4] {nullptr, nullptr, nullptr, nullptr};
+    QLineSeries *followingErrorSeries_[2] {nullptr, nullptr};
+    QValueAxis *positionTimeAxis_ = nullptr;
+    QValueAxis *positionValueAxis_ = nullptr;
+    QValueAxis *errorTimeAxis_ = nullptr;
+    QValueAxis *errorValueAxis_ = nullptr;
+    quint64 lastPlottedTraceSequence_ = 0;
+};
+
+#endif // MAINWINDOW_H

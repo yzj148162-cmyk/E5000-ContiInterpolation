@@ -1,0 +1,605 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1180</width>
+    <height>920</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Qt 多线程运动控制框架</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="rootLayout">
+    <item>
+     <layout class="QHBoxLayout" name="topLayout">
+      <item>
+       <layout class="QVBoxLayout" name="leftLayout">
+        <item>
+         <widget class="QGroupBox" name="motionGroupBox">
+          <property name="title">
+           <string>基础运动参数</string>
+          </property>
+          <layout class="QFormLayout" name="motionFormLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="axisLabel">
+             <property name="text">
+              <string>轴号</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QSpinBox" name="axisSpin">
+             <property name="maximum">
+              <number>63</number>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="modeLabel">
+             <property name="text">
+              <string>模式</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QComboBox" name="modeCombo"/>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="deltaAngleLabel">
+             <property name="text">
+              <string>相对角度增量</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QDoubleSpinBox" name="deltaAngleSpin">
+             <property name="minimum">
+              <double>-999999.000000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>999999.000000000000000</double>
+             </property>
+             <property name="decimals">
+              <number>3</number>
+             </property>
+             <property name="value">
+              <double>300.000000000000000</double>
+             </property>
+             <property name="suffix">
+              <string> deg</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="durationLabel">
+             <property name="text">
+              <string>整段时间</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QDoubleSpinBox" name="durationSpin">
+             <property name="minimum">
+              <double>0.050000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>3600.000000000000000</double>
+             </property>
+             <property name="decimals">
+              <number>3</number>
+             </property>
+             <property name="value">
+              <double>15.000000000000000</double>
+             </property>
+             <property name="suffix">
+              <string> s</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="0">
+            <widget class="QLabel" name="systemPlanningPeriodLabel">
+             <property name="text">
+              <string>系统规划周期</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="1">
+            <widget class="QSpinBox" name="systemPlanningPeriodMsSpin">
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>1000</number>
+             </property>
+             <property name="value">
+              <number>10</number>
+             </property>
+             <property name="suffix">
+              <string> ms</string>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="0">
+            <widget class="QLabel" name="minVelLabel">
+             <property name="text">
+              <string>最小速度</string>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="1">
+            <widget class="QDoubleSpinBox" name="minVelSpin">
+             <property name="maximum">
+              <double>100000.000000000000000</double>
+             </property>
+             <property name="decimals">
+              <number>3</number>
+             </property>
+             <property name="suffix">
+              <string> deg/s</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="0">
+            <widget class="QLabel" name="maxVelLabel">
+             <property name="text">
+              <string>最大速度</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="1">
+            <widget class="QDoubleSpinBox" name="maxVelSpin">
+             <property name="minimum">
+              <double>0.001000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>100000.000000000000000</double>
+             </property>
+             <property name="decimals">
+              <number>3</number>
+             </property>
+             <property name="value">
+              <double>60.000000000000000</double>
+             </property>
+             <property name="suffix">
+              <string> deg/s</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="displayGroupBox">
+          <property name="title">
+           <string>显示与刷新</string>
+          </property>
+          <layout class="QFormLayout" name="displayFormLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="uiRefreshLabel">
+             <property name="text">
+              <string>UI显示周期</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QSpinBox" name="uiRefreshMsSpin">
+             <property name="minimum">
+              <number>10</number>
+             </property>
+             <property name="maximum">
+              <number>500</number>
+             </property>
+             <property name="value">
+              <number>50</number>
+             </property>
+             <property name="suffix">
+              <string> ms</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="cspRuntimeGroupBox">
+          <property name="title">
+           <string>CSP运行参数</string>
+          </property>
+          <layout class="QFormLayout" name="cspRuntimeFormLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="ecatPortLabel">
+             <property name="text">
+              <string>EtherCAT端口</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QSpinBox" name="ecatPortSpin">
+             <property name="maximum">
+              <number>8</number>
+             </property>
+             <property name="value">
+              <number>2</number>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="nodeLabel">
+             <property name="text">
+              <string>从站序号</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QSpinBox" name="nodeSpin">
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>65535</number>
+             </property>
+             <property name="value">
+              <number>1</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="cspInterpPeriodMsLabel">
+             <property name="text">
+              <string>驱动插补周期(0x60C2:01)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QSpinBox" name="cspInterpPeriodMsSpin">
+             <property name="minimum">
+              <number>1</number>
+             </property>
+             <property name="maximum">
+              <number>4</number>
+             </property>
+             <property name="value">
+              <number>1</number>
+             </property>
+             <property name="suffix">
+              <string> ms</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="cspInterpIndexLabel">
+             <property name="text">
+              <string>时间基指数(0x60C2:02)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QSpinBox" name="cspInterpIndexSpin">
+             <property name="minimum">
+              <number>-10</number>
+             </property>
+             <property name="maximum">
+              <number>0</number>
+             </property>
+             <property name="value">
+              <number>-3</number>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="advancedGroupBox">
+          <property name="title">
+           <string>高级设置</string>
+          </property>
+          <layout class="QFormLayout" name="advancedFormLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="rawPerDegLabel">
+             <property name="text">
+              <string>位置缩放</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QDoubleSpinBox" name="rawPerDegSpin">
+             <property name="minimum">
+              <double>0.001000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>1000000.000000000000000</double>
+             </property>
+             <property name="decimals">
+              <number>6</number>
+             </property>
+             <property name="value">
+              <double>500.622000000000014</double>
+             </property>
+             <property name="suffix">
+              <string> raw/deg</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="cspRxpdoPosAddrLabel">
+             <property name="text">
+              <string>目标位置地址(RxPDO)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QSpinBox" name="cspRxpdoPosAddrSpin">
+             <property name="maximum">
+              <number>65535</number>
+             </property>
+             <property name="value">
+              <number>1</number>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="cspTxpdoStatusAddrLabel">
+             <property name="text">
+              <string>状态字地址(TxPDO 0x6041)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QSpinBox" name="cspTxpdoStatusAddrSpin">
+             <property name="maximum">
+              <number>65535</number>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="cspTxpdoModeAddrLabel">
+             <property name="text">
+              <string>模式显示地址(TxPDO 0x6061)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QSpinBox" name="cspTxpdoModeAddrSpin">
+             <property name="maximum">
+              <number>65535</number>
+             </property>
+             <property name="value">
+              <number>3</number>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="0">
+            <widget class="QLabel" name="cspTxpdoPosAddrLabel">
+             <property name="text">
+              <string>实际位置地址(TxPDO 0x6064)</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="1">
+            <widget class="QSpinBox" name="cspTxpdoPosAddrSpin">
+             <property name="maximum">
+              <number>65535</number>
+             </property>
+             <property name="value">
+              <number>1</number>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </item>
+      <item>
+       <layout class="QVBoxLayout" name="rightLayout">
+        <item>
+         <widget class="QGroupBox" name="buttonBox">
+          <property name="title">
+           <string>控制</string>
+          </property>
+          <layout class="QGridLayout" name="buttonLayout">
+           <item row="0" column="0">
+            <widget class="QPushButton" name="initCardButton">
+             <property name="text">
+              <string>初始化控制卡</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QPushButton" name="closeCardButton">
+             <property name="text">
+              <string>关闭控制卡</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QPushButton" name="enableAxisButton">
+             <property name="text">
+              <string>轴使能</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QPushButton" name="disableAxisButton">
+             <property name="text">
+              <string>轴失能</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QPushButton" name="readPosButton">
+             <property name="text">
+              <string>读取粗粒度位置</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QPushButton" name="stopButton">
+             <property name="text">
+              <string>停止轨迹</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0" colspan="2">
+            <widget class="QPushButton" name="startButton">
+             <property name="text">
+              <string>开始轨迹</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="statusBox">
+          <property name="title">
+           <string>状态</string>
+          </property>
+          <layout class="QFormLayout" name="statusLayout">
+           <item row="0" column="0">
+            <widget class="QLabel" name="connectionTextLabel">
+             <property name="text">
+              <string>控制卡</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLabel" name="connectionLabel">
+             <property name="text">
+              <string>未初始化</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="positionTextLabel">
+             <property name="text">
+              <string>当前位置</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QLabel" name="positionLabel">
+             <property name="text">
+              <string>--</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="stateTextLabel">
+             <property name="text">
+              <string>运行状态</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QLabel" name="stateLabel">
+             <property name="text">
+              <string>空闲</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="0">
+            <widget class="QLabel" name="queueTextLabel">
+             <property name="text">
+              <string>轨迹队列深度</string>
+             </property>
+            </widget>
+           </item>
+           <item row="3" column="1">
+            <widget class="QLabel" name="queueLabel">
+             <property name="text">
+              <string>--</string>
+             </property>
+            </widget>
+           </item>
+            <item row="4" column="0">
+             <widget class="QLabel" name="cycleTextLabel">
+              <property name="text">
+               <string>已发送/补队列</string>
+              </property>
+             </widget>
+            </item>
+           <item row="4" column="1">
+            <widget class="QLabel" name="cycleLabel">
+             <property name="text">
+              <string>--</string>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="0">
+            <widget class="QLabel" name="errorTextLabel">
+             <property name="text">
+              <string>位置误差</string>
+             </property>
+            </widget>
+           </item>
+           <item row="5" column="1">
+            <widget class="QLabel" name="errorLabel">
+             <property name="text">
+              <string>当前位置误差: -- deg</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="tipBox">
+          <property name="title">
+           <string>架构说明</string>
+          </property>
+          <layout class="QVBoxLayout" name="tipLayout">
+           <item>
+            <widget class="QLabel" name="tipLabel">
+             <property name="text">
+              <string>1. 系统规划周期用于上层粗规划。CSP 会在此基础上细化到 1ms；PVT(PVTS) 会直接按该周期生成整表点列。
+2. PVT 点数估算约为 ceil(总时长 / 系统规划周期) + 1，当前控制卡上限为 5000 点。
+3. 如果 PVT 点数接近上限，请增大系统规划周期或缩短总时长，避免整表下发失败。
+4. CSP 由硬件线程每 1ms 消费共享队列中的一个点；PVT 由硬件线程一次性装表启动，运行期只做监测。
+5. UI 显示周期只负责界面刷新，不参与实时控制。</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </item>
+     </layout>
+    </item>
+    <item>
+     <widget class="QWidget" name="errorPlotHost" native="true"/>
+    </item>
+    <item>
+     <widget class="QPlainTextEdit" name="logEdit">
+      <property name="readOnly">
+       <bool>true</bool>
+      </property>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1180</width>
+     <height>22</height>
+    </rect>
+   </property>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>
