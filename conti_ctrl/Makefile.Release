@@ -1086,6 +1086,7 @@ release\mainwindow.obj: mainwindow.cpp mainwindow.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtGui\qfontdatabase.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtWidgets\QPushButton \
 		D:\Qt\6.8.3\msvc2022_64\include\QtWidgets\qpushbutton.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtWidgets\QScrollArea \
 		D:\Qt\6.8.3\msvc2022_64\include\QtWidgets\QSpacerItem \
 		D:\Qt\6.8.3\msvc2022_64\include\QtWidgets\QSpinBox \
 		D:\Qt\6.8.3\msvc2022_64\include\QtWidgets\QSplitter \

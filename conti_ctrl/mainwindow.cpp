@@ -306,7 +306,8 @@ void MainWindow::updateStatus(const ContiStatus &status)
                                                       .arg(status.traceLastApiResult)
                                                 : QStringLiteral("控制卡未初始化"));
     ui_->recordingStateValueLabel->setText(status.recorder.recording
-                                               ? QStringLiteral("记录中（500 us Trace）")
+                                               ? QStringLiteral("记录中（%1 ms Trace）")
+                                                     .arg(status.traceSamplePeriodUs / 1000.0, 0, 'f', 1)
                                                : QStringLiteral("未记录"));
     ui_->recordPathValueLabel->setText(status.recorder.outputDirectory.isEmpty()
                                            ? QStringLiteral("开始记录后自动创建 records/run_*")
@@ -381,6 +382,9 @@ void MainWindow::initializeTelemetryCharts()
                 ui_->positionChartView, positionChart_, positionTimeAxis_, positionValueAxis_);
     createChart(QStringLiteral("两轴 Trace 跟随误差"), QStringLiteral("指令 - 实际 (°)"),
                 ui_->followingErrorChartView, followingErrorChart_, errorTimeAxis_, errorValueAxis_);
+    createChart(QStringLiteral("主动轴：规划期望与 Trace 实际位置"), QStringLiteral("位置 (°)"),
+                ui_->contiTrajectoryChartView, contiTrajectoryChart_,
+                contiTrajectoryTimeAxis_, contiTrajectoryValueAxis_);
 
     const QList<QColor> colors {QColor(0, 102, 204), QColor(0, 153, 102),
                                 QColor(204, 51, 51), QColor(153, 51, 153)};
@@ -400,6 +404,19 @@ void MainWindow::initializeTelemetryCharts()
         followingErrorSeries_[index]->attachAxis(errorTimeAxis_);
         followingErrorSeries_[index]->attachAxis(errorValueAxis_);
     }
+
+    contiExpectedTrajectorySeries_ = new QLineSeries(contiTrajectoryChart_);
+    contiExpectedTrajectorySeries_->setName(QStringLiteral("规划期望"));
+    contiExpectedTrajectorySeries_->setPen(QPen(QColor(0, 102, 204), 1.8));
+    contiTrajectoryChart_->addSeries(contiExpectedTrajectorySeries_);
+    contiExpectedTrajectorySeries_->attachAxis(contiTrajectoryTimeAxis_);
+    contiExpectedTrajectorySeries_->attachAxis(contiTrajectoryValueAxis_);
+    contiActualTrajectorySeries_ = new QLineSeries(contiTrajectoryChart_);
+    contiActualTrajectorySeries_->setName(QStringLiteral("Trace 实际"));
+    contiActualTrajectorySeries_->setPen(QPen(QColor(204, 51, 51), 1.5));
+    contiTrajectoryChart_->addSeries(contiActualTrajectorySeries_);
+    contiActualTrajectorySeries_->attachAxis(contiTrajectoryTimeAxis_);
+    contiActualTrajectorySeries_->attachAxis(contiTrajectoryValueAxis_);
 
     telemetryPlotTimer_ = new QTimer(this);
     telemetryPlotTimer_->setTimerType(Qt::PreciseTimer);
@@ -458,6 +475,60 @@ void MainWindow::updateTelemetryCharts()
                       {followingErrorSeries_[0], followingErrorSeries_[1]}, timeSeconds, 0.01);
     ui_->positionChartView->update();
     ui_->followingErrorChartView->update();
+    updateContiTrajectoryChart();
+}
+
+void MainWindow::updateContiTrajectoryChart()
+{
+    if (!hasLatestStatus_ || !latestStatus_.trajectoryComparisonActive) {
+        return;
+    }
+    if (latestStatus_.trajectoryTraceStartTimeUs == 0) {
+        // 新一轮测试已启动但还没有取得其首个 Trace 帧，先清空上一次曲线。
+        if (contiTrajectoryTraceStartTimeUs_ != 0) {
+            contiExpectedTrajectorySeries_->clear();
+            contiActualTrajectorySeries_->clear();
+            contiTrajectoryTraceStartTimeUs_ = 0;
+            lastContiTrajectoryTraceSequence_ = 0;
+        }
+        return;
+    }
+    if (contiTrajectoryTraceStartTimeUs_ != latestStatus_.trajectoryTraceStartTimeUs
+        || latestStatus_.latestTraceSequence < lastContiTrajectoryTraceSequence_) {
+        contiExpectedTrajectorySeries_->clear();
+        contiActualTrajectorySeries_->clear();
+        contiTrajectoryTraceStartTimeUs_ = latestStatus_.trajectoryTraceStartTimeUs;
+        lastContiTrajectoryTraceSequence_ = 0;
+    }
+    if (latestStatus_.latestTraceSequence == 0
+        || latestStatus_.latestTraceSequence == lastContiTrajectoryTraceSequence_)
+    {
+        return;
+    }
+
+    const AxisFeedback *activeFeedback = nullptr;
+    for (const AxisFeedback &feedback : latestStatus_.axisFeedback) {
+        if (feedback.axis == latestStatus_.trajectoryActiveAxis && feedback.traceSampleValid) {
+            activeFeedback = &feedback;
+            break;
+        }
+    }
+    if (activeFeedback == nullptr || latestStatus_.latestTraceTimeUs < contiTrajectoryTraceStartTimeUs_) {
+        return;
+    }
+
+    const double timeSeconds = static_cast<double>(latestStatus_.latestTraceTimeUs
+                                                   - contiTrajectoryTraceStartTimeUs_) / 1000000.0;
+    contiExpectedTrajectorySeries_->setName(QStringLiteral("轴%1 规划期望")
+                                                  .arg(latestStatus_.trajectoryActiveAxis));
+    contiActualTrajectorySeries_->setName(QStringLiteral("轴%1 Trace 实际")
+                                                .arg(latestStatus_.trajectoryActiveAxis));
+    contiExpectedTrajectorySeries_->append(timeSeconds, latestStatus_.trajectoryExpectedActiveUnit);
+    contiActualTrajectorySeries_->append(timeSeconds, activeFeedback->encoderPositionUnit);
+    lastContiTrajectoryTraceSequence_ = latestStatus_.latestTraceSequence;
+    updateChartRanges(contiTrajectoryChart_, contiTrajectoryTimeAxis_, contiTrajectoryValueAxis_,
+                      {contiExpectedTrajectorySeries_, contiActualTrajectorySeries_}, timeSeconds, 0.1);
+    ui_->contiTrajectoryChartView->update();
 }
 
 void MainWindow::updateChartRanges(QChart *, QValueAxis *timeAxis, QValueAxis *valueAxis,

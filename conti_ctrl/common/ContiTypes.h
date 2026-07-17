@@ -145,6 +145,12 @@ struct ContiStatus
     double ratioCommand = 0.0;
     double ratioApplied = 0.0;
     qint64 ratioLastApiAgoMs = -1;
+    // 连续插补页低频对比图使用的理论轨迹快照。实际位置仍直接来自同一时刻附近的 Trace 最新帧。
+    bool trajectoryComparisonActive = false;
+    quint16 trajectoryActiveAxis = 0;
+    quint64 trajectoryTraceStartTimeUs = 0;
+    double trajectoryExpectedTimeS = 0.0;
+    double trajectoryExpectedActiveUnit = 0.0;
     quint16 busErrorCode = 0;
     bool traceConfigured = false;
     bool traceEverRead = false;
@@ -156,7 +162,7 @@ struct ContiStatus
     QVector<bool> softwareZeroValid;
     quint64 latestTraceSequence = 0;
     quint64 latestTraceTimeUs = 0;
-    int traceSamplePeriodUs = 500;
+    int traceSamplePeriodUs = 1000;
     TelemetryRecorderStatus recorder;
     QString stateText = QStringLiteral("未初始化");
 };

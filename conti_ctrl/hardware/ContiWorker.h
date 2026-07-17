@@ -131,6 +131,8 @@ private:
     int traceFramesRead_ = 0;
     quint64 latestTraceSequence_ = 0;
     quint64 latestTraceTimeUs_ = 0;
+    bool trajectoryComparisonActive_ = false;
+    quint64 trajectoryTraceStartTimeUs_ = 0;
     QString traceStateText_ = QStringLiteral("Trace 未配置");
     QString stateText_ = QStringLiteral("未初始化");
 };

@@ -23,21 +23,26 @@ bool QuinticTrajectory::hasNext() const
 
 ContiPoint QuinticTrajectory::nextPoint()
 {
-    ContiPoint point;
     if (!hasNext()) {
-        return point;
+        return {};
     }
 
     const double periodS = std::max(1, config_.producerPeriodMs) / 1000.0;
-    point.timeS = std::min(config_.durationS, nextIndex_ * periodS);
+    const ContiPoint point = pointAt(std::min(config_.durationS, nextIndex_ * periodS));
+    ++nextIndex_;
+    return point;
+}
+
+ContiPoint QuinticTrajectory::pointAt(double timeS) const
+{
+    ContiPoint point;
+    point.timeS = std::clamp(timeS, 0.0, config_.durationS);
     const double ratio = positionRatio(point.timeS);
     point.targetUnit[0] = activeStartUnit_ + config_.activeDeltaUnit * ratio;
     point.targetUnit[1] = holdStartUnit_;
     if (config_.stage == TestStage::DualAxis) {
         point.targetUnit[1] += config_.holdDeltaUnit * ratio;
     }
-
-    ++nextIndex_;
     return point;
 }
 

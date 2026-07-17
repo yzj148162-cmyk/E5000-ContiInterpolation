@@ -71,6 +71,7 @@ private:
     void connectWorker();
     void initializeTelemetryCharts();
     void updateTelemetryCharts();
+    void updateContiTrajectoryChart();
     void updateChartRanges(QChart *chart, QValueAxis *timeAxis, QValueAxis *valueAxis,
                            const QList<QLineSeries *> &series, double timeSeconds,
                            double minimumSpan) const;
@@ -84,13 +85,20 @@ private:
     QTimer *telemetryPlotTimer_ = nullptr;
     QChart *positionChart_ = nullptr;
     QChart *followingErrorChart_ = nullptr;
+    QChart *contiTrajectoryChart_ = nullptr;
     QLineSeries *positionSeries_[4] {nullptr, nullptr, nullptr, nullptr};
     QLineSeries *followingErrorSeries_[2] {nullptr, nullptr};
     QValueAxis *positionTimeAxis_ = nullptr;
     QValueAxis *positionValueAxis_ = nullptr;
     QValueAxis *errorTimeAxis_ = nullptr;
     QValueAxis *errorValueAxis_ = nullptr;
+    QValueAxis *contiTrajectoryTimeAxis_ = nullptr;
+    QValueAxis *contiTrajectoryValueAxis_ = nullptr;
+    QLineSeries *contiExpectedTrajectorySeries_ = nullptr;
+    QLineSeries *contiActualTrajectorySeries_ = nullptr;
     quint64 lastPlottedTraceSequence_ = 0;
+    quint64 lastContiTrajectoryTraceSequence_ = 0;
+    quint64 contiTrajectoryTraceStartTimeUs_ = 0;
 };
 
 #endif // MAINWINDOW_H

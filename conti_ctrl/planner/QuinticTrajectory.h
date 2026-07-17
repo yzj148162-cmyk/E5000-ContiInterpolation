@@ -13,6 +13,7 @@ public:
     void reset(const ContiTestConfig &config, double activeStartUnit, double holdStartUnit);
     bool hasNext() const;
     ContiPoint nextPoint();
+    ContiPoint pointAt(double timeS) const;
     int totalPointCount() const;
 
 private:

@@ -22,8 +22,8 @@ public:
     };
     struct ReaderConfig {
         unsigned short cardNo = 0;
-        int samplePeriodUs = 500;
-        int traceBaseCycleUs = 500;
+        int samplePeriodUs = 1000;
+        int traceBaseCycleUs = 1000;
         int maxBufferBytes = 64 * 1024;
         int maxDrainReads = 16;
         int maxQueuedSamples = 8192;

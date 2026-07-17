@@ -77,6 +77,8 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
     pendingJogAutoZeroAxes_.clear();
     latestTraceSequence_ = 0;
     latestTraceTimeUs_ = 0;
+    trajectoryComparisonActive_ = false;
+    trajectoryTraceStartTimeUs_ = 0;
     boardInitialized_ = true;
     initializedCardNo_ = config.cardNo;
     config_ = config;
@@ -163,6 +165,8 @@ void ContiWorker::shutdownHardware()
     traceStateText_ = QStringLiteral("Trace 已停止");
     latestTraceSequence_ = 0;
     latestTraceTimeUs_ = 0;
+    trajectoryComparisonActive_ = false;
+    trajectoryTraceStartTimeUs_ = 0;
 
     QString error;
     if (!card_.closeBoard(error)) {
@@ -343,6 +347,8 @@ void ContiWorker::startTest(const ContiTestConfig &config)
     skippedQuantizedPointCount_ = 0;
     firstEffectivePointTimeS_ = -1.0;
     lastContiDiagnosticMs_ = -1;
+    trajectoryComparisonActive_ = false;
+    trajectoryTraceStartTimeUs_ = 0;
     speedRatioNotReadyCount_ = 0;
     nextMark_ = 1;
     lastPushedMark_ = 0;
@@ -407,6 +413,7 @@ void ContiWorker::stopTest(bool emergency)
     listOpen_ = false;
     preparing_ = false;
     running_ = false;
+    trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
     hostQueue_.clear();
     stateText_ = emergency ? QStringLiteral("已立即停止") : QStringLiteral("已减速停止");
@@ -875,6 +882,8 @@ bool ContiWorker::startAfterPreload()
 
     preparing_ = false;
     running_ = true;
+    trajectoryComparisonActive_ = true;
+    trajectoryTraceStartTimeUs_ = 0;
     // start_list 成功后控制卡仍可能尚未规划当前段；在线变倍率改由 feedCard()
     // 在坐标系进入运行状态后下发，5049 时保留该标志并重试。
     speedRatioPending_ = true;
@@ -1154,6 +1163,7 @@ void ContiWorker::finishRun(const QString &message)
     listOpen_ = false;
     preparing_ = false;
     running_ = false;
+    trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
     stateText_ = QStringLiteral("轨迹完成");
     emit logMessage(message);
@@ -1178,6 +1188,7 @@ void ContiWorker::enterError(const QString &message)
     listOpen_ = false;
     preparing_ = false;
     running_ = false;
+    trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
     stateText_ = QStringLiteral("错误");
     emit logMessage(QStringLiteral("错误：%1").arg(message));
@@ -1205,6 +1216,15 @@ void ContiWorker::publishStatus()
     status.ratioApplied = ratioApplied_;
     status.ratioLastApiAgoMs = lastRatioApiMs_ < 0 || !contiRunElapsed_.isValid()
         ? -1 : contiRunElapsed_.elapsed() - lastRatioApiMs_;
+    status.trajectoryComparisonActive = trajectoryComparisonActive_;
+    status.trajectoryActiveAxis = config_.activeAxis;
+    status.trajectoryTraceStartTimeUs = trajectoryTraceStartTimeUs_;
+    if (trajectoryComparisonActive_ && contiRunElapsed_.isValid()) {
+        status.trajectoryExpectedTimeS = std::clamp(contiRunElapsed_.elapsed() / 1000.0,
+                                                     0.0, config_.durationS);
+        status.trajectoryExpectedActiveUnit = trajectory_.pointAt(status.trajectoryExpectedTimeS)
+                                                   .targetUnit[0];
+    }
     if (listOpen_) {
         status.currentMark = card_.currentMark(config_);
         status.remainSpace = card_.remainSpace(config_);
@@ -1272,8 +1292,8 @@ bool ContiWorker::configureFeedbackTrace(const QVector<quint16> &axes,
 
     RuntimeTraceSlaveReader::ReaderConfig traceConfig;
     traceConfig.cardNo = cardNo;
-    traceConfig.samplePeriodUs = 500;
-    traceConfig.traceBaseCycleUs = 500;
+    traceConfig.samplePeriodUs = 1000;
+    traceConfig.traceBaseCycleUs = 1000;
     traceConfig.objects.reserve(traceAxes_.size() * 2);
 
     // 保持 0523_final 的对象顺序：所有指令位置(type=5)在前，所有实际位置(type=6)在后。
@@ -1309,12 +1329,12 @@ bool ContiWorker::configureFeedbackTrace(const QVector<quint16> &axes,
         return false;
     }
     traceFramesRead_ = 0;
-    traceStateText_ = QStringLiteral("Trace 已配置：500 us，同帧 type 5/6 位置");
+    traceStateText_ = QStringLiteral("Trace 已配置：1 ms，同帧 type 5/6 位置");
     QStringList axisText;
     for (const quint16 axis : traceAxes_) {
         axisText << QString::number(axis);
     }
-    emit logMessage(QStringLiteral("位置 Trace 已配置：轴 %1；500 us 采样，type 5 指令位置 / type 6 实际位置。")
+    emit logMessage(QStringLiteral("位置 Trace 已配置：轴 %1；1 ms 采样，type 5 指令位置 / type 6 实际位置。")
                         .arg(axisText.join(QStringLiteral("、"))));
     return true;
 }
@@ -1412,6 +1432,20 @@ bool ContiWorker::pollTraceFeedback()
     latestAxisFeedback_ = card_.axisFeedback();
     traceFramesRead_ = card_.traceFramesRead();
     traceStateText_ = card_.traceStateText();
+    QVector<TraceTelemetryFrame> frames = card_.takeTraceTelemetryFrames();
+    if (!frames.isEmpty()) {
+        const long currentMark = listOpen_ ? card_.currentMark(config_) : -1;
+        for (TraceTelemetryFrame &frame : frames) {
+            frame.currentMark = static_cast<qint32>(currentMark);
+            frame.pushedMark = static_cast<qint32>(lastPushedMark_);
+        }
+        if (trajectoryComparisonActive_ && trajectoryTraceStartTimeUs_ == 0) {
+            trajectoryTraceStartTimeUs_ = frames.constFirst().traceTimeUs;
+        }
+        latestTraceSequence_ = frames.constLast().traceSequence;
+        latestTraceTimeUs_ = frames.constLast().traceTimeUs;
+        telemetryRecorder_.pushFrames(frames);
+    }
     return true;
 }
 

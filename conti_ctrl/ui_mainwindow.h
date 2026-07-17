@@ -58,6 +58,18 @@ public:
     QLabel *spaceValueLabel;
     QLabel *hostQueueLabel;
     QLabel *hostQueueValueLabel;
+    QGroupBox *timeSyncDiagnosticsGroup;
+    QFormLayout *timeSyncDiagnosticsLayout;
+    QLabel *expectedPlanTimeLabel;
+    QLabel *expectedPlanTimeValueLabel;
+    QLabel *phaseErrorLabel;
+    QLabel *phaseErrorValueLabel;
+    QLabel *bufferTimeLabel;
+    QLabel *bufferTimeValueLabel;
+    QLabel *ratioDiagLabel;
+    QLabel *ratioDiagValueLabel;
+    QLabel *ratioApiAgeLabel;
+    QLabel *ratioApiAgeValueLabel;
     QGroupBox *globalActionGroup;
     QVBoxLayout *globalActionLayout;
     QPushButton *initializeButton;
@@ -146,18 +158,9 @@ public:
     QSpinBox *ratioApiIntervalSpin;
     QLabel *ratioSafetyApiIntervalLabel;
     QSpinBox *ratioSafetyApiIntervalSpin;
-    QGroupBox *timeSyncDiagnosticsGroup;
-    QGridLayout *timeSyncDiagnosticsLayout;
-    QLabel *expectedPlanTimeLabel;
-    QLabel *expectedPlanTimeValueLabel;
-    QLabel *phaseErrorLabel;
-    QLabel *phaseErrorValueLabel;
-    QLabel *bufferTimeLabel;
-    QLabel *bufferTimeValueLabel;
-    QLabel *ratioDiagLabel;
-    QLabel *ratioDiagValueLabel;
-    QLabel *ratioApiAgeLabel;
-    QLabel *ratioApiAgeValueLabel;
+    QGroupBox *contiTrajectoryGroup;
+    QVBoxLayout *contiTrajectoryLayout;
+    QChartView *contiTrajectoryChartView;
     QHBoxLayout *contiButtonLayout;
     QPushButton *startButton;
     QPushButton *stopButton;
@@ -319,6 +322,67 @@ public:
 
 
         globalControlLayout->addWidget(globalStatusGroup);
+
+        timeSyncDiagnosticsGroup = new QGroupBox(globalControlGroup);
+        timeSyncDiagnosticsGroup->setObjectName("timeSyncDiagnosticsGroup");
+        timeSyncDiagnosticsLayout = new QFormLayout(timeSyncDiagnosticsGroup);
+        timeSyncDiagnosticsLayout->setObjectName("timeSyncDiagnosticsLayout");
+        expectedPlanTimeLabel = new QLabel(timeSyncDiagnosticsGroup);
+        expectedPlanTimeLabel->setObjectName("expectedPlanTimeLabel");
+        expectedPlanTimeLabel->setWordWrap(true);
+
+        timeSyncDiagnosticsLayout->setWidget(0, QFormLayout::LabelRole, expectedPlanTimeLabel);
+
+        expectedPlanTimeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        expectedPlanTimeValueLabel->setObjectName("expectedPlanTimeValueLabel");
+        expectedPlanTimeValueLabel->setWordWrap(true);
+
+        timeSyncDiagnosticsLayout->setWidget(0, QFormLayout::FieldRole, expectedPlanTimeValueLabel);
+
+        phaseErrorLabel = new QLabel(timeSyncDiagnosticsGroup);
+        phaseErrorLabel->setObjectName("phaseErrorLabel");
+
+        timeSyncDiagnosticsLayout->setWidget(1, QFormLayout::LabelRole, phaseErrorLabel);
+
+        phaseErrorValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        phaseErrorValueLabel->setObjectName("phaseErrorValueLabel");
+
+        timeSyncDiagnosticsLayout->setWidget(1, QFormLayout::FieldRole, phaseErrorValueLabel);
+
+        bufferTimeLabel = new QLabel(timeSyncDiagnosticsGroup);
+        bufferTimeLabel->setObjectName("bufferTimeLabel");
+
+        timeSyncDiagnosticsLayout->setWidget(2, QFormLayout::LabelRole, bufferTimeLabel);
+
+        bufferTimeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        bufferTimeValueLabel->setObjectName("bufferTimeValueLabel");
+
+        timeSyncDiagnosticsLayout->setWidget(2, QFormLayout::FieldRole, bufferTimeValueLabel);
+
+        ratioDiagLabel = new QLabel(timeSyncDiagnosticsGroup);
+        ratioDiagLabel->setObjectName("ratioDiagLabel");
+        ratioDiagLabel->setWordWrap(true);
+
+        timeSyncDiagnosticsLayout->setWidget(3, QFormLayout::LabelRole, ratioDiagLabel);
+
+        ratioDiagValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        ratioDiagValueLabel->setObjectName("ratioDiagValueLabel");
+        ratioDiagValueLabel->setWordWrap(true);
+
+        timeSyncDiagnosticsLayout->setWidget(3, QFormLayout::FieldRole, ratioDiagValueLabel);
+
+        ratioApiAgeLabel = new QLabel(timeSyncDiagnosticsGroup);
+        ratioApiAgeLabel->setObjectName("ratioApiAgeLabel");
+
+        timeSyncDiagnosticsLayout->setWidget(4, QFormLayout::LabelRole, ratioApiAgeLabel);
+
+        ratioApiAgeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
+        ratioApiAgeValueLabel->setObjectName("ratioApiAgeValueLabel");
+
+        timeSyncDiagnosticsLayout->setWidget(4, QFormLayout::FieldRole, ratioApiAgeValueLabel);
+
+
+        globalControlLayout->addWidget(timeSyncDiagnosticsGroup);
 
         globalActionGroup = new QGroupBox(globalControlGroup);
         globalActionGroup->setObjectName("globalActionGroup");
@@ -845,62 +909,18 @@ public:
 
         contiTestLayout->addLayout(settingsLayout);
 
-        timeSyncDiagnosticsGroup = new QGroupBox(contiTestScrollContent);
-        timeSyncDiagnosticsGroup->setObjectName("timeSyncDiagnosticsGroup");
-        timeSyncDiagnosticsLayout = new QGridLayout(timeSyncDiagnosticsGroup);
-        timeSyncDiagnosticsLayout->setObjectName("timeSyncDiagnosticsLayout");
-        expectedPlanTimeLabel = new QLabel(timeSyncDiagnosticsGroup);
-        expectedPlanTimeLabel->setObjectName("expectedPlanTimeLabel");
+        contiTrajectoryGroup = new QGroupBox(contiTestScrollContent);
+        contiTrajectoryGroup->setObjectName("contiTrajectoryGroup");
+        contiTrajectoryLayout = new QVBoxLayout(contiTrajectoryGroup);
+        contiTrajectoryLayout->setObjectName("contiTrajectoryLayout");
+        contiTrajectoryChartView = new QChartView(contiTrajectoryGroup);
+        contiTrajectoryChartView->setObjectName("contiTrajectoryChartView");
+        contiTrajectoryChartView->setMinimumSize(QSize(0, 300));
 
-        timeSyncDiagnosticsLayout->addWidget(expectedPlanTimeLabel, 0, 0, 1, 1);
-
-        expectedPlanTimeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        expectedPlanTimeValueLabel->setObjectName("expectedPlanTimeValueLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(expectedPlanTimeValueLabel, 0, 1, 1, 1);
-
-        phaseErrorLabel = new QLabel(timeSyncDiagnosticsGroup);
-        phaseErrorLabel->setObjectName("phaseErrorLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(phaseErrorLabel, 0, 2, 1, 1);
-
-        phaseErrorValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        phaseErrorValueLabel->setObjectName("phaseErrorValueLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(phaseErrorValueLabel, 0, 3, 1, 1);
-
-        bufferTimeLabel = new QLabel(timeSyncDiagnosticsGroup);
-        bufferTimeLabel->setObjectName("bufferTimeLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(bufferTimeLabel, 1, 0, 1, 1);
-
-        bufferTimeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        bufferTimeValueLabel->setObjectName("bufferTimeValueLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(bufferTimeValueLabel, 1, 1, 1, 1);
-
-        ratioDiagLabel = new QLabel(timeSyncDiagnosticsGroup);
-        ratioDiagLabel->setObjectName("ratioDiagLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(ratioDiagLabel, 1, 2, 1, 1);
-
-        ratioDiagValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        ratioDiagValueLabel->setObjectName("ratioDiagValueLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(ratioDiagValueLabel, 1, 3, 1, 1);
-
-        ratioApiAgeLabel = new QLabel(timeSyncDiagnosticsGroup);
-        ratioApiAgeLabel->setObjectName("ratioApiAgeLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(ratioApiAgeLabel, 2, 0, 1, 1);
-
-        ratioApiAgeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        ratioApiAgeValueLabel->setObjectName("ratioApiAgeValueLabel");
-
-        timeSyncDiagnosticsLayout->addWidget(ratioApiAgeValueLabel, 2, 1, 1, 1);
+        contiTrajectoryLayout->addWidget(contiTrajectoryChartView);
 
 
-        contiTestLayout->addWidget(timeSyncDiagnosticsGroup);
+        contiTestLayout->addWidget(contiTrajectoryGroup);
 
         contiButtonLayout = new QHBoxLayout();
         contiButtonLayout->setObjectName("contiButtonLayout");
@@ -1286,6 +1306,17 @@ public:
         spaceValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
         hostQueueLabel->setText(QCoreApplication::translate("MainWindow", "\344\270\212\344\275\215\346\234\272\351\230\237\345\210\227", nullptr));
         hostQueueValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
+        timeSyncDiagnosticsGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\227\266\351\227\264\345\220\214\346\255\245\345\217\252\350\257\273\350\257\212\346\226\255", nullptr));
+        expectedPlanTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\237\346\234\233 / \345\215\241\344\276\247\350\256\241\345\210\222", nullptr));
+        expectedPlanTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 / 0.0 ms", nullptr));
+        phaseErrorLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\344\275\215\350\257\257\345\267\256", nullptr));
+        phaseErrorValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
+        bufferTimeLabel->setText(QCoreApplication::translate("MainWindow", "\350\247\204\345\210\222\347\274\223\345\206\262", nullptr));
+        bufferTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
+        ratioDiagLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207 ref / phase / buffer / cmd / applied", nullptr));
+        ratioDiagValueLabel->setText(QCoreApplication::translate("MainWindow", "0.000 / 0.000 / 0.000 / 0.000 / 0.000", nullptr));
+        ratioApiAgeLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207 API \350\267\235\344\273\212", nullptr));
+        ratioApiAgeValueLabel->setText(QCoreApplication::translate("MainWindow", "-- ms", nullptr));
         globalActionGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241\344\270\216\346\265\213\350\257\225\350\275\264", nullptr));
         initializeButton->setText(QCoreApplication::translate("MainWindow", "\345\210\235\345\247\213\345\214\226\346\216\247\345\210\266\345\215\241", nullptr));
         closeBoardButton->setText(QCoreApplication::translate("MainWindow", "\345\256\211\345\205\250\345\205\263\351\227\255\346\216\247\345\210\266\345\215\241", nullptr));
@@ -1375,17 +1406,7 @@ public:
         ratioApiIntervalSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
         ratioSafetyApiIntervalLabel->setText(QCoreApplication::translate("MainWindow", "\345\256\211\345\205\250\345\200\215\347\216\207 API \346\234\200\345\260\217\351\227\264\351\232\224", nullptr));
         ratioSafetyApiIntervalSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
-        timeSyncDiagnosticsGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\227\266\351\227\264\345\220\214\346\255\245\345\217\252\350\257\273\350\257\212\346\226\255", nullptr));
-        expectedPlanTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\237\346\234\233 / \345\215\241\344\276\247\350\256\241\345\210\222\346\227\266\345\210\273", nullptr));
-        expectedPlanTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 / 0.0 ms", nullptr));
-        phaseErrorLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\344\275\215\350\257\257\345\267\256", nullptr));
-        phaseErrorValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
-        bufferTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241\350\247\204\345\210\222\347\274\223\345\206\262", nullptr));
-        bufferTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
-        ratioDiagLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207 ref / phase / buffer / \345\221\275\344\273\244 / \345\267\262\344\270\213\345\217\221", nullptr));
-        ratioDiagValueLabel->setText(QCoreApplication::translate("MainWindow", "0.000 / 0.000 / 0.000 / 0.000 / 0.000", nullptr));
-        ratioApiAgeLabel->setText(QCoreApplication::translate("MainWindow", "\350\267\235\344\270\212\346\254\241\345\200\215\347\216\207 API", nullptr));
-        ratioApiAgeValueLabel->setText(QCoreApplication::translate("MainWindow", "-- ms", nullptr));
+        contiTrajectoryGroup->setTitle(QCoreApplication::translate("MainWindow", "\344\270\273\345\212\250\350\275\264\350\275\250\350\277\271\345\257\271\346\257\224\357\274\210\344\275\216\351\242\221\346\230\276\347\244\272\357\274\211", nullptr));
         startButton->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\277\236\347\273\255\346\217\222\350\241\245", nullptr));
         stopButton->setText(QCoreApplication::translate("MainWindow", "\345\207\217\351\200\237\345\201\234\346\255\242", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(contiTestTab), QCoreApplication::translate("MainWindow", "\350\277\236\347\273\255\346\217\222\350\241\245\346\265\213\350\257\225", nullptr));
@@ -1452,7 +1473,7 @@ public:
         recordPathValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\256\260\345\275\225\345\220\216\350\207\252\345\212\250\345\210\233\345\273\272 records/run_*", nullptr));
         recordStatsLabel->setText(QCoreApplication::translate("MainWindow", "\345\206\231\345\205\245 / \351\230\237\345\210\227 / \344\270\242\345\270\247", nullptr));
         recordStatsValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0", nullptr));
-        telemetryHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\233\262\347\272\277\344\273\205\344\273\245 20 Hz \346\230\276\347\244\272\346\234\200\346\226\260 Trace \345\277\253\347\205\247\357\274\233\345\216\237\345\247\213 500 us Trace \345\270\247\347\224\261\347\213\254\347\253\213\345\206\231\347\233\230\347\272\277\347\250\213\344\277\235\345\255\230\357\274\214\344\270\215\345\234\250 UI \347\272\277\347\250\213\347\273\230\345\210\266\346\210\226\345\206\231\345\205\245\346\226\207\346\234\254\343\200\202", nullptr));
+        telemetryHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\233\262\347\272\277\344\273\205\344\273\245 20 Hz \346\230\276\347\244\272\346\234\200\346\226\260 Trace \345\277\253\347\205\247\357\274\233\345\216\237\345\247\213 1 ms Trace \345\270\247\347\224\261\347\213\254\347\253\213\345\206\231\347\233\230\347\272\277\347\250\213\344\277\235\345\255\230\357\274\214\344\270\215\345\234\250 UI \347\272\277\347\250\213\347\273\230\345\210\266\346\210\226\345\206\231\345\205\245\346\226\207\346\234\254\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(telemetryTab), QCoreApplication::translate("MainWindow", "\346\225\260\346\215\256\350\256\260\345\275\225\344\270\216\346\233\262\347\272\277", nullptr));
         extensionHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\255\244\351\241\265\351\235\242\351\242\204\347\225\231\347\273\231\345\220\216\347\273\255\347\232\204 8 \350\275\264 CDPR\343\200\201\345\212\250\345\212\233\345\255\246\346\261\202\350\247\243\343\200\201\345\212\233\344\274\240\346\204\237\345\231\250\345\222\214\347\274\223\345\206\262\346\260\264\344\275\215\350\207\252\345\212\250\350\260\203\351\200\237\347\255\211\345\212\237\350\203\275\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(extensionTab), QCoreApplication::translate("MainWindow", "\346\211\251\345\261\225\345\212\237\350\203\275\357\274\210\351\242\204\347\225\231\357\274\211", nullptr));

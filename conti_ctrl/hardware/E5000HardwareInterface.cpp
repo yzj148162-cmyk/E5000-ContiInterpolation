@@ -73,8 +73,8 @@ public:
 
         RuntimeTraceSlaveReader::ReaderConfig traceConfig;
         traceConfig.cardNo = cardNo_;
-        traceConfig.samplePeriodUs = 500;
-        traceConfig.traceBaseCycleUs = 500;
+        traceConfig.samplePeriodUs = 1000;
+        traceConfig.traceBaseCycleUs = 1000;
         traceConfig.objects.reserve(traceAxes_.size() * 2);
         const auto addObject = [&traceConfig](int logicalIndex, short dataType, quint16 axis) {
             RuntimeTraceSlaveReader::ObjectConfig object;
@@ -100,7 +100,7 @@ public:
             return false;
         }
         traceFramesRead_ = 0;
-        traceStateText_ = QStringLiteral("Trace 已配置：500 us，同帧 type 5/6 位置");
+        traceStateText_ = QStringLiteral("Trace 已配置：1 ms，同帧 type 5/6 位置");
         return true;
     }
 
@@ -158,7 +158,7 @@ public:
         for (const RuntimeTraceSlaveReader::Sample &sample : samples) {
             TraceTelemetryFrame frame;
             frame.traceSequence = sample.sequence;
-            frame.traceTimeUs = (sample.sequence > 0 ? sample.sequence - 1 : 0) * 500ULL;
+            frame.traceTimeUs = (sample.sequence > 0 ? sample.sequence - 1 : 0) * 1000ULL;
             frame.axisCount = static_cast<quint8>(std::min(2, static_cast<int>(traceAxes_.size())));
             for (int index = 0; index < frame.axisCount; ++index) {
                 const quint16 axis = traceAxes_.at(index);
@@ -307,7 +307,7 @@ bool E5000HardwareInterface::traceEverRead() const
 int E5000HardwareInterface::traceFramesRead() const
 { return invokeHardware(backend_, [&] { return backend_->traceFramesRead_; }); }
 int E5000HardwareInterface::traceSamplePeriodUs() const
-{ return 500; }
+{ return 1000; }
 QVector<TraceTelemetryFrame> E5000HardwareInterface::takeTraceTelemetryFrames()
 {
     return invokeHardware(backend_, [&] {
