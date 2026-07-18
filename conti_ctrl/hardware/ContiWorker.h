@@ -14,7 +14,8 @@
 
 class QTimer;
 
-// 工作对象会被移动到专用 QThread；它是唯一允许访问 LTDMC 的对象。
+// 上层规划、运行状态机与反馈处理线程；不直接调用 LTDMC。
+// 所有 SDK 调用以及运行中的定时补段均由 E5000HardwareInterface 的独占线程执行。
 class ContiWorker : public QObject
 {
     Q_OBJECT
@@ -37,6 +38,7 @@ public slots:
     void stopPointMove(bool emergency);
     void startTelemetryRecording();
     void stopTelemetryRecording();
+    void refreshBusCycle();
     void shutdownHardware();
 
 signals:
@@ -45,22 +47,24 @@ signals:
 
 private slots:
     void produceNextPoint();
-    void feedCard();
+    void monitorContinuousRun();
 
 private:
     bool startAfterPreload();
-    bool pushOnePoint();
-    bool hasStartupPreload() const;
+    void submitGeneratedPoints();
+    void enqueueTrajectoryPoint(const ContiPoint &point);
+    bool generateAllTrajectoryPoints();
+    bool hasExecutionDelayReady() const;
     double planTimeForMark(long currentMark) const;
-    double bufferedPlanTimeS(long currentMark) const;
     double referenceVectorSpeed(double planTimeS) const;
     double calculateRatioCommand(long currentMark, double bufferTimeS, qint64 elapsedMs);
     bool applyRatioCommand(qint64 elapsedMs, QString &errorMessage);
     void finishRun(const QString &message);
     void enterError(const QString &message);
+    void resetRunTimingState();
     void publishStatus();
     bool configureBaseAxes(const ContiTestConfig &config);
-    bool configureFeedbackTrace(const QVector<quint16> &axes, quint16 cardNo, QString &errorMessage);
+    bool configureFeedbackTrace(const QVector<quint16> &axes, QString &errorMessage);
     bool pollTraceFeedback();
     void refreshAxisStates();
     bool bothAxesEnabled(const ContiTestConfig &config) const;
@@ -81,12 +85,14 @@ private:
     QVector<quint16> traceAxes_;
     QVector<AxisFeedback> latestAxisFeedback_;
     QTimer *producerTimer_ = nullptr;
-    QTimer *feedTimer_ = nullptr;
+    QTimer *monitorTimer_ = nullptr;
     QTimer *feedbackTimer_ = nullptr;
     ContiTestConfig config_;
+    ContiFeedStatus lastFeedStatus_;
     bool boardInitialized_ = false;
     short detectedBoardCount_ = 0;
     quint16 initializedCardNo_ = 0;
+    int actualBusCycleUs_ = 0;
     bool listOpen_ = false;
     bool preparing_ = false;
     bool running_ = false;

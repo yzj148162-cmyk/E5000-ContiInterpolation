@@ -18,9 +18,12 @@ public:
 
     bool initializeBoard(quint16 cardNo, short &boardCount, QString &errorMessage);
     bool closeBoard(QString &errorMessage);
+    bool setBusCycle(int cycleUs, QString &errorMessage);
+    bool readBusCycle(int &cycleUs, QString &errorMessage) const;
 
     bool configureAxes(const QVector<quint16> &axes, QString &errorMessage);
-    bool configureTrace(const QVector<quint16> &axes, QString &errorMessage);
+    bool configureTrace(const QVector<quint16> &axes, int samplePeriodUs, int traceBaseCycleUs,
+                        QString &errorMessage);
     bool enableAxis(quint16 axis, QString &noticeMessage, QString &errorMessage);
     bool disableAxis(quint16 axis, QString &errorMessage);
 
@@ -35,6 +38,12 @@ public:
     bool configureAndOpen(const ContiTestConfig &config, QString &errorMessage) const;
     bool pushLine(const ContiTestConfig &config, const ContiPoint &point, long mark, QString &errorMessage) const;
     bool start(const ContiTestConfig &config, QString &errorMessage) const;
+    bool startStreaming(const ContiTestConfig &config,
+                        const QVector<ContiFeedItem> &points,
+                        bool preloadAllToCard,
+                        QString &errorMessage) const;
+    void appendStreamingPoints(const QVector<ContiFeedItem> &points) const;
+    ContiFeedStatus streamingStatus() const;
     ContiSpeedRatioResult changeSpeedRatio(const ContiTestConfig &config, QString &errorMessage) const;
     bool stop(const ContiTestConfig &config, bool emergency, QString &errorMessage) const;
     bool closeList(const ContiTestConfig &config, QString &errorMessage) const;

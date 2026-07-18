@@ -44,8 +44,6 @@ public:
     QVBoxLayout *globalControlLayout;
     QGroupBox *globalStatusGroup;
     QFormLayout *statusForm;
-    QLabel *boardLabel;
-    QLabel *boardValueLabel;
     QLabel *stateLabel;
     QLabel *stateValueLabel;
     QLabel *runStateLabel;
@@ -58,6 +56,17 @@ public:
     QLabel *spaceValueLabel;
     QLabel *hostQueueLabel;
     QLabel *hostQueueValueLabel;
+    QLabel *busCycleSettingLabel;
+    QComboBox *busCycleCombo;
+    QLabel *busCycleReadLabel;
+    QWidget *busCycleReadContainer;
+    QHBoxLayout *busCycleReadLayout;
+    QLabel *busCycleReadValueLabel;
+    QPushButton *readBusCycleButton;
+    QLabel *traceSampleLabel;
+    QLabel *traceSampleValueLabel;
+    QLabel *planningAlignmentLabel;
+    QLabel *planningAlignmentValueLabel;
     QGroupBox *timeSyncDiagnosticsGroup;
     QFormLayout *timeSyncDiagnosticsLayout;
     QLabel *expectedPlanTimeLabel;
@@ -127,7 +136,10 @@ public:
     QLabel *pathErrorLabel;
     QDoubleSpinBox *pathErrorSpin;
     QLabel *preloadSegmentsLabel;
+    QWidget *preloadModeContainer;
+    QVBoxLayout *preloadModeLayout;
     QSpinBox *preloadSegmentsSpin;
+    QCheckBox *preloadAllTrajectoryCheck;
     QLabel *targetBufferLabel;
     QSpinBox *targetBufferSpin;
     QLabel *lowBufferLabel;
@@ -246,17 +258,6 @@ public:
         globalStatusGroup->setObjectName("globalStatusGroup");
         statusForm = new QFormLayout(globalStatusGroup);
         statusForm->setObjectName("statusForm");
-        boardLabel = new QLabel(globalStatusGroup);
-        boardLabel->setObjectName("boardLabel");
-
-        statusForm->setWidget(0, QFormLayout::LabelRole, boardLabel);
-
-        boardValueLabel = new QLabel(globalStatusGroup);
-        boardValueLabel->setObjectName("boardValueLabel");
-        boardValueLabel->setWordWrap(true);
-
-        statusForm->setWidget(0, QFormLayout::FieldRole, boardValueLabel);
-
         stateLabel = new QLabel(globalStatusGroup);
         stateLabel->setObjectName("stateLabel");
 
@@ -319,6 +320,70 @@ public:
         hostQueueValueLabel->setObjectName("hostQueueValueLabel");
 
         statusForm->setWidget(6, QFormLayout::FieldRole, hostQueueValueLabel);
+
+        busCycleSettingLabel = new QLabel(globalStatusGroup);
+        busCycleSettingLabel->setObjectName("busCycleSettingLabel");
+        busCycleSettingLabel->setWordWrap(true);
+
+        statusForm->setWidget(7, QFormLayout::LabelRole, busCycleSettingLabel);
+
+        busCycleCombo = new QComboBox(globalStatusGroup);
+        busCycleCombo->addItem(QString());
+        busCycleCombo->addItem(QString());
+        busCycleCombo->addItem(QString());
+        busCycleCombo->addItem(QString());
+        busCycleCombo->setObjectName("busCycleCombo");
+
+        statusForm->setWidget(7, QFormLayout::FieldRole, busCycleCombo);
+
+        busCycleReadLabel = new QLabel(globalStatusGroup);
+        busCycleReadLabel->setObjectName("busCycleReadLabel");
+        busCycleReadLabel->setWordWrap(true);
+
+        statusForm->setWidget(8, QFormLayout::LabelRole, busCycleReadLabel);
+
+        busCycleReadContainer = new QWidget(globalStatusGroup);
+        busCycleReadContainer->setObjectName("busCycleReadContainer");
+        busCycleReadLayout = new QHBoxLayout(busCycleReadContainer);
+        busCycleReadLayout->setObjectName("busCycleReadLayout");
+        busCycleReadLayout->setContentsMargins(0, 0, 0, 0);
+        busCycleReadValueLabel = new QLabel(busCycleReadContainer);
+        busCycleReadValueLabel->setObjectName("busCycleReadValueLabel");
+
+        busCycleReadLayout->addWidget(busCycleReadValueLabel);
+
+        readBusCycleButton = new QPushButton(busCycleReadContainer);
+        readBusCycleButton->setObjectName("readBusCycleButton");
+        readBusCycleButton->setEnabled(false);
+
+        busCycleReadLayout->addWidget(readBusCycleButton);
+
+
+        statusForm->setWidget(8, QFormLayout::FieldRole, busCycleReadContainer);
+
+        traceSampleLabel = new QLabel(globalStatusGroup);
+        traceSampleLabel->setObjectName("traceSampleLabel");
+        traceSampleLabel->setWordWrap(true);
+
+        statusForm->setWidget(9, QFormLayout::LabelRole, traceSampleLabel);
+
+        traceSampleValueLabel = new QLabel(globalStatusGroup);
+        traceSampleValueLabel->setObjectName("traceSampleValueLabel");
+        traceSampleValueLabel->setWordWrap(true);
+
+        statusForm->setWidget(9, QFormLayout::FieldRole, traceSampleValueLabel);
+
+        planningAlignmentLabel = new QLabel(globalStatusGroup);
+        planningAlignmentLabel->setObjectName("planningAlignmentLabel");
+        planningAlignmentLabel->setWordWrap(true);
+
+        statusForm->setWidget(10, QFormLayout::LabelRole, planningAlignmentLabel);
+
+        planningAlignmentValueLabel = new QLabel(globalStatusGroup);
+        planningAlignmentValueLabel->setObjectName("planningAlignmentValueLabel");
+        planningAlignmentValueLabel->setWordWrap(true);
+
+        statusForm->setWidget(10, QFormLayout::FieldRole, planningAlignmentValueLabel);
 
 
         globalControlLayout->addWidget(globalStatusGroup);
@@ -699,13 +764,26 @@ public:
 
         contiForm->setWidget(7, QFormLayout::LabelRole, preloadSegmentsLabel);
 
-        preloadSegmentsSpin = new QSpinBox(contiGroup);
+        preloadModeContainer = new QWidget(contiGroup);
+        preloadModeContainer->setObjectName("preloadModeContainer");
+        preloadModeLayout = new QVBoxLayout(preloadModeContainer);
+        preloadModeLayout->setObjectName("preloadModeLayout");
+        preloadModeLayout->setContentsMargins(0, 0, 0, 0);
+        preloadSegmentsSpin = new QSpinBox(preloadModeContainer);
         preloadSegmentsSpin->setObjectName("preloadSegmentsSpin");
         preloadSegmentsSpin->setMinimum(10);
         preloadSegmentsSpin->setMaximum(5000);
         preloadSegmentsSpin->setValue(200);
 
-        contiForm->setWidget(7, QFormLayout::FieldRole, preloadSegmentsSpin);
+        preloadModeLayout->addWidget(preloadSegmentsSpin);
+
+        preloadAllTrajectoryCheck = new QCheckBox(preloadModeContainer);
+        preloadAllTrajectoryCheck->setObjectName("preloadAllTrajectoryCheck");
+
+        preloadModeLayout->addWidget(preloadAllTrajectoryCheck);
+
+
+        contiForm->setWidget(7, QFormLayout::FieldRole, preloadModeContainer);
 
         targetBufferLabel = new QLabel(contiGroup);
         targetBufferLabel->setObjectName("targetBufferLabel");
@@ -1280,6 +1358,7 @@ public:
 
         retranslateUi(MainWindow);
 
+        busCycleCombo->setCurrentIndex(2);
         tabWidget->setCurrentIndex(0);
         holdAxisCombo->setCurrentIndex(1);
 
@@ -1292,8 +1371,6 @@ public:
         MainWindow->setWindowTitle(QCoreApplication::translate("MainWindow", "E5000 \350\277\236\347\273\255\346\217\222\350\241\245\346\265\213\350\257\225\345\231\250", nullptr));
         globalControlGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\205\250\345\261\200\346\216\247\345\210\266\344\270\216\347\212\266\346\200\201", nullptr));
         globalStatusGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241\347\212\266\346\200\201", nullptr));
-        boardLabel->setText(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241", nullptr));
-        boardValueLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\252\345\210\235\345\247\213\345\214\226", nullptr));
         stateLabel->setText(QCoreApplication::translate("MainWindow", "\347\250\213\345\272\217\347\212\266\346\200\201", nullptr));
         stateValueLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\252\345\210\235\345\247\213\345\214\226", nullptr));
         runStateLabel->setText(QCoreApplication::translate("MainWindow", "runState", nullptr));
@@ -1306,6 +1383,25 @@ public:
         spaceValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
         hostQueueLabel->setText(QCoreApplication::translate("MainWindow", "\344\270\212\344\275\215\346\234\272\351\230\237\345\210\227", nullptr));
         hostQueueValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
+#if QT_CONFIG(tooltip)
+        busCycleSettingLabel->setToolTip(QCoreApplication::translate("MainWindow", "\346\211\213\345\206\214\346\224\257\346\214\201 250\343\200\201500\343\200\2011000\343\200\2012000 \316\274s\357\274\233\344\273\205\345\234\250\345\210\235\345\247\213\345\214\226\346\216\247\345\210\266\345\215\241\346\227\266\345\206\231\345\205\245\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        busCycleSettingLabel->setText(QCoreApplication::translate("MainWindow", "\346\200\273\347\272\277\345\221\250\346\234\237\357\274\210\350\256\276\347\275\256\357\274\211", nullptr));
+        busCycleCombo->setItemText(0, QCoreApplication::translate("MainWindow", "250 \316\274s", nullptr));
+        busCycleCombo->setItemText(1, QCoreApplication::translate("MainWindow", "500 \316\274s", nullptr));
+        busCycleCombo->setItemText(2, QCoreApplication::translate("MainWindow", "1000 \316\274s", nullptr));
+        busCycleCombo->setItemText(3, QCoreApplication::translate("MainWindow", "2000 \316\274s", nullptr));
+
+#if QT_CONFIG(tooltip)
+        busCycleCombo->setToolTip(QCoreApplication::translate("MainWindow", "EtherCAT \346\200\273\347\272\277\345\221\250\346\234\237\357\274\214\345\217\257\351\200\211 250 / 500 / 1000 / 2000 \316\274s\343\200\202\344\277\256\346\224\271\345\220\216\351\234\200\345\205\263\351\227\255\345\271\266\351\207\215\346\226\260\345\210\235\345\247\213\345\214\226\346\216\247\345\210\266\345\215\241\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        busCycleReadLabel->setText(QCoreApplication::translate("MainWindow", "\346\200\273\347\272\277\345\221\250\346\234\237\357\274\210\350\257\273\345\233\236\357\274\211", nullptr));
+        busCycleReadValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\276\205\345\210\235\345\247\213\345\214\226", nullptr));
+        readBusCycleButton->setText(QCoreApplication::translate("MainWindow", "\345\210\267\346\226\260", nullptr));
+        traceSampleLabel->setText(QCoreApplication::translate("MainWindow", "Trace \351\207\207\346\240\267\345\221\250\346\234\237", nullptr));
+        traceSampleValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\276\205\345\210\235\345\247\213\345\214\226", nullptr));
+        planningAlignmentLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\350\247\204\345\210\222\345\221\250\346\234\237", nullptr));
+        planningAlignmentValueLabel->setText(QCoreApplication::translate("MainWindow", "10 ms = 10 \303\227 1000 us", nullptr));
         timeSyncDiagnosticsGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\227\266\351\227\264\345\220\214\346\255\245\345\217\252\350\257\273\350\257\212\346\226\255", nullptr));
         expectedPlanTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\237\346\234\233 / \345\215\241\344\276\247\350\256\241\345\210\222", nullptr));
         expectedPlanTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 / 0.0 ms", nullptr));
@@ -1382,6 +1478,10 @@ public:
         pathErrorSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
         preloadSegmentsLabel->setText(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\351\242\204\345\216\213\346\227\266\351\227\264", nullptr));
         preloadSegmentsSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+#if QT_CONFIG(tooltip)
+        preloadAllTrajectoryCheck->setToolTip(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\345\211\215\345\260\206\345\205\250\351\203\250\346\234\211\346\225\210\350\275\250\350\277\271\346\256\265\345\216\213\345\205\245\346\216\247\345\210\266\345\215\241\343\200\202\344\273\205\351\200\202\347\224\250\344\272\216\346\234\252\350\266\205\350\277\207\345\215\241\344\276\247\345\217\257\347\224\250\346\256\265\345\256\271\351\207\217\347\232\204\347\237\255\350\275\250\350\277\271\357\274\233\350\277\220\350\241\214\344\270\255\344\270\215\345\206\215\344\272\247\347\202\271\346\210\226\350\241\245\346\256\265\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        preloadAllTrajectoryCheck->setText(QCoreApplication::translate("MainWindow", "\344\270\200\346\254\241\346\200\247\351\242\204\350\243\205\345\205\250\351\203\250\350\275\250\350\277\271\357\274\210\345\257\271\347\205\247\357\274\211", nullptr));
         targetBufferLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\347\274\223\345\206\262\346\227\266\351\227\264", nullptr));
         targetBufferSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
         lowBufferLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\216\346\260\264\344\275\215\346\227\266\351\227\264", nullptr));

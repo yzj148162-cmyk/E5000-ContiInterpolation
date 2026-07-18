@@ -6,6 +6,7 @@
 #include <QMetaObject>
 #include <QPainter>
 #include <QPen>
+#include <QSignalBlocker>
 #include <QStringList>
 #include <QThread>
 #include <QTimer>
@@ -27,6 +28,8 @@ MainWindow::MainWindow(QWidget *parent)
     , worker_(new ContiWorker)
 {
     ui_->setupUi(this);
+    normalizeProducerPeriodForBusCycle();
+    updateBusPeriodUi();
     initializeTelemetryCharts();
     onStageChanged(ui_->stageCombo->currentIndex());
 
@@ -51,6 +54,10 @@ void MainWindow::connectWorker()
 {
     connect(ui_->stageCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &MainWindow::onStageChanged);
+    connect(ui_->busCycleCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onBusCycleSelectionChanged);
+    connect(ui_->producerPeriodSpin, qOverload<int>(&QSpinBox::valueChanged),
+            this, &MainWindow::onProducerPeriodChanged);
     connect(ui_->initializeButton, &QPushButton::clicked, this, &MainWindow::onInitializeClicked);
     connect(ui_->closeBoardButton, &QPushButton::clicked, this, &MainWindow::onCloseBoardClicked);
     connect(ui_->enableAxesButton, &QPushButton::clicked, this, &MainWindow::onEnableAxesClicked);
@@ -95,6 +102,10 @@ void MainWindow::connectWorker()
             worker_, &ContiWorker::startTelemetryRecording);
     connect(this, &MainWindow::stopTelemetryRecordingRequested,
             worker_, &ContiWorker::stopTelemetryRecording);
+    connect(this, &MainWindow::refreshBusCycleRequested,
+            worker_, &ContiWorker::refreshBusCycle);
+    connect(ui_->readBusCycleButton, &QPushButton::clicked,
+            this, [this] { emit refreshBusCycleRequested(); });
     connect(worker_, &ContiWorker::logMessage, this, &MainWindow::appendLog);
     connect(worker_, &ContiWorker::statusChanged, this, &MainWindow::updateStatus);
 }
@@ -111,6 +122,8 @@ ContiTestConfig MainWindow::collectConfig() const
     config.activeDeltaUnit = ui_->activeDeltaSpin->value();
     config.holdDeltaUnit = ui_->holdDeltaSpin->value();
     config.durationS = ui_->durationSpin->value();
+    config.busCycleUs = selectedBusCycleUs();
+    config.traceCycle = 1;
     config.producerPeriodMs = ui_->producerPeriodSpin->value();
     config.maxVectorVelocity = ui_->maxVelocitySpin->value();
     config.accelerationTimeS = ui_->accelerationSpin->value();
@@ -119,6 +132,7 @@ ContiTestConfig MainWindow::collectConfig() const
     config.speedRatio = ui_->speedRatioSpin->value();
     config.lookaheadEnabled = ui_->lookaheadCheck->isChecked();
     config.pathErrorUnit = ui_->pathErrorSpin->value();
+    config.preloadAllTrajectoryToCard = ui_->preloadAllTrajectoryCheck->isChecked();
     config.timeSyncEnabled = ui_->timeSyncEnableCheck->isChecked();
     config.startupPreloadMs = ui_->preloadSegmentsSpin->value();
     config.targetBufferMs = ui_->targetBufferSpin->value();
@@ -157,6 +171,64 @@ void MainWindow::onStageChanged(int index)
     ui_->stageHintLabel->setText(dualAxis
         ? QStringLiteral("阶段二：两轴均按同一五次多项式比例运动。")
         : QStringLiteral("阶段一：主动轴运动；保持轴只参与坐标系，不产生位移。"));
+}
+
+int MainWindow::selectedBusCycleUs() const
+{
+    return ui_->busCycleCombo->currentText().section(QLatin1Char(' '), 0, 0).toInt();
+}
+
+void MainWindow::normalizeProducerPeriodForBusCycle()
+{
+    const int busCycleUs = selectedBusCycleUs();
+    if (busCycleUs <= 0) {
+        return;
+    }
+    const int minimumMs = (busCycleUs + 999) / 1000;
+    ui_->producerPeriodSpin->setMinimum(minimumMs);
+    ui_->producerPeriodSpin->setSingleStep(busCycleUs >= 1000 ? minimumMs : 1);
+
+    const int requestedUs = ui_->producerPeriodSpin->value() * 1000;
+    const int alignedUs = qMax(busCycleUs,
+                                ((requestedUs + busCycleUs / 2) / busCycleUs) * busCycleUs);
+    const int alignedMs = (alignedUs + 999) / 1000;
+    if (alignedMs != ui_->producerPeriodSpin->value()) {
+        const QSignalBlocker blocker(ui_->producerPeriodSpin);
+        ui_->producerPeriodSpin->setValue(alignedMs);
+    }
+}
+
+void MainWindow::updateBusPeriodUi()
+{
+    const int selectedCycleUs = selectedBusCycleUs();
+    const bool boardReady = hasLatestStatus_ && latestStatus_.boardInitialized;
+    const int effectiveCycleUs = boardReady ? latestStatus_.busCycleUs : selectedCycleUs;
+    const int producerPeriodMs = ui_->producerPeriodSpin->value();
+    const bool aligned = effectiveCycleUs > 0
+        && (producerPeriodMs * 1000) % effectiveCycleUs == 0;
+
+    if (!boardReady) {
+        ui_->busCycleReadValueLabel->setText(QStringLiteral("待初始化"));
+        ui_->traceSampleValueLabel->setText(QStringLiteral("待初始化"));
+    }
+    ui_->planningAlignmentValueLabel->setText(aligned
+        ? QStringLiteral("%1 ms = %2 × %3 us")
+              .arg(producerPeriodMs)
+              .arg(producerPeriodMs * 1000 / effectiveCycleUs)
+              .arg(effectiveCycleUs)
+        : QStringLiteral("未与 %1 us 对齐").arg(effectiveCycleUs));
+}
+
+void MainWindow::onBusCycleSelectionChanged(int)
+{
+    normalizeProducerPeriodForBusCycle();
+    updateBusPeriodUi();
+}
+
+void MainWindow::onProducerPeriodChanged(int)
+{
+    normalizeProducerPeriodForBusCycle();
+    updateBusPeriodUi();
 }
 
 void MainWindow::onInitializeClicked()
@@ -271,17 +343,28 @@ void MainWindow::updateStatus(const ContiStatus &status)
     ui_->jogActualPositionLabel->setText(showAbsolutePosition
         ? QStringLiteral("实际绝对位置（Trace）")
         : QStringLiteral("实际相对位置（Trace）"));
-    ui_->boardValueLabel->setText(status.boardInitialized
-                                      ? QStringLiteral("已初始化：%1 张卡，当前卡 %2")
-                                            .arg(status.detectedBoardCount)
-                                            .arg(status.cardNo)
-                                      : QStringLiteral("未初始化"));
     ui_->stateValueLabel->setText(status.stateText);
     ui_->runStateValueLabel->setText(QString::number(status.runState));
     ui_->markValueLabel->setText(QStringLiteral("%1 / %2").arg(status.currentMark).arg(status.pushedMark));
     ui_->bufferValueLabel->setText(QString::number(qMax(0L, status.pushedMark - status.currentMark)));
     ui_->spaceValueLabel->setText(QString::number(status.remainSpace));
     ui_->hostQueueValueLabel->setText(QString::number(status.hostQueueSize));
+    ui_->busCycleCombo->setEnabled(!status.boardInitialized);
+    ui_->readBusCycleButton->setEnabled(status.boardInitialized);
+    ui_->busCycleReadValueLabel->setText(status.boardInitialized
+        ? QStringLiteral("%1 us").arg(status.busCycleUs)
+        : QStringLiteral("待初始化"));
+    ui_->traceSampleValueLabel->setText(status.boardInitialized
+        ? QStringLiteral("%1 us").arg(status.traceSamplePeriodUs)
+        : QStringLiteral("待初始化"));
+    const bool planningAligned = status.busCycleUs > 0
+        && (status.producerPeriodMs * 1000) % status.busCycleUs == 0;
+    ui_->planningAlignmentValueLabel->setText(status.boardInitialized && planningAligned
+        ? QStringLiteral("%1 ms = %2 × %3 us")
+              .arg(status.producerPeriodMs)
+              .arg(status.producerPeriodMs * 1000 / status.busCycleUs)
+              .arg(status.busCycleUs)
+        : QStringLiteral("待初始化"));
     ui_->expectedPlanTimeValueLabel->setText(QStringLiteral("%1 / %2 ms")
                                                  .arg(status.expectedPlanTimeS * 1000.0, 0, 'f', 1)
                                                  .arg(status.currentPlanTimeS * 1000.0, 0, 'f', 1));

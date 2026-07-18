@@ -39,23 +39,6 @@
           <string>控制卡状态</string>
          </property>
          <layout class="QFormLayout" name="statusForm">
-          <item row="0" column="0">
-           <widget class="QLabel" name="boardLabel">
-            <property name="text">
-             <string>控制卡</string>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLabel" name="boardValueLabel">
-            <property name="text">
-             <string>未初始化</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
           <item row="1" column="0">
            <widget class="QLabel" name="stateLabel">
             <property name="text">
@@ -146,6 +129,134 @@
            <widget class="QLabel" name="hostQueueValueLabel">
             <property name="text">
              <string>0</string>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="0">
+           <widget class="QLabel" name="busCycleSettingLabel">
+            <property name="toolTip">
+             <string>手册支持 250、500、1000、2000 μs；仅在初始化控制卡时写入。</string>
+            </property>
+            <property name="text">
+             <string>总线周期（设置）</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="7" column="1">
+           <widget class="QComboBox" name="busCycleCombo">
+            <property name="toolTip">
+             <string>EtherCAT 总线周期，可选 250 / 500 / 1000 / 2000 μs。修改后需关闭并重新初始化控制卡。</string>
+            </property>
+            <property name="currentIndex">
+             <number>2</number>
+            </property>
+            <item>
+             <property name="text">
+              <string>250 μs</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>500 μs</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>1000 μs</string>
+             </property>
+            </item>
+            <item>
+             <property name="text">
+              <string>2000 μs</string>
+             </property>
+            </item>
+           </widget>
+          </item>
+          <item row="8" column="0">
+           <widget class="QLabel" name="busCycleReadLabel">
+            <property name="text">
+             <string>总线周期（读回）</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="8" column="1">
+           <widget class="QWidget" name="busCycleReadContainer" native="true">
+            <layout class="QHBoxLayout" name="busCycleReadLayout">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+             <item>
+              <widget class="QLabel" name="busCycleReadValueLabel">
+               <property name="text">
+                <string>待初始化</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="readBusCycleButton">
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
+               <property name="text">
+                <string>刷新</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </item>
+          <item row="9" column="0">
+           <widget class="QLabel" name="traceSampleLabel">
+            <property name="text">
+             <string>Trace 采样周期</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="9" column="1">
+           <widget class="QLabel" name="traceSampleValueLabel">
+            <property name="text">
+             <string>待初始化</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="0">
+           <widget class="QLabel" name="planningAlignmentLabel">
+            <property name="text">
+             <string>轨迹规划周期</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="1">
+           <widget class="QLabel" name="planningAlignmentValueLabel">
+            <property name="text">
+             <string>10 ms = 10 × 1000 us</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
             </property>
            </widget>
           </item>
@@ -823,19 +934,47 @@
                </widget>
               </item>
               <item row="7" column="1">
-               <widget class="QSpinBox" name="preloadSegmentsSpin">
-               <property name="minimum">
-                 <number>10</number>
-                </property>
-                <property name="maximum">
-                 <number>5000</number>
-                </property>
-                <property name="value">
-                 <number>200</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
+               <widget class="QWidget" name="preloadModeContainer" native="true">
+                <layout class="QVBoxLayout" name="preloadModeLayout">
+                 <property name="leftMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="topMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="rightMargin">
+                  <number>0</number>
+                 </property>
+                 <property name="bottomMargin">
+                  <number>0</number>
+                 </property>
+                 <item>
+                  <widget class="QSpinBox" name="preloadSegmentsSpin">
+                   <property name="minimum">
+                    <number>10</number>
+                   </property>
+                   <property name="maximum">
+                    <number>5000</number>
+                   </property>
+                   <property name="value">
+                    <number>200</number>
+                   </property>
+                   <property name="suffix">
+                    <string> ms</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="preloadAllTrajectoryCheck">
+                   <property name="toolTip">
+                    <string>启动前将全部有效轨迹段压入控制卡。仅适用于未超过卡侧可用段容量的短轨迹；运行中不再产点或补段。</string>
+                   </property>
+                   <property name="text">
+                    <string>一次性预装全部轨迹（对照）</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
                </widget>
               </item>
               <item row="8" column="0">

@@ -1103,6 +1103,7 @@ debug\mainwindow.obj: mainwindow.cpp mainwindow.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qcalendar.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QMetaObject \
 		D:\Qt\6.8.3\msvc2022_64\include\QtGui\QPainter \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QSignalBlocker \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QStringList \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QThread \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QTimer \
@@ -1345,6 +1346,14 @@ debug\E5000HardwareInterface.obj: hardware\E5000HardwareInterface.cpp hardware\E
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qscopeguard.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QtGlobal \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QMetaObject \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QElapsedTimer \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qelapsedtimer.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QMap \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qmap.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qshareddata.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qshareddata_impl.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QQueue \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qqueue.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QSet \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qset.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qhash.h \
@@ -1356,7 +1365,9 @@ debug\E5000HardwareInterface.obj: hardware\E5000HardwareInterface.cpp hardware\E
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qobject_impl.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qbindingstorage.h \
 		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qdeadlinetimer.h \
-		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qelapsedtimer.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\QTimer \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qtimer.h \
+		D:\Qt\6.8.3\msvc2022_64\include\QtCore\qbasictimer.h \
 		hardware\E5000ContiInterface.h \
 		..\pos_ctrl\third_party\leadshine\LTDMC.h \
 		hardware\RuntimeTraceSlaveReader.h

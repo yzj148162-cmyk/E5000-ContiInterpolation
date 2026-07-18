@@ -45,6 +45,9 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
     if (config_.objects.empty()) {
         return false;
     }
+    if (config_.samplePeriodUs % config_.traceBaseCycleUs != 0) {
+        return false;
+    }
 
     const WORD cardNo = static_cast<WORD>(config_.cardNo);
     lastResult_ = dmc_trace_data_stop(cardNo);
@@ -52,7 +55,7 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
     if (lastResult_ != 0) {
         return false;
     }
-    const short cycle = static_cast<short>(std::max(1, config_.samplePeriodUs / config_.traceBaseCycleUs));
+    const short cycle = static_cast<short>(config_.samplePeriodUs / config_.traceBaseCycleUs);
     lastResult_ = dmc_trace_set_config(cardNo, cycle, 0, 0, 0, 0, 0, 0);
     if (lastResult_ != 0) {
         return false;

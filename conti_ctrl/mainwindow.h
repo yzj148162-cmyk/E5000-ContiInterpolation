@@ -40,6 +40,7 @@ signals:
     void stopPointMoveRequested(bool emergency);
     void startTelemetryRecordingRequested();
     void stopTelemetryRecordingRequested();
+    void refreshBusCycleRequested();
 
 private slots:
     void onStageChanged(int index);
@@ -62,6 +63,8 @@ private slots:
     void onJogPositionDisplayModeChanged();
     void onStartRecordingClicked();
     void onStopRecordingClicked();
+    void onBusCycleSelectionChanged(int index);
+    void onProducerPeriodChanged(int periodMs);
     void appendLog(const QString &message);
     void updateStatus(const ContiStatus &status);
 
@@ -75,6 +78,9 @@ private:
     void updateChartRanges(QChart *chart, QValueAxis *timeAxis, QValueAxis *valueAxis,
                            const QList<QLineSeries *> &series, double timeSeconds,
                            double minimumSpan) const;
+    int selectedBusCycleUs() const;
+    void normalizeProducerPeriodForBusCycle();
+    void updateBusPeriodUi();
 
 private:
     Ui::MainWindow *ui_ = nullptr;

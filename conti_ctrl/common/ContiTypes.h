@@ -39,6 +39,10 @@ struct ContiTestConfig
     double activeDeltaUnit = 1.0;
     double holdDeltaUnit = 1.0;
     double durationS = 2.0;
+    // EtherCAT 周期由 nmc_set_cycletime 在初始化阶段设置。手册支持
+    // 250/500/1000/2000 us；Trace 固定每个总线周期采样一次。
+    int busCycleUs = 1000;
+    int traceCycle = 1;
     int producerPeriodMs = 10;
 
     double maxVectorVelocity = 10.0;
@@ -49,6 +53,8 @@ struct ContiTestConfig
     double speedRatio = 1.0;
     bool lookaheadEnabled = true;
     double pathErrorUnit = 0.0;
+    // 对照模式：启动前将整条有效轨迹一次性压入卡侧，不进行运行中产点/补段。
+    bool preloadAllTrajectoryToCard = false;
 
     bool timeSyncEnabled = true;
     int startupPreloadMs = 200;
@@ -73,6 +79,31 @@ struct ContiPoint
 {
     double timeS = 0.0;
     std::array<double, 2> targetUnit {};
+};
+
+// 上层规划线程与独占硬件线程之间传递的已编号轨迹段。
+// mark 在进入硬件线程前固定，便于上层将时间历程与卡侧执行序号对应起来。
+struct ContiFeedItem
+{
+    ContiPoint point;
+    long mark = 0;
+};
+
+// 独占硬件线程中的补段调度快照。上层只读取该快照，不参与定时补段。
+struct ContiFeedStatus
+{
+    bool active = false;
+    bool failed = false;
+    QString errorText;
+    long currentMark = 0;
+    long lastPushedMark = 0;
+    long remainSpace = 0;
+    short runState = 4;
+    int queuedPointCount = 0;
+    double currentPlanTimeS = 0.0;
+    double lastPushedPlanTimeS = 0.0;
+    qint64 lastServiceGapUs = 0;
+    qint64 maxServiceGapUs = 0;
 };
 
 // 第二页单电机测试使用的相对点位运动参数，单位与界面一致，均为角度制。
@@ -129,6 +160,9 @@ struct ContiStatus
     bool boardInitialized = false;
     int detectedBoardCount = 0;
     quint16 cardNo = 0;
+    int busCycleUs = 0;
+    int traceCycle = 0;
+    int producerPeriodMs = 0;
     bool running = false;
     int runState = 4;
     long currentMark = 0;

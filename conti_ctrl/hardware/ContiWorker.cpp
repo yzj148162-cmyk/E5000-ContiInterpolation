@@ -24,20 +24,20 @@ qint64 unitToPulse(double unit)
 ContiWorker::ContiWorker(QObject *parent)
     : QObject(parent)
     , producerTimer_(new QTimer(this))
-    , feedTimer_(new QTimer(this))
+    , monitorTimer_(new QTimer(this))
     , feedbackTimer_(new QTimer(this))
 {
     softwareZeroUnit_.fill(0.0, 8);
     softwareZeroValid_.fill(false, 8);
     pendingJogAutoZeroAxes_.clear();
     producerTimer_->setTimerType(Qt::PreciseTimer);
-    feedTimer_->setTimerType(Qt::PreciseTimer);
-    feedTimer_->setInterval(5);
+    monitorTimer_->setTimerType(Qt::PreciseTimer);
+    monitorTimer_->setInterval(5);
     feedbackTimer_->setTimerType(Qt::PreciseTimer);
     feedbackTimer_->setInterval(10);
 
     connect(producerTimer_, &QTimer::timeout, this, &ContiWorker::produceNextPoint);
-    connect(feedTimer_, &QTimer::timeout, this, &ContiWorker::feedCard);
+    connect(monitorTimer_, &QTimer::timeout, this, &ContiWorker::monitorContinuousRun);
     connect(feedbackTimer_, &QTimer::timeout, this, &ContiWorker::refreshFeedback);
 }
 
@@ -58,17 +58,40 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
         enterError(error);
         return;
     }
-    if (!configureBaseAxes(config)) {
+    int actualBusCycleUs = 0;
+    if (!card_.setBusCycle(config.busCycleUs, error)
+        || !card_.readBusCycle(actualBusCycleUs, error)) {
         QString closeError;
         card_.closeBoard(closeError);
         detectedBoardCount_ = 0;
+        enterError(QStringLiteral("EtherCAT 总线周期配置/读取失败：%1").arg(error));
+        return;
+    }
+    if (actualBusCycleUs != config.busCycleUs) {
+        QString closeError;
+        card_.closeBoard(closeError);
+        detectedBoardCount_ = 0;
+        enterError(QStringLiteral("EtherCAT 总线周期读回值=%1 us，与设置值=%2 us 不一致；已关闭控制卡。")
+                       .arg(actualBusCycleUs)
+                       .arg(config.busCycleUs));
+        return;
+    }
+    config_ = config;
+    config_.busCycleUs = actualBusCycleUs;
+    actualBusCycleUs_ = actualBusCycleUs;
+    if (!configureBaseAxes(config_)) {
+        QString closeError;
+        card_.closeBoard(closeError);
+        detectedBoardCount_ = 0;
+        actualBusCycleUs_ = 0;
         enterError(QStringLiteral("基础轴配置失败，已关闭控制卡。"));
         return;
     }
-    if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, config.cardNo, error)) {
+    if (!configureFeedbackTrace({config_.activeAxis, config_.holdAxis}, error)) {
         QString closeError;
         card_.closeBoard(closeError);
         detectedBoardCount_ = 0;
+        actualBusCycleUs_ = 0;
         enterError(QStringLiteral("位置 Trace 配置失败：%1").arg(error));
         return;
     }
@@ -81,9 +104,13 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
     trajectoryTraceStartTimeUs_ = 0;
     boardInitialized_ = true;
     initializedCardNo_ = config.cardNo;
-    config_ = config;
     stateText_ = QStringLiteral("控制卡已初始化");
     feedbackTimer_->start();
+    emit logMessage(QStringLiteral("EtherCAT 总线周期已设置并读回：%1 us；Trace=%2 us（每总线周期采样一次）；轨迹规划=%3 ms（%4 个总线周期）。")
+                        .arg(actualBusCycleUs_)
+                        .arg(card_.traceSamplePeriodUs())
+                        .arg(config_.producerPeriodMs)
+                        .arg(config_.producerPeriodMs * 1000 / actualBusCycleUs_));
     emit logMessage(QStringLiteral("控制卡初始化成功：检测到 %1 张卡；仅测试轴 %2、%3 已设置为 %4 pulse/deg。")
                         .arg(detectedBoardCount_)
                         .arg(config.activeAxis)
@@ -95,6 +122,33 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
 void ContiWorker::closeBoard()
 {
     shutdownHardware();
+}
+
+void ContiWorker::refreshBusCycle()
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("请先初始化控制卡，再读取 EtherCAT 总线周期。"));
+        return;
+    }
+    int cycleUs = 0;
+    QString error;
+    if (!card_.readBusCycle(cycleUs, error)) {
+        emit logMessage(QStringLiteral("读取 EtherCAT 总线周期失败：%1").arg(error));
+        return;
+    }
+    actualBusCycleUs_ = cycleUs;
+    if (cycleUs != config_.busCycleUs) {
+        emit logMessage(QStringLiteral("警告：EtherCAT 总线周期读回为 %1 us，当前 Trace 配置基准为 %2 us；请安全关闭并重新初始化后再运行。")
+                            .arg(cycleUs)
+                            .arg(config_.busCycleUs));
+    } else {
+        emit logMessage(QStringLiteral("EtherCAT 总线周期读回正常：%1 us；Trace=%2 us；规划周期=%3 ms（%4 个总线周期）。")
+                            .arg(cycleUs)
+                            .arg(card_.traceSamplePeriodUs())
+                            .arg(config_.producerPeriodMs)
+                            .arg(config_.producerPeriodMs * 1000 / cycleUs));
+    }
+    publishStatus();
 }
 
 void ContiWorker::startTelemetryRecording()
@@ -145,8 +199,9 @@ void ContiWorker::shutdownHardware()
     // 该槽既由“关闭控制卡”使用，也由主窗口析构时以阻塞方式调用。
     // 关机过程中始终在唯一的硬件线程内访问 LTDMC。
     producerTimer_->stop();
-    feedTimer_->stop();
+    monitorTimer_->stop();
     feedbackTimer_->stop();
+    resetRunTimingState();
 
     if (!boardInitialized_) {
         return;
@@ -177,6 +232,7 @@ void ContiWorker::shutdownHardware()
     }
     boardInitialized_ = false;
     detectedBoardCount_ = 0;
+    actualBusCycleUs_ = 0;
     stateText_ = QStringLiteral("控制卡已关闭");
     emit logMessage(stateText_);
     publishStatus();
@@ -197,9 +253,22 @@ void ContiWorker::enableSelectedAxes(const ContiTestConfig &config)
                             .arg(initializedCardNo_));
         return;
     }
+    if (config.busCycleUs != actualBusCycleUs_) {
+        emit logMessage(QStringLiteral("当前控制卡总线周期为 %1 us；界面已改为 %2 us。请先安全关闭控制卡并重新初始化后再测试。")
+                            .arg(actualBusCycleUs_)
+                            .arg(config.busCycleUs));
+        return;
+    }
+    if (config.producerPeriodMs <= 0
+        || (config.producerPeriodMs * 1000) % actualBusCycleUs_ != 0) {
+        emit logMessage(QStringLiteral("轨迹规划周期 %1 ms 不是当前总线周期 %2 us 的整数倍。")
+                            .arg(config.producerPeriodMs)
+                            .arg(actualBusCycleUs_));
+        return;
+    }
     if (traceAxes_ != QVector<quint16> {config.activeAxis, config.holdAxis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, config.cardNo, traceError)) {
+        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, traceError)) {
             enterError(QStringLiteral("位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -245,7 +314,7 @@ void ContiWorker::disableSelectedAxes(const ContiTestConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.activeAxis, config.holdAxis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, config.cardNo, traceError)) {
+        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, traceError)) {
             enterError(QStringLiteral("位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -282,13 +351,26 @@ void ContiWorker::startTest(const ContiTestConfig &config)
                             .arg(initializedCardNo_));
         return;
     }
+    if (config.busCycleUs != actualBusCycleUs_) {
+        emit logMessage(QStringLiteral("当前控制卡总线周期为 %1 us；界面已改为 %2 us。请先安全关闭控制卡并重新初始化后再测试。")
+                            .arg(actualBusCycleUs_)
+                            .arg(config.busCycleUs));
+        return;
+    }
+    if (config.producerPeriodMs <= 0
+        || (config.producerPeriodMs * 1000) % actualBusCycleUs_ != 0) {
+        emit logMessage(QStringLiteral("轨迹规划周期 %1 ms 不是当前总线周期 %2 us 的整数倍。")
+                            .arg(config.producerPeriodMs)
+                            .arg(actualBusCycleUs_));
+        return;
+    }
     if (config.activeAxis == config.holdAxis) {
         emit logMessage(QStringLiteral("主动轴和保持轴必须不同。"));
         return;
     }
     if (traceAxes_ != QVector<quint16> {config.activeAxis, config.holdAxis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, config.cardNo, traceError)) {
+        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, traceError)) {
             enterError(QStringLiteral("位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -321,6 +403,8 @@ void ContiWorker::startTest(const ContiTestConfig &config)
     }
 
     config_ = config;
+    config_.busCycleUs = actualBusCycleUs_;
+    config_.traceCycle = 1;
     trajectory_.reset(config_, activeStart, holdStart);
     trajectoryStartPoint_.timeS = 0.0;
     trajectoryStartPoint_.targetUnit = {activeStart, holdStart};
@@ -335,13 +419,11 @@ void ContiWorker::startTest(const ContiTestConfig &config)
     ratioRef_ = 0.0;
     ratioPhase_ = 0.0;
     ratioBuffer_ = 0.0;
-    ratioCommand_ = config.ratioMin;
-    ratioApplied_ = config.ratioMin;
-    phaseClockStarted_ = false;
-    lastRatioControlMs_ = -1;
-    lastRatioApiMs_ = -1;
-    lastRatioApiMark_ = -1;
-    config_.speedRatio = config.ratioMin;
+    resetRunTimingState();
+    const double initialRatio = config.timeSyncEnabled ? config.ratioMin : 1.0;
+    ratioCommand_ = initialRatio;
+    ratioApplied_ = initialRatio;
+    config_.speedRatio = initialRatio;
     lastQueuedTargetPulse_ = {unitToPulse(activeStart), unitToPulse(holdStart)};
     lastQueuedTargetPulseValid_ = true;
     skippedQuantizedPointCount_ = 0;
@@ -357,13 +439,18 @@ void ContiWorker::startTest(const ContiTestConfig &config)
     speedRatioPending_ = false;
     preparing_ = true;
     running_ = false;
-    stateText_ = QStringLiteral("正在按 10 ms 周期预生成轨迹");
+    stateText_ = config_.preloadAllTrajectoryToCard
+        ? QStringLiteral("正在生成全部轨迹并准备一次性预装")
+        : QStringLiteral("正在按 %1 ms（%2 个总线周期）实时生成延迟轨迹")
+              .arg(config_.producerPeriodMs)
+              .arg(config_.producerPeriodMs * 1000 / actualBusCycleUs_);
     producerTimer_->setInterval(config_.producerPeriodMs);
-
-    emit logMessage(QStringLiteral("轨迹已重置：轴 %1 指令起点=%2°，轴 %3 指令起点=%4°；等待预压 %5 ms。")
+    emit logMessage(QStringLiteral("轨迹已重置：轴 %1 指令起点=%2°，轴 %3 指令起点=%4°；%5。")
                         .arg(config_.activeAxis).arg(activeStart, 0, 'f', 4)
                         .arg(config_.holdAxis).arg(holdStart, 0, 'f', 4)
-                        .arg(config_.startupPreloadMs));
+                        .arg(config_.preloadAllTrajectoryToCard
+                             ? QStringLiteral("对照模式：将全部有效段一次性预装入卡侧")
+                             : QStringLiteral("等待预压 %1 ms").arg(config_.startupPreloadMs)));
     const double activeEnd = activeStart + config_.activeDeltaUnit;
     const double holdEnd = holdStart + (config_.stage == TestStage::DualAxis ? config_.holdDeltaUnit : 0.0);
     emit logMessage(QStringLiteral("插补量化诊断：1 pulse=%1°；起点脉冲=(%2,%3)，理论终点脉冲=(%4,%5)。")
@@ -379,8 +466,26 @@ void ContiWorker::startTest(const ContiTestConfig &config)
                         .arg(config_.criticalBufferMs)
                         .arg(config_.ratioMin, 0, 'f', 2)
                         .arg(config_.ratioMax, 0, 'f', 2));
-    produceNextPoint(); // 第一个点为 t=0，不必额外等待一个周期。
-    producerTimer_->start();
+    if (!config_.timeSyncEnabled) {
+        emit logMessage(QStringLiteral("时间同步倍率控制已关闭：公共倍率按 1.000 固定，运行中不调用动态倍率 API。"));
+    }
+    if (config_.preloadAllTrajectoryToCard) {
+        if (!generateAllTrajectoryPoints()) {
+            return;
+        }
+        if (config_.timeSyncEnabled) {
+            emit logMessage(QStringLiteral("一次性预装对照仍启用了时间同步倍率控制；若要仅比较流式调度，请另行关闭该控制。"));
+        }
+        startAfterPreload();
+    } else {
+        emit logMessage(QStringLiteral("实时流式模式：规划线程每 %1 ms 产生下一点，先建立 %2 ms 执行延迟；启动后继续向独占硬件线程追加轨迹。")
+                            .arg(config_.producerPeriodMs)
+                            .arg(config_.executionDelayMs));
+        produceNextPoint();
+        if ((preparing_ || running_) && !producerFinished_) {
+            producerTimer_->start();
+        }
+    }
     publishStatus();
 }
 
@@ -390,7 +495,7 @@ void ContiWorker::stopTest(bool emergency)
                                        ? QStringLiteral("motion_immediate_stop")
                                        : QStringLiteral("motion_decelerated_stop"));
     producerTimer_->stop();
-    feedTimer_->stop();
+    monitorTimer_->stop();
 
     if (listOpen_) {
         QString error;
@@ -416,6 +521,8 @@ void ContiWorker::stopTest(bool emergency)
     trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
     hostQueue_.clear();
+    lastFeedStatus_ = {};
+    resetRunTimingState();
     stateText_ = emergency ? QStringLiteral("已立即停止") : QStringLiteral("已减速停止");
     emit logMessage(stateText_);
     publishStatus();
@@ -497,7 +604,7 @@ void ContiWorker::enableJogAxis(const SingleAxisJogConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.axis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.axis}, config.cardNo, traceError)) {
+        if (!configureFeedbackTrace({config.axis}, traceError)) {
             enterError(QStringLiteral("单轴位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -597,7 +704,7 @@ void ContiWorker::setJogAxisZero(const SingleAxisJogConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.axis}) {
         QString error;
-        if (!configureFeedbackTrace({config.axis}, config.cardNo, error)) {
+        if (!configureFeedbackTrace({config.axis}, error)) {
             emit logMessage(QStringLiteral("设置软件零位前 Trace 重配失败：%1").arg(error));
             return;
         }
@@ -647,7 +754,7 @@ void ContiWorker::startPointMove(const SingleAxisJogConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.axis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.axis}, config.cardNo, traceError)) {
+        if (!configureFeedbackTrace({config.axis}, traceError)) {
             enterError(QStringLiteral("单轴位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -762,7 +869,7 @@ bool ContiWorker::safelyStopPointAxis(quint16 axis, const QString &reason)
 void ContiWorker::safelyStopAllMotionForShutdown()
 {
     producerTimer_->stop();
-    feedTimer_->stop();
+    monitorTimer_->stop();
 
     if (listOpen_) {
         QString error;
@@ -792,6 +899,7 @@ void ContiWorker::safelyStopAllMotionForShutdown()
     running_ = false;
     pointMoveActive_ = false;
     hostQueue_.clear();
+    lastFeedStatus_ = {};
 }
 
 void ContiWorker::disableAllEnabledAxesForShutdown()
@@ -810,122 +918,167 @@ void ContiWorker::disableAllEnabledAxesForShutdown()
 
 void ContiWorker::produceNextPoint()
 {
-    if (!preparing_ && !running_) {
+    if ((!preparing_ && !running_) || config_.preloadAllTrajectoryToCard) {
         return;
     }
+
     if (trajectory_.hasNext()) {
         const ContiPoint point = trajectory_.nextPoint();
         latestGeneratedPlanTimeS_ = point.timeS;
-        const std::array<qint64, 2> targetPulse = {
-            unitToPulse(point.targetUnit[0]),
-            unitToPulse(point.targetUnit[1])
-        };
-
-        // 连续插补实际按脉冲坐标执行。跳过与上一已接受目标完全相同的点，
-        // 避免五次曲线起步阶段形成零长度首段并卡住 currentMark。
-        if (lastQueuedTargetPulseValid_ && targetPulse == lastQueuedTargetPulse_) {
-            ++skippedQuantizedPointCount_;
-        } else {
-            if (firstEffectivePointTimeS_ < 0.0) {
-                firstEffectivePointTimeS_ = point.timeS;
-                emit logMessage(QStringLiteral("首个有效插补段：规划 t=%1 s，目标=(%2°,%3°)，脉冲=(%4,%5)，相对起点增量=(%6,%7) pulse。")
-                                    .arg(point.timeS, 0, 'f', 3)
-                                    .arg(point.targetUnit[0], 0, 'f', 6)
-                                    .arg(point.targetUnit[1], 0, 'f', 6)
-                                    .arg(targetPulse[0])
-                                    .arg(targetPulse[1])
-                                    .arg(targetPulse[0] - lastQueuedTargetPulse_[0])
-                                    .arg(targetPulse[1] - lastQueuedTargetPulse_[1]));
-            }
-            hostQueue_.enqueue(point);
-            lastQueuedTargetPulse_ = targetPulse;
-            lastQueuedTargetPulseValid_ = true;
+        enqueueTrajectoryPoint(point);
+        if (!trajectory_.hasNext()) {
+            producerFinished_ = true;
+            producerTimer_->stop();
         }
     } else {
         producerFinished_ = true;
         producerTimer_->stop();
-        if (preparing_ && !hasStartupPreload()) {
-            const double queuedMs = hostQueue_.size() >= 2
-                ? (hostQueue_.back().timeS - hostQueue_.front().timeS) * 1000.0 : 0.0;
-            enterError(QStringLiteral("轨迹生成结束，但有效轨迹仅覆盖 %1 ms（预压要求 %2 ms，已跳过 %3 个重复点）；请增大位移、缩短轨迹时长或降低预压时间。")
-                           .arg(queuedMs, 0, 'f', 1)
-                           .arg(config_.startupPreloadMs)
-                           .arg(skippedQuantizedPointCount_));
-            return;
-        }
     }
 
-    if (preparing_ && hasStartupPreload()) {
-        startAfterPreload();
+    if (preparing_) {
+        if (hasExecutionDelayReady()) {
+            startAfterPreload();
+            return;
+        }
+        if (producerFinished_) {
+            const double availableDelayMs = firstEffectivePointTimeS_ < 0.0
+                ? 0.0 : (latestGeneratedPlanTimeS_ - firstEffectivePointTimeS_) * 1000.0;
+            enterError(QStringLiteral("实时轨迹已经生成结束，但只能建立 %1 ms 延迟，低于设置的 %2 ms；请减小执行延迟或延长轨迹。")
+                           .arg(availableDelayMs, 0, 'f', 1)
+                           .arg(config_.executionDelayMs));
+        }
+        return;
     }
-    publishStatus();
+
+    if (running_) {
+        submitGeneratedPoints();
+    }
+}
+
+void ContiWorker::enqueueTrajectoryPoint(const ContiPoint &point)
+{
+    const std::array<qint64, 2> targetPulse = {
+        unitToPulse(point.targetUnit[0]),
+        unitToPulse(point.targetUnit[1])
+    };
+
+    // 连续插补实际按脉冲坐标执行。跳过与上一已接受目标完全相同的点，
+    // 避免五次曲线起步阶段形成零长度首段并卡住 currentMark。
+    if (lastQueuedTargetPulseValid_ && targetPulse == lastQueuedTargetPulse_) {
+        ++skippedQuantizedPointCount_;
+        return;
+    }
+    if (firstEffectivePointTimeS_ < 0.0) {
+        firstEffectivePointTimeS_ = point.timeS;
+        emit logMessage(QStringLiteral("首个有效插补段：规划 t=%1 s，目标=(%2°,%3°)，脉冲=(%4,%5)，相对起点增量=(%6,%7) pulse。")
+                            .arg(point.timeS, 0, 'f', 3)
+                            .arg(point.targetUnit[0], 0, 'f', 6)
+                            .arg(point.targetUnit[1], 0, 'f', 6)
+                            .arg(targetPulse[0])
+                            .arg(targetPulse[1])
+                            .arg(targetPulse[0] - lastQueuedTargetPulse_[0])
+                            .arg(targetPulse[1] - lastQueuedTargetPulse_[1]));
+    }
+    hostQueue_.enqueue(point);
+    lastQueuedTargetPulse_ = targetPulse;
+    lastQueuedTargetPulseValid_ = true;
+}
+
+void ContiWorker::submitGeneratedPoints()
+{
+    if (!running_ || hostQueue_.isEmpty()) {
+        return;
+    }
+    QVector<ContiFeedItem> feedItems;
+    feedItems.reserve(hostQueue_.size());
+    while (!hostQueue_.isEmpty()) {
+        ContiFeedItem item;
+        item.point = hostQueue_.dequeue();
+        item.mark = nextMark_++;
+        pushedPointsByMark_.insert(item.mark, item.point);
+        feedItems.push_back(item);
+    }
+    card_.appendStreamingPoints(feedItems);
+}
+
+bool ContiWorker::hasExecutionDelayReady() const
+{
+    if (hostQueue_.isEmpty() || firstEffectivePointTimeS_ < 0.0) {
+        return false;
+    }
+    return (latestGeneratedPlanTimeS_ - firstEffectivePointTimeS_) * 1000.0
+        >= config_.executionDelayMs;
+}
+
+bool ContiWorker::generateAllTrajectoryPoints()
+{
+    while (trajectory_.hasNext()) {
+        const ContiPoint point = trajectory_.nextPoint();
+        latestGeneratedPlanTimeS_ = point.timeS;
+        enqueueTrajectoryPoint(point);
+    }
+    producerFinished_ = true;
+    if (hostQueue_.isEmpty()) {
+        enterError(QStringLiteral("轨迹生成失败：整条轨迹量化后没有有效插补段；请增大位移或检查脉冲当量。"));
+        return false;
+    }
+    emit logMessage(QStringLiteral("一次性预装对照：已提前生成完整轨迹，有效段=%1，跳过脉冲重复点=%2，覆盖至 t=%3 s。")
+                        .arg(hostQueue_.size())
+                        .arg(skippedQuantizedPointCount_)
+                        .arg(latestGeneratedPlanTimeS_, 0, 'f', 3));
+    return true;
 }
 
 bool ContiWorker::startAfterPreload()
 {
     QString error;
-    if (!card_.configureAndOpen(config_, error)) {
+    const int queuedPointCount = hostQueue_.size();
+    QVector<ContiFeedItem> feedItems;
+    feedItems.reserve(queuedPointCount);
+    while (!hostQueue_.isEmpty()) {
+        ContiFeedItem item;
+        item.point = hostQueue_.dequeue();
+        item.mark = nextMark_++;
+        pushedPointsByMark_.insert(item.mark, item.point);
+        feedItems.push_back(item);
+    }
+    if (!card_.startStreaming(config_, feedItems,
+                              config_.preloadAllTrajectoryToCard, error)) {
         enterError(error);
         return false;
     }
     listOpen_ = true;
-
-    while (!hostQueue_.isEmpty()) {
-        if (!pushOnePoint()) {
-            return false;
-        }
-    }
-    if (!card_.start(config_, error)) {
-        enterError(error);
-        return false;
-    }
+    lastFeedStatus_ = card_.streamingStatus();
+    lastPushedMark_ = lastFeedStatus_.lastPushedMark;
+    lastPushedPlanTimeS_ = lastFeedStatus_.lastPushedPlanTimeS;
 
     preparing_ = false;
     running_ = true;
     trajectoryComparisonActive_ = true;
     trajectoryTraceStartTimeUs_ = 0;
-    // start_list 成功后控制卡仍可能尚未规划当前段；在线变倍率改由 feedCard()
-    // 在坐标系进入运行状态后下发，5049 时保留该标志并重试。
-    speedRatioPending_ = true;
+    // 仅在时间同步启用时等待首段规划并下发在线倍率；固定倍率模式不调用该 API。
+    speedRatioPending_ = config_.timeSyncEnabled;
     speedRatioNotReadyCount_ = 0;
     contiRunElapsed_.start();
     phaseClockStarted_ = false;
     lastContiDiagnosticMs_ = -1;
     stateText_ = QStringLiteral("连续插补运行中");
-    feedTimer_->start();
-    emit logMessage(QStringLiteral("已预压 %1 个有效段（%2 ms）并启动连续插补；已跳过 %3 个脉冲重复点，首个有效点 t=%4 s。")
-                        .arg(lastPushedMark_)
-                        .arg((lastPushedPlanTimeS_ - firstEffectivePointTimeS_) * 1000.0, 0, 'f', 1)
-                        .arg(skippedQuantizedPointCount_)
-                        .arg(firstEffectivePointTimeS_, 0, 'f', 3));
+    monitorTimer_->start();
+    if (config_.preloadAllTrajectoryToCard) {
+        emit logMessage(QStringLiteral("一次性预装完成：已写入 %1/%2 个有效段；运行中不再产点或补段；首个有效点 t=%3 s。")
+                            .arg(lastPushedMark_)
+                            .arg(queuedPointCount)
+                            .arg(firstEffectivePointTimeS_, 0, 'f', 3));
+    } else {
+        emit logMessage(QStringLiteral("独占硬件线程已启动自动补段：初始压入 %1/%2 个有效段（%3 ms），硬件待喂队列=%4；已跳过 %5 个脉冲重复点，首个有效点 t=%6 s。")
+                            .arg(lastPushedMark_)
+                            .arg(queuedPointCount)
+                            .arg((lastPushedPlanTimeS_ - firstEffectivePointTimeS_) * 1000.0, 0, 'f', 1)
+                            .arg(lastFeedStatus_.queuedPointCount)
+                            .arg(skippedQuantizedPointCount_)
+                            .arg(firstEffectivePointTimeS_, 0, 'f', 3));
+    }
     return true;
-}
-
-bool ContiWorker::pushOnePoint()
-{
-    if (hostQueue_.isEmpty()) {
-        return true;
-    }
-    QString error;
-    const ContiPoint point = hostQueue_.dequeue();
-    if (!card_.pushLine(config_, point, nextMark_, error)) {
-        enterError(QStringLiteral("压入 mark=%1 失败：%2").arg(nextMark_).arg(error));
-        return false;
-    }
-    lastPushedMark_ = nextMark_;
-    lastPushedPlanTimeS_ = point.timeS;
-    pushedPointsByMark_.insert(nextMark_, point);
-    ++nextMark_;
-    return true;
-}
-
-bool ContiWorker::hasStartupPreload() const
-{
-    if (hostQueue_.size() < 2) {
-        return false;
-    }
-    const double queuedTimeS = hostQueue_.back().timeS - hostQueue_.front().timeS;
-    return queuedTimeS >= config_.startupPreloadMs / 1000.0;
 }
 
 double ContiWorker::planTimeForMark(long currentMark) const
@@ -941,11 +1094,6 @@ double ContiWorker::planTimeForMark(long currentMark) const
     }
     --iterator;
     return iterator.value().timeS;
-}
-
-double ContiWorker::bufferedPlanTimeS(long currentMark) const
-{
-    return std::max(0.0, lastPushedPlanTimeS_ - planTimeForMark(currentMark));
 }
 
 double ContiWorker::referenceVectorSpeed(double planTimeS) const
@@ -1002,11 +1150,12 @@ double ContiWorker::calculateRatioCommand(long currentMark, double bufferTimeS, 
     bufferTimeMs_ = bufferTimeS * 1000.0;
 
     if (!config_.timeSyncEnabled) {
-        ratioRef_ = config_.ratioMax;
+        ratioRef_ = 1.0;
         ratioPhase_ = 0.0;
         ratioBuffer_ = 0.0;
-        ratioCommand_ = config_.ratioMax;
-        config_.speedRatio = config_.ratioMax;
+        ratioCommand_ = 1.0;
+        ratioApplied_ = 1.0;
+        config_.speedRatio = 1.0;
         return config_.speedRatio;
     }
 
@@ -1067,32 +1216,40 @@ bool ContiWorker::applyRatioCommand(qint64 elapsedMs, QString &errorMessage)
     return true;
 }
 
-void ContiWorker::feedCard()
+void ContiWorker::monitorContinuousRun()
 {
     if (!running_) {
         return;
     }
 
-    const long current = card_.currentMark(config_);
-    long remaining = card_.remainSpace(config_);
-    double bufferedTimeS = bufferedPlanTimeS(current);
-
-    while (bufferedTimeS * 1000.0 < config_.targetBufferMs && remaining > 0 && !hostQueue_.isEmpty()) {
-        if (!pushOnePoint()) {
-            return;
-        }
-        bufferedTimeS = bufferedPlanTimeS(current);
-        --remaining;
+    lastFeedStatus_ = card_.streamingStatus();
+    if (lastFeedStatus_.failed) {
+        enterError(lastFeedStatus_.errorText);
+        return;
     }
-
-    const short state = card_.runState(config_);
+    const long current = lastFeedStatus_.currentMark;
+    const long remaining = lastFeedStatus_.remainSpace;
+    const short state = lastFeedStatus_.runState;
+    lastPushedMark_ = lastFeedStatus_.lastPushedMark;
+    lastPushedPlanTimeS_ = lastFeedStatus_.lastPushedPlanTimeS;
+    const double bufferedTimeS = std::max(0.0, lastFeedStatus_.lastPushedPlanTimeS
+                                               - lastFeedStatus_.currentPlanTimeS);
+    if (state == 2 && (!producerFinished_ || lastFeedStatus_.queuedPointCount > 0)) {
+        enterError(QStringLiteral("连续插补在实时轨迹尚未完全执行时进入停止状态：mark=%1/%2，硬件待喂=%3；判定为流式断粮或卡侧提前结束。")
+                       .arg(current)
+                       .arg(lastPushedMark_)
+                       .arg(lastFeedStatus_.queuedPointCount));
+        return;
+    }
     if (state == 3 || state == 4) {
         enterError(QStringLiteral("连续插补意外停止，runState=%1。") .arg(state));
         return;
     }
 
     const qint64 elapsedMs = contiRunElapsed_.isValid() ? contiRunElapsed_.elapsed() : 0;
-    const qint64 phaseElapsedMs = phaseClockStarted_ ? phaseClock_.elapsed() : 0;
+    const qint64 phaseElapsedMs = config_.timeSyncEnabled
+        ? (phaseClockStarted_ ? phaseClock_.elapsed() : 0)
+        : elapsedMs;
     if (state == 0 && (lastRatioControlMs_ < 0
                        || elapsedMs - lastRatioControlMs_ >= config_.ratioUpdatePeriodMs)) {
         calculateRatioCommand(current, bufferedTimeS, phaseElapsedMs);
@@ -1102,7 +1259,8 @@ void ContiWorker::feedCard()
         const bool apiIntervalElapsed = lastRatioApiMs_ < 0
             || elapsedMs - lastRatioApiMs_ >= minApiIntervalMs;
         const bool ratioChangeNeeded = std::abs(config_.speedRatio - ratioApplied_) >= config_.ratioDeadband;
-        if (apiIntervalElapsed && (speedRatioPending_ || ratioChangeNeeded)) {
+        if (config_.timeSyncEnabled
+            && apiIntervalElapsed && (speedRatioPending_ || ratioChangeNeeded)) {
             QString ratioError;
             if (!applyRatioCommand(elapsedMs, ratioError)) {
                 enterError(ratioError);
@@ -1116,7 +1274,7 @@ void ContiWorker::feedCard()
     if (lastContiDiagnosticMs_ < 0 || elapsedMs - lastContiDiagnosticMs_ >= kContiDiagnosticPeriodMs) {
         lastContiDiagnosticMs_ = elapsedMs;
         const qint64 apiAgoMs = lastRatioApiMs_ < 0 ? -1 : elapsedMs - lastRatioApiMs_;
-        emit logMessage(QStringLiteral("连续插补诊断：t=%1 ms，runState=%2，mark=%3/%4，卡侧计划=%5 ms，期望=%6 ms，相位=%7 ms，缓冲=%8 ms，倍率(ref/phase/buffer/cmd/applied)=%9/%10/%11/%12/%13，API距今=%14 ms，上位机队列=%15。")
+        emit logMessage(QStringLiteral("连续插补诊断：t=%1 ms，runState=%2，mark=%3/%4，卡侧计划=%5 ms，期望=%6 ms，相位=%7 ms，缓冲=%8 ms，倍率(ref/phase/buffer/cmd/applied)=%9/%10/%11/%12/%13，API距今=%14 ms，硬件待喂=%15，补段调度间隔=%16 us（最大=%17 us）。")
                             .arg(elapsedMs)
                             .arg(state)
                             .arg(current)
@@ -1131,7 +1289,9 @@ void ContiWorker::feedCard()
                             .arg(ratioCommand_, 0, 'f', 3)
                             .arg(ratioApplied_, 0, 'f', 3)
                             .arg(apiAgoMs)
-                            .arg(hostQueue_.size()));
+                            .arg(lastFeedStatus_.queuedPointCount)
+                            .arg(lastFeedStatus_.lastServiceGapUs)
+                            .arg(lastFeedStatus_.maxServiceGapUs));
     }
     if (current < 1 && elapsedMs >= kFirstSegmentTimeoutMs) {
         enterError(QStringLiteral("启动后 %1 ms 控制卡仍未消费首个有效段（currentMark=%2，pushedMark=%3，缓冲余量=%4）；已安全停止，需检查首段与控制卡插补状态。")
@@ -1143,6 +1303,7 @@ void ContiWorker::feedCard()
     }
 
     if (producerFinished_ && hostQueue_.isEmpty()
+        && lastFeedStatus_.queuedPointCount == 0
         && (current >= lastPushedMark_ || state == 2 || state == 4)) {
         finishRun(QStringLiteral("五次多项式轨迹已执行完成。"));
         return;
@@ -1155,7 +1316,7 @@ void ContiWorker::finishRun(const QString &message)
 {
     telemetryRecorder_.appendEvent(QStringLiteral("conti_test_completed"));
     producerTimer_->stop();
-    feedTimer_->stop();
+    monitorTimer_->stop();
     QString error;
     if (listOpen_ && !card_.closeList(config_, error)) {
         emit logMessage(QStringLiteral("轨迹结束后关闭缓冲区失败：%1").arg(error));
@@ -1165,6 +1326,8 @@ void ContiWorker::finishRun(const QString &message)
     running_ = false;
     trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
+    lastFeedStatus_ = {};
+    resetRunTimingState();
     stateText_ = QStringLiteral("轨迹完成");
     emit logMessage(message);
     publishStatus();
@@ -1174,7 +1337,7 @@ void ContiWorker::enterError(const QString &message)
 {
     telemetryRecorder_.appendEvent(QStringLiteral("control_error: %1").arg(message));
     producerTimer_->stop();
-    feedTimer_->stop();
+    monitorTimer_->stop();
     if (listOpen_) {
         QString ignored;
         card_.stop(config_, true, ignored);
@@ -1190,9 +1353,22 @@ void ContiWorker::enterError(const QString &message)
     running_ = false;
     trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
+    lastFeedStatus_ = {};
+    resetRunTimingState();
     stateText_ = QStringLiteral("错误");
     emit logMessage(QStringLiteral("错误：%1").arg(message));
     publishStatus();
+}
+
+void ContiWorker::resetRunTimingState()
+{
+    contiRunElapsed_.invalidate();
+    phaseClock_.invalidate();
+    phaseClockStarted_ = false;
+    lastRatioControlMs_ = -1;
+    lastRatioApiMs_ = -1;
+    lastRatioApiMark_ = -1;
+    speedRatioNotReadyCount_ = 0;
 }
 
 void ContiWorker::publishStatus()
@@ -1201,9 +1377,12 @@ void ContiWorker::publishStatus()
     status.boardInitialized = boardInitialized_;
     status.detectedBoardCount = detectedBoardCount_;
     status.cardNo = initializedCardNo_;
+    status.busCycleUs = actualBusCycleUs_;
+    status.traceCycle = config_.traceCycle;
+    status.producerPeriodMs = config_.producerPeriodMs;
     status.running = running_;
     status.stateText = stateText_;
-    status.hostQueueSize = hostQueue_.size();
+    status.hostQueueSize = hostQueue_.size() + lastFeedStatus_.queuedPointCount;
     status.pushedMark = lastPushedMark_;
     status.currentPlanTimeS = currentPlanTimeS_;
     status.expectedPlanTimeS = expectedPlanTimeS_;
@@ -1226,9 +1405,9 @@ void ContiWorker::publishStatus()
                                                    .targetUnit[0];
     }
     if (listOpen_) {
-        status.currentMark = card_.currentMark(config_);
-        status.remainSpace = card_.remainSpace(config_);
-        status.runState = card_.runState(config_);
+        status.currentMark = lastFeedStatus_.currentMark;
+        status.remainSpace = lastFeedStatus_.remainSpace;
+        status.runState = lastFeedStatus_.runState;
     }
     status.traceConfigured = card_.traceConfigured();
     status.traceEverRead = card_.traceEverRead();
@@ -1392,14 +1571,21 @@ void ContiWorker::refreshAxisStates()
 #endif
 
 bool ContiWorker::configureFeedbackTrace(const QVector<quint16> &axes,
-                                         quint16,
                                          QString &errorMessage)
 {
     if (telemetryRecorder_.status().recording) {
         errorMessage = QStringLiteral("Trace 数据记录进行中，不能切换测试轴或重配 Trace；请先停止记录。");
         return false;
     }
-    if (!card_.configureTrace(axes, errorMessage)) {
+    const int traceSamplePeriodUs = config_.busCycleUs * config_.traceCycle;
+    if (config_.busCycleUs <= 0 || config_.traceCycle <= 0
+        || traceSamplePeriodUs % config_.busCycleUs != 0) {
+        errorMessage = QStringLiteral("Trace 周期参数无效：总线=%1 us，Trace 倍数=%2")
+                           .arg(config_.busCycleUs)
+                           .arg(config_.traceCycle);
+        return false;
+    }
+    if (!card_.configureTrace(axes, traceSamplePeriodUs, config_.busCycleUs, errorMessage)) {
         return false;
     }
     traceAxes_ = card_.traceAxes();
