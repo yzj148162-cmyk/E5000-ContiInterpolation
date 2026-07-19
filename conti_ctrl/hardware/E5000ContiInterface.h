@@ -32,6 +32,12 @@ public:
     ContiSpeedRatioResult changeSpeedRatio(const ContiTestConfig &config, QString &errorMessage) const;
     bool stop(const ContiTestConfig &config, bool emergency, QString &errorMessage) const;
     bool closeList(const ContiTestConfig &config, QString &errorMessage) const;
+    bool readContiCardReadback(const ContiTestConfig &config,
+                               ContiCardReadback &readback,
+                               QString &errorMessage) const;
+    bool readVectorSpeedDegreePerSecond(const ContiTestConfig &config,
+                                        double &speedDegreePerSecond,
+                                        QString &errorMessage) const;
 
     long currentMark(const ContiTestConfig &config) const;
     long remainSpace(const ContiTestConfig &config) const;

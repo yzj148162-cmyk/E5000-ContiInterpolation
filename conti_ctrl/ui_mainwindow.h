@@ -119,6 +119,10 @@ public:
     QDoubleSpinBox *durationSpin;
     QLabel *producerPeriodLabel;
     QSpinBox *producerPeriodSpin;
+    QLabel *cardUnitDefinitionLabel;
+    QComboBox *cardUnitDefinitionCombo;
+    QLabel *trajectoryPointModeLabel;
+    QComboBox *trajectoryPointModeCombo;
     QGroupBox *contiGroup;
     QFormLayout *contiForm;
     QLabel *maxVelocityLabel;
@@ -657,6 +661,31 @@ public:
         producerPeriodSpin->setValue(10);
 
         testForm->setWidget(9, QFormLayout::FieldRole, producerPeriodSpin);
+
+        cardUnitDefinitionLabel = new QLabel(testGroup);
+        cardUnitDefinitionLabel->setObjectName("cardUnitDefinitionLabel");
+
+        testForm->setWidget(10, QFormLayout::LabelRole, cardUnitDefinitionLabel);
+
+        cardUnitDefinitionCombo = new QComboBox(testGroup);
+        cardUnitDefinitionCombo->addItem(QString());
+        cardUnitDefinitionCombo->addItem(QString());
+        cardUnitDefinitionCombo->addItem(QString());
+        cardUnitDefinitionCombo->setObjectName("cardUnitDefinitionCombo");
+
+        testForm->setWidget(10, QFormLayout::FieldRole, cardUnitDefinitionCombo);
+
+        trajectoryPointModeLabel = new QLabel(testGroup);
+        trajectoryPointModeLabel->setObjectName("trajectoryPointModeLabel");
+
+        testForm->setWidget(11, QFormLayout::LabelRole, trajectoryPointModeLabel);
+
+        trajectoryPointModeCombo = new QComboBox(testGroup);
+        trajectoryPointModeCombo->addItem(QString());
+        trajectoryPointModeCombo->addItem(QString());
+        trajectoryPointModeCombo->setObjectName("trajectoryPointModeCombo");
+
+        testForm->setWidget(11, QFormLayout::FieldRole, trajectoryPointModeCombo);
 
 
         settingsLayout->addWidget(testGroup);
@@ -1462,6 +1491,15 @@ public:
         durationSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
         producerPeriodLabel->setText(QCoreApplication::translate("MainWindow", "\344\272\247\347\202\271\345\221\250\346\234\237", nullptr));
         producerPeriodSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        cardUnitDefinitionLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241 unit \345\256\232\344\271\211", nullptr));
+        cardUnitDefinitionCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622 pulse/unit\357\274\2101 unit = 1\302\260\357\274\211", nullptr));
+        cardUnitDefinitionCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622 pulse/unit\357\274\2101 unit = 0.1\302\260\357\274\211", nullptr));
+        cardUnitDefinitionCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622 pulse/unit\357\274\2101 unit = 0.01\302\260\357\274\211", nullptr));
+
+        trajectoryPointModeLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\344\272\247\347\202\271\346\226\271\345\274\217", nullptr));
+        trajectoryPointModeCombo->setItemText(0, QCoreApplication::translate("MainWindow", "\344\272\224\346\254\241\345\244\232\351\241\271\345\274\217\357\274\210\346\255\243\345\274\217\350\275\250\350\277\271\357\274\211", nullptr));
+        trajectoryPointModeCombo->setItemText(1, QCoreApplication::translate("MainWindow", "\347\255\211\351\227\264\350\267\235\347\233\264\347\272\277\357\274\210\345\211\215\347\236\273\345\257\271\347\205\247\357\274\211", nullptr));
+
         contiGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\277\236\347\273\255\346\217\222\350\241\245\345\217\202\346\225\260", nullptr));
         maxVelocityLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\200\345\244\247\347\237\242\351\207\217\351\200\237\345\272\246", nullptr));
         maxVelocitySpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
@@ -1514,7 +1552,7 @@ public:
         axisRangeLabel->setText(QCoreApplication::translate("MainWindow", "\345\237\272\347\241\200\351\205\215\347\275\256\350\275\264\350\214\203\345\233\264", nullptr));
         axisRangeValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\275\223\345\211\215\347\224\261\342\200\234\344\270\273\345\212\250\350\275\264\342\200\235\345\222\214\342\200\234\344\277\235\346\214\201/\347\254\254\344\272\214\350\275\264\342\200\235\351\200\211\346\213\251", nullptr));
         equivLabel->setText(QCoreApplication::translate("MainWindow", "\350\204\211\345\206\262\345\275\223\351\207\217", nullptr));
-        equivValueLabel->setText(QCoreApplication::translate("MainWindow", "500.622 pulse/deg\357\274\210180224 pulse/rev\357\274\211", nullptr));
+        equivValueLabel->setText(QCoreApplication::translate("MainWindow", "500.622 pulse/unit\357\274\2101 unit = 1\302\260\357\274\233180224 pulse/rev\357\274\211", nullptr));
         feedbackSourceLabel->setText(QCoreApplication::translate("MainWindow", "\345\217\215\351\246\210\346\235\245\346\272\220", nullptr));
         feedbackSourceValueLabel->setText(QCoreApplication::translate("MainWindow", "Trace \345\220\214\345\270\247\357\274\232\346\214\207\344\273\244\344\275\215\347\275\256(type 5) + \345\256\236\351\231\205\344\275\215\347\275\256(type 6)", nullptr));
         singleAxisJogGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\347\224\265\346\234\272\347\202\271\345\212\250\357\274\210\347\233\270\345\257\271\344\275\215\347\247\273\357\274\211", nullptr));

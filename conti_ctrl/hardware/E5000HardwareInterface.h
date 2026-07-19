@@ -21,7 +21,6 @@ public:
     bool setBusCycle(int cycleUs, QString &errorMessage);
     bool readBusCycle(int &cycleUs, QString &errorMessage) const;
 
-    bool configureAxes(const QVector<quint16> &axes, QString &errorMessage);
     bool configureTrace(const QVector<quint16> &axes, int samplePeriodUs, int traceBaseCycleUs,
                         QString &errorMessage);
     bool enableAxis(quint16 axis, QString &noticeMessage, QString &errorMessage);
@@ -44,10 +43,17 @@ public:
                         QString &errorMessage) const;
     void appendStreamingPoints(const QVector<ContiFeedItem> &points) const;
     ContiFeedStatus streamingStatus() const;
+    bool finalizeStreamingInput(QString &errorMessage) const;
     ContiSpeedRatioResult changeSpeedRatio(const ContiTestConfig &config, QString &errorMessage) const;
     bool stop(const ContiTestConfig &config, bool emergency, QString &errorMessage) const;
     bool closeList(const ContiTestConfig &config, QString &errorMessage) const;
     bool contiMotionDone(const ContiTestConfig &config) const;
+    bool readContiCardReadback(const ContiTestConfig &config,
+                               ContiCardReadback &readback,
+                               QString &errorMessage) const;
+    bool readVectorSpeedDegreePerSecond(const ContiTestConfig &config,
+                                        double &speedDegreePerSecond,
+                                        QString &errorMessage) const;
     long currentMark(const ContiTestConfig &config) const;
     long remainSpace(const ContiTestConfig &config) const;
     short runState(const ContiTestConfig &config) const;

@@ -66,6 +66,7 @@ private:
     bool configureBaseAxes(const ContiTestConfig &config);
     bool configureFeedbackTrace(const QVector<quint16> &axes, QString &errorMessage);
     bool pollTraceFeedback();
+    void updateTraceVelocityDiagnostics(const QVector<TraceTelemetryFrame> &frames);
     void refreshAxisStates();
     bool bothAxesEnabled(const ContiTestConfig &config) const;
     bool waitForAxisStop(quint16 axis, int timeoutMs) const;
@@ -94,6 +95,7 @@ private:
     quint16 initializedCardNo_ = 0;
     int actualBusCycleUs_ = 0;
     bool listOpen_ = false;
+    bool streamInputFinalized_ = false;
     bool preparing_ = false;
     bool running_ = false;
     bool pointMoveActive_ = false;
@@ -107,9 +109,9 @@ private:
     QSet<quint16> pendingJogAutoZeroAxes_;
     bool producerFinished_ = false;
     bool speedRatioPending_ = false;
-    std::array<qint64, 2> lastQueuedTargetPulse_ {};
-    bool lastQueuedTargetPulseValid_ = false;
-    int skippedQuantizedPointCount_ = 0;
+    std::array<double, 2> lastQueuedTargetDegree_ {};
+    bool lastQueuedTargetDegreeValid_ = false;
+    int skippedDuplicatePointCount_ = 0;
     double firstEffectivePointTimeS_ = -1.0;
     QElapsedTimer contiRunElapsed_;
     qint64 lastContiDiagnosticMs_ = -1;
@@ -139,6 +141,16 @@ private:
     quint64 latestTraceTimeUs_ = 0;
     bool trajectoryComparisonActive_ = false;
     quint64 trajectoryTraceStartTimeUs_ = 0;
+    bool traceVelocityAnchorValid_ = false;
+    quint16 traceVelocityAxis_ = 0;
+    quint64 traceVelocityAnchorTimeUs_ = 0;
+    qint32 traceVelocityAnchorCommandPulse_ = 0;
+    qint32 traceVelocityAnchorActualPulse_ = 0;
+    bool traceVelocityValid_ = false;
+    double traceCommandVelocityDegreePerSecond_ = 0.0;
+    double traceActualVelocityDegreePerSecond_ = 0.0;
+    bool vectorSpeedReadFailureLogged_ = false;
+    bool runtimeFeedReleaseLogged_ = false;
     QString traceStateText_ = QStringLiteral("Trace 未配置");
     QString stateText_ = QStringLiteral("未初始化");
 };

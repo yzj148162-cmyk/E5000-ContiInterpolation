@@ -17,6 +17,7 @@ struct TelemetryRunMetadata
     quint16 cardNo = 0;
     QVector<quint16> axes;
     int traceSamplePeriodUs = 1000;
+    double degreesPerCardUnit = 1.0;
     QString rootDirectory;
     QString description;
 };

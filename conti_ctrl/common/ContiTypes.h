@@ -10,14 +10,38 @@
 
 namespace MotorUnit
 {
-constexpr double kPulsesPerDegree = 500.622;
+// 编码器的物理分辨率固定为 500.622 pulse/deg。板卡 unit 的定义可在测试前选择，
+// 但 Trace 原始脉冲与物理角度之间始终使用该常量换算。
+constexpr double kPhysicalPulsesPerDegree = 500.622;
 constexpr int kPulsesPerRevolution = 180224;
+
+inline double pulsesPerCardUnit(double degreesPerCardUnit)
+{
+    return kPhysicalPulsesPerDegree * degreesPerCardUnit;
+}
+
+inline double degreesToCardUnits(double degrees, double degreesPerCardUnit)
+{
+    return degrees / degreesPerCardUnit;
+}
+
+inline double cardUnitsToDegrees(double cardUnits, double degreesPerCardUnit)
+{
+    return cardUnits * degreesPerCardUnit;
+}
 }
 
 enum class TestStage : quint8
 {
     SingleActiveAxis = 0, // 两轴坐标系：第一轴运动，第二轴保持当前位置
     DualAxis = 1
+};
+
+// 五次轨迹用于正式时间历程测试；等间距轨迹只用于隔离“小线段连接/前瞻”问题。
+enum class TrajectoryPointMode : quint8
+{
+    QuinticTimeLaw = 0,
+    UniformDistance = 1
 };
 
 // 在线倍率请求的执行结果。5049 表示控制卡首段尚未规划完成，属于可重试状态。
@@ -35,6 +59,11 @@ struct ContiTestConfig
     quint16 activeAxis = 0;
     quint16 holdAxis = 1;
     TestStage stage = TestStage::SingleActiveAxis;
+    TrajectoryPointMode trajectoryPointMode = TrajectoryPointMode::QuinticTimeLaw;
+
+    // 上层规划与界面始终使用角度；仅在雷赛 unit API 边界按此值换算。
+    // 支持 1、0.1、0.01 deg/unit，对应 500.622、50.0622、5.00622 pulse/unit。
+    double degreesPerCardUnit = 1.0;
 
     double activeDeltaUnit = 1.0;
     double holdDeltaUnit = 1.0;
@@ -94,6 +123,10 @@ struct ContiFeedStatus
 {
     bool active = false;
     bool failed = false;
+    // start_list 后先保留实时新增点，待板卡真正输出首段速度后再开放流式写入。
+    bool motionStarted = false;
+    bool runtimeFeedReleased = false;
+    int runtimeFeedBatchPointCount = 0;
     QString errorText;
     long currentMark = 0;
     long lastPushedMark = 0;
@@ -104,6 +137,26 @@ struct ContiFeedStatus
     double lastPushedPlanTimeS = 0.0;
     qint64 lastServiceGapUs = 0;
     qint64 maxServiceGapUs = 0;
+    int lastRuntimePushBatchCount = 0;
+    int maxRuntimePushBatchCount = 0;
+    quint64 runtimePushedPointCount = 0;
+    long lastPushSpaceBefore = 0;
+    long lastPushSpaceAfter = 0;
+};
+
+// 控制卡实际生效的连续插补规划参数。所有量在 SDK 边界转换回角度制。
+struct ContiCardReadback
+{
+    bool lookaheadEnabled = false;
+    long lookaheadSegments = 0;
+    double pathErrorDegree = 0.0;
+    double lookaheadAccelerationDegreePerSecond2 = 0.0;
+    double minVectorVelocityDegreePerSecond = 0.0;
+    double maxVectorVelocityDegreePerSecond = 0.0;
+    double accelerationTimeS = 0.0;
+    double decelerationTimeS = 0.0;
+    double stopVectorVelocityDegreePerSecond = 0.0;
+    double sCurveTimeS = 0.0;
 };
 
 // 第二页单电机测试使用的相对点位运动参数，单位与界面一致，均为角度制。

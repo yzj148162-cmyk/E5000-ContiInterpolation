@@ -58,6 +58,9 @@ double QuinticTrajectory::positionRatio(double timeS) const
     }
 
     const double tau = std::clamp(timeS / config_.durationS, 0.0, 1.0);
+    if (config_.trajectoryPointMode == TrajectoryPointMode::UniformDistance) {
+        return tau;
+    }
     // 与 pos_ctrl 相同的零速度、零加速度边界五次多项式。
     return 10.0 * std::pow(tau, 3)
          - 15.0 * std::pow(tau, 4)

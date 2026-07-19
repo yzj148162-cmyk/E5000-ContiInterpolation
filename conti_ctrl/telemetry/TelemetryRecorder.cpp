@@ -58,7 +58,10 @@ public:
         root.insert(QStringLiteral("createdAt"), QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
         root.insert(QStringLiteral("cardNo"), static_cast<int>(metadata.cardNo));
         root.insert(QStringLiteral("traceSamplePeriodUs"), metadata.traceSamplePeriodUs);
-        root.insert(QStringLiteral("pulsePerDegree"), MotorUnit::kPulsesPerDegree);
+        root.insert(QStringLiteral("pulsePerDegree"), MotorUnit::kPhysicalPulsesPerDegree);
+        root.insert(QStringLiteral("degreesPerCardUnit"), metadata.degreesPerCardUnit);
+        root.insert(QStringLiteral("pulsePerCardUnit"),
+                    MotorUnit::pulsesPerCardUnit(metadata.degreesPerCardUnit));
         root.insert(QStringLiteral("pulsePerRevolution"), MotorUnit::kPulsesPerRevolution);
         root.insert(QStringLiteral("frameBytes"), static_cast<int>(sizeof(TraceTelemetryFrame)));
         root.insert(QStringLiteral("byteOrder"), QStringLiteral("little-endian"));

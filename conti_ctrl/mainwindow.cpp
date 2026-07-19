@@ -54,8 +54,19 @@ void MainWindow::connectWorker()
 {
     connect(ui_->stageCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &MainWindow::onStageChanged);
+    connect(ui_->trajectoryPointModeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int) { onStageChanged(ui_->stageCombo->currentIndex()); });
     connect(ui_->busCycleCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &MainWindow::onBusCycleSelectionChanged);
+    connect(ui_->cardUnitDefinitionCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+        const QStringList equivalents {
+            QStringLiteral("500.622 pulse/unit（1 unit = 1°；180224 pulse/rev）"),
+            QStringLiteral("50.0622 pulse/unit（1 unit = 0.1°；180224 pulse/rev）"),
+            QStringLiteral("5.00622 pulse/unit（1 unit = 0.01°；180224 pulse/rev）")
+        };
+        ui_->equivValueLabel->setText(equivalents.value(index, equivalents.first()));
+    });
     connect(ui_->producerPeriodSpin, qOverload<int>(&QSpinBox::valueChanged),
             this, &MainWindow::onProducerPeriodChanged);
     connect(ui_->initializeButton, &QPushButton::clicked, this, &MainWindow::onInitializeClicked);
@@ -119,6 +130,19 @@ ContiTestConfig MainWindow::collectConfig() const
     config.holdAxis = static_cast<quint16>(ui_->holdAxisCombo->currentText().toUInt());
     config.stage = ui_->stageCombo->currentIndex() == 0
         ? TestStage::SingleActiveAxis : TestStage::DualAxis;
+    config.trajectoryPointMode = ui_->trajectoryPointModeCombo->currentIndex() == 0
+        ? TrajectoryPointMode::QuinticTimeLaw : TrajectoryPointMode::UniformDistance;
+    switch (ui_->cardUnitDefinitionCombo->currentIndex()) {
+    case 1:
+        config.degreesPerCardUnit = 0.1;
+        break;
+    case 2:
+        config.degreesPerCardUnit = 0.01;
+        break;
+    default:
+        config.degreesPerCardUnit = 1.0;
+        break;
+    }
     config.activeDeltaUnit = ui_->activeDeltaSpin->value();
     config.holdDeltaUnit = ui_->holdDeltaSpin->value();
     config.durationS = ui_->durationSpin->value();
@@ -166,11 +190,18 @@ SingleAxisJogConfig MainWindow::collectJogConfig() const
 void MainWindow::onStageChanged(int index)
 {
     const bool dualAxis = index == static_cast<int>(TestStage::DualAxis);
+    const bool uniformDistance = ui_->trajectoryPointModeCombo->currentIndex() == 1;
     ui_->holdDeltaSpin->setEnabled(dualAxis);
     ui_->holdDeltaLabel->setEnabled(dualAxis);
-    ui_->stageHintLabel->setText(dualAxis
-        ? QStringLiteral("阶段二：两轴均按同一五次多项式比例运动。")
-        : QStringLiteral("阶段一：主动轴运动；保持轴只参与坐标系，不产生位移。"));
+    if (uniformDistance) {
+        ui_->stageHintLabel->setText(dualAxis
+            ? QStringLiteral("对照轨迹：两轴按同一线性比例产生等间距小线段，用于排查前瞻连接。")
+            : QStringLiteral("对照轨迹：主动轴产生等间距小线段；保持轴不产生位移。"));
+    } else {
+        ui_->stageHintLabel->setText(dualAxis
+            ? QStringLiteral("阶段二：两轴均按同一五次多项式比例运动。")
+            : QStringLiteral("阶段一：主动轴运动；保持轴只参与坐标系，不产生位移。"));
+    }
 }
 
 int MainWindow::selectedBusCycleUs() const
@@ -350,6 +381,7 @@ void MainWindow::updateStatus(const ContiStatus &status)
     ui_->spaceValueLabel->setText(QString::number(status.remainSpace));
     ui_->hostQueueValueLabel->setText(QString::number(status.hostQueueSize));
     ui_->busCycleCombo->setEnabled(!status.boardInitialized);
+    ui_->cardUnitDefinitionCombo->setEnabled(!status.boardInitialized);
     ui_->readBusCycleButton->setEnabled(status.boardInitialized);
     ui_->busCycleReadValueLabel->setText(status.boardInitialized
         ? QStringLiteral("%1 us").arg(status.busCycleUs)

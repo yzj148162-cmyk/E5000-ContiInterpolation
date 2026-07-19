@@ -245,16 +245,20 @@ bool E5000ContiInterface::isContiMotionDone(const ContiTestConfig &config) const
 bool E5000ContiInterface::configureAndOpen(const ContiTestConfig &config, QString &errorMessage) const
 {
     WORD axes[2] = {config.activeAxis, config.holdAxis};
+    const double cardMaxVectorVelocity = MotorUnit::degreesToCardUnits(
+        config.maxVectorVelocity, config.degreesPerCardUnit);
+    const double cardPathError = MotorUnit::degreesToCardUnits(
+        config.pathErrorUnit, config.degreesPerCardUnit);
 
     // 手册要求：前瞻设置必须发生在 open_list 前。
     if (!checkResult(dmc_conti_set_lookahead_mode(config.cardNo, config.crdNo,
                                                    config.lookaheadEnabled ? 1 : 0,
-                                                   0, config.pathErrorUnit, 0),
+                                                   0, cardPathError, 0),
                      QStringLiteral("dmc_conti_set_lookahead_mode"), errorMessage)) {
         return false;
     }
     if (!checkResult(dmc_set_vector_profile_unit(config.cardNo, config.crdNo, 0,
-                                                  config.maxVectorVelocity,
+                                                  cardMaxVectorVelocity,
                                                   config.accelerationTimeS,
                                                   config.decelerationTimeS, 0),
                      QStringLiteral("dmc_set_vector_profile_unit"), errorMessage)) {
@@ -274,7 +278,10 @@ bool E5000ContiInterface::pushLine(const ContiTestConfig &config,
                                     QString &errorMessage) const
 {
     WORD axes[2] = {config.activeAxis, config.holdAxis};
-    double target[2] = {point.targetUnit[0], point.targetUnit[1]};
+    double target[2] = {
+        MotorUnit::degreesToCardUnits(point.targetUnit[0], config.degreesPerCardUnit),
+        MotorUnit::degreesToCardUnits(point.targetUnit[1], config.degreesPerCardUnit)
+    };
     return checkResult(dmc_conti_line_unit(config.cardNo, config.crdNo, 2, axes, target,
                                             1, mark),
                        QStringLiteral("dmc_conti_line_unit"), errorMessage);
@@ -312,6 +319,73 @@ bool E5000ContiInterface::closeList(const ContiTestConfig &config, QString &erro
 {
     return checkResult(dmc_conti_close_list(config.cardNo, config.crdNo),
                        QStringLiteral("dmc_conti_close_list"), errorMessage);
+}
+
+bool E5000ContiInterface::readContiCardReadback(const ContiTestConfig &config,
+                                                 ContiCardReadback &readback,
+                                                 QString &errorMessage) const
+{
+    WORD lookaheadEnabled = 0;
+    long lookaheadSegments = 0;
+    double cardPathError = 0.0;
+    double cardLookaheadAcceleration = 0.0;
+    if (!checkResult(dmc_conti_get_lookahead_mode(config.cardNo, config.crdNo,
+                                                   &lookaheadEnabled, &lookaheadSegments,
+                                                   &cardPathError, &cardLookaheadAcceleration),
+                     QStringLiteral("dmc_conti_get_lookahead_mode"), errorMessage)) {
+        return false;
+    }
+
+    double cardMinVelocity = 0.0;
+    double cardMaxVelocity = 0.0;
+    double accelerationTimeS = 0.0;
+    double decelerationTimeS = 0.0;
+    double cardStopVelocity = 0.0;
+    if (!checkResult(dmc_get_vector_profile_unit(config.cardNo, config.crdNo,
+                                                  &cardMinVelocity, &cardMaxVelocity,
+                                                  &accelerationTimeS, &decelerationTimeS,
+                                                  &cardStopVelocity),
+                     QStringLiteral("dmc_get_vector_profile_unit"), errorMessage)) {
+        return false;
+    }
+
+    double sCurveTimeS = 0.0;
+    if (!checkResult(dmc_get_vector_s_profile(config.cardNo, config.crdNo, 0, &sCurveTimeS),
+                     QStringLiteral("dmc_get_vector_s_profile"), errorMessage)) {
+        return false;
+    }
+
+    readback.lookaheadEnabled = lookaheadEnabled != 0;
+    readback.lookaheadSegments = lookaheadSegments;
+    readback.pathErrorDegree = MotorUnit::cardUnitsToDegrees(
+        cardPathError, config.degreesPerCardUnit);
+    readback.lookaheadAccelerationDegreePerSecond2 = MotorUnit::cardUnitsToDegrees(
+        cardLookaheadAcceleration, config.degreesPerCardUnit);
+    readback.minVectorVelocityDegreePerSecond = MotorUnit::cardUnitsToDegrees(
+        cardMinVelocity, config.degreesPerCardUnit);
+    readback.maxVectorVelocityDegreePerSecond = MotorUnit::cardUnitsToDegrees(
+        cardMaxVelocity, config.degreesPerCardUnit);
+    readback.accelerationTimeS = accelerationTimeS;
+    readback.decelerationTimeS = decelerationTimeS;
+    readback.stopVectorVelocityDegreePerSecond = MotorUnit::cardUnitsToDegrees(
+        cardStopVelocity, config.degreesPerCardUnit);
+    readback.sCurveTimeS = sCurveTimeS;
+    return true;
+}
+
+bool E5000ContiInterface::readVectorSpeedDegreePerSecond(
+    const ContiTestConfig &config,
+    double &speedDegreePerSecond,
+    QString &errorMessage) const
+{
+    double cardSpeed = 0.0;
+    if (!checkResult(dmc_read_vector_speed_unit(config.cardNo, config.crdNo, &cardSpeed),
+                     QStringLiteral("dmc_read_vector_speed_unit"), errorMessage)) {
+        return false;
+    }
+    speedDegreePerSecond = MotorUnit::cardUnitsToDegrees(
+        cardSpeed, config.degreesPerCardUnit);
+    return true;
 }
 
 long E5000ContiInterface::currentMark(const ContiTestConfig &config) const
