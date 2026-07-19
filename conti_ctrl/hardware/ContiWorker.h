@@ -59,6 +59,7 @@ private:
     double referenceVectorSpeed(double planTimeS) const;
     double calculateRatioCommand(long currentMark, double bufferTimeS, qint64 elapsedMs);
     bool applyRatioCommand(qint64 elapsedMs, QString &errorMessage);
+    bool traceReachedFinalTarget() const;
     void finishRun(const QString &message);
     void enterError(const QString &message);
     void resetRunTimingState();
@@ -95,7 +96,6 @@ private:
     quint16 initializedCardNo_ = 0;
     int actualBusCycleUs_ = 0;
     bool listOpen_ = false;
-    bool streamInputFinalized_ = false;
     bool preparing_ = false;
     bool running_ = false;
     bool pointMoveActive_ = false;
@@ -114,6 +114,7 @@ private:
     int skippedDuplicatePointCount_ = 0;
     double firstEffectivePointTimeS_ = -1.0;
     QElapsedTimer contiRunElapsed_;
+    QElapsedTimer completionStableClock_;
     qint64 lastContiDiagnosticMs_ = -1;
     int speedRatioNotReadyCount_ = 0;
     QMap<long, ContiPoint> pushedPointsByMark_;
@@ -150,7 +151,6 @@ private:
     double traceCommandVelocityDegreePerSecond_ = 0.0;
     double traceActualVelocityDegreePerSecond_ = 0.0;
     bool vectorSpeedReadFailureLogged_ = false;
-    bool runtimeFeedReleaseLogged_ = false;
     QString traceStateText_ = QStringLiteral("Trace 未配置");
     QString stateText_ = QStringLiteral("未初始化");
 };

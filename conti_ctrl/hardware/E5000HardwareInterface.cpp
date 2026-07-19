@@ -25,23 +25,11 @@ public:
         }
         feedStatus_.active = false;
         streamListOpen_ = false;
-        streamInputClosed_ = false;
-        holdRuntimeFeedUntilMotion_ = false;
-        lastMotionStartProbeUs_ = -1;
-        runtimeFeedBatchPointCount_ = kDefaultRuntimeFeedBatchPointCount;
         if (clearQueue) {
             feedQueue_.clear();
             planTimeByMark_.clear();
             feedStatus_.queuedPointCount = 0;
         }
-    }
-
-    void refreshStreamingMotionStatus()
-    {
-        feedStatus_.currentMark = card_.currentMark(streamConfig_);
-        feedStatus_.currentPlanTimeS = planTimeForMark(feedStatus_.currentMark);
-        feedStatus_.remainSpace = card_.remainSpace(streamConfig_);
-        feedStatus_.runState = card_.runState(streamConfig_);
     }
 
     double planTimeForMark(long mark) const
@@ -62,8 +50,6 @@ public:
         feedStatus_.currentMark = card_.currentMark(streamConfig_);
         feedStatus_.currentPlanTimeS = planTimeForMark(feedStatus_.currentMark);
         feedStatus_.remainSpace = card_.remainSpace(streamConfig_);
-        const long spaceBefore = feedStatus_.remainSpace;
-        int pushedCount = 0;
 
         while (!feedQueue_.isEmpty() && feedStatus_.remainSpace > 0) {
             const double bufferedTimeS = std::max(0.0,
@@ -79,21 +65,12 @@ public:
             feedStatus_.lastPushedMark = item.mark;
             feedStatus_.lastPushedPlanTimeS = item.point.timeS;
             --feedStatus_.remainSpace;
-            ++pushedCount;
         }
         feedStatus_.queuedPointCount = feedQueue_.size();
-        if (feedStatus_.active && pushedCount > 0) {
-            feedStatus_.lastRuntimePushBatchCount = pushedCount;
-            feedStatus_.maxRuntimePushBatchCount = std::max(
-                feedStatus_.maxRuntimePushBatchCount, pushedCount);
-            feedStatus_.runtimePushedPointCount += static_cast<quint64>(pushedCount);
-            feedStatus_.lastPushSpaceBefore = spaceBefore;
-            feedStatus_.lastPushSpaceAfter = feedStatus_.remainSpace;
-        }
         return true;
     }
 
-    void serviceFeedQueue(bool flushPartialBatch = false)
+    void serviceFeedQueue()
     {
         if (!feedStatus_.active || !streamListOpen_ || feedStatus_.failed) {
             return;
@@ -109,55 +86,10 @@ public:
             lastFeedServiceUs_ = nowUs;
         }
 
-        refreshStreamingMotionStatus();
-
-        // 前瞻模式下，start_list 后立即连续追加单点可能使卡侧一直停留在首段
-        // 预处理状态。新增点先留在硬件线程队列，确认板卡已经实际输出运动后，
-        // 再开放实时写入。产点线程在此期间仍正常运行，不会丢失轨迹点。
-        if (!feedStatus_.motionStarted) {
-            const qint64 nowUs = feedServiceClock_.isValid()
-                ? feedServiceClock_.nsecsElapsed() / 1000 : 0;
-            const bool probeDue = lastMotionStartProbeUs_ < 0
-                || nowUs - lastMotionStartProbeUs_ >= kMotionStartProbeIntervalUs;
-            if (feedStatus_.currentMark > 0) {
-                feedStatus_.motionStarted = true;
-            } else if (probeDue) {
-                lastMotionStartProbeUs_ = nowUs;
-                double vectorSpeedDegreePerSecond = 0.0;
-                QString probeError;
-                if (card_.readVectorSpeedDegreePerSecond(streamConfig_,
-                                                         vectorSpeedDegreePerSecond,
-                                                         probeError)
-                    && std::abs(vectorSpeedDegreePerSecond) > kMotionStartSpeedEpsilon) {
-                    feedStatus_.motionStarted = true;
-                }
-            }
-        }
-
-        if (feedStatus_.motionStarted && holdRuntimeFeedUntilMotion_) {
-            holdRuntimeFeedUntilMotion_ = false;
-            feedStatus_.runtimeFeedReleased = true;
-        }
-        if (holdRuntimeFeedUntilMotion_) {
-            feedStatus_.queuedPointCount = feedQueue_.size();
-            return;
-        }
-
-        // E5000 前瞻规划不适合每产生一个点就立即写入。运行期先在硬件线程
-        // 队列中积累一个前瞻窗口，再主动成批写入；它不依赖 currentMark，
-        // 因而不会重现“等一大块耗尽后才补”的旧调度。轨迹收尾时允许强制
-        // 写入不足一个窗口的最后一批。
-        if (!flushPartialBatch
-            && !feedQueue_.isEmpty()
-            && feedQueue_.size() < runtimeFeedBatchPointCount_) {
-            feedStatus_.queuedPointCount = feedQueue_.size();
-            return;
-        }
-
         QString error;
-        // 达到批量阈值后，把当前已经产生的整批点一次写入。硬件可用空间仍是
-        // 唯一硬限制，targetBufferMs 不再用作等待 currentMark 的补点触发器。
-        if (!pushQueuedPoints(true, streamConfig_.targetBufferMs / 1000.0, error)) {
+        // 恢复基准调度：只在卡侧未来轨迹低于目标缓冲水位时补段。
+        // 该策略会形成与目标缓冲深度对应的批次边界，供后续重复排查。
+        if (!pushQueuedPoints(false, streamConfig_.targetBufferMs / 1000.0, error)) {
             feedStatus_.failed = true;
             feedStatus_.active = false;
             feedStatus_.errorText = QStringLiteral("硬件线程自动补段失败：%1").arg(error);
@@ -179,10 +111,6 @@ public:
         stopFeedScheduler(true);
         feedStatus_ = {};
         streamConfig_ = config;
-        streamInputClosed_ = false;
-        holdRuntimeFeedUntilMotion_ = false;
-        lastMotionStartProbeUs_ = -1;
-        runtimeFeedBatchPointCount_ = kDefaultRuntimeFeedBatchPointCount;
         lastAcceptedMark_ = 0;
         if (points.isEmpty()) {
             error = QStringLiteral("硬件线程未收到有效轨迹段");
@@ -192,14 +120,6 @@ public:
             return false;
         }
         streamListOpen_ = true;
-        ContiCardReadback cardReadback;
-        QString readbackError;
-        if (card_.readContiCardReadback(streamConfig_, cardReadback, readbackError)
-            && streamConfig_.lookaheadEnabled && cardReadback.lookaheadSegments > 0) {
-            runtimeFeedBatchPointCount_ = std::clamp(
-                static_cast<int>(cardReadback.lookaheadSegments), 1, 5000);
-        }
-        feedStatus_.runtimeFeedBatchPointCount = runtimeFeedBatchPointCount_;
         for (const ContiFeedItem &item : points) {
             feedQueue_.enqueue(item);
             planTimeByMark_.insert(item.mark, item.point.timeS);
@@ -253,14 +173,11 @@ public:
         }
         feedStatus_.active = true;
         feedStatus_.failed = false;
-        feedStatus_.motionStarted = false;
-        holdRuntimeFeedUntilMotion_ = !preloadAllToCard;
-        feedStatus_.runtimeFeedReleased = !holdRuntimeFeedUntilMotion_;
         feedStatus_.errorText.clear();
         feedServiceClock_.start();
         lastFeedServiceUs_ = -1;
         feedTimer_->start();
-        serviceFeedQueue(false);
+        serviceFeedQueue();
         return true;
     }
 
@@ -293,54 +210,13 @@ public:
             lastAcceptedMark_ = item.mark;
         }
         feedStatus_.queuedPointCount = feedQueue_.size();
-        serviceFeedQueue(false);
+        serviceFeedQueue();
     }
 
     ContiFeedStatus streamingStatus()
     {
-        serviceFeedQueue(false);
-        if (streamInputClosed_) {
-            refreshStreamingMotionStatus();
-        }
+        serviceFeedQueue();
         return feedStatus_;
-    }
-
-    bool finalizeStreamingInput(QString &error)
-    {
-        if (streamInputClosed_) {
-            return true;
-        }
-        if (!streamListOpen_ || !feedStatus_.active) {
-            error = QStringLiteral("连续插补输入未处于可结束状态");
-            return false;
-        }
-
-        serviceFeedQueue(true);
-        if (feedStatus_.failed) {
-            error = feedStatus_.errorText;
-            return false;
-        }
-        if (!feedQueue_.isEmpty()) {
-            error = QStringLiteral("仍有 %1 个轨迹点等待写入控制卡，不能关闭连续插补输入")
-                        .arg(feedQueue_.size());
-            return false;
-        }
-
-        if (feedTimer_ != nullptr) {
-            feedTimer_->stop();
-        }
-        if (!card_.closeList(streamConfig_, error)) {
-            if (feedTimer_ != nullptr) {
-                feedTimer_->start();
-            }
-            return false;
-        }
-
-        streamListOpen_ = false;
-        streamInputClosed_ = true;
-        feedStatus_.queuedPointCount = 0;
-        refreshStreamingMotionStatus();
-        return true;
     }
 
     bool initialize(quint16 cardNo, short &boardCount, QString &error)
@@ -550,15 +426,8 @@ public:
     ContiFeedStatus feedStatus_;
     QElapsedTimer feedServiceClock_;
     qint64 lastFeedServiceUs_ = -1;
-    qint64 lastMotionStartProbeUs_ = -1;
     bool streamListOpen_ = false;
-    bool streamInputClosed_ = false;
-    bool holdRuntimeFeedUntilMotion_ = false;
     long lastAcceptedMark_ = 0;
-    int runtimeFeedBatchPointCount_ = 25;
-    static constexpr qint64 kMotionStartProbeIntervalUs = 10000;
-    static constexpr double kMotionStartSpeedEpsilon = 1.0e-6;
-    static constexpr int kDefaultRuntimeFeedBatchPointCount = 25;
 };
 
 namespace {
@@ -674,8 +543,6 @@ void E5000HardwareInterface::appendStreamingPoints(const QVector<ContiFeedItem> 
 }
 ContiFeedStatus E5000HardwareInterface::streamingStatus() const
 { return invokeHardware(backend_, [&] { return backend_->streamingStatus(); }); }
-bool E5000HardwareInterface::finalizeStreamingInput(QString &error) const
-{ return invokeHardware(backend_, [&] { return backend_->finalizeStreamingInput(error); }); }
 ContiSpeedRatioResult E5000HardwareInterface::changeSpeedRatio(const ContiTestConfig &config,
                                                                 QString &error) const
 {

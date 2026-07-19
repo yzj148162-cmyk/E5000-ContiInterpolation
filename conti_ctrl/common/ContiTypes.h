@@ -123,10 +123,6 @@ struct ContiFeedStatus
 {
     bool active = false;
     bool failed = false;
-    // start_list 后先保留实时新增点，待板卡真正输出首段速度后再开放流式写入。
-    bool motionStarted = false;
-    bool runtimeFeedReleased = false;
-    int runtimeFeedBatchPointCount = 0;
     QString errorText;
     long currentMark = 0;
     long lastPushedMark = 0;
@@ -137,11 +133,6 @@ struct ContiFeedStatus
     double lastPushedPlanTimeS = 0.0;
     qint64 lastServiceGapUs = 0;
     qint64 maxServiceGapUs = 0;
-    int lastRuntimePushBatchCount = 0;
-    int maxRuntimePushBatchCount = 0;
-    quint64 runtimePushedPointCount = 0;
-    long lastPushSpaceBefore = 0;
-    long lastPushSpaceAfter = 0;
 };
 
 // 控制卡实际生效的连续插补规划参数。所有量在 SDK 边界转换回角度制。

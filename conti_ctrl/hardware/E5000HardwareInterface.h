@@ -43,7 +43,6 @@ public:
                         QString &errorMessage) const;
     void appendStreamingPoints(const QVector<ContiFeedItem> &points) const;
     ContiFeedStatus streamingStatus() const;
-    bool finalizeStreamingInput(QString &errorMessage) const;
     ContiSpeedRatioResult changeSpeedRatio(const ContiTestConfig &config, QString &errorMessage) const;
     bool stop(const ContiTestConfig &config, bool emergency, QString &errorMessage) const;
     bool closeList(const ContiTestConfig &config, QString &errorMessage) const;
