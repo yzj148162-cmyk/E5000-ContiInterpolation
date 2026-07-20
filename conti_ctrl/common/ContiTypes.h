@@ -268,6 +268,7 @@ struct TelemetryRecorderStatus
 struct ContiStatus
 {
     bool boardInitialized = false;
+    quint16 enabledAxisMask = 0;
     int detectedBoardCount = 0;
     quint16 cardNo = 0;
     int busCycleUs = 0;

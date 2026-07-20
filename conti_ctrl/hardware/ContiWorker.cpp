@@ -1972,6 +1972,11 @@ void ContiWorker::publishStatus()
 {
     ContiStatus status;
     status.boardInitialized = boardInitialized_;
+    for (const quint16 axis : enabledAxes_) {
+        if (axis < 8U) {
+            status.enabledAxisMask |= static_cast<quint16>(1U << axis);
+        }
+    }
     status.detectedBoardCount = detectedBoardCount_;
     status.cardNo = initializedCardNo_;
     status.busCycleUs = actualBusCycleUs_;

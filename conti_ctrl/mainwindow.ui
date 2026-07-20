@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>E5000 连续插补测试器</string>
+   <string>E5000 运动控制测试平台</string>
   </property>
   <widget class="QWidget" name="centralwidget">
    <layout class="QHBoxLayout" name="rootLayout">
@@ -30,7 +30,7 @@
        </size>
       </property>
       <property name="title">
-       <string>全局控制与状态</string>
+       <string>控制卡与全局安全</string>
       </property>
       <layout class="QVBoxLayout" name="globalControlLayout">
        <item>
@@ -53,82 +53,6 @@
             </property>
             <property name="wordWrap">
              <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="runStateLabel">
-            <property name="text">
-             <string>runState</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QLabel" name="runStateValueLabel">
-            <property name="text">
-             <string>4</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="markLabel">
-            <property name="text">
-             <string>当前 / 已推送 mark</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="1">
-           <widget class="QLabel" name="markValueLabel">
-            <property name="text">
-             <string>0 / 0</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="bufferLabel">
-            <property name="text">
-             <string>缓冲段数</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="1">
-           <widget class="QLabel" name="bufferValueLabel">
-            <property name="text">
-             <string>0</string>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="0">
-           <widget class="QLabel" name="spaceLabel">
-            <property name="text">
-             <string>缓冲剩余空间</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="5" column="1">
-           <widget class="QLabel" name="spaceValueLabel">
-            <property name="text">
-             <string>0</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="0">
-           <widget class="QLabel" name="hostQueueLabel">
-            <property name="text">
-             <string>上位机队列</string>
-            </property>
-           </widget>
-          </item>
-          <item row="6" column="1">
-           <widget class="QLabel" name="hostQueueValueLabel">
-            <property name="text">
-             <string>0</string>
             </property>
            </widget>
           </item>
@@ -240,124 +164,13 @@
             </property>
            </widget>
           </item>
-          <item row="10" column="0">
-           <widget class="QLabel" name="planningAlignmentLabel">
-            <property name="text">
-             <string>轨迹规划周期</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="10" column="1">
-           <widget class="QLabel" name="planningAlignmentValueLabel">
-            <property name="text">
-             <string>10 ms = 10 × 1000 us</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-         </layout>
-        </widget>
-       </item>
-       <item>
-        <widget class="QGroupBox" name="timeSyncDiagnosticsGroup">
-         <property name="title">
-          <string>时间同步只读诊断</string>
-         </property>
-         <layout class="QFormLayout" name="timeSyncDiagnosticsLayout">
-          <item row="0" column="0">
-           <widget class="QLabel" name="expectedPlanTimeLabel">
-            <property name="text">
-             <string>期望 / 卡侧计划</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="0" column="1">
-           <widget class="QLabel" name="expectedPlanTimeValueLabel">
-            <property name="text">
-             <string>0.0 / 0.0 ms</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="0">
-           <widget class="QLabel" name="phaseErrorLabel">
-            <property name="text">
-             <string>相位误差</string>
-            </property>
-           </widget>
-          </item>
-          <item row="1" column="1">
-           <widget class="QLabel" name="phaseErrorValueLabel">
-            <property name="text">
-             <string>0.0 ms</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="0">
-           <widget class="QLabel" name="bufferTimeLabel">
-            <property name="text">
-             <string>规划缓冲</string>
-            </property>
-           </widget>
-          </item>
-          <item row="2" column="1">
-           <widget class="QLabel" name="bufferTimeValueLabel">
-            <property name="text">
-             <string>0.0 ms</string>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="0">
-           <widget class="QLabel" name="ratioDiagLabel">
-            <property name="text">
-             <string>倍率 ref / phase / buffer / cmd / applied</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="3" column="1">
-           <widget class="QLabel" name="ratioDiagValueLabel">
-            <property name="text">
-             <string>0.000 / 0.000 / 0.000 / 0.000 / 0.000</string>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="0">
-           <widget class="QLabel" name="ratioApiAgeLabel">
-            <property name="text">
-             <string>倍率 API 距今</string>
-            </property>
-           </widget>
-          </item>
-          <item row="4" column="1">
-           <widget class="QLabel" name="ratioApiAgeValueLabel">
-            <property name="text">
-             <string>-- ms</string>
-            </property>
-           </widget>
-          </item>
          </layout>
         </widget>
        </item>
        <item>
         <widget class="QGroupBox" name="globalActionGroup">
          <property name="title">
-          <string>控制卡与测试轴</string>
+          <string>控制卡操作与轴状态</string>
          </property>
          <layout class="QVBoxLayout" name="globalActionLayout">
           <item>
@@ -375,23 +188,95 @@
            </widget>
           </item>
           <item>
-           <widget class="QPushButton" name="enableAxesButton">
-            <property name="toolTip">
-             <string>使能第一页“主动轴”和“保持/第二轴”所选的测试轴。</string>
+           <widget class="QGroupBox" name="axisEnableStatusGroup">
+            <property name="styleSheet">
+             <string notr="true">QLabel { color: white; background-color: #757575; border-radius: 4px; padding: 4px; }</string>
             </property>
-            <property name="text">
-             <string>使能连续插补测试轴</string>
+            <property name="title">
+             <string>测试轴使能状态</string>
             </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QPushButton" name="disableAxesButton">
-            <property name="toolTip">
-             <string>失能第一页“主动轴”和“保持/第二轴”所选的测试轴。</string>
-            </property>
-            <property name="text">
-             <string>失能连续插补测试轴</string>
-            </property>
+            <layout class="QGridLayout" name="axisEnableStatusLayout">
+             <item row="0" column="0">
+              <widget class="QLabel" name="axis0EnableStateLabel">
+               <property name="text">
+                <string>轴0 未知</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="0" column="1">
+              <widget class="QLabel" name="axis1EnableStateLabel">
+               <property name="text">
+                <string>轴1 未知</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="0">
+              <widget class="QLabel" name="axis2EnableStateLabel">
+               <property name="text">
+                <string>轴2 未知</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="1" column="1">
+              <widget class="QLabel" name="axis3EnableStateLabel">
+               <property name="text">
+                <string>轴3 未知</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="0">
+              <widget class="QLabel" name="axis4EnableStateLabel">
+               <property name="text">
+                <string>轴4 未知</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="2" column="1">
+              <widget class="QLabel" name="axis5EnableStateLabel">
+               <property name="text">
+                <string>轴5 未知</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="0">
+              <widget class="QLabel" name="axis6EnableStateLabel">
+               <property name="text">
+                <string>轴6 未知</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="3" column="1">
+              <widget class="QLabel" name="axis7EnableStateLabel">
+               <property name="text">
+                <string>轴7 未知</string>
+               </property>
+               <property name="alignment">
+                <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </widget>
           </item>
          </layout>
@@ -422,7 +307,7 @@
           <item>
            <widget class="QLabel" name="globalEmergencyHintLabel">
             <property name="text">
-             <string>立即停止连续插补或正在执行的单轴点位运动。</string>
+             <string>立即停止当前正在执行的连续插补、单轴点位或速度闭环运动。</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>
@@ -458,7 +343,7 @@
       </property>
       <widget class="QTabWidget" name="tabWidget">
        <property name="currentIndex">
-        <number>0</number>
+        <number>3</number>
        </property>
        <widget class="QWidget" name="contiTestTab">
         <attribute name="title">
@@ -475,926 +360,1136 @@
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>1040</width>
-              <height>900</height>
+              <width>781</width>
+              <height>1063</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="contiTestLayout">
              <item>
-          <layout class="QHBoxLayout" name="settingsLayout">
-           <item>
-            <widget class="QGroupBox" name="testGroup">
-             <property name="title">
-              <string>测试轨迹（五次多项式）</string>
-             </property>
-             <layout class="QFormLayout" name="testForm">
-              <item row="0" column="0">
-               <widget class="QLabel" name="stageLabel">
-                <property name="text">
-                 <string>测试阶段</string>
-                </property>
-               </widget>
-              </item>
-              <item row="0" column="1">
-               <widget class="QComboBox" name="stageCombo">
-                <item>
+              <layout class="QHBoxLayout" name="settingsLayout">
+               <item>
+                <widget class="QWidget" name="contiLeftPanel" native="true">
+                 <layout class="QVBoxLayout" name="contiLeftPanelLayout">
+                  <property name="leftMargin">
+                   <number>0</number>
+                  </property>
+                  <property name="topMargin">
+                   <number>0</number>
+                  </property>
+                  <property name="rightMargin">
+                   <number>0</number>
+                  </property>
+                  <property name="bottomMargin">
+                   <number>0</number>
+                  </property>
+                  <item>
+                   <widget class="QGroupBox" name="contiRuntimeStatusGroup">
+                    <property name="title">
+                     <string>插补轴与运行状态</string>
+                    </property>
+                    <layout class="QGridLayout" name="contiRuntimeStatusLayout">
+                     <item row="0" column="0" colspan="2">
+                      <widget class="QPushButton" name="contiEnableAxesButton">
+                       <property name="toolTip">
+                        <string>使能本页“主动轴”和“保持/第二轴”所选的测试轴。</string>
+                       </property>
+                       <property name="text">
+                        <string>使能插补测试轴</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="0" column="2" colspan="2">
+                      <widget class="QPushButton" name="contiDisableAxesButton">
+                       <property name="toolTip">
+                        <string>失能本页“主动轴”和“保持/第二轴”所选的测试轴。</string>
+                       </property>
+                       <property name="text">
+                        <string>失能插补测试轴</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="0">
+                      <widget class="QLabel" name="contiRunStateLabel">
+                       <property name="text">
+                        <string>runState</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="1">
+                      <widget class="QLabel" name="contiRunStateValueLabel">
+                       <property name="text">
+                        <string>4</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="2">
+                      <widget class="QLabel" name="contiMarkLabel">
+                       <property name="text">
+                        <string>当前 / 已推送 mark</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="1" column="3">
+                      <widget class="QLabel" name="contiMarkValueLabel">
+                       <property name="text">
+                        <string>0 / 0</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="2" column="0">
+                      <widget class="QLabel" name="contiBufferLabel">
+                       <property name="text">
+                        <string>缓冲段数</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="2" column="1">
+                      <widget class="QLabel" name="contiBufferValueLabel">
+                       <property name="text">
+                        <string>0</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="2" column="2">
+                      <widget class="QLabel" name="contiSpaceLabel">
+                       <property name="text">
+                        <string>缓冲剩余空间</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="2" column="3">
+                      <widget class="QLabel" name="contiSpaceValueLabel">
+                       <property name="text">
+                        <string>0</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="3" column="0">
+                      <widget class="QLabel" name="contiHostQueueLabel">
+                       <property name="text">
+                        <string>上位机队列</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="3" column="1">
+                      <widget class="QLabel" name="contiHostQueueValueLabel">
+                       <property name="text">
+                        <string>0</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="3" column="2">
+                      <widget class="QLabel" name="contiPlanningAlignmentLabel">
+                       <property name="text">
+                        <string>轨迹规划周期</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="3" column="3">
+                      <widget class="QLabel" name="contiPlanningAlignmentValueLabel">
+                       <property name="text">
+                        <string>待初始化</string>
+                       </property>
+                       <property name="wordWrap">
+                        <bool>true</bool>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="4" column="0">
+                      <widget class="QLabel" name="contiExpectedPlanTimeLabel">
+                       <property name="text">
+                        <string>期望 / 卡侧计划</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="4" column="1">
+                      <widget class="QLabel" name="contiExpectedPlanTimeValueLabel">
+                       <property name="text">
+                        <string>0.0 / 0.0 ms</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="4" column="2">
+                      <widget class="QLabel" name="contiPhaseErrorLabel">
+                       <property name="text">
+                        <string>相位误差</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="4" column="3">
+                      <widget class="QLabel" name="contiPhaseErrorValueLabel">
+                       <property name="text">
+                        <string>0.0 ms</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="5" column="0">
+                      <widget class="QLabel" name="contiBufferTimeLabel">
+                       <property name="text">
+                        <string>规划缓冲</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="5" column="1">
+                      <widget class="QLabel" name="contiBufferTimeValueLabel">
+                       <property name="text">
+                        <string>0.0 ms</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="5" column="2">
+                      <widget class="QLabel" name="contiRatioApiAgeLabel">
+                       <property name="text">
+                        <string>倍率 API 距今</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="5" column="3">
+                      <widget class="QLabel" name="contiRatioApiAgeValueLabel">
+                       <property name="text">
+                        <string>-- ms</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="6" column="0">
+                      <widget class="QLabel" name="contiRatioDiagLabel">
+                       <property name="text">
+                        <string>倍率 ref/phase/buffer/cmd/applied</string>
+                       </property>
+                       <property name="wordWrap">
+                        <bool>true</bool>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="6" column="1" colspan="3">
+                      <widget class="QLabel" name="contiRatioDiagValueLabel">
+                       <property name="text">
+                        <string>0.000 / 0.000 / 0.000 / 0.000 / 0.000</string>
+                       </property>
+                       <property name="wordWrap">
+                        <bool>true</bool>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item>
+                 <widget class="QGroupBox" name="testGroup">
+                  <property name="title">
+                  <string>测试轨迹参数</string>
+                    </property>
+                    <layout class="QFormLayout" name="testForm">
+                     <item row="0" column="0">
+                      <widget class="QLabel" name="stageLabel">
+                       <property name="text">
+                        <string>测试阶段</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="0" column="1">
+                      <widget class="QComboBox" name="stageCombo">
+                       <item>
+                        <property name="text">
+                         <string>阶段一：单轴运动</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>阶段二：双轴同步</string>
+                        </property>
+                       </item>
+                      </widget>
+                     </item>
+                     <item row="1" column="0" colspan="2">
+                      <widget class="QLabel" name="stageHintLabel">
+                       <property name="wordWrap">
+                        <bool>true</bool>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="2" column="0">
+                      <widget class="QLabel" name="cardLabel">
+                       <property name="text">
+                        <string>卡号</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="2" column="1">
+                      <widget class="QSpinBox" name="cardSpin">
+                       <property name="maximum">
+                        <number>15</number>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="3" column="0">
+                      <widget class="QLabel" name="crdLabel">
+                       <property name="text">
+                        <string>坐标系</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="3" column="1">
+                      <widget class="QSpinBox" name="crdSpin">
+                       <property name="maximum">
+                        <number>7</number>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="4" column="0">
+                      <widget class="QLabel" name="activeAxisLabel">
+                       <property name="text">
+                        <string>主动轴</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="4" column="1">
+                      <widget class="QComboBox" name="activeAxisCombo">
+                       <item>
+                        <property name="text">
+                         <string>0</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>1</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>2</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>3</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>4</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>5</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>6</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>7</string>
+                        </property>
+                       </item>
+                      </widget>
+                     </item>
+                     <item row="5" column="0">
+                      <widget class="QLabel" name="holdAxisLabel">
+                       <property name="text">
+                        <string>保持/第二轴</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="5" column="1">
+                      <widget class="QComboBox" name="holdAxisCombo">
+                       <property name="currentIndex">
+                        <number>1</number>
+                       </property>
+                       <item>
+                        <property name="text">
+                         <string>0</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>1</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>2</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>3</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>4</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>5</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>6</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>7</string>
+                        </property>
+                       </item>
+                      </widget>
+                     </item>
+                     <item row="6" column="0">
+                      <widget class="QLabel" name="activeDeltaLabel">
+                       <property name="text">
+                        <string>主动轴位移</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="6" column="1">
+                      <widget class="QDoubleSpinBox" name="activeDeltaSpin">
+                       <property name="suffix">
+                        <string> °</string>
+                       </property>
+                       <property name="decimals">
+                        <number>4</number>
+                       </property>
+                       <property name="minimum">
+                        <double>-1000000.000000000000000</double>
+                       </property>
+                       <property name="maximum">
+                        <double>1000000.000000000000000</double>
+                       </property>
+                       <property name="value">
+                        <double>1.000000000000000</double>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="7" column="0">
+                      <widget class="QLabel" name="holdDeltaLabel">
+                       <property name="text">
+                        <string>第二轴位移</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="7" column="1">
+                      <widget class="QDoubleSpinBox" name="holdDeltaSpin">
+                       <property name="suffix">
+                        <string> °</string>
+                       </property>
+                       <property name="decimals">
+                        <number>4</number>
+                       </property>
+                       <property name="minimum">
+                        <double>-1000000.000000000000000</double>
+                       </property>
+                       <property name="maximum">
+                        <double>1000000.000000000000000</double>
+                       </property>
+                       <property name="value">
+                        <double>1.000000000000000</double>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="8" column="0">
+                      <widget class="QLabel" name="durationLabel">
+                       <property name="text">
+                        <string>轨迹时长</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="8" column="1">
+                      <widget class="QDoubleSpinBox" name="durationSpin">
+                       <property name="suffix">
+                        <string> s</string>
+                       </property>
+                       <property name="decimals">
+                        <number>3</number>
+                       </property>
+                       <property name="minimum">
+                        <double>0.100000000000000</double>
+                       </property>
+                       <property name="maximum">
+                        <double>3600.000000000000000</double>
+                       </property>
+                       <property name="value">
+                        <double>2.000000000000000</double>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="9" column="0">
+                      <widget class="QLabel" name="producerPeriodLabel">
+                       <property name="text">
+                        <string>产点周期</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="9" column="1">
+                      <widget class="QSpinBox" name="producerPeriodSpin">
+                       <property name="suffix">
+                        <string> ms</string>
+                       </property>
+                       <property name="minimum">
+                        <number>1</number>
+                       </property>
+                       <property name="maximum">
+                        <number>1000</number>
+                       </property>
+                       <property name="value">
+                        <number>10</number>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="10" column="0">
+                      <widget class="QLabel" name="cardUnitDefinitionLabel">
+                       <property name="text">
+                        <string>板卡 unit 定义</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="10" column="1">
+                      <widget class="QComboBox" name="cardUnitDefinitionCombo">
+                       <item>
+                        <property name="text">
+                         <string>500.622 pulse/unit（1 unit = 1°）</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>50.0622 pulse/unit（1 unit = 0.1°）</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>5.00622 pulse/unit（1 unit = 0.01°）</string>
+                        </property>
+                       </item>
+                      </widget>
+                     </item>
+                     <item row="11" column="0">
+                      <widget class="QLabel" name="trajectoryPointModeLabel">
+                       <property name="text">
+                        <string>轨迹产点方式</string>
+                       </property>
+                      </widget>
+                     </item>
+                     <item row="11" column="1">
+                      <widget class="QComboBox" name="trajectoryPointModeCombo">
+                       <item>
+                        <property name="text">
+                         <string>五次多项式（正式轨迹）</string>
+                        </property>
+                       </item>
+                       <item>
+                        <property name="text">
+                         <string>等间距直线（前瞻对照）</string>
+                        </property>
+                       </item>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item>
+                <widget class="QGroupBox" name="contiGroup">
+                 <property name="title">
+                  <string>连续插补参数</string>
+                 </property>
+                 <layout class="QFormLayout" name="contiForm">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="maxVelocityLabel">
+                    <property name="text">
+                     <string>最大矢量速度</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QDoubleSpinBox" name="maxVelocitySpin">
+                    <property name="suffix">
+                     <string> °/s</string>
+                    </property>
+                    <property name="decimals">
+                     <number>4</number>
+                    </property>
+                    <property name="minimum">
+                     <double>0.000100000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>100000000.000000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>10.000000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="0">
+                   <widget class="QLabel" name="accelerationLabel">
+                    <property name="text">
+                     <string>加速时间</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="1">
+                   <widget class="QDoubleSpinBox" name="accelerationSpin">
+                    <property name="suffix">
+                     <string> s</string>
+                    </property>
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="minimum">
+                     <double>0.001000000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>60.000000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.050000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="decelerationLabel">
+                    <property name="text">
+                     <string>减速时间</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QDoubleSpinBox" name="decelerationSpin">
+                    <property name="suffix">
+                     <string> s</string>
+                    </property>
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="minimum">
+                     <double>0.001000000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>60.000000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.050000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="3" column="0">
+                   <widget class="QLabel" name="sCurveLabel">
+                    <property name="text">
+                     <string>S 曲线时间</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="3" column="1">
+                   <widget class="QDoubleSpinBox" name="sCurveSpin">
+                    <property name="suffix">
+                     <string> s</string>
+                    </property>
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="minimum">
+                     <double>0.000000000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>60.000000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.020000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="4" column="0">
+                   <widget class="QLabel" name="speedRatioLabel">
+                    <property name="text">
+                     <string>倍率上限</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="4" column="1">
+                   <widget class="QDoubleSpinBox" name="speedRatioSpin">
+                    <property name="decimals">
+                     <number>2</number>
+                    </property>
+                    <property name="minimum">
+                     <double>0.200000000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>2.000000000000000</double>
+                    </property>
+                    <property name="singleStep">
+                     <double>0.050000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>1.000000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="5" column="0">
+                   <widget class="QLabel" name="lookaheadLabel">
+                    <property name="text">
+                     <string>小线段前瞻</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="5" column="1">
+                   <widget class="QCheckBox" name="lookaheadCheck">
+                    <property name="text">
+                     <string>启用</string>
+                    </property>
+                    <property name="checked">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="6" column="0">
+                   <widget class="QLabel" name="pathErrorLabel">
+                    <property name="text">
+                     <string>轨迹允许误差</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="6" column="1">
+                   <widget class="QDoubleSpinBox" name="pathErrorSpin">
+                    <property name="suffix">
+                     <string> °</string>
+                    </property>
+                    <property name="decimals">
+                     <number>4</number>
+                    </property>
+                    <property name="maximum">
+                     <double>1000000.000000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="7" column="0">
+                   <widget class="QLabel" name="preloadSegmentsLabel">
+                    <property name="text">
+                     <string>启动预压时间</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="7" column="1">
+                   <widget class="QWidget" name="preloadModeContainer" native="true">
+                    <layout class="QVBoxLayout" name="preloadModeLayout">
+                     <property name="leftMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="topMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="rightMargin">
+                      <number>0</number>
+                     </property>
+                     <property name="bottomMargin">
+                      <number>0</number>
+                     </property>
+                     <item>
+                      <widget class="QSpinBox" name="preloadSegmentsSpin">
+                       <property name="suffix">
+                        <string> ms</string>
+                       </property>
+                       <property name="minimum">
+                        <number>10</number>
+                       </property>
+                       <property name="maximum">
+                        <number>5000</number>
+                       </property>
+                       <property name="value">
+                        <number>200</number>
+                       </property>
+                      </widget>
+                     </item>
+                     <item>
+                      <widget class="QCheckBox" name="preloadAllTrajectoryCheck">
+                       <property name="toolTip">
+                        <string>启动前将全部有效轨迹段压入控制卡。仅适用于未超过卡侧可用段容量的短轨迹；运行中不再产点或补段。</string>
+                       </property>
+                       <property name="text">
+                        <string>一次性预装全部轨迹（对照）</string>
+                       </property>
+                      </widget>
+                     </item>
+                    </layout>
+                   </widget>
+                  </item>
+                  <item row="8" column="0">
+                   <widget class="QLabel" name="targetBufferLabel">
+                    <property name="text">
+                     <string>目标缓冲时间</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="8" column="1">
+                   <widget class="QSpinBox" name="targetBufferSpin">
+                    <property name="suffix">
+                     <string> ms</string>
+                    </property>
+                    <property name="minimum">
+                     <number>10</number>
+                    </property>
+                    <property name="maximum">
+                     <number>5000</number>
+                    </property>
+                    <property name="value">
+                     <number>200</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="9" column="0">
+                   <widget class="QLabel" name="lowBufferLabel">
+                    <property name="text">
+                     <string>低水位时间</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="9" column="1">
+                   <widget class="QSpinBox" name="lowBufferSpin">
+                    <property name="suffix">
+                     <string> ms</string>
+                    </property>
+                    <property name="minimum">
+                     <number>1</number>
+                    </property>
+                    <property name="maximum">
+                     <number>999</number>
+                    </property>
+                    <property name="value">
+                     <number>100</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="10" column="0">
+                   <widget class="QLabel" name="timeSyncEnableLabel">
+                    <property name="text">
+                     <string>时间同步倍率控制</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="10" column="1">
+                   <widget class="QCheckBox" name="timeSyncEnableCheck">
+                    <property name="text">
+                     <string>启用</string>
+                    </property>
+                    <property name="checked">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="11" column="0">
+                   <widget class="QLabel" name="criticalBufferLabel">
+                    <property name="text">
+                     <string>危险水位时间</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="11" column="1">
+                   <widget class="QSpinBox" name="criticalBufferSpin">
+                    <property name="suffix">
+                     <string> ms</string>
+                    </property>
+                    <property name="minimum">
+                     <number>1</number>
+                    </property>
+                    <property name="maximum">
+                     <number>4999</number>
+                    </property>
+                    <property name="value">
+                     <number>50</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="12" column="0">
+                   <widget class="QLabel" name="ratioMinLabel">
+                    <property name="text">
+                     <string>倍率下限</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="12" column="1">
+                   <widget class="QDoubleSpinBox" name="ratioMinSpin">
+                    <property name="decimals">
+                     <number>2</number>
+                    </property>
+                    <property name="minimum">
+                     <double>0.010000000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>1.000000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.200000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="13" column="0">
+                   <widget class="QLabel" name="phaseGainLabel">
+                    <property name="text">
+                     <string>相位增益</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="13" column="1">
+                   <widget class="QDoubleSpinBox" name="phaseGainSpin">
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="maximum">
+                     <double>10.000000000000000</double>
+                    </property>
+                    <property name="singleStep">
+                     <double>0.100000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.800000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="14" column="0">
+                   <widget class="QLabel" name="ratioDeadbandLabel">
+                    <property name="text">
+                     <string>倍率变化死区</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="14" column="1">
+                   <widget class="QDoubleSpinBox" name="ratioDeadbandSpin">
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="maximum">
+                     <double>1.000000000000000</double>
+                    </property>
+                    <property name="singleStep">
+                     <double>0.005000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.010000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="15" column="0">
+                   <widget class="QLabel" name="ratioStepLabel">
+                    <property name="text">
+                     <string>单次倍率变化上限</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="15" column="1">
+                   <widget class="QDoubleSpinBox" name="ratioStepSpin">
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="minimum">
+                     <double>0.001000000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>1.000000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.020000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="16" column="0">
+                   <widget class="QLabel" name="ratioPeriodLabel">
+                    <property name="text">
+                     <string>倍率控制周期</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="16" column="1">
+                   <widget class="QSpinBox" name="ratioPeriodSpin">
+                    <property name="suffix">
+                     <string> ms</string>
+                    </property>
+                    <property name="minimum">
+                     <number>5</number>
+                    </property>
+                    <property name="maximum">
+                     <number>1000</number>
+                    </property>
+                    <property name="value">
+                     <number>10</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="17" column="0">
+                   <widget class="QLabel" name="markOffsetLabel">
+                    <property name="text">
+                     <string>mark 校准偏移</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="17" column="1">
+                   <widget class="QSpinBox" name="markOffsetSpin">
+                    <property name="minimum">
+                     <number>-20</number>
+                    </property>
+                    <property name="maximum">
+                     <number>20</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="18" column="0">
+                   <widget class="QLabel" name="bufferGainLabel">
+                    <property name="text">
+                     <string>缓冲水位增益</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="18" column="1">
+                   <widget class="QDoubleSpinBox" name="bufferGainSpin">
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="maximum">
+                     <double>2.000000000000000</double>
+                    </property>
+                    <property name="singleStep">
+                     <double>0.010000000000000</double>
+                    </property>
+                    <property name="value">
+                     <double>0.100000000000000</double>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="19" column="0">
+                   <widget class="QLabel" name="executionDelayLabel">
+                    <property name="text">
+                     <string>固定执行延迟</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="19" column="1">
+                   <widget class="QSpinBox" name="executionDelaySpin">
+                    <property name="suffix">
+                     <string> ms</string>
+                    </property>
+                    <property name="minimum">
+                     <number>10</number>
+                    </property>
+                    <property name="maximum">
+                     <number>5000</number>
+                    </property>
+                    <property name="value">
+                     <number>250</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="20" column="0">
+                   <widget class="QLabel" name="phaseDeadbandLabel">
+                    <property name="text">
+                     <string>相位误差死区</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="20" column="1">
+                   <widget class="QSpinBox" name="phaseDeadbandSpin">
+                    <property name="suffix">
+                     <string> ms</string>
+                    </property>
+                    <property name="maximum">
+                     <number>1000</number>
+                    </property>
+                    <property name="value">
+                     <number>20</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="21" column="0">
+                   <widget class="QLabel" name="ratioApiIntervalLabel">
+                    <property name="text">
+                     <string>普通倍率 API 最小间隔</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="21" column="1">
+                   <widget class="QSpinBox" name="ratioApiIntervalSpin">
+                    <property name="suffix">
+                     <string> ms</string>
+                    </property>
+                    <property name="minimum">
+                     <number>10</number>
+                    </property>
+                    <property name="maximum">
+                     <number>5000</number>
+                    </property>
+                    <property name="value">
+                     <number>100</number>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="22" column="0">
+                   <widget class="QLabel" name="ratioSafetyApiIntervalLabel">
+                    <property name="text">
+                     <string>安全倍率 API 最小间隔</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="22" column="1">
+                   <widget class="QSpinBox" name="ratioSafetyApiIntervalSpin">
+                    <property name="suffix">
+                     <string> ms</string>
+                    </property>
+                    <property name="minimum">
+                     <number>10</number>
+                    </property>
+                    <property name="maximum">
+                     <number>5000</number>
+                    </property>
+                    <property name="value">
+                     <number>50</number>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <layout class="QHBoxLayout" name="contiButtonLayout">
+               <item>
+                <widget class="QPushButton" name="startButton">
                  <property name="text">
-                  <string>阶段一：单轴运动</string>
+                  <string>开始连续插补</string>
                  </property>
-                </item>
-                <item>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="stopButton">
                  <property name="text">
-                  <string>阶段二：双轴同步</string>
+                  <string>减速停止</string>
                  </property>
-                </item>
-               </widget>
-              </item>
-              <item row="1" column="0" colspan="2">
-               <widget class="QLabel" name="stageHintLabel">
-                <property name="wordWrap">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="2" column="0">
-               <widget class="QLabel" name="cardLabel">
-                <property name="text">
-                 <string>卡号</string>
-                </property>
-               </widget>
-              </item>
-              <item row="2" column="1">
-               <widget class="QSpinBox" name="cardSpin">
-                <property name="maximum">
-                 <number>15</number>
-                </property>
-               </widget>
-              </item>
-              <item row="3" column="0">
-               <widget class="QLabel" name="crdLabel">
-                <property name="text">
-                 <string>坐标系</string>
-                </property>
-               </widget>
-              </item>
-              <item row="3" column="1">
-               <widget class="QSpinBox" name="crdSpin">
-                <property name="maximum">
-                 <number>7</number>
-                </property>
-               </widget>
-              </item>
-              <item row="4" column="0">
-               <widget class="QLabel" name="activeAxisLabel">
-                <property name="text">
-                 <string>主动轴</string>
-                </property>
-               </widget>
-              </item>
-              <item row="4" column="1">
-               <widget class="QComboBox" name="activeAxisCombo">
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="contiTrajectoryGroup">
+               <property name="title">
+                <string>主动轴轨迹对比（低频显示）</string>
+               </property>
+               <layout class="QVBoxLayout" name="contiTrajectoryLayout">
                 <item>
-                 <property name="text">
-                  <string>0</string>
-                 </property>
+                 <widget class="QChartView" name="contiTrajectoryChartView">
+                  <property name="minimumSize">
+                   <size>
+                    <width>0</width>
+                    <height>300</height>
+                   </size>
+                  </property>
+                 </widget>
                 </item>
-                <item>
-                 <property name="text">
-                  <string>1</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>2</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>3</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>4</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>5</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>6</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>7</string>
-                 </property>
-                </item>
-               </widget>
-              </item>
-              <item row="5" column="0">
-               <widget class="QLabel" name="holdAxisLabel">
-                <property name="text">
-                 <string>保持/第二轴</string>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="1">
-               <widget class="QComboBox" name="holdAxisCombo">
-                <property name="currentIndex">
-                 <number>1</number>
-                </property>
-                <item>
-                 <property name="text">
-                  <string>0</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>1</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>2</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>3</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>4</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>5</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>6</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>7</string>
-                 </property>
-                </item>
-               </widget>
-              </item>
-              <item row="6" column="0">
-               <widget class="QLabel" name="activeDeltaLabel">
-                <property name="text">
-                 <string>主动轴位移</string>
-                </property>
-               </widget>
-              </item>
-              <item row="6" column="1">
-               <widget class="QDoubleSpinBox" name="activeDeltaSpin">
-                <property name="suffix">
-                 <string> °</string>
-                </property>
-                <property name="decimals">
-                 <number>4</number>
-                </property>
-                <property name="minimum">
-                 <double>-1000000.000000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>1000000.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>1.000000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="7" column="0">
-               <widget class="QLabel" name="holdDeltaLabel">
-                <property name="text">
-                 <string>第二轴位移</string>
-                </property>
-               </widget>
-              </item>
-              <item row="7" column="1">
-               <widget class="QDoubleSpinBox" name="holdDeltaSpin">
-                <property name="suffix">
-                 <string> °</string>
-                </property>
-                <property name="decimals">
-                 <number>4</number>
-                </property>
-                <property name="minimum">
-                 <double>-1000000.000000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>1000000.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>1.000000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="8" column="0">
-               <widget class="QLabel" name="durationLabel">
-                <property name="text">
-                 <string>轨迹时长</string>
-                </property>
-               </widget>
-              </item>
-              <item row="8" column="1">
-               <widget class="QDoubleSpinBox" name="durationSpin">
-                <property name="suffix">
-                 <string> s</string>
-                </property>
-                <property name="decimals">
-                 <number>3</number>
-                </property>
-                <property name="minimum">
-                 <double>0.100000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>3600.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>2.000000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="9" column="0">
-               <widget class="QLabel" name="producerPeriodLabel">
-                <property name="text">
-                 <string>产点周期</string>
-                </property>
-               </widget>
-              </item>
-              <item row="9" column="1">
-               <widget class="QSpinBox" name="producerPeriodSpin">
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-                <property name="minimum">
-                 <number>1</number>
-                </property>
-                <property name="maximum">
-                 <number>1000</number>
-                </property>
-                <property name="value">
-                 <number>10</number>
-                </property>
-               </widget>
-              </item>
-              <item row="10" column="0">
-               <widget class="QLabel" name="cardUnitDefinitionLabel">
-                <property name="text">
-                 <string>板卡 unit 定义</string>
-                </property>
-               </widget>
-              </item>
-              <item row="10" column="1">
-               <widget class="QComboBox" name="cardUnitDefinitionCombo">
-                <item>
-                 <property name="text">
-                  <string>500.622 pulse/unit（1 unit = 1°）</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>50.0622 pulse/unit（1 unit = 0.1°）</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>5.00622 pulse/unit（1 unit = 0.01°）</string>
-                 </property>
-                </item>
-               </widget>
-              </item>
-              <item row="11" column="0">
-               <widget class="QLabel" name="trajectoryPointModeLabel">
-                <property name="text">
-                 <string>轨迹产点方式</string>
-                </property>
-               </widget>
-              </item>
-              <item row="11" column="1">
-               <widget class="QComboBox" name="trajectoryPointModeCombo">
-                <item>
-                 <property name="text">
-                  <string>五次多项式（正式轨迹）</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>等间距直线（前瞻对照）</string>
-                 </property>
-                </item>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </item>
-           <item>
-            <widget class="QGroupBox" name="contiGroup">
-             <property name="title">
-              <string>连续插补参数</string>
-             </property>
-             <layout class="QFormLayout" name="contiForm">
-              <item row="0" column="0">
-               <widget class="QLabel" name="maxVelocityLabel">
-                <property name="text">
-                 <string>最大矢量速度</string>
-                </property>
-               </widget>
-              </item>
-              <item row="0" column="1">
-               <widget class="QDoubleSpinBox" name="maxVelocitySpin">
-                <property name="suffix">
-                 <string> °/s</string>
-                </property>
-                <property name="decimals">
-                 <number>4</number>
-                </property>
-                <property name="minimum">
-                 <double>0.000100000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>100000000.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>10.000000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="0">
-               <widget class="QLabel" name="accelerationLabel">
-                <property name="text">
-                 <string>加速时间</string>
-                </property>
-               </widget>
-              </item>
-              <item row="1" column="1">
-               <widget class="QDoubleSpinBox" name="accelerationSpin">
-                <property name="suffix">
-                 <string> s</string>
-                </property>
-                <property name="decimals">
-                 <number>3</number>
-                </property>
-                <property name="minimum">
-                 <double>0.001000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>60.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>0.050000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="2" column="0">
-               <widget class="QLabel" name="decelerationLabel">
-                <property name="text">
-                 <string>减速时间</string>
-                </property>
-               </widget>
-              </item>
-              <item row="2" column="1">
-               <widget class="QDoubleSpinBox" name="decelerationSpin">
-                <property name="suffix">
-                 <string> s</string>
-                </property>
-                <property name="decimals">
-                 <number>3</number>
-                </property>
-                <property name="minimum">
-                 <double>0.001000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>60.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>0.050000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="3" column="0">
-               <widget class="QLabel" name="sCurveLabel">
-                <property name="text">
-                 <string>S 曲线时间</string>
-                </property>
-               </widget>
-              </item>
-              <item row="3" column="1">
-               <widget class="QDoubleSpinBox" name="sCurveSpin">
-                <property name="suffix">
-                 <string> s</string>
-                </property>
-                <property name="decimals">
-                 <number>3</number>
-                </property>
-                <property name="minimum">
-                 <double>0.000000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>60.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>0.020000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="4" column="0">
-               <widget class="QLabel" name="speedRatioLabel">
-                <property name="text">
-                 <string>倍率上限</string>
-                </property>
-               </widget>
-              </item>
-              <item row="4" column="1">
-               <widget class="QDoubleSpinBox" name="speedRatioSpin">
-                <property name="decimals">
-                 <number>2</number>
-                </property>
-               <property name="minimum">
-                 <double>0.200000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>2.000000000000000</double>
-                </property>
-                <property name="singleStep">
-                 <double>0.050000000000000</double>
-                </property>
-                <property name="value">
-                 <double>1.000000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="0">
-               <widget class="QLabel" name="lookaheadLabel">
-                <property name="text">
-                 <string>小线段前瞻</string>
-                </property>
-               </widget>
-              </item>
-              <item row="5" column="1">
-               <widget class="QCheckBox" name="lookaheadCheck">
-                <property name="text">
-                 <string>启用</string>
-                </property>
-                <property name="checked">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="6" column="0">
-               <widget class="QLabel" name="pathErrorLabel">
-                <property name="text">
-                 <string>轨迹允许误差</string>
-                </property>
-               </widget>
-              </item>
-              <item row="6" column="1">
-               <widget class="QDoubleSpinBox" name="pathErrorSpin">
-                <property name="suffix">
-                 <string> °</string>
-                </property>
-                <property name="decimals">
-                 <number>4</number>
-                </property>
-                <property name="maximum">
-                 <double>1000000.000000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="7" column="0">
-               <widget class="QLabel" name="preloadSegmentsLabel">
-                <property name="text">
-                 <string>启动预压时间</string>
-                </property>
-               </widget>
-              </item>
-              <item row="7" column="1">
-               <widget class="QWidget" name="preloadModeContainer" native="true">
-                <layout class="QVBoxLayout" name="preloadModeLayout">
-                 <property name="leftMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="topMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="rightMargin">
-                  <number>0</number>
-                 </property>
-                 <property name="bottomMargin">
-                  <number>0</number>
-                 </property>
-                 <item>
-                  <widget class="QSpinBox" name="preloadSegmentsSpin">
-                   <property name="minimum">
-                    <number>10</number>
-                   </property>
-                   <property name="maximum">
-                    <number>5000</number>
-                   </property>
-                   <property name="value">
-                    <number>200</number>
-                   </property>
-                   <property name="suffix">
-                    <string> ms</string>
-                   </property>
-                  </widget>
-                 </item>
-                 <item>
-                  <widget class="QCheckBox" name="preloadAllTrajectoryCheck">
-                   <property name="toolTip">
-                    <string>启动前将全部有效轨迹段压入控制卡。仅适用于未超过卡侧可用段容量的短轨迹；运行中不再产点或补段。</string>
-                   </property>
-                   <property name="text">
-                    <string>一次性预装全部轨迹（对照）</string>
-                   </property>
-                  </widget>
-                 </item>
-                </layout>
-               </widget>
-              </item>
-              <item row="8" column="0">
-               <widget class="QLabel" name="targetBufferLabel">
-                <property name="text">
-                 <string>目标缓冲时间</string>
-                </property>
-               </widget>
-              </item>
-              <item row="8" column="1">
-               <widget class="QSpinBox" name="targetBufferSpin">
-               <property name="minimum">
-                 <number>10</number>
-                </property>
-                <property name="maximum">
-                 <number>5000</number>
-                </property>
-                <property name="value">
-                 <number>200</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-               </widget>
-              </item>
-              <item row="9" column="0">
-               <widget class="QLabel" name="lowBufferLabel">
-                <property name="text">
-                 <string>低水位时间</string>
-                </property>
-               </widget>
-              </item>
-              <item row="9" column="1">
-               <widget class="QSpinBox" name="lowBufferSpin">
-                <property name="minimum">
-                 <number>1</number>
-                </property>
-                <property name="maximum">
-                 <number>999</number>
-                </property>
-               <property name="value">
-                 <number>100</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-               </widget>
-              </item>
-              <item row="10" column="0">
-               <widget class="QLabel" name="timeSyncEnableLabel">
-                <property name="text">
-                 <string>时间同步倍率控制</string>
-                </property>
-               </widget>
-              </item>
-              <item row="10" column="1">
-               <widget class="QCheckBox" name="timeSyncEnableCheck">
-                <property name="text">
-                 <string>启用</string>
-                </property>
-                <property name="checked">
-                 <bool>true</bool>
-                </property>
-               </widget>
-              </item>
-              <item row="11" column="0">
-               <widget class="QLabel" name="criticalBufferLabel">
-                <property name="text">
-                 <string>危险水位时间</string>
-                </property>
-               </widget>
-              </item>
-              <item row="11" column="1">
-               <widget class="QSpinBox" name="criticalBufferSpin">
-                <property name="minimum">
-                 <number>1</number>
-                </property>
-                <property name="maximum">
-                 <number>4999</number>
-                </property>
-                <property name="value">
-                 <number>50</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-               </widget>
-              </item>
-              <item row="12" column="0">
-               <widget class="QLabel" name="ratioMinLabel">
-                <property name="text">
-                 <string>倍率下限</string>
-                </property>
-               </widget>
-              </item>
-              <item row="12" column="1">
-               <widget class="QDoubleSpinBox" name="ratioMinSpin">
-                <property name="decimals">
-                 <number>2</number>
-                </property>
-                <property name="minimum">
-                 <double>0.010000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>1.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>0.200000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="13" column="0">
-               <widget class="QLabel" name="phaseGainLabel">
-                <property name="text">
-                 <string>相位增益</string>
-                </property>
-               </widget>
-              </item>
-              <item row="13" column="1">
-               <widget class="QDoubleSpinBox" name="phaseGainSpin">
-                <property name="decimals">
-                 <number>3</number>
-                </property>
-                <property name="maximum">
-                 <double>10.000000000000000</double>
-                </property>
-                <property name="singleStep">
-                 <double>0.100000000000000</double>
-                </property>
-                <property name="value">
-                 <double>0.800000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="14" column="0">
-               <widget class="QLabel" name="ratioDeadbandLabel">
-                <property name="text">
-                 <string>倍率变化死区</string>
-                </property>
-               </widget>
-              </item>
-              <item row="14" column="1">
-               <widget class="QDoubleSpinBox" name="ratioDeadbandSpin">
-                <property name="decimals">
-                 <number>3</number>
-                </property>
-                <property name="maximum">
-                 <double>1.000000000000000</double>
-                </property>
-                <property name="singleStep">
-                 <double>0.005000000000000</double>
-                </property>
-                <property name="value">
-                 <double>0.010000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="15" column="0">
-               <widget class="QLabel" name="ratioStepLabel">
-                <property name="text">
-                 <string>单次倍率变化上限</string>
-                </property>
-               </widget>
-              </item>
-              <item row="15" column="1">
-               <widget class="QDoubleSpinBox" name="ratioStepSpin">
-                <property name="decimals">
-                 <number>3</number>
-                </property>
-                <property name="minimum">
-                 <double>0.001000000000000</double>
-                </property>
-                <property name="maximum">
-                 <double>1.000000000000000</double>
-                </property>
-                <property name="value">
-                 <double>0.020000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="16" column="0">
-               <widget class="QLabel" name="ratioPeriodLabel">
-                <property name="text">
-                 <string>倍率控制周期</string>
-                </property>
-               </widget>
-              </item>
-              <item row="16" column="1">
-               <widget class="QSpinBox" name="ratioPeriodSpin">
-                <property name="minimum">
-                 <number>5</number>
-                </property>
-                <property name="maximum">
-                 <number>1000</number>
-                </property>
-                <property name="value">
-                 <number>10</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-               </widget>
-              </item>
-              <item row="17" column="0">
-               <widget class="QLabel" name="markOffsetLabel">
-                <property name="text">
-                 <string>mark 校准偏移</string>
-                </property>
-               </widget>
-              </item>
-              <item row="17" column="1">
-               <widget class="QSpinBox" name="markOffsetSpin">
-                <property name="minimum">
-                 <number>-20</number>
-                </property>
-                <property name="maximum">
-                 <number>20</number>
-                </property>
-               </widget>
-              </item>
-              <item row="18" column="0">
-               <widget class="QLabel" name="bufferGainLabel">
-                <property name="text">
-                 <string>缓冲水位增益</string>
-                </property>
-               </widget>
-              </item>
-              <item row="18" column="1">
-               <widget class="QDoubleSpinBox" name="bufferGainSpin">
-                <property name="decimals">
-                 <number>3</number>
-                </property>
-                <property name="maximum">
-                 <double>2.000000000000000</double>
-                </property>
-                <property name="singleStep">
-                 <double>0.010000000000000</double>
-                </property>
-                <property name="value">
-                 <double>0.100000000000000</double>
-                </property>
-               </widget>
-              </item>
-              <item row="19" column="0">
-               <widget class="QLabel" name="executionDelayLabel">
-                <property name="text">
-                 <string>固定执行延迟</string>
-                </property>
-               </widget>
-              </item>
-              <item row="19" column="1">
-               <widget class="QSpinBox" name="executionDelaySpin">
-                <property name="minimum">
-                 <number>10</number>
-                </property>
-                <property name="maximum">
-                 <number>5000</number>
-                </property>
-                <property name="value">
-                 <number>250</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-               </widget>
-              </item>
-              <item row="20" column="0">
-               <widget class="QLabel" name="phaseDeadbandLabel">
-                <property name="text">
-                 <string>相位误差死区</string>
-                </property>
-               </widget>
-              </item>
-              <item row="20" column="1">
-               <widget class="QSpinBox" name="phaseDeadbandSpin">
-                <property name="maximum">
-                 <number>1000</number>
-                </property>
-                <property name="value">
-                 <number>20</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-               </widget>
-              </item>
-              <item row="21" column="0">
-               <widget class="QLabel" name="ratioApiIntervalLabel">
-                <property name="text">
-                 <string>普通倍率 API 最小间隔</string>
-                </property>
-               </widget>
-              </item>
-              <item row="21" column="1">
-               <widget class="QSpinBox" name="ratioApiIntervalSpin">
-                <property name="minimum">
-                 <number>10</number>
-                </property>
-                <property name="maximum">
-                 <number>5000</number>
-                </property>
-                <property name="value">
-                 <number>100</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-               </widget>
-              </item>
-              <item row="22" column="0">
-               <widget class="QLabel" name="ratioSafetyApiIntervalLabel">
-                <property name="text">
-                 <string>安全倍率 API 最小间隔</string>
-                </property>
-               </widget>
-              </item>
-              <item row="22" column="1">
-               <widget class="QSpinBox" name="ratioSafetyApiIntervalSpin">
-                <property name="minimum">
-                 <number>10</number>
-                </property>
-                <property name="maximum">
-                 <number>5000</number>
-                </property>
-                <property name="value">
-                 <number>50</number>
-                </property>
-                <property name="suffix">
-                 <string> ms</string>
-                </property>
-               </widget>
-              </item>
-             </layout>
-            </widget>
-           </item>
-          </layout>
-         </item>
-         <item>
-          <widget class="QGroupBox" name="contiTrajectoryGroup">
-           <property name="title">
-            <string>主动轴轨迹对比（低频显示）</string>
-           </property>
-           <layout class="QVBoxLayout" name="contiTrajectoryLayout">
-            <item>
-             <widget class="QChartView" name="contiTrajectoryChartView">
-              <property name="minimumSize">
-               <size>
-                <width>0</width>
-                <height>300</height>
-               </size>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <layout class="QHBoxLayout" name="contiButtonLayout">
-           <item>
-            <widget class="QPushButton" name="startButton">
-             <property name="text">
-              <string>开始连续插补</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="stopButton">
-             <property name="text">
-              <string>减速停止</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
+               </layout>
+              </widget>
              </item>
             </layout>
            </widget>
@@ -1898,98 +1993,711 @@
            </property>
            <widget class="QWidget" name="velocityControlScrollContent">
             <property name="geometry">
-             <rect><x>0</x><y>0</y><width>1000</width><height>1300</height></rect>
+             <rect>
+              <x>0</x>
+              <y>0</y>
+              <width>781</width>
+              <height>1136</height>
+             </rect>
             </property>
             <layout class="QVBoxLayout" name="velocityControlContentLayout">
              <item>
               <widget class="QGroupBox" name="velocityControlParameterGroup">
-               <property name="title"><string>单轴速度模式位置闭环参数</string></property>
+               <property name="title">
+                <string>单轴速度模式位置闭环参数</string>
+               </property>
                <layout class="QGridLayout" name="velocityControlParameterLayout">
-                <item row="0" column="0"><widget class="QLabel" name="velocityAxisLabel"><property name="text"><string>测试轴</string></property></widget></item>
-                <item row="0" column="1">
-                 <widget class="QComboBox" name="velocityAxisCombo">
-                  <item><property name="text"><string>0</string></property></item><item><property name="text"><string>1</string></property></item>
-                  <item><property name="text"><string>2</string></property></item><item><property name="text"><string>3</string></property></item>
-                  <item><property name="text"><string>4</string></property></item><item><property name="text"><string>5</string></property></item>
-                  <item><property name="text"><string>6</string></property></item><item><property name="text"><string>7</string></property></item>
+                <item row="0" column="0">
+                 <widget class="QLabel" name="velocityAxisLabel">
+                  <property name="text">
+                   <string>测试轴</string>
+                  </property>
                  </widget>
                 </item>
-                <item row="0" column="2"><widget class="QLabel" name="velocityDeltaLabel"><property name="text"><string>相对位移</string></property></widget></item>
-                <item row="0" column="3"><widget class="QDoubleSpinBox" name="velocityDeltaSpin"><property name="decimals"><number>4</number></property><property name="minimum"><double>-1000000.000000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="value"><double>30.000000000000000</double></property><property name="suffix"><string> °</string></property></widget></item>
-                <item row="0" column="4"><widget class="QLabel" name="velocityDurationLabel"><property name="text"><string>轨迹时间</string></property></widget></item>
-                <item row="0" column="5"><widget class="QDoubleSpinBox" name="velocityDurationSpin"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.100000000000000</double></property><property name="maximum"><double>3600.000000000000000</double></property><property name="value"><double>5.000000000000000</double></property><property name="suffix"><string> s</string></property></widget></item>
-                <item row="1" column="0"><widget class="QLabel" name="velocityControlPeriodLabel"><property name="text"><string>控制周期</string></property></widget></item>
-                <item row="1" column="1"><widget class="QSpinBox" name="velocityControlPeriodSpin"><property name="minimum"><number>1</number></property><property name="maximum"><number>100</number></property><property name="value"><number>10</number></property><property name="suffix"><string> ms</string></property></widget></item>
-                <item row="1" column="2"><widget class="QCheckBox" name="velocityFeedforwardCheck"><property name="text"><string>速度前馈</string></property><property name="checked"><bool>true</bool></property></widget></item>
-                <item row="1" column="3"><widget class="QDoubleSpinBox" name="velocityFeedforwardGainSpin"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.000000000000000</double></property><property name="maximum"><double>5.000000000000000</double></property><property name="value"><double>1.000000000000000</double></property></widget></item>
-                <item row="1" column="4"><widget class="QCheckBox" name="velocityPidEnableCheck"><property name="text"><string>启用PID</string></property><property name="checked"><bool>true</bool></property></widget></item>
-                <item row="2" column="0"><widget class="QLabel" name="velocityKpLabel"><property name="text"><string>Kp (1/s)</string></property></widget></item>
-                <item row="2" column="1"><widget class="QDoubleSpinBox" name="velocityKpSpin"><property name="decimals"><number>5</number></property><property name="maximum"><double>1000.000000000000000</double></property></widget></item>
-                <item row="2" column="2"><widget class="QLabel" name="velocityKiLabel"><property name="text"><string>Ki (1/s²)</string></property></widget></item>
-                <item row="2" column="3"><widget class="QDoubleSpinBox" name="velocityKiSpin"><property name="decimals"><number>5</number></property><property name="maximum"><double>1000.000000000000000</double></property></widget></item>
-                <item row="2" column="4"><widget class="QLabel" name="velocityKdLabel"><property name="text"><string>Kd</string></property></widget></item>
-                <item row="2" column="5"><widget class="QDoubleSpinBox" name="velocityKdSpin"><property name="decimals"><number>5</number></property><property name="maximum"><double>1000.000000000000000</double></property></widget></item>
-                <item row="3" column="0"><widget class="QLabel" name="velocityIntegralLimitLabel"><property name="text"><string>积分状态上限</string></property></widget></item>
-                <item row="3" column="1"><widget class="QDoubleSpinBox" name="velocityIntegralLimitSpin"><property name="decimals"><number>3</number></property><property name="maximum"><double>100000.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property><property name="suffix"><string> °·s</string></property></widget></item>
-                <item row="3" column="2"><widget class="QLabel" name="velocityMaxCorrectionLabel"><property name="text"><string>PID修正上限</string></property></widget></item>
-                <item row="3" column="3"><widget class="QDoubleSpinBox" name="velocityMaxCorrectionSpin"><property name="decimals"><number>3</number></property><property name="maximum"><double>10000.000000000000000</double></property><property name="value"><double>20.000000000000000</double></property><property name="suffix"><string> °/s</string></property></widget></item>
-                <item row="3" column="4"><widget class="QLabel" name="velocityMaxSpeedLabel"><property name="text"><string>速度上限</string></property></widget></item>
-                <item row="3" column="5"><widget class="QDoubleSpinBox" name="velocityMaxSpeedSpin"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property><property name="value"><double>30.000000000000000</double></property><property name="suffix"><string> °/s</string></property></widget></item>
-                <item row="4" column="0"><widget class="QLabel" name="velocityMaxAccelerationLabel"><property name="text"><string>加速度上限</string></property></widget></item>
-                <item row="4" column="1"><widget class="QDoubleSpinBox" name="velocityMaxAccelerationSpin"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>100000.000000000000000</double></property><property name="value"><double>100.000000000000000</double></property><property name="suffix"><string> °/s²</string></property></widget></item>
-                <item row="4" column="2"><widget class="QLabel" name="velocityChangeTimeLabel"><property name="text"><string>在线变速时间</string></property></widget></item>
-                <item row="4" column="3"><widget class="QDoubleSpinBox" name="velocityChangeTimeSpin"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.000000000000000</double></property><property name="maximum"><double>1.000000000000000</double></property><property name="singleStep"><double>0.010000000000000</double></property><property name="value"><double>0.010000000000000</double></property><property name="suffix"><string> s</string></property></widget></item>
-                <item row="4" column="4"><widget class="QLabel" name="velocityStartThresholdLabel"><property name="text"><string>启动速度阈值</string></property></widget></item>
-                <item row="4" column="5"><widget class="QDoubleSpinBox" name="velocityStartThresholdSpin"><property name="decimals"><number>4</number></property><property name="minimum"><double>0.000100000000000</double></property><property name="maximum"><double>1000.000000000000000</double></property><property name="value"><double>0.020000000000000</double></property><property name="suffix"><string> °/s</string></property></widget></item>
-                <item row="5" column="0"><widget class="QLabel" name="velocityPositionToleranceLabel"><property name="text"><string>位置容差</string></property></widget></item>
-                <item row="5" column="1"><widget class="QDoubleSpinBox" name="velocityPositionToleranceSpin"><property name="decimals"><number>4</number></property><property name="minimum"><double>0.000100000000000</double></property><property name="maximum"><double>1000.000000000000000</double></property><property name="value"><double>0.050000000000000</double></property><property name="suffix"><string> °</string></property></widget></item>
-                <item row="5" column="2"><widget class="QLabel" name="velocitySpeedToleranceLabel"><property name="text"><string>速度容差</string></property></widget></item>
-                <item row="5" column="3"><widget class="QDoubleSpinBox" name="velocitySpeedToleranceSpin"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>1000.000000000000000</double></property><property name="value"><double>0.200000000000000</double></property><property name="suffix"><string> °/s</string></property></widget></item>
-                <item row="5" column="4"><widget class="QLabel" name="velocityStableDwellLabel"><property name="text"><string>稳态确认</string></property></widget></item>
-                <item row="5" column="5"><widget class="QSpinBox" name="velocityStableDwellSpin"><property name="minimum"><number>10</number></property><property name="maximum"><number>10000</number></property><property name="value"><number>200</number></property><property name="suffix"><string> ms</string></property></widget></item>
-                <item row="6" column="0"><widget class="QLabel" name="velocityFinishTimeoutLabel"><property name="text"><string>终点超时</string></property></widget></item>
-                <item row="6" column="1"><widget class="QSpinBox" name="velocityFinishTimeoutSpin"><property name="minimum"><number>10</number></property><property name="maximum"><number>60000</number></property><property name="value"><number>3000</number></property><property name="suffix"><string> ms</string></property></widget></item>
-                <item row="6" column="2"><widget class="QLabel" name="velocityMaxFollowingErrorLabel"><property name="text"><string>最大跟随误差</string></property></widget></item>
-                <item row="6" column="3"><widget class="QDoubleSpinBox" name="velocityMaxFollowingErrorSpin"><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>100000.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property><property name="suffix"><string> °</string></property></widget></item>
-                <item row="6" column="4"><widget class="QLabel" name="velocityTraceTimeoutLabel"><property name="text"><string>Trace超时</string></property></widget></item>
-                <item row="6" column="5"><widget class="QSpinBox" name="velocityTraceTimeoutSpin"><property name="minimum"><number>10</number></property><property name="maximum"><number>10000</number></property><property name="value"><number>100</number></property><property name="suffix"><string> ms</string></property></widget></item>
+                <item row="0" column="1">
+                 <widget class="QComboBox" name="velocityAxisCombo">
+                  <item>
+                   <property name="text">
+                    <string>0</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>1</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>2</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>3</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>4</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>5</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>6</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>7</string>
+                   </property>
+                  </item>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QLabel" name="velocityDeltaLabel">
+                  <property name="text">
+                   <string>相对位移</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QDoubleSpinBox" name="velocityDeltaSpin">
+                  <property name="suffix">
+                   <string> °</string>
+                  </property>
+                  <property name="decimals">
+                   <number>4</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-1000000.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>1000000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>30.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="4">
+                 <widget class="QLabel" name="velocityDurationLabel">
+                  <property name="text">
+                   <string>轨迹时间</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="5">
+                 <widget class="QDoubleSpinBox" name="velocityDurationSpin">
+                  <property name="suffix">
+                   <string> s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.100000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>3600.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>5.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="velocityControlPeriodLabel">
+                  <property name="text">
+                   <string>控制周期</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QSpinBox" name="velocityControlPeriodSpin">
+                  <property name="suffix">
+                   <string> ms</string>
+                  </property>
+                  <property name="minimum">
+                   <number>1</number>
+                  </property>
+                  <property name="maximum">
+                   <number>100</number>
+                  </property>
+                  <property name="value">
+                   <number>10</number>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="2">
+                 <widget class="QCheckBox" name="velocityFeedforwardCheck">
+                  <property name="text">
+                   <string>速度前馈</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="3">
+                 <widget class="QDoubleSpinBox" name="velocityFeedforwardGainSpin">
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>5.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>1.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="4">
+                 <widget class="QCheckBox" name="velocityPidEnableCheck">
+                  <property name="text">
+                   <string>启用PID</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="velocityKpLabel">
+                  <property name="text">
+                   <string>Kp (1/s)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QDoubleSpinBox" name="velocityKpSpin">
+                  <property name="decimals">
+                   <number>5</number>
+                  </property>
+                  <property name="maximum">
+                   <double>1000.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="2">
+                 <widget class="QLabel" name="velocityKiLabel">
+                  <property name="text">
+                   <string>Ki (1/s²)</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="3">
+                 <widget class="QDoubleSpinBox" name="velocityKiSpin">
+                  <property name="decimals">
+                   <number>5</number>
+                  </property>
+                  <property name="maximum">
+                   <double>1000.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="4">
+                 <widget class="QLabel" name="velocityKdLabel">
+                  <property name="text">
+                   <string>Kd</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="5">
+                 <widget class="QDoubleSpinBox" name="velocityKdSpin">
+                  <property name="decimals">
+                   <number>5</number>
+                  </property>
+                  <property name="maximum">
+                   <double>1000.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="velocityIntegralLimitLabel">
+                  <property name="text">
+                   <string>积分状态上限</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QDoubleSpinBox" name="velocityIntegralLimitSpin">
+                  <property name="suffix">
+                   <string> °·s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="maximum">
+                   <double>100000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>10.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="2">
+                 <widget class="QLabel" name="velocityMaxCorrectionLabel">
+                  <property name="text">
+                   <string>PID修正上限</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="3">
+                 <widget class="QDoubleSpinBox" name="velocityMaxCorrectionSpin">
+                  <property name="suffix">
+                   <string> °/s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="maximum">
+                   <double>10000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>20.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="4">
+                 <widget class="QLabel" name="velocityMaxSpeedLabel">
+                  <property name="text">
+                   <string>速度上限</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="5">
+                 <widget class="QDoubleSpinBox" name="velocityMaxSpeedSpin">
+                  <property name="suffix">
+                   <string> °/s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.001000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>30.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="0">
+                 <widget class="QLabel" name="velocityMaxAccelerationLabel">
+                  <property name="text">
+                   <string>加速度上限</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="1">
+                 <widget class="QDoubleSpinBox" name="velocityMaxAccelerationSpin">
+                  <property name="suffix">
+                   <string> °/s²</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.001000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>100000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>100.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="2">
+                 <widget class="QLabel" name="velocityChangeTimeLabel">
+                  <property name="text">
+                   <string>在线变速时间</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="3">
+                 <widget class="QDoubleSpinBox" name="velocityChangeTimeSpin">
+                  <property name="suffix">
+                   <string> s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>1.000000000000000</double>
+                  </property>
+                  <property name="singleStep">
+                   <double>0.010000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>0.010000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="4">
+                 <widget class="QLabel" name="velocityStartThresholdLabel">
+                  <property name="text">
+                   <string>启动速度阈值</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="5">
+                 <widget class="QDoubleSpinBox" name="velocityStartThresholdSpin">
+                  <property name="suffix">
+                   <string> °/s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>4</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.000100000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>1000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>0.020000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="0">
+                 <widget class="QLabel" name="velocityPositionToleranceLabel">
+                  <property name="text">
+                   <string>位置容差</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="1">
+                 <widget class="QDoubleSpinBox" name="velocityPositionToleranceSpin">
+                  <property name="suffix">
+                   <string> °</string>
+                  </property>
+                  <property name="decimals">
+                   <number>4</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.000100000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>1000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>0.050000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="2">
+                 <widget class="QLabel" name="velocitySpeedToleranceLabel">
+                  <property name="text">
+                   <string>速度容差</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="3">
+                 <widget class="QDoubleSpinBox" name="velocitySpeedToleranceSpin">
+                  <property name="suffix">
+                   <string> °/s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.001000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>1000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>0.200000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="4">
+                 <widget class="QLabel" name="velocityStableDwellLabel">
+                  <property name="text">
+                   <string>稳态确认</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="5" column="5">
+                 <widget class="QSpinBox" name="velocityStableDwellSpin">
+                  <property name="suffix">
+                   <string> ms</string>
+                  </property>
+                  <property name="minimum">
+                   <number>10</number>
+                  </property>
+                  <property name="maximum">
+                   <number>10000</number>
+                  </property>
+                  <property name="value">
+                   <number>200</number>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="0">
+                 <widget class="QLabel" name="velocityFinishTimeoutLabel">
+                  <property name="text">
+                   <string>终点超时</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="1">
+                 <widget class="QSpinBox" name="velocityFinishTimeoutSpin">
+                  <property name="suffix">
+                   <string> ms</string>
+                  </property>
+                  <property name="minimum">
+                   <number>10</number>
+                  </property>
+                  <property name="maximum">
+                   <number>60000</number>
+                  </property>
+                  <property name="value">
+                   <number>3000</number>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="2">
+                 <widget class="QLabel" name="velocityMaxFollowingErrorLabel">
+                  <property name="text">
+                   <string>最大跟随误差</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="3">
+                 <widget class="QDoubleSpinBox" name="velocityMaxFollowingErrorSpin">
+                  <property name="suffix">
+                   <string> °</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.001000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>100000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>10.000000000000000</double>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="4">
+                 <widget class="QLabel" name="velocityTraceTimeoutLabel">
+                  <property name="text">
+                   <string>Trace超时</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="6" column="5">
+                 <widget class="QSpinBox" name="velocityTraceTimeoutSpin">
+                  <property name="suffix">
+                   <string> ms</string>
+                  </property>
+                  <property name="minimum">
+                   <number>10</number>
+                  </property>
+                  <property name="maximum">
+                   <number>10000</number>
+                  </property>
+                  <property name="value">
+                   <number>100</number>
+                  </property>
+                 </widget>
+                </item>
                </layout>
               </widget>
              </item>
              <item>
               <widget class="QGroupBox" name="velocityControlOperationGroup">
-               <property name="title"><string>操作与状态</string></property>
+               <property name="title">
+                <string>操作与状态</string>
+               </property>
                <layout class="QGridLayout" name="velocityControlOperationLayout">
-                <item row="0" column="0"><widget class="QPushButton" name="velocityEnableAxisButton"><property name="text"><string>使能测试轴</string></property></widget></item>
-                <item row="0" column="1"><widget class="QPushButton" name="velocityDisableAxisButton"><property name="text"><string>失能测试轴</string></property></widget></item>
-                <item row="0" column="2"><widget class="QPushButton" name="velocityResetButton"><property name="text"><string>重置控制器</string></property></widget></item>
-                <item row="0" column="3"><widget class="QPushButton" name="velocityStartButton"><property name="text"><string>开始单轴闭环</string></property></widget></item>
-                <item row="0" column="4"><widget class="QPushButton" name="velocityStopButton"><property name="text"><string>减速停止</string></property></widget></item>
-                <item row="0" column="5"><widget class="QPushButton" name="velocityEmergencyStopButton"><property name="text"><string>立即停止</string></property><property name="styleSheet"><string notr="true">background-color:#b00020;color:white;font-weight:bold;</string></property></widget></item>
-                <item row="0" column="6"><widget class="QPushButton" name="velocityClearCurvesButton"><property name="text"><string>清除本次曲线</string></property></widget></item>
-                <item row="1" column="0"><widget class="QLabel" name="velocityStateLabel"><property name="text"><string>控制状态</string></property></widget></item>
-                <item row="1" column="1" colspan="2"><widget class="QLabel" name="velocityStateValueLabel"><property name="text"><string>未运行</string></property></widget></item>
-                <item row="1" column="3"><widget class="QLabel" name="velocityTimingLabel"><property name="text"><string>时间 / dt / 最大抖动</string></property></widget></item>
-                <item row="1" column="4" colspan="3"><widget class="QLabel" name="velocityTimingValueLabel"><property name="text"><string>0 / 0 / 0</string></property></widget></item>
-                <item row="2" column="0"><widget class="QLabel" name="velocityPositionStatusLabel"><property name="text"><string>位置 ref / card / actual / error</string></property></widget></item>
-                <item row="2" column="1" colspan="6"><widget class="QLabel" name="velocityPositionStatusValueLabel"><property name="text"><string>0 / 0 / 0 / 0 °</string></property></widget></item>
-                <item row="3" column="0"><widget class="QLabel" name="velocitySpeedStatusLabel"><property name="text"><string>速度 ref / cmd / card / actual</string></property></widget></item>
-                <item row="3" column="1" colspan="6"><widget class="QLabel" name="velocitySpeedStatusValueLabel"><property name="text"><string>0 / 0 / 0 / 0 °/s</string></property></widget></item>
-                <item row="4" column="0"><widget class="QLabel" name="velocityPidStatusLabel"><property name="text"><string>前馈 / P / I / D / 限幅状态</string></property></widget></item>
-                <item row="4" column="1" colspan="6"><widget class="QLabel" name="velocityPidStatusValueLabel"><property name="text"><string>0 / 0 / 0 / 0 / --</string></property></widget></item>
+                <item row="0" column="0">
+                 <widget class="QPushButton" name="velocityEnableAxisButton">
+                  <property name="text">
+                   <string>使能测试轴</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QPushButton" name="velocityDisableAxisButton">
+                  <property name="text">
+                   <string>失能测试轴</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QPushButton" name="velocityResetButton">
+                  <property name="text">
+                   <string>重置控制器</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QPushButton" name="velocityStartButton">
+                  <property name="text">
+                   <string>开始单轴闭环</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="4">
+                 <widget class="QPushButton" name="velocityStopButton">
+                  <property name="text">
+                   <string>减速停止</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="5">
+                 <widget class="QPushButton" name="velocityEmergencyStopButton">
+                  <property name="styleSheet">
+                   <string notr="true">background-color:#b00020;color:white;font-weight:bold;</string>
+                  </property>
+                  <property name="text">
+                   <string>立即停止</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="6">
+                 <widget class="QPushButton" name="velocityClearCurvesButton">
+                  <property name="text">
+                   <string>清除本次曲线</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="velocityStateLabel">
+                  <property name="text">
+                   <string>控制状态</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1" colspan="2">
+                 <widget class="QLabel" name="velocityStateValueLabel">
+                  <property name="text">
+                   <string>未运行</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="3">
+                 <widget class="QLabel" name="velocityTimingLabel">
+                  <property name="text">
+                   <string>时间 / dt / 最大抖动</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="4" colspan="3">
+                 <widget class="QLabel" name="velocityTimingValueLabel">
+                  <property name="text">
+                   <string>0 / 0 / 0</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="velocityPositionStatusLabel">
+                  <property name="text">
+                   <string>位置 ref / card / actual / error</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="1" colspan="6">
+                 <widget class="QLabel" name="velocityPositionStatusValueLabel">
+                  <property name="text">
+                   <string>0 / 0 / 0 / 0 °</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="velocitySpeedStatusLabel">
+                  <property name="text">
+                   <string>速度 ref / cmd / card / actual</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1" colspan="6">
+                 <widget class="QLabel" name="velocitySpeedStatusValueLabel">
+                  <property name="text">
+                   <string>0 / 0 / 0 / 0 °/s</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="0">
+                 <widget class="QLabel" name="velocityPidStatusLabel">
+                  <property name="text">
+                   <string>前馈 / P / I / D / 限幅状态</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="4" column="1" colspan="6">
+                 <widget class="QLabel" name="velocityPidStatusValueLabel">
+                  <property name="text">
+                   <string>0 / 0 / 0 / 0 / --</string>
+                  </property>
+                 </widget>
+                </item>
                </layout>
               </widget>
              </item>
              <item>
               <widget class="QSplitter" name="velocityControlChartSplitter">
-               <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
-               <property name="childrenCollapsible"><bool>false</bool></property>
-               <widget class="QChartView" name="velocityPositionChartView"><property name="minimumSize"><size><width>0</width><height>240</height></size></property></widget>
-               <widget class="QChartView" name="velocityErrorChartView"><property name="minimumSize"><size><width>0</width><height>220</height></size></property></widget>
-               <widget class="QChartView" name="velocitySpeedChartView"><property name="minimumSize"><size><width>0</width><height>240</height></size></property></widget>
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="childrenCollapsible">
+                <bool>false</bool>
+               </property>
+               <widget class="QChartView" name="velocityPositionChartView">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>240</height>
+                 </size>
+                </property>
+               </widget>
+               <widget class="QChartView" name="velocityErrorChartView">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>220</height>
+                 </size>
+                </property>
+               </widget>
+               <widget class="QChartView" name="velocitySpeedChartView">
+                <property name="minimumSize">
+                 <size>
+                  <width>0</width>
+                  <height>240</height>
+                 </size>
+                </property>
+               </widget>
               </widget>
              </item>
-             <item><widget class="QLabel" name="velocityControlHintLabel"><property name="text"><string>控制数据按控制周期产生；UI 每 50 ms 绘制最新快照。运行结束或停止后曲线立即停止追加。首次试验请先关闭 PID，仅用低速前馈核对 Trace type 3/4 的单位和方向。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
+             <item>
+              <widget class="QLabel" name="velocityControlHintLabel">
+               <property name="text">
+                <string>控制数据按控制周期产生；UI 每 50 ms 绘制最新快照。运行结束或停止后曲线立即停止追加。首次试验请先关闭 PID，仅用低速前馈核对 Trace type 3/4 的单位和方向。</string>
+               </property>
+               <property name="wordWrap">
+                <bool>true</bool>
+               </property>
+              </widget>
+             </item>
             </layout>
            </widget>
           </widget>
@@ -2044,9 +2752,9 @@
         <item>
          <layout class="QHBoxLayout" name="logToolbarLayout">
           <item>
-           <widget class="QLabel" name="logHintLabel">
+           <widget class="QPushButton" name="copyLogButton">
             <property name="text">
-             <string>所有页面共用</string>
+             <string>复制日志</string>
             </property>
            </widget>
           </item>

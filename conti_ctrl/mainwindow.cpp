@@ -2,6 +2,8 @@
 
 #include "ui_mainwindow.h"
 
+#include <QApplication>
+#include <QClipboard>
 #include <QDateTime>
 #include <QMetaObject>
 #include <QPainter>
@@ -72,12 +74,13 @@ void MainWindow::connectWorker()
             this, &MainWindow::onProducerPeriodChanged);
     connect(ui_->initializeButton, &QPushButton::clicked, this, &MainWindow::onInitializeClicked);
     connect(ui_->closeBoardButton, &QPushButton::clicked, this, &MainWindow::onCloseBoardClicked);
-    connect(ui_->enableAxesButton, &QPushButton::clicked, this, &MainWindow::onEnableAxesClicked);
-    connect(ui_->disableAxesButton, &QPushButton::clicked, this, &MainWindow::onDisableAxesClicked);
+    connect(ui_->contiEnableAxesButton, &QPushButton::clicked, this, &MainWindow::onEnableAxesClicked);
+    connect(ui_->contiDisableAxesButton, &QPushButton::clicked, this, &MainWindow::onDisableAxesClicked);
     connect(ui_->startButton, &QPushButton::clicked, this, &MainWindow::onStartClicked);
     connect(ui_->stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);
     connect(ui_->emergencyStopButton, &QPushButton::clicked, this, &MainWindow::onEmergencyStopClicked);
     connect(ui_->refreshFeedbackButton, &QPushButton::clicked, this, &MainWindow::onRefreshFeedbackClicked);
+    connect(ui_->copyLogButton, &QPushButton::clicked, this, &MainWindow::onCopyLogClicked);
     connect(ui_->clearLogButton, &QPushButton::clicked, this, &MainWindow::onClearLogClicked);
     connect(ui_->jogEnableButton, &QPushButton::clicked, this, &MainWindow::onEnableJogAxisClicked);
     connect(ui_->jogDisableButton, &QPushButton::clicked, this, &MainWindow::onDisableJogAxisClicked);
@@ -292,7 +295,7 @@ void MainWindow::updateBusPeriodUi()
         ui_->busCycleReadValueLabel->setText(QStringLiteral("待初始化"));
         ui_->traceSampleValueLabel->setText(QStringLiteral("待初始化"));
     }
-    ui_->planningAlignmentValueLabel->setText(aligned
+    ui_->contiPlanningAlignmentValueLabel->setText(aligned
         ? QStringLiteral("%1 ms = %2 × %3 us")
               .arg(producerPeriodMs)
               .arg(producerPeriodMs * 1000 / effectiveCycleUs)
@@ -350,6 +353,20 @@ void MainWindow::onEmergencyStopClicked()
 void MainWindow::onRefreshFeedbackClicked()
 {
     emit refreshFeedbackRequested();
+}
+
+void MainWindow::onCopyLogClicked()
+{
+    const QString logText = ui_->logEdit->toPlainText();
+    if (logText.trimmed().isEmpty()) {
+        ui_->copyLogButton->setText(QStringLiteral("暂无日志"));
+    } else {
+        QApplication::clipboard()->setText(logText);
+        ui_->copyLogButton->setText(QStringLiteral("已复制"));
+    }
+    QTimer::singleShot(1200, this, [this] {
+        ui_->copyLogButton->setText(QStringLiteral("复制日志"));
+    });
 }
 
 void MainWindow::onClearLogClicked()
@@ -466,11 +483,11 @@ void MainWindow::updateStatus(const ContiStatus &status)
         ? QStringLiteral("实际绝对位置（Trace）")
         : QStringLiteral("实际相对位置（Trace）"));
     ui_->stateValueLabel->setText(status.stateText);
-    ui_->runStateValueLabel->setText(QString::number(status.runState));
-    ui_->markValueLabel->setText(QStringLiteral("%1 / %2").arg(status.currentMark).arg(status.pushedMark));
-    ui_->bufferValueLabel->setText(QString::number(qMax(0L, status.pushedMark - status.currentMark)));
-    ui_->spaceValueLabel->setText(QString::number(status.remainSpace));
-    ui_->hostQueueValueLabel->setText(QString::number(status.hostQueueSize));
+    ui_->contiRunStateValueLabel->setText(QString::number(status.runState));
+    ui_->contiMarkValueLabel->setText(QStringLiteral("%1 / %2").arg(status.currentMark).arg(status.pushedMark));
+    ui_->contiBufferValueLabel->setText(QString::number(qMax(0L, status.pushedMark - status.currentMark)));
+    ui_->contiSpaceValueLabel->setText(QString::number(status.remainSpace));
+    ui_->contiHostQueueValueLabel->setText(QString::number(status.hostQueueSize));
     ui_->busCycleCombo->setEnabled(!status.boardInitialized);
     ui_->cardUnitDefinitionCombo->setEnabled(!status.boardInitialized);
     ui_->readBusCycleButton->setEnabled(status.boardInitialized);
@@ -482,28 +499,53 @@ void MainWindow::updateStatus(const ContiStatus &status)
         : QStringLiteral("待初始化"));
     const bool planningAligned = status.busCycleUs > 0
         && (status.producerPeriodMs * 1000) % status.busCycleUs == 0;
-    ui_->planningAlignmentValueLabel->setText(status.boardInitialized && planningAligned
+    ui_->contiPlanningAlignmentValueLabel->setText(status.boardInitialized && planningAligned
         ? QStringLiteral("%1 ms = %2 × %3 us")
               .arg(status.producerPeriodMs)
               .arg(status.producerPeriodMs * 1000 / status.busCycleUs)
               .arg(status.busCycleUs)
         : QStringLiteral("待初始化"));
-    ui_->expectedPlanTimeValueLabel->setText(QStringLiteral("%1 / %2 ms")
+    ui_->contiExpectedPlanTimeValueLabel->setText(QStringLiteral("%1 / %2 ms")
                                                  .arg(status.expectedPlanTimeS * 1000.0, 0, 'f', 1)
                                                  .arg(status.currentPlanTimeS * 1000.0, 0, 'f', 1));
-    ui_->phaseErrorValueLabel->setText(QStringLiteral("%1 ms")
+    ui_->contiPhaseErrorValueLabel->setText(QStringLiteral("%1 ms")
                                             .arg(status.phaseErrorMs, 0, 'f', 1));
-    ui_->bufferTimeValueLabel->setText(QStringLiteral("%1 ms")
+    ui_->contiBufferTimeValueLabel->setText(QStringLiteral("%1 ms")
                                             .arg(status.bufferTimeMs, 0, 'f', 1));
-    ui_->ratioDiagValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 / %5")
+    ui_->contiRatioDiagValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 / %5")
                                            .arg(status.ratioRef, 0, 'f', 3)
                                            .arg(status.ratioPhase, 0, 'f', 3)
                                            .arg(status.ratioBuffer, 0, 'f', 3)
                                            .arg(status.ratioCommand, 0, 'f', 3)
                                            .arg(status.ratioApplied, 0, 'f', 3));
-    ui_->ratioApiAgeValueLabel->setText(status.ratioLastApiAgoMs < 0
+    ui_->contiRatioApiAgeValueLabel->setText(status.ratioLastApiAgoMs < 0
                                              ? QStringLiteral("-- ms")
-                                             : QStringLiteral("%1 ms").arg(status.ratioLastApiAgoMs));
+                                              : QStringLiteral("%1 ms").arg(status.ratioLastApiAgoMs));
+    const QString unknownStyle = QStringLiteral(
+        "QLabel { color: white; background-color: #757575; border-radius: 4px; padding: 4px; }");
+    const QString enabledStyle = QStringLiteral(
+        "QLabel { color: white; background-color: #2e7d32; border-radius: 4px; padding: 4px; }");
+    const QString disabledStyle = QStringLiteral(
+        "QLabel { color: white; background-color: #c62828; border-radius: 4px; padding: 4px; }");
+    const QList<QLabel *> axisStateLabels {
+        ui_->axis0EnableStateLabel, ui_->axis1EnableStateLabel,
+        ui_->axis2EnableStateLabel, ui_->axis3EnableStateLabel,
+        ui_->axis4EnableStateLabel, ui_->axis5EnableStateLabel,
+        ui_->axis6EnableStateLabel, ui_->axis7EnableStateLabel
+    };
+    for (int axis = 0; axis < axisStateLabels.size(); ++axis) {
+        QLabel *label = axisStateLabels.at(axis);
+        if (!status.boardInitialized) {
+            label->setText(QStringLiteral("轴%1 未知").arg(axis));
+            label->setStyleSheet(unknownStyle);
+        } else if ((status.enabledAxisMask & static_cast<quint16>(1U << axis)) != 0U) {
+            label->setText(QStringLiteral("轴%1 使能").arg(axis));
+            label->setStyleSheet(enabledStyle);
+        } else {
+            label->setText(QStringLiteral("轴%1 失能").arg(axis));
+            label->setStyleSheet(disabledStyle);
+        }
+    }
     ui_->feedbackSummaryValueLabel->setText(status.boardInitialized
                                                 ? QStringLiteral("总线错误码：%1；%2；本次 Trace 帧：%3；API=%4")
                                                       .arg(status.busErrorCode)

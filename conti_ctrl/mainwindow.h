@@ -55,6 +55,7 @@ private slots:
     void onStopClicked();
     void onEmergencyStopClicked();
     void onRefreshFeedbackClicked();
+    void onCopyLogClicked();
     void onClearLogClicked();
     void onEnableJogAxisClicked();
     void onDisableJogAxisClicked();

@@ -46,16 +46,6 @@ public:
     QFormLayout *statusForm;
     QLabel *stateLabel;
     QLabel *stateValueLabel;
-    QLabel *runStateLabel;
-    QLabel *runStateValueLabel;
-    QLabel *markLabel;
-    QLabel *markValueLabel;
-    QLabel *bufferLabel;
-    QLabel *bufferValueLabel;
-    QLabel *spaceLabel;
-    QLabel *spaceValueLabel;
-    QLabel *hostQueueLabel;
-    QLabel *hostQueueValueLabel;
     QLabel *busCycleSettingLabel;
     QComboBox *busCycleCombo;
     QLabel *busCycleReadLabel;
@@ -65,26 +55,20 @@ public:
     QPushButton *readBusCycleButton;
     QLabel *traceSampleLabel;
     QLabel *traceSampleValueLabel;
-    QLabel *planningAlignmentLabel;
-    QLabel *planningAlignmentValueLabel;
-    QGroupBox *timeSyncDiagnosticsGroup;
-    QFormLayout *timeSyncDiagnosticsLayout;
-    QLabel *expectedPlanTimeLabel;
-    QLabel *expectedPlanTimeValueLabel;
-    QLabel *phaseErrorLabel;
-    QLabel *phaseErrorValueLabel;
-    QLabel *bufferTimeLabel;
-    QLabel *bufferTimeValueLabel;
-    QLabel *ratioDiagLabel;
-    QLabel *ratioDiagValueLabel;
-    QLabel *ratioApiAgeLabel;
-    QLabel *ratioApiAgeValueLabel;
     QGroupBox *globalActionGroup;
     QVBoxLayout *globalActionLayout;
     QPushButton *initializeButton;
     QPushButton *closeBoardButton;
-    QPushButton *enableAxesButton;
-    QPushButton *disableAxesButton;
+    QGroupBox *axisEnableStatusGroup;
+    QGridLayout *axisEnableStatusLayout;
+    QLabel *axis0EnableStateLabel;
+    QLabel *axis1EnableStateLabel;
+    QLabel *axis2EnableStateLabel;
+    QLabel *axis3EnableStateLabel;
+    QLabel *axis4EnableStateLabel;
+    QLabel *axis5EnableStateLabel;
+    QLabel *axis6EnableStateLabel;
+    QLabel *axis7EnableStateLabel;
     QGroupBox *globalEmergencyGroup;
     QVBoxLayout *globalEmergencyLayout;
     QPushButton *emergencyStopButton;
@@ -98,6 +82,34 @@ public:
     QWidget *contiTestScrollContent;
     QVBoxLayout *contiTestLayout;
     QHBoxLayout *settingsLayout;
+    QWidget *contiLeftPanel;
+    QVBoxLayout *contiLeftPanelLayout;
+    QGroupBox *contiRuntimeStatusGroup;
+    QGridLayout *contiRuntimeStatusLayout;
+    QPushButton *contiEnableAxesButton;
+    QPushButton *contiDisableAxesButton;
+    QLabel *contiRunStateLabel;
+    QLabel *contiRunStateValueLabel;
+    QLabel *contiMarkLabel;
+    QLabel *contiMarkValueLabel;
+    QLabel *contiBufferLabel;
+    QLabel *contiBufferValueLabel;
+    QLabel *contiSpaceLabel;
+    QLabel *contiSpaceValueLabel;
+    QLabel *contiHostQueueLabel;
+    QLabel *contiHostQueueValueLabel;
+    QLabel *contiPlanningAlignmentLabel;
+    QLabel *contiPlanningAlignmentValueLabel;
+    QLabel *contiExpectedPlanTimeLabel;
+    QLabel *contiExpectedPlanTimeValueLabel;
+    QLabel *contiPhaseErrorLabel;
+    QLabel *contiPhaseErrorValueLabel;
+    QLabel *contiBufferTimeLabel;
+    QLabel *contiBufferTimeValueLabel;
+    QLabel *contiRatioApiAgeLabel;
+    QLabel *contiRatioApiAgeValueLabel;
+    QLabel *contiRatioDiagLabel;
+    QLabel *contiRatioDiagValueLabel;
     QGroupBox *testGroup;
     QFormLayout *testForm;
     QLabel *stageLabel;
@@ -174,12 +186,12 @@ public:
     QSpinBox *ratioApiIntervalSpin;
     QLabel *ratioSafetyApiIntervalLabel;
     QSpinBox *ratioSafetyApiIntervalSpin;
-    QGroupBox *contiTrajectoryGroup;
-    QVBoxLayout *contiTrajectoryLayout;
-    QChartView *contiTrajectoryChartView;
     QHBoxLayout *contiButtonLayout;
     QPushButton *startButton;
     QPushButton *stopButton;
+    QGroupBox *contiTrajectoryGroup;
+    QVBoxLayout *contiTrajectoryLayout;
+    QChartView *contiTrajectoryChartView;
     QWidget *axisFeedbackTab;
     QVBoxLayout *axisFeedbackLayout;
     QGroupBox *baseConfigGroup;
@@ -310,7 +322,7 @@ public:
     QGroupBox *logGroup;
     QVBoxLayout *logLayout;
     QHBoxLayout *logToolbarLayout;
-    QLabel *logHintLabel;
+    QPushButton *copyLogButton;
     QSpacerItem *logToolbarSpacer;
     QPushButton *clearLogButton;
     QPlainTextEdit *logEdit;
@@ -344,58 +356,6 @@ public:
         stateValueLabel->setWordWrap(true);
 
         statusForm->setWidget(1, QFormLayout::FieldRole, stateValueLabel);
-
-        runStateLabel = new QLabel(globalStatusGroup);
-        runStateLabel->setObjectName("runStateLabel");
-
-        statusForm->setWidget(2, QFormLayout::LabelRole, runStateLabel);
-
-        runStateValueLabel = new QLabel(globalStatusGroup);
-        runStateValueLabel->setObjectName("runStateValueLabel");
-
-        statusForm->setWidget(2, QFormLayout::FieldRole, runStateValueLabel);
-
-        markLabel = new QLabel(globalStatusGroup);
-        markLabel->setObjectName("markLabel");
-        markLabel->setWordWrap(true);
-
-        statusForm->setWidget(3, QFormLayout::LabelRole, markLabel);
-
-        markValueLabel = new QLabel(globalStatusGroup);
-        markValueLabel->setObjectName("markValueLabel");
-
-        statusForm->setWidget(3, QFormLayout::FieldRole, markValueLabel);
-
-        bufferLabel = new QLabel(globalStatusGroup);
-        bufferLabel->setObjectName("bufferLabel");
-
-        statusForm->setWidget(4, QFormLayout::LabelRole, bufferLabel);
-
-        bufferValueLabel = new QLabel(globalStatusGroup);
-        bufferValueLabel->setObjectName("bufferValueLabel");
-
-        statusForm->setWidget(4, QFormLayout::FieldRole, bufferValueLabel);
-
-        spaceLabel = new QLabel(globalStatusGroup);
-        spaceLabel->setObjectName("spaceLabel");
-        spaceLabel->setWordWrap(true);
-
-        statusForm->setWidget(5, QFormLayout::LabelRole, spaceLabel);
-
-        spaceValueLabel = new QLabel(globalStatusGroup);
-        spaceValueLabel->setObjectName("spaceValueLabel");
-
-        statusForm->setWidget(5, QFormLayout::FieldRole, spaceValueLabel);
-
-        hostQueueLabel = new QLabel(globalStatusGroup);
-        hostQueueLabel->setObjectName("hostQueueLabel");
-
-        statusForm->setWidget(6, QFormLayout::LabelRole, hostQueueLabel);
-
-        hostQueueValueLabel = new QLabel(globalStatusGroup);
-        hostQueueValueLabel->setObjectName("hostQueueValueLabel");
-
-        statusForm->setWidget(6, QFormLayout::FieldRole, hostQueueValueLabel);
 
         busCycleSettingLabel = new QLabel(globalStatusGroup);
         busCycleSettingLabel->setObjectName("busCycleSettingLabel");
@@ -449,81 +409,8 @@ public:
 
         statusForm->setWidget(9, QFormLayout::FieldRole, traceSampleValueLabel);
 
-        planningAlignmentLabel = new QLabel(globalStatusGroup);
-        planningAlignmentLabel->setObjectName("planningAlignmentLabel");
-        planningAlignmentLabel->setWordWrap(true);
-
-        statusForm->setWidget(10, QFormLayout::LabelRole, planningAlignmentLabel);
-
-        planningAlignmentValueLabel = new QLabel(globalStatusGroup);
-        planningAlignmentValueLabel->setObjectName("planningAlignmentValueLabel");
-        planningAlignmentValueLabel->setWordWrap(true);
-
-        statusForm->setWidget(10, QFormLayout::FieldRole, planningAlignmentValueLabel);
-
 
         globalControlLayout->addWidget(globalStatusGroup);
-
-        timeSyncDiagnosticsGroup = new QGroupBox(globalControlGroup);
-        timeSyncDiagnosticsGroup->setObjectName("timeSyncDiagnosticsGroup");
-        timeSyncDiagnosticsLayout = new QFormLayout(timeSyncDiagnosticsGroup);
-        timeSyncDiagnosticsLayout->setObjectName("timeSyncDiagnosticsLayout");
-        expectedPlanTimeLabel = new QLabel(timeSyncDiagnosticsGroup);
-        expectedPlanTimeLabel->setObjectName("expectedPlanTimeLabel");
-        expectedPlanTimeLabel->setWordWrap(true);
-
-        timeSyncDiagnosticsLayout->setWidget(0, QFormLayout::LabelRole, expectedPlanTimeLabel);
-
-        expectedPlanTimeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        expectedPlanTimeValueLabel->setObjectName("expectedPlanTimeValueLabel");
-        expectedPlanTimeValueLabel->setWordWrap(true);
-
-        timeSyncDiagnosticsLayout->setWidget(0, QFormLayout::FieldRole, expectedPlanTimeValueLabel);
-
-        phaseErrorLabel = new QLabel(timeSyncDiagnosticsGroup);
-        phaseErrorLabel->setObjectName("phaseErrorLabel");
-
-        timeSyncDiagnosticsLayout->setWidget(1, QFormLayout::LabelRole, phaseErrorLabel);
-
-        phaseErrorValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        phaseErrorValueLabel->setObjectName("phaseErrorValueLabel");
-
-        timeSyncDiagnosticsLayout->setWidget(1, QFormLayout::FieldRole, phaseErrorValueLabel);
-
-        bufferTimeLabel = new QLabel(timeSyncDiagnosticsGroup);
-        bufferTimeLabel->setObjectName("bufferTimeLabel");
-
-        timeSyncDiagnosticsLayout->setWidget(2, QFormLayout::LabelRole, bufferTimeLabel);
-
-        bufferTimeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        bufferTimeValueLabel->setObjectName("bufferTimeValueLabel");
-
-        timeSyncDiagnosticsLayout->setWidget(2, QFormLayout::FieldRole, bufferTimeValueLabel);
-
-        ratioDiagLabel = new QLabel(timeSyncDiagnosticsGroup);
-        ratioDiagLabel->setObjectName("ratioDiagLabel");
-        ratioDiagLabel->setWordWrap(true);
-
-        timeSyncDiagnosticsLayout->setWidget(3, QFormLayout::LabelRole, ratioDiagLabel);
-
-        ratioDiagValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        ratioDiagValueLabel->setObjectName("ratioDiagValueLabel");
-        ratioDiagValueLabel->setWordWrap(true);
-
-        timeSyncDiagnosticsLayout->setWidget(3, QFormLayout::FieldRole, ratioDiagValueLabel);
-
-        ratioApiAgeLabel = new QLabel(timeSyncDiagnosticsGroup);
-        ratioApiAgeLabel->setObjectName("ratioApiAgeLabel");
-
-        timeSyncDiagnosticsLayout->setWidget(4, QFormLayout::LabelRole, ratioApiAgeLabel);
-
-        ratioApiAgeValueLabel = new QLabel(timeSyncDiagnosticsGroup);
-        ratioApiAgeValueLabel->setObjectName("ratioApiAgeValueLabel");
-
-        timeSyncDiagnosticsLayout->setWidget(4, QFormLayout::FieldRole, ratioApiAgeValueLabel);
-
-
-        globalControlLayout->addWidget(timeSyncDiagnosticsGroup);
 
         globalActionGroup = new QGroupBox(globalControlGroup);
         globalActionGroup->setObjectName("globalActionGroup");
@@ -539,15 +426,61 @@ public:
 
         globalActionLayout->addWidget(closeBoardButton);
 
-        enableAxesButton = new QPushButton(globalActionGroup);
-        enableAxesButton->setObjectName("enableAxesButton");
+        axisEnableStatusGroup = new QGroupBox(globalActionGroup);
+        axisEnableStatusGroup->setObjectName("axisEnableStatusGroup");
+        axisEnableStatusGroup->setStyleSheet(QString::fromUtf8("QLabel { color: white; background-color: #757575; border-radius: 4px; padding: 4px; }"));
+        axisEnableStatusLayout = new QGridLayout(axisEnableStatusGroup);
+        axisEnableStatusLayout->setObjectName("axisEnableStatusLayout");
+        axis0EnableStateLabel = new QLabel(axisEnableStatusGroup);
+        axis0EnableStateLabel->setObjectName("axis0EnableStateLabel");
+        axis0EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
 
-        globalActionLayout->addWidget(enableAxesButton);
+        axisEnableStatusLayout->addWidget(axis0EnableStateLabel, 0, 0, 1, 1);
 
-        disableAxesButton = new QPushButton(globalActionGroup);
-        disableAxesButton->setObjectName("disableAxesButton");
+        axis1EnableStateLabel = new QLabel(axisEnableStatusGroup);
+        axis1EnableStateLabel->setObjectName("axis1EnableStateLabel");
+        axis1EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
 
-        globalActionLayout->addWidget(disableAxesButton);
+        axisEnableStatusLayout->addWidget(axis1EnableStateLabel, 0, 1, 1, 1);
+
+        axis2EnableStateLabel = new QLabel(axisEnableStatusGroup);
+        axis2EnableStateLabel->setObjectName("axis2EnableStateLabel");
+        axis2EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
+
+        axisEnableStatusLayout->addWidget(axis2EnableStateLabel, 1, 0, 1, 1);
+
+        axis3EnableStateLabel = new QLabel(axisEnableStatusGroup);
+        axis3EnableStateLabel->setObjectName("axis3EnableStateLabel");
+        axis3EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
+
+        axisEnableStatusLayout->addWidget(axis3EnableStateLabel, 1, 1, 1, 1);
+
+        axis4EnableStateLabel = new QLabel(axisEnableStatusGroup);
+        axis4EnableStateLabel->setObjectName("axis4EnableStateLabel");
+        axis4EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
+
+        axisEnableStatusLayout->addWidget(axis4EnableStateLabel, 2, 0, 1, 1);
+
+        axis5EnableStateLabel = new QLabel(axisEnableStatusGroup);
+        axis5EnableStateLabel->setObjectName("axis5EnableStateLabel");
+        axis5EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
+
+        axisEnableStatusLayout->addWidget(axis5EnableStateLabel, 2, 1, 1, 1);
+
+        axis6EnableStateLabel = new QLabel(axisEnableStatusGroup);
+        axis6EnableStateLabel->setObjectName("axis6EnableStateLabel");
+        axis6EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
+
+        axisEnableStatusLayout->addWidget(axis6EnableStateLabel, 3, 0, 1, 1);
+
+        axis7EnableStateLabel = new QLabel(axisEnableStatusGroup);
+        axis7EnableStateLabel->setObjectName("axis7EnableStateLabel");
+        axis7EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
+
+        axisEnableStatusLayout->addWidget(axis7EnableStateLabel, 3, 1, 1, 1);
+
+
+        globalActionLayout->addWidget(axisEnableStatusGroup);
 
 
         globalControlLayout->addWidget(globalActionGroup);
@@ -594,12 +527,147 @@ public:
         contiTestScrollArea->setWidgetResizable(true);
         contiTestScrollContent = new QWidget();
         contiTestScrollContent->setObjectName("contiTestScrollContent");
-        contiTestScrollContent->setGeometry(QRect(0, 0, 1040, 900));
+        contiTestScrollContent->setGeometry(QRect(0, 0, 781, 1063));
         contiTestLayout = new QVBoxLayout(contiTestScrollContent);
         contiTestLayout->setObjectName("contiTestLayout");
         settingsLayout = new QHBoxLayout();
         settingsLayout->setObjectName("settingsLayout");
-        testGroup = new QGroupBox(contiTestScrollContent);
+        contiLeftPanel = new QWidget(contiTestScrollContent);
+        contiLeftPanel->setObjectName("contiLeftPanel");
+        contiLeftPanelLayout = new QVBoxLayout(contiLeftPanel);
+        contiLeftPanelLayout->setObjectName("contiLeftPanelLayout");
+        contiLeftPanelLayout->setContentsMargins(0, 0, 0, 0);
+        contiRuntimeStatusGroup = new QGroupBox(contiLeftPanel);
+        contiRuntimeStatusGroup->setObjectName("contiRuntimeStatusGroup");
+        contiRuntimeStatusLayout = new QGridLayout(contiRuntimeStatusGroup);
+        contiRuntimeStatusLayout->setObjectName("contiRuntimeStatusLayout");
+        contiEnableAxesButton = new QPushButton(contiRuntimeStatusGroup);
+        contiEnableAxesButton->setObjectName("contiEnableAxesButton");
+
+        contiRuntimeStatusLayout->addWidget(contiEnableAxesButton, 0, 0, 1, 2);
+
+        contiDisableAxesButton = new QPushButton(contiRuntimeStatusGroup);
+        contiDisableAxesButton->setObjectName("contiDisableAxesButton");
+
+        contiRuntimeStatusLayout->addWidget(contiDisableAxesButton, 0, 2, 1, 2);
+
+        contiRunStateLabel = new QLabel(contiRuntimeStatusGroup);
+        contiRunStateLabel->setObjectName("contiRunStateLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiRunStateLabel, 1, 0, 1, 1);
+
+        contiRunStateValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiRunStateValueLabel->setObjectName("contiRunStateValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiRunStateValueLabel, 1, 1, 1, 1);
+
+        contiMarkLabel = new QLabel(contiRuntimeStatusGroup);
+        contiMarkLabel->setObjectName("contiMarkLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiMarkLabel, 1, 2, 1, 1);
+
+        contiMarkValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiMarkValueLabel->setObjectName("contiMarkValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiMarkValueLabel, 1, 3, 1, 1);
+
+        contiBufferLabel = new QLabel(contiRuntimeStatusGroup);
+        contiBufferLabel->setObjectName("contiBufferLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiBufferLabel, 2, 0, 1, 1);
+
+        contiBufferValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiBufferValueLabel->setObjectName("contiBufferValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiBufferValueLabel, 2, 1, 1, 1);
+
+        contiSpaceLabel = new QLabel(contiRuntimeStatusGroup);
+        contiSpaceLabel->setObjectName("contiSpaceLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiSpaceLabel, 2, 2, 1, 1);
+
+        contiSpaceValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiSpaceValueLabel->setObjectName("contiSpaceValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiSpaceValueLabel, 2, 3, 1, 1);
+
+        contiHostQueueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiHostQueueLabel->setObjectName("contiHostQueueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiHostQueueLabel, 3, 0, 1, 1);
+
+        contiHostQueueValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiHostQueueValueLabel->setObjectName("contiHostQueueValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiHostQueueValueLabel, 3, 1, 1, 1);
+
+        contiPlanningAlignmentLabel = new QLabel(contiRuntimeStatusGroup);
+        contiPlanningAlignmentLabel->setObjectName("contiPlanningAlignmentLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiPlanningAlignmentLabel, 3, 2, 1, 1);
+
+        contiPlanningAlignmentValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiPlanningAlignmentValueLabel->setObjectName("contiPlanningAlignmentValueLabel");
+        contiPlanningAlignmentValueLabel->setWordWrap(true);
+
+        contiRuntimeStatusLayout->addWidget(contiPlanningAlignmentValueLabel, 3, 3, 1, 1);
+
+        contiExpectedPlanTimeLabel = new QLabel(contiRuntimeStatusGroup);
+        contiExpectedPlanTimeLabel->setObjectName("contiExpectedPlanTimeLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiExpectedPlanTimeLabel, 4, 0, 1, 1);
+
+        contiExpectedPlanTimeValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiExpectedPlanTimeValueLabel->setObjectName("contiExpectedPlanTimeValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiExpectedPlanTimeValueLabel, 4, 1, 1, 1);
+
+        contiPhaseErrorLabel = new QLabel(contiRuntimeStatusGroup);
+        contiPhaseErrorLabel->setObjectName("contiPhaseErrorLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiPhaseErrorLabel, 4, 2, 1, 1);
+
+        contiPhaseErrorValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiPhaseErrorValueLabel->setObjectName("contiPhaseErrorValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiPhaseErrorValueLabel, 4, 3, 1, 1);
+
+        contiBufferTimeLabel = new QLabel(contiRuntimeStatusGroup);
+        contiBufferTimeLabel->setObjectName("contiBufferTimeLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiBufferTimeLabel, 5, 0, 1, 1);
+
+        contiBufferTimeValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiBufferTimeValueLabel->setObjectName("contiBufferTimeValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiBufferTimeValueLabel, 5, 1, 1, 1);
+
+        contiRatioApiAgeLabel = new QLabel(contiRuntimeStatusGroup);
+        contiRatioApiAgeLabel->setObjectName("contiRatioApiAgeLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiRatioApiAgeLabel, 5, 2, 1, 1);
+
+        contiRatioApiAgeValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiRatioApiAgeValueLabel->setObjectName("contiRatioApiAgeValueLabel");
+
+        contiRuntimeStatusLayout->addWidget(contiRatioApiAgeValueLabel, 5, 3, 1, 1);
+
+        contiRatioDiagLabel = new QLabel(contiRuntimeStatusGroup);
+        contiRatioDiagLabel->setObjectName("contiRatioDiagLabel");
+        contiRatioDiagLabel->setWordWrap(true);
+
+        contiRuntimeStatusLayout->addWidget(contiRatioDiagLabel, 6, 0, 1, 1);
+
+        contiRatioDiagValueLabel = new QLabel(contiRuntimeStatusGroup);
+        contiRatioDiagValueLabel->setObjectName("contiRatioDiagValueLabel");
+        contiRatioDiagValueLabel->setWordWrap(true);
+
+        contiRuntimeStatusLayout->addWidget(contiRatioDiagValueLabel, 6, 1, 1, 3);
+
+
+        contiLeftPanelLayout->addWidget(contiRuntimeStatusGroup);
+
+        testGroup = new QGroupBox(contiLeftPanel);
         testGroup->setObjectName("testGroup");
         testForm = new QFormLayout(testGroup);
         testForm->setObjectName("testForm");
@@ -760,7 +828,10 @@ public:
         testForm->setWidget(11, QFormLayout::FieldRole, trajectoryPointModeCombo);
 
 
-        settingsLayout->addWidget(testGroup);
+        contiLeftPanelLayout->addWidget(testGroup);
+
+
+        settingsLayout->addWidget(contiLeftPanel);
 
         contiGroup = new QGroupBox(contiTestScrollContent);
         contiGroup->setObjectName("contiGroup");
@@ -1088,19 +1159,6 @@ public:
 
         contiTestLayout->addLayout(settingsLayout);
 
-        contiTrajectoryGroup = new QGroupBox(contiTestScrollContent);
-        contiTrajectoryGroup->setObjectName("contiTrajectoryGroup");
-        contiTrajectoryLayout = new QVBoxLayout(contiTrajectoryGroup);
-        contiTrajectoryLayout->setObjectName("contiTrajectoryLayout");
-        contiTrajectoryChartView = new QChartView(contiTrajectoryGroup);
-        contiTrajectoryChartView->setObjectName("contiTrajectoryChartView");
-        contiTrajectoryChartView->setMinimumSize(QSize(0, 300));
-
-        contiTrajectoryLayout->addWidget(contiTrajectoryChartView);
-
-
-        contiTestLayout->addWidget(contiTrajectoryGroup);
-
         contiButtonLayout = new QHBoxLayout();
         contiButtonLayout->setObjectName("contiButtonLayout");
         startButton = new QPushButton(contiTestScrollContent);
@@ -1115,6 +1173,19 @@ public:
 
 
         contiTestLayout->addLayout(contiButtonLayout);
+
+        contiTrajectoryGroup = new QGroupBox(contiTestScrollContent);
+        contiTrajectoryGroup->setObjectName("contiTrajectoryGroup");
+        contiTrajectoryLayout = new QVBoxLayout(contiTrajectoryGroup);
+        contiTrajectoryLayout->setObjectName("contiTrajectoryLayout");
+        contiTrajectoryChartView = new QChartView(contiTrajectoryGroup);
+        contiTrajectoryChartView->setObjectName("contiTrajectoryChartView");
+        contiTrajectoryChartView->setMinimumSize(QSize(0, 300));
+
+        contiTrajectoryLayout->addWidget(contiTrajectoryChartView);
+
+
+        contiTestLayout->addWidget(contiTrajectoryGroup);
 
         contiTestScrollArea->setWidget(contiTestScrollContent);
 
@@ -1412,7 +1483,7 @@ public:
         velocityControlScrollArea->setWidgetResizable(true);
         velocityControlScrollContent = new QWidget();
         velocityControlScrollContent->setObjectName("velocityControlScrollContent");
-        velocityControlScrollContent->setGeometry(QRect(0, 0, 1000, 1300));
+        velocityControlScrollContent->setGeometry(QRect(0, 0, 781, 1136));
         velocityControlContentLayout = new QVBoxLayout(velocityControlScrollContent);
         velocityControlContentLayout->setObjectName("velocityControlContentLayout");
         velocityControlParameterGroup = new QGroupBox(velocityControlScrollContent);
@@ -1849,10 +1920,10 @@ public:
         logLayout->setObjectName("logLayout");
         logToolbarLayout = new QHBoxLayout();
         logToolbarLayout->setObjectName("logToolbarLayout");
-        logHintLabel = new QLabel(logGroup);
-        logHintLabel->setObjectName("logHintLabel");
+        copyLogButton = new QPushButton(logGroup);
+        copyLogButton->setObjectName("copyLogButton");
 
-        logToolbarLayout->addWidget(logHintLabel);
+        logToolbarLayout->addWidget(copyLogButton);
 
         logToolbarSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
@@ -1882,7 +1953,7 @@ public:
         retranslateUi(MainWindow);
 
         busCycleCombo->setCurrentIndex(2);
-        tabWidget->setCurrentIndex(0);
+        tabWidget->setCurrentIndex(3);
         holdAxisCombo->setCurrentIndex(1);
 
 
@@ -1891,21 +1962,11 @@ public:
 
     void retranslateUi(QMainWindow *MainWindow)
     {
-        MainWindow->setWindowTitle(QCoreApplication::translate("MainWindow", "E5000 \350\277\236\347\273\255\346\217\222\350\241\245\346\265\213\350\257\225\345\231\250", nullptr));
-        globalControlGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\205\250\345\261\200\346\216\247\345\210\266\344\270\216\347\212\266\346\200\201", nullptr));
+        MainWindow->setWindowTitle(QCoreApplication::translate("MainWindow", "E5000 \350\277\220\345\212\250\346\216\247\345\210\266\346\265\213\350\257\225\345\271\263\345\217\260", nullptr));
+        globalControlGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241\344\270\216\345\205\250\345\261\200\345\256\211\345\205\250", nullptr));
         globalStatusGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241\347\212\266\346\200\201", nullptr));
         stateLabel->setText(QCoreApplication::translate("MainWindow", "\347\250\213\345\272\217\347\212\266\346\200\201", nullptr));
         stateValueLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\252\345\210\235\345\247\213\345\214\226", nullptr));
-        runStateLabel->setText(QCoreApplication::translate("MainWindow", "runState", nullptr));
-        runStateValueLabel->setText(QCoreApplication::translate("MainWindow", "4", nullptr));
-        markLabel->setText(QCoreApplication::translate("MainWindow", "\345\275\223\345\211\215 / \345\267\262\346\216\250\351\200\201 mark", nullptr));
-        markValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0", nullptr));
-        bufferLabel->setText(QCoreApplication::translate("MainWindow", "\347\274\223\345\206\262\346\256\265\346\225\260", nullptr));
-        bufferValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
-        spaceLabel->setText(QCoreApplication::translate("MainWindow", "\347\274\223\345\206\262\345\211\251\344\275\231\347\251\272\351\227\264", nullptr));
-        spaceValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
-        hostQueueLabel->setText(QCoreApplication::translate("MainWindow", "\344\270\212\344\275\215\346\234\272\351\230\237\345\210\227", nullptr));
-        hostQueueValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
 #if QT_CONFIG(tooltip)
         busCycleSettingLabel->setToolTip(QCoreApplication::translate("MainWindow", "\346\211\213\345\206\214\346\224\257\346\214\201 250\343\200\201500\343\200\2011000\343\200\2012000 \316\274s\357\274\233\344\273\205\345\234\250\345\210\235\345\247\213\345\214\226\346\216\247\345\210\266\345\215\241\346\227\266\345\206\231\345\205\245\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
@@ -1923,34 +1984,53 @@ public:
         readBusCycleButton->setText(QCoreApplication::translate("MainWindow", "\345\210\267\346\226\260", nullptr));
         traceSampleLabel->setText(QCoreApplication::translate("MainWindow", "Trace \351\207\207\346\240\267\345\221\250\346\234\237", nullptr));
         traceSampleValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\276\205\345\210\235\345\247\213\345\214\226", nullptr));
-        planningAlignmentLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\350\247\204\345\210\222\345\221\250\346\234\237", nullptr));
-        planningAlignmentValueLabel->setText(QCoreApplication::translate("MainWindow", "10 ms = 10 \303\227 1000 us", nullptr));
-        timeSyncDiagnosticsGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\227\266\351\227\264\345\220\214\346\255\245\345\217\252\350\257\273\350\257\212\346\226\255", nullptr));
-        expectedPlanTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\237\346\234\233 / \345\215\241\344\276\247\350\256\241\345\210\222", nullptr));
-        expectedPlanTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 / 0.0 ms", nullptr));
-        phaseErrorLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\344\275\215\350\257\257\345\267\256", nullptr));
-        phaseErrorValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
-        bufferTimeLabel->setText(QCoreApplication::translate("MainWindow", "\350\247\204\345\210\222\347\274\223\345\206\262", nullptr));
-        bufferTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
-        ratioDiagLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207 ref / phase / buffer / cmd / applied", nullptr));
-        ratioDiagValueLabel->setText(QCoreApplication::translate("MainWindow", "0.000 / 0.000 / 0.000 / 0.000 / 0.000", nullptr));
-        ratioApiAgeLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207 API \350\267\235\344\273\212", nullptr));
-        ratioApiAgeValueLabel->setText(QCoreApplication::translate("MainWindow", "-- ms", nullptr));
-        globalActionGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241\344\270\216\346\265\213\350\257\225\350\275\264", nullptr));
+        globalActionGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241\346\223\215\344\275\234\344\270\216\350\275\264\347\212\266\346\200\201", nullptr));
         initializeButton->setText(QCoreApplication::translate("MainWindow", "\345\210\235\345\247\213\345\214\226\346\216\247\345\210\266\345\215\241", nullptr));
         closeBoardButton->setText(QCoreApplication::translate("MainWindow", "\345\256\211\345\205\250\345\205\263\351\227\255\346\216\247\345\210\266\345\215\241", nullptr));
-#if QT_CONFIG(tooltip)
-        enableAxesButton->setToolTip(QCoreApplication::translate("MainWindow", "\344\275\277\350\203\275\347\254\254\344\270\200\351\241\265\342\200\234\344\270\273\345\212\250\350\275\264\342\200\235\345\222\214\342\200\234\344\277\235\346\214\201/\347\254\254\344\272\214\350\275\264\342\200\235\346\211\200\351\200\211\347\232\204\346\265\213\350\257\225\350\275\264\343\200\202", nullptr));
-#endif // QT_CONFIG(tooltip)
-        enableAxesButton->setText(QCoreApplication::translate("MainWindow", "\344\275\277\350\203\275\350\277\236\347\273\255\346\217\222\350\241\245\346\265\213\350\257\225\350\275\264", nullptr));
-#if QT_CONFIG(tooltip)
-        disableAxesButton->setToolTip(QCoreApplication::translate("MainWindow", "\345\244\261\350\203\275\347\254\254\344\270\200\351\241\265\342\200\234\344\270\273\345\212\250\350\275\264\342\200\235\345\222\214\342\200\234\344\277\235\346\214\201/\347\254\254\344\272\214\350\275\264\342\200\235\346\211\200\351\200\211\347\232\204\346\265\213\350\257\225\350\275\264\343\200\202", nullptr));
-#endif // QT_CONFIG(tooltip)
-        disableAxesButton->setText(QCoreApplication::translate("MainWindow", "\345\244\261\350\203\275\350\277\236\347\273\255\346\217\222\350\241\245\346\265\213\350\257\225\350\275\264", nullptr));
+        axisEnableStatusGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\264\344\275\277\350\203\275\347\212\266\346\200\201", nullptr));
+        axis0EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2640 \346\234\252\347\237\245", nullptr));
+        axis1EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2641 \346\234\252\347\237\245", nullptr));
+        axis2EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2642 \346\234\252\347\237\245", nullptr));
+        axis3EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2643 \346\234\252\347\237\245", nullptr));
+        axis4EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2644 \346\234\252\347\237\245", nullptr));
+        axis5EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2645 \346\234\252\347\237\245", nullptr));
+        axis6EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2646 \346\234\252\347\237\245", nullptr));
+        axis7EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2647 \346\234\252\347\237\245", nullptr));
         globalEmergencyGroup->setTitle(QCoreApplication::translate("MainWindow", "\347\264\247\346\200\245\346\223\215\344\275\234", nullptr));
         emergencyStopButton->setText(QCoreApplication::translate("MainWindow", "\345\205\250\345\261\200\347\253\213\345\215\263\345\201\234\346\255\242", nullptr));
-        globalEmergencyHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\253\213\345\215\263\345\201\234\346\255\242\350\277\236\347\273\255\346\217\222\350\241\245\346\210\226\346\255\243\345\234\250\346\211\247\350\241\214\347\232\204\345\215\225\350\275\264\347\202\271\344\275\215\350\277\220\345\212\250\343\200\202", nullptr));
-        testGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\250\350\277\271\357\274\210\344\272\224\346\254\241\345\244\232\351\241\271\345\274\217\357\274\211", nullptr));
+        globalEmergencyHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\253\213\345\215\263\345\201\234\346\255\242\345\275\223\345\211\215\346\255\243\345\234\250\346\211\247\350\241\214\347\232\204\350\277\236\347\273\255\346\217\222\350\241\245\343\200\201\345\215\225\350\275\264\347\202\271\344\275\215\346\210\226\351\200\237\345\272\246\351\227\255\347\216\257\350\277\220\345\212\250\343\200\202", nullptr));
+        contiRuntimeStatusGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\217\222\350\241\245\350\275\264\344\270\216\350\277\220\350\241\214\347\212\266\346\200\201", nullptr));
+#if QT_CONFIG(tooltip)
+        contiEnableAxesButton->setToolTip(QCoreApplication::translate("MainWindow", "\344\275\277\350\203\275\346\234\254\351\241\265\342\200\234\344\270\273\345\212\250\350\275\264\342\200\235\345\222\214\342\200\234\344\277\235\346\214\201/\347\254\254\344\272\214\350\275\264\342\200\235\346\211\200\351\200\211\347\232\204\346\265\213\350\257\225\350\275\264\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        contiEnableAxesButton->setText(QCoreApplication::translate("MainWindow", "\344\275\277\350\203\275\346\217\222\350\241\245\346\265\213\350\257\225\350\275\264", nullptr));
+#if QT_CONFIG(tooltip)
+        contiDisableAxesButton->setToolTip(QCoreApplication::translate("MainWindow", "\345\244\261\350\203\275\346\234\254\351\241\265\342\200\234\344\270\273\345\212\250\350\275\264\342\200\235\345\222\214\342\200\234\344\277\235\346\214\201/\347\254\254\344\272\214\350\275\264\342\200\235\346\211\200\351\200\211\347\232\204\346\265\213\350\257\225\350\275\264\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        contiDisableAxesButton->setText(QCoreApplication::translate("MainWindow", "\345\244\261\350\203\275\346\217\222\350\241\245\346\265\213\350\257\225\350\275\264", nullptr));
+        contiRunStateLabel->setText(QCoreApplication::translate("MainWindow", "runState", nullptr));
+        contiRunStateValueLabel->setText(QCoreApplication::translate("MainWindow", "4", nullptr));
+        contiMarkLabel->setText(QCoreApplication::translate("MainWindow", "\345\275\223\345\211\215 / \345\267\262\346\216\250\351\200\201 mark", nullptr));
+        contiMarkValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0", nullptr));
+        contiBufferLabel->setText(QCoreApplication::translate("MainWindow", "\347\274\223\345\206\262\346\256\265\346\225\260", nullptr));
+        contiBufferValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
+        contiSpaceLabel->setText(QCoreApplication::translate("MainWindow", "\347\274\223\345\206\262\345\211\251\344\275\231\347\251\272\351\227\264", nullptr));
+        contiSpaceValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
+        contiHostQueueLabel->setText(QCoreApplication::translate("MainWindow", "\344\270\212\344\275\215\346\234\272\351\230\237\345\210\227", nullptr));
+        contiHostQueueValueLabel->setText(QCoreApplication::translate("MainWindow", "0", nullptr));
+        contiPlanningAlignmentLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\350\247\204\345\210\222\345\221\250\346\234\237", nullptr));
+        contiPlanningAlignmentValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\276\205\345\210\235\345\247\213\345\214\226", nullptr));
+        contiExpectedPlanTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\237\346\234\233 / \345\215\241\344\276\247\350\256\241\345\210\222", nullptr));
+        contiExpectedPlanTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 / 0.0 ms", nullptr));
+        contiPhaseErrorLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\344\275\215\350\257\257\345\267\256", nullptr));
+        contiPhaseErrorValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
+        contiBufferTimeLabel->setText(QCoreApplication::translate("MainWindow", "\350\247\204\345\210\222\347\274\223\345\206\262", nullptr));
+        contiBufferTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0.0 ms", nullptr));
+        contiRatioApiAgeLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207 API \350\267\235\344\273\212", nullptr));
+        contiRatioApiAgeValueLabel->setText(QCoreApplication::translate("MainWindow", "-- ms", nullptr));
+        contiRatioDiagLabel->setText(QCoreApplication::translate("MainWindow", "\345\200\215\347\216\207 ref/phase/buffer/cmd/applied", nullptr));
+        contiRatioDiagValueLabel->setText(QCoreApplication::translate("MainWindow", "0.000 / 0.000 / 0.000 / 0.000 / 0.000", nullptr));
+        testGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\250\350\277\271\345\217\202\346\225\260", nullptr));
         stageLabel->setText(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\351\230\266\346\256\265", nullptr));
         stageCombo->setItemText(0, QCoreApplication::translate("MainWindow", "\351\230\266\346\256\265\344\270\200\357\274\232\345\215\225\350\275\264\350\277\220\345\212\250", nullptr));
         stageCombo->setItemText(1, QCoreApplication::translate("MainWindow", "\351\230\266\346\256\265\344\272\214\357\274\232\345\217\214\350\275\264\345\220\214\346\255\245", nullptr));
@@ -2038,9 +2118,9 @@ public:
         ratioApiIntervalSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
         ratioSafetyApiIntervalLabel->setText(QCoreApplication::translate("MainWindow", "\345\256\211\345\205\250\345\200\215\347\216\207 API \346\234\200\345\260\217\351\227\264\351\232\224", nullptr));
         ratioSafetyApiIntervalSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
-        contiTrajectoryGroup->setTitle(QCoreApplication::translate("MainWindow", "\344\270\273\345\212\250\350\275\264\350\275\250\350\277\271\345\257\271\346\257\224\357\274\210\344\275\216\351\242\221\346\230\276\347\244\272\357\274\211", nullptr));
         startButton->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\277\236\347\273\255\346\217\222\350\241\245", nullptr));
         stopButton->setText(QCoreApplication::translate("MainWindow", "\345\207\217\351\200\237\345\201\234\346\255\242", nullptr));
+        contiTrajectoryGroup->setTitle(QCoreApplication::translate("MainWindow", "\344\270\273\345\212\250\350\275\264\350\275\250\350\277\271\345\257\271\346\257\224\357\274\210\344\275\216\351\242\221\346\230\276\347\244\272\357\274\211", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(contiTestTab), QCoreApplication::translate("MainWindow", "\350\277\236\347\273\255\346\217\222\350\241\245\346\265\213\350\257\225", nullptr));
         baseConfigGroup->setTitle(QCoreApplication::translate("MainWindow", "E5000 \345\237\272\347\241\200\351\205\215\347\275\256", nullptr));
         axisRangeLabel->setText(QCoreApplication::translate("MainWindow", "\345\237\272\347\241\200\351\205\215\347\275\256\350\275\264\350\214\203\345\233\264", nullptr));
@@ -2176,7 +2256,7 @@ public:
         extensionHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\255\244\351\241\265\351\235\242\351\242\204\347\225\231\347\273\231\345\220\216\347\273\255\347\232\204 8 \350\275\264 CDPR\343\200\201\345\212\250\345\212\233\345\255\246\346\261\202\350\247\243\343\200\201\345\212\233\344\274\240\346\204\237\345\231\250\345\222\214\347\274\223\345\206\262\346\260\264\344\275\215\350\207\252\345\212\250\350\260\203\351\200\237\347\255\211\345\212\237\350\203\275\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(extensionTab), QCoreApplication::translate("MainWindow", "\346\211\251\345\261\225\345\212\237\350\203\275\357\274\210\351\242\204\347\225\231\357\274\211", nullptr));
         logGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\277\220\350\241\214\346\227\245\345\277\227", nullptr));
-        logHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\211\200\346\234\211\351\241\265\351\235\242\345\205\261\347\224\250", nullptr));
+        copyLogButton->setText(QCoreApplication::translate("MainWindow", "\345\244\215\345\210\266\346\227\245\345\277\227", nullptr));
         clearLogButton->setText(QCoreApplication::translate("MainWindow", "\346\270\205\351\231\244\346\227\245\345\277\227", nullptr));
     } // retranslateUi
 
