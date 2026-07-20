@@ -42,6 +42,7 @@ ContiWorker::ContiWorker(QObject *parent)
     , producerTimer_(new QTimer(this))
     , monitorTimer_(new QTimer(this))
     , feedbackTimer_(new QTimer(this))
+    , velocityControlTimer_(new QTimer(this))
 {
     softwareZeroUnit_.fill(0.0, 8);
     softwareZeroValid_.fill(false, 8);
@@ -51,10 +52,14 @@ ContiWorker::ContiWorker(QObject *parent)
     monitorTimer_->setInterval(5);
     feedbackTimer_->setTimerType(Qt::PreciseTimer);
     feedbackTimer_->setInterval(10);
+    velocityControlTimer_->setTimerType(Qt::PreciseTimer);
+    velocityControlTimer_->setInterval(10);
 
     connect(producerTimer_, &QTimer::timeout, this, &ContiWorker::produceNextPoint);
     connect(monitorTimer_, &QTimer::timeout, this, &ContiWorker::monitorContinuousRun);
     connect(feedbackTimer_, &QTimer::timeout, this, &ContiWorker::refreshFeedback);
+    connect(velocityControlTimer_, &QTimer::timeout,
+            this, &ContiWorker::runVelocityControlCycle);
 }
 
 void ContiWorker::initializeBoard(const ContiTestConfig &config)
@@ -196,7 +201,7 @@ void ContiWorker::startTelemetryRecording()
     metadata.traceSamplePeriodUs = card_.traceSamplePeriodUs();
     metadata.degreesPerCardUnit = config_.degreesPerCardUnit;
     metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("records"));
-    metadata.description = QStringLiteral("E5000 阶段 A：两轴 Trace 指令(type 5)与实际(type 6)位置记录");
+    metadata.description = QStringLiteral("E5000 Trace：type 3/4 指令与实际速度＋type 5/6 指令与实际位置");
     QString error;
     if (!telemetryRecorder_.start(metadata, error)) {
         emit logMessage(QStringLiteral("开始 Trace 数据记录失败：%1").arg(error));
@@ -230,6 +235,7 @@ void ContiWorker::shutdownHardware()
     producerTimer_->stop();
     monitorTimer_->stop();
     feedbackTimer_->stop();
+    velocityControlTimer_->stop();
     resetRunTimingState();
 
     if (!boardInitialized_) {
@@ -273,7 +279,7 @@ void ContiWorker::enableSelectedAxes(const ContiTestConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能切换轴使能。"));
         return;
     }
@@ -338,7 +344,7 @@ void ContiWorker::disableSelectedAxes(const ContiTestConfig &config)
     if (!boardInitialized_) {
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
         stopTest(false);
     }
     if (config.cardNo != initializedCardNo_) {
@@ -372,7 +378,7 @@ void ContiWorker::startTest(const ContiTestConfig &config)
         emit logMessage(QStringLiteral("启动前请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_) {
+    if (running_ || preparing_ || velocityControlActive_) {
         emit logMessage(QStringLiteral("已有测试正在准备或运行。"));
         return;
     }
@@ -544,6 +550,10 @@ void ContiWorker::startTest(const ContiTestConfig &config)
 
 void ContiWorker::stopTest(bool emergency)
 {
+    if (velocityControlActive_) {
+        stopVelocityControl(emergency);
+        return;
+    }
     telemetryRecorder_.appendEvent(emergency
                                        ? QStringLiteral("motion_immediate_stop")
                                        : QStringLiteral("motion_decelerated_stop"));
@@ -646,7 +656,7 @@ void ContiWorker::enableJogAxis(const SingleAxisJogConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
         emit logMessage(QStringLiteral("连续插补准备、运行或单轴点位运动期间不能切换点动测试轴。"));
         return;
     }
@@ -711,7 +721,7 @@ void ContiWorker::disableJogAxis(const SingleAxisJogConfig &config)
                             .arg(initializedCardNo_));
         return;
     }
-    if (running_ || preparing_) {
+    if (running_ || preparing_ || velocityControlActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间不能失能点动测试轴。"));
         return;
     }
@@ -748,7 +758,7 @@ void ContiWorker::setJogAxisZero(const SingleAxisJogConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能修改点动软件零位。"));
         return;
     }
@@ -787,7 +797,7 @@ void ContiWorker::startPointMove(const SingleAxisJogConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_) {
+    if (running_ || preparing_ || velocityControlActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间禁止单轴点动。"));
         return;
     }
@@ -876,6 +886,391 @@ void ContiWorker::stopPointMove(bool emergency)
     publishStatus();
 }
 
+bool ContiWorker::validateVelocityControlConfig(
+    const VelocityControlConfig &config,
+    QString &errorMessage) const
+{
+    const bool finite = std::isfinite(config.relativeDeltaDegree)
+        && std::isfinite(config.durationS)
+        && std::isfinite(config.kp)
+        && std::isfinite(config.ki)
+        && std::isfinite(config.kd)
+        && std::isfinite(config.integralLimitDegreeSecond)
+        && std::isfinite(config.maxPidCorrectionDegreePerSecond)
+        && std::isfinite(config.velocityFeedforwardGain)
+        && std::isfinite(config.maxVelocityDegreePerSecond)
+        && std::isfinite(config.maxAccelerationDegreePerSecond2)
+        && std::isfinite(config.onlineChangeTimeS)
+        && std::isfinite(config.startVelocityThresholdDegreePerSecond)
+        && std::isfinite(config.positionToleranceDegree)
+        && std::isfinite(config.speedToleranceDegreePerSecond)
+        && std::isfinite(config.maxFollowingErrorDegree);
+    if (!finite || config.axis >= 8 || config.durationS <= 0.0
+        || actualBusCycleUs_ <= 0 || config.controlPeriodMs <= 0
+        || config.controlPeriodMs * 1000 < actualBusCycleUs_
+        || (config.controlPeriodMs * 1000) % actualBusCycleUs_ != 0
+        || config.maxVelocityDegreePerSecond <= 0.0
+        || config.maxAccelerationDegreePerSecond2 <= 0.0
+        || config.maxPidCorrectionDegreePerSecond < 0.0
+        || config.integralLimitDegreeSecond < 0.0
+        || config.onlineChangeTimeS < 0.0
+        || config.startVelocityThresholdDegreePerSecond <= 0.0
+        || config.startVelocityThresholdDegreePerSecond >= config.maxVelocityDegreePerSecond
+        || config.positionToleranceDegree <= 0.0
+        || config.speedToleranceDegreePerSecond <= 0.0
+        || config.stableDwellMs < config.controlPeriodMs
+        || config.finishTimeoutMs < config.controlPeriodMs
+        || config.maxFollowingErrorDegree <= config.positionToleranceDegree
+        || config.traceTimeoutMs < config.controlPeriodMs) {
+        errorMessage = QStringLiteral("速度闭环参数无效：请检查周期、轨迹、PID、限幅、完成和安全参数");
+        return false;
+    }
+    return true;
+}
+
+void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedConfig)
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("请先初始化控制卡。"));
+        return;
+    }
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
+        emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动速度闭环。"));
+        return;
+    }
+    VelocityControlConfig config = requestedConfig;
+    config.degreesPerCardUnit = config_.degreesPerCardUnit;
+    if (config.cardNo != initializedCardNo_) {
+        emit logMessage(QStringLiteral("当前已初始化卡号为 %1，请勿切换卡号。")
+                            .arg(initializedCardNo_));
+        return;
+    }
+    QString error;
+    if (!validateVelocityControlConfig(config, error)) {
+        emit logMessage(error);
+        return;
+    }
+    if (!enabledAxes_.contains(config.axis)) {
+        emit logMessage(QStringLiteral("请先使能速度闭环测试轴 %1。").arg(config.axis));
+        return;
+    }
+    if (telemetryRecorder_.status().recording) {
+        telemetryRecorder_.appendEvent(QStringLiteral("recording_stopped_for_velocity_trace_reconfigure"));
+        stopTelemetryRecording();
+    }
+    if (!card_.setAxisEquivalent(config.cardNo, config.axis,
+                                 MotorUnit::pulsesPerCardUnit(config.degreesPerCardUnit), error)) {
+        enterError(QStringLiteral("轴 %1 脉冲当量设置失败：%2").arg(config.axis).arg(error));
+        return;
+    }
+    if (!configureFeedbackTrace({config.axis}, error)) {
+        enterError(QStringLiteral("速度闭环 Trace 配置失败：%1").arg(error));
+        return;
+    }
+
+    velocityConfig_ = config;
+    ++velocityRunId_;
+    velocityStatus_ = {};
+    velocityStatus_.active = true;
+    velocityStatus_.runId = velocityRunId_;
+    velocityStatus_.axis = config.axis;
+    velocityStatus_.stateText = QStringLiteral("等待速度/位置 Trace 首帧");
+    velocityControlActive_ = true;
+    velocityMotionStarted_ = false;
+    velocityReferenceInitialized_ = false;
+    velocityLastTraceSequence_ = latestTraceSequence_;
+    velocityLastDiagnosticMs_ = -1;
+    velocityPid_.reset();
+    velocityRunClock_.invalidate();
+    velocityCycleClock_.invalidate();
+    velocityCompletionClock_.invalidate();
+    velocityTraceFreshClock_.start();
+
+    TelemetryRunMetadata metadata;
+    metadata.cardNo = initializedCardNo_;
+    metadata.axes = {config.axis};
+    metadata.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    metadata.degreesPerCardUnit = config.degreesPerCardUnit;
+    metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
+                                 .filePath(QStringLiteral("records"));
+    metadata.description = QStringLiteral("单轴速度模式位置闭环：Trace type 3/4 速度＋type 5/6 位置");
+    velocityAutoRecording_ = telemetryRecorder_.start(metadata, error);
+    if (!velocityAutoRecording_) {
+        emit logMessage(QStringLiteral("警告：速度闭环自动记录未启动：%1").arg(error));
+    }
+
+    feedbackTimer_->stop();
+    velocityControlTimer_->setInterval(config.controlPeriodMs);
+    velocityControlTimer_->start();
+    stateText_ = QStringLiteral("速度闭环等待 Trace");
+    emit logMessage(QStringLiteral("速度闭环已准备：轴 %1，相对位移=%2°，轨迹时间=%3 s，控制周期=%4 ms；"
+                                   "Trace=type 3/4/5/6，自动记录=%5。")
+                        .arg(config.axis)
+                        .arg(config.relativeDeltaDegree, 0, 'f', 4)
+                        .arg(config.durationS, 0, 'f', 3)
+                        .arg(config.controlPeriodMs)
+                        .arg(velocityAutoRecording_ ? QStringLiteral("是") : QStringLiteral("否")));
+    emit logMessage(QStringLiteral("速度闭环参数：前馈=%1×%2，Kp/Ki/Kd=%3/%4/%5，"
+                                   "速度上限=%6°/s，加速度上限=%7°/s²，在线变速时间=%8 ms。")
+                        .arg(config.velocityFeedforwardEnabled ? QStringLiteral("启用") : QStringLiteral("关闭"))
+                        .arg(config.velocityFeedforwardGain, 0, 'f', 3)
+                        .arg(config.kp, 0, 'f', 4)
+                        .arg(config.ki, 0, 'f', 4)
+                        .arg(config.kd, 0, 'f', 4)
+                        .arg(config.maxVelocityDegreePerSecond, 0, 'f', 3)
+                        .arg(config.maxAccelerationDegreePerSecond2, 0, 'f', 3)
+                        .arg(config.onlineChangeTimeS * 1000.0, 0, 'f', 1));
+    publishStatus();
+}
+
+void ContiWorker::evaluateVelocityReference(double elapsedS,
+                                             double &positionDegree,
+                                             double &velocityDegreePerSecond) const
+{
+    const double duration = std::max(1e-9, velocityConfig_.durationS);
+    const double time = std::clamp(elapsedS, 0.0, duration);
+    const double tau = time / duration;
+    const double ratio = 10.0 * std::pow(tau, 3)
+        - 15.0 * std::pow(tau, 4) + 6.0 * std::pow(tau, 5);
+    const double ratioRate = (30.0 * std::pow(tau, 2)
+        - 60.0 * std::pow(tau, 3) + 30.0 * std::pow(tau, 4)) / duration;
+    positionDegree = velocityStartPositionDegree_
+        + velocityConfig_.relativeDeltaDegree * ratio;
+    velocityDegreePerSecond = velocityConfig_.relativeDeltaDegree * ratioRate;
+    if (elapsedS >= duration) {
+        positionDegree = velocityFinalPositionDegree_;
+        velocityDegreePerSecond = 0.0;
+    }
+}
+
+void ContiWorker::runVelocityControlCycle()
+{
+    if (!velocityControlActive_) {
+        return;
+    }
+    if (!pollTraceFeedback()) {
+        finishVelocityControl(QStringLiteral("速度闭环 Trace 读取失败：%1").arg(traceStateText_), true);
+        return;
+    }
+    if (latestTraceSequence_ != velocityLastTraceSequence_) {
+        velocityLastTraceSequence_ = latestTraceSequence_;
+        velocityTraceFreshClock_.restart();
+    } else if (velocityTraceFreshClock_.isValid()
+               && velocityTraceFreshClock_.elapsed() > velocityConfig_.traceTimeoutMs) {
+        finishVelocityControl(QStringLiteral("速度闭环 Trace 超时：%1 ms 内无新帧")
+                                  .arg(velocityConfig_.traceTimeoutMs), true);
+        return;
+    }
+    if (velocityConfig_.axis >= static_cast<quint16>(latestAxisFeedback_.size())) {
+        finishVelocityControl(QStringLiteral("速度闭环反馈轴索引越界"), true);
+        return;
+    }
+    const AxisFeedback &feedback = latestAxisFeedback_.at(velocityConfig_.axis);
+    if (!feedback.valid || !feedback.traceSampleValid) {
+        velocityStatus_.stateText = QStringLiteral("等待有效 Trace 反馈");
+        publishStatus();
+        return;
+    }
+    if (feedback.stateMachine != 4U || feedback.axisErrorCode != 0U) {
+        finishVelocityControl(QStringLiteral("轴状态异常：状态机=%1，轴错误码=%2")
+                                  .arg(feedback.stateMachine)
+                                  .arg(feedback.axisErrorCode), true);
+        return;
+    }
+
+    if (!velocityReferenceInitialized_) {
+        velocityReferenceInitialized_ = true;
+        velocityStartPositionDegree_ = feedback.encoderPositionUnit;
+        velocityFinalPositionDegree_ = velocityStartPositionDegree_
+            + velocityConfig_.relativeDeltaDegree;
+        velocityPid_.reset();
+        velocityRunClock_.start();
+        velocityCycleClock_.start();
+        velocityTraceFreshClock_.restart();
+        velocityStatus_.actualPositionDegree = feedback.encoderPositionUnit;
+        velocityStatus_.referencePositionDegree = velocityStartPositionDegree_;
+        velocityStatus_.stateText = QStringLiteral("闭环运行中");
+        stateText_ = QStringLiteral("速度闭环运行中");
+        emit logMessage(QStringLiteral("速度闭环取得首帧：轴 %1 起点=%2°，目标=%3°。")
+                            .arg(velocityConfig_.axis)
+                            .arg(velocityStartPositionDegree_, 0, 'f', 6)
+                            .arg(velocityFinalPositionDegree_, 0, 'f', 6));
+        publishStatus();
+        return;
+    }
+
+    const double elapsedS = velocityRunClock_.elapsed() / 1000.0;
+    const double dtSeconds = velocityCycleClock_.isValid()
+        ? std::max(1e-6, velocityCycleClock_.restart() / 1000.0)
+        : velocityConfig_.controlPeriodMs / 1000.0;
+    double referencePosition = 0.0;
+    double referenceVelocity = 0.0;
+    evaluateVelocityReference(elapsedS, referencePosition, referenceVelocity);
+    const double positionError = referencePosition - feedback.encoderPositionUnit;
+    if (std::abs(positionError) > velocityConfig_.maxFollowingErrorDegree) {
+        finishVelocityControl(QStringLiteral("跟随误差超限：当前=%1°，上限=%2°")
+                                  .arg(positionError, 0, 'f', 6)
+                                  .arg(velocityConfig_.maxFollowingErrorDegree, 0, 'f', 6), true);
+        return;
+    }
+
+    const PositionVelocityPidOutput output = velocityPid_.update(
+        velocityConfig_, positionError, referenceVelocity,
+        feedback.actualVelocityUnitPerSecond, dtSeconds);
+    QElapsedTimer apiClock;
+    apiClock.start();
+    short apiResult = 0;
+    QString error;
+    bool apiOk = true;
+    if (!velocityMotionStarted_) {
+        if (std::abs(output.commandVelocity)
+            >= velocityConfig_.startVelocityThresholdDegreePerSecond) {
+            apiOk = card_.startVelocityMove(velocityConfig_, output.commandVelocity, error);
+            velocityMotionStarted_ = apiOk;
+            if (apiOk) {
+                emit logMessage(QStringLiteral("速度闭环：轴 %1 已调用 dmc_vmove，启动方向=%2，初始速度=%3°/s。")
+                                    .arg(velocityConfig_.axis)
+                                    .arg(output.commandVelocity < 0.0
+                                             ? QStringLiteral("负向") : QStringLiteral("正向"))
+                                    .arg(output.commandVelocity, 0, 'f', 6));
+            }
+        }
+    } else {
+        apiOk = card_.changeVelocity(velocityConfig_, output.commandVelocity,
+                                     apiResult, error);
+    }
+    const qint64 apiDurationUs = apiClock.nsecsElapsed() / 1000;
+    if (!apiOk) {
+        velocityStatus_.lastApiResult = apiResult;
+        velocityStatus_.lastApiDurationUs = apiDurationUs;
+        finishVelocityControl(QStringLiteral("速度命令执行失败：%1").arg(error), true);
+        return;
+    }
+
+    velocityStatus_.active = true;
+    velocityStatus_.motionStarted = velocityMotionStarted_;
+    velocityStatus_.elapsedS = elapsedS;
+    velocityStatus_.controlDtMs = dtSeconds * 1000.0;
+    velocityStatus_.maximumJitterMs = std::max(
+        velocityStatus_.maximumJitterMs,
+        std::abs(velocityStatus_.controlDtMs - velocityConfig_.controlPeriodMs));
+    velocityStatus_.referencePositionDegree = referencePosition;
+    velocityStatus_.cardCommandPositionDegree = feedback.commandPositionUnit;
+    velocityStatus_.actualPositionDegree = feedback.encoderPositionUnit;
+    velocityStatus_.positionErrorDegree = positionError;
+    velocityStatus_.referenceVelocityDegreePerSecond = referenceVelocity;
+    velocityStatus_.commandVelocityDegreePerSecond = output.commandVelocity;
+    velocityStatus_.cardCommandVelocityDegreePerSecond = feedback.commandVelocityUnitPerSecond;
+    velocityStatus_.actualVelocityDegreePerSecond = feedback.actualVelocityUnitPerSecond;
+    velocityStatus_.feedforwardTermDegreePerSecond = output.feedforward;
+    velocityStatus_.pTermDegreePerSecond = output.p;
+    velocityStatus_.iTermDegreePerSecond = output.i;
+    velocityStatus_.dTermDegreePerSecond = output.d;
+    velocityStatus_.velocitySaturated = output.velocitySaturated;
+    velocityStatus_.accelerationLimited = output.accelerationLimited;
+    velocityStatus_.integralFrozen = output.integralFrozen;
+    velocityStatus_.lastApiResult = apiResult;
+    velocityStatus_.lastApiDurationUs = apiDurationUs;
+    velocityStatus_.stateText = elapsedS < velocityConfig_.durationS
+        ? QStringLiteral("闭环运行中") : QStringLiteral("终点稳态确认中");
+
+    const bool terminalStable = elapsedS >= velocityConfig_.durationS
+        && std::abs(positionError) <= velocityConfig_.positionToleranceDegree
+        && std::abs(feedback.actualVelocityUnitPerSecond)
+               <= velocityConfig_.speedToleranceDegreePerSecond;
+    if (terminalStable) {
+        if (!velocityCompletionClock_.isValid()) {
+            velocityCompletionClock_.start();
+        }
+        if (velocityCompletionClock_.elapsed() >= velocityConfig_.stableDwellMs) {
+            finishVelocityControl(QStringLiteral("速度闭环轨迹完成：终点误差=%1°，实际速度=%2°/s。")
+                                      .arg(positionError, 0, 'f', 6)
+                                      .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 6));
+            return;
+        }
+    } else {
+        velocityCompletionClock_.invalidate();
+    }
+    if (elapsedS * 1000.0 > velocityConfig_.durationS * 1000.0
+        + velocityConfig_.finishTimeoutMs) {
+        finishVelocityControl(QStringLiteral("速度闭环终点确认超时：误差=%1°，实际速度=%2°/s。")
+                                  .arg(positionError, 0, 'f', 6)
+                                  .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 6), true);
+        return;
+    }
+
+    const qint64 elapsedMs = velocityRunClock_.elapsed();
+    if (velocityLastDiagnosticMs_ < 0 || elapsedMs - velocityLastDiagnosticMs_ >= 250) {
+        velocityLastDiagnosticMs_ = elapsedMs;
+        emit logMessage(QStringLiteral("速度闭环：t=%1 s，位置 ref/act/err=%2/%3/%4°，"
+                                       "速度 ref/cmd/card/act=%5/%6/%7/%8°/s，API=%9 us。")
+                            .arg(elapsedS, 0, 'f', 3)
+                            .arg(referencePosition, 0, 'f', 4)
+                            .arg(feedback.encoderPositionUnit, 0, 'f', 4)
+                            .arg(positionError, 0, 'f', 4)
+                            .arg(referenceVelocity, 0, 'f', 4)
+                            .arg(output.commandVelocity, 0, 'f', 4)
+                            .arg(feedback.commandVelocityUnitPerSecond, 0, 'f', 4)
+                            .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 4)
+                            .arg(apiDurationUs));
+    }
+    publishStatus();
+}
+
+void ContiWorker::finishVelocityControl(const QString &message, bool emergency)
+{
+    velocityControlTimer_->stop();
+    if (velocityMotionStarted_ && boardInitialized_) {
+        QString stopError;
+        if (!card_.stopAxis(initializedCardNo_, velocityConfig_.axis, emergency, stopError)) {
+            emit logMessage(QStringLiteral("速度闭环停止轴失败：%1").arg(stopError));
+        }
+    }
+    velocityControlActive_ = false;
+    velocityMotionStarted_ = false;
+    velocityReferenceInitialized_ = false;
+    velocityStatus_.active = false;
+    velocityStatus_.motionStarted = false;
+    velocityStatus_.stateText = emergency ? QStringLiteral("异常停止") : QStringLiteral("已完成");
+    stateText_ = velocityStatus_.stateText;
+    telemetryRecorder_.appendEvent(emergency
+        ? QStringLiteral("velocity_control_emergency_stop")
+        : QStringLiteral("velocity_control_completed"));
+    if (velocityAutoRecording_) {
+        telemetryRecorder_.stop();
+        velocityAutoRecording_ = false;
+    }
+    emit logMessage(emergency ? QStringLiteral("错误：%1").arg(message) : message);
+    if (boardInitialized_) {
+        feedbackTimer_->start();
+    }
+    publishStatus();
+}
+
+void ContiWorker::stopVelocityControl(bool emergency)
+{
+    if (!velocityControlActive_) {
+        emit logMessage(QStringLiteral("当前没有正在运行的速度闭环。"));
+        return;
+    }
+    finishVelocityControl(emergency ? QStringLiteral("速度闭环已立即停止")
+                                    : QStringLiteral("速度闭环已减速停止"), emergency);
+}
+
+void ContiWorker::resetVelocityController()
+{
+    if (velocityControlActive_) {
+        emit logMessage(QStringLiteral("速度闭环运行中不能重置控制器，请先停止。"));
+        return;
+    }
+    velocityPid_.reset();
+    velocityStatus_ = {};
+    velocityStatus_.runId = velocityRunId_;
+    velocityStatus_.axis = velocityConfig_.axis;
+    emit logMessage(QStringLiteral("速度闭环PID状态已重置。"));
+    publishStatus();
+}
+
 bool ContiWorker::waitForAxisStop(quint16 axis, int timeoutMs) const
 {
     const int attempts = std::max(1, timeoutMs / kStopPollIntervalMs);
@@ -935,6 +1330,7 @@ void ContiWorker::safelyStopAllMotionForShutdown()
 {
     producerTimer_->stop();
     monitorTimer_->stop();
+    velocityControlTimer_->stop();
 
     if (listOpen_) {
         QString error;
@@ -959,10 +1355,25 @@ void ContiWorker::safelyStopAllMotionForShutdown()
         safelyStopPointAxis(pointMoveAxis_, QStringLiteral("安全停机"));
     }
 
+    if (velocityControlActive_) {
+        QString error;
+        if (!card_.stopAxis(initializedCardNo_, velocityConfig_.axis, false, error)
+            || !waitForAxisStop(velocityConfig_.axis, kGracefulStopTimeoutMs)) {
+            emit logMessage(QStringLiteral("速度闭环安全停机：减速停止未确认，改为立即停止。"));
+            error.clear();
+            card_.stopAxis(initializedCardNo_, velocityConfig_.axis, true, error);
+        }
+    }
+
     listOpen_ = false;
     preparing_ = false;
     running_ = false;
     pointMoveActive_ = false;
+    velocityControlActive_ = false;
+    velocityMotionStarted_ = false;
+    velocityReferenceInitialized_ = false;
+    velocityStatus_.active = false;
+    velocityStatus_.motionStarted = false;
     hostQueue_.clear();
     lastFeedStatus_ = {};
 }
@@ -1508,6 +1919,7 @@ void ContiWorker::enterError(const QString &message)
     telemetryRecorder_.appendEvent(QStringLiteral("control_error: %1").arg(message));
     producerTimer_->stop();
     monitorTimer_->stop();
+    velocityControlTimer_->stop();
     if (listOpen_) {
         QString ignored;
         card_.stop(config_, true, ignored);
@@ -1518,9 +1930,23 @@ void ContiWorker::enterError(const QString &message)
         card_.stopAxis(initializedCardNo_, pointMoveAxis_, true, ignored);
         pointMoveActive_ = false;
     }
+    if (velocityControlActive_ && boardInitialized_) {
+        QString ignored;
+        card_.stopAxis(initializedCardNo_, velocityConfig_.axis, true, ignored);
+    }
     listOpen_ = false;
     preparing_ = false;
     running_ = false;
+    velocityControlActive_ = false;
+    velocityMotionStarted_ = false;
+    velocityReferenceInitialized_ = false;
+    velocityStatus_.active = false;
+    velocityStatus_.motionStarted = false;
+    velocityStatus_.stateText = QStringLiteral("错误");
+    if (velocityAutoRecording_) {
+        telemetryRecorder_.stop();
+        velocityAutoRecording_ = false;
+    }
     trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
     lastFeedStatus_ = {};
@@ -1589,6 +2015,7 @@ void ContiWorker::publishStatus()
     status.latestTraceTimeUs = latestTraceTimeUs_;
     status.traceSamplePeriodUs = card_.traceSamplePeriodUs();
     status.recorder = telemetryRecorder_.status();
+    status.velocityControl = velocityStatus_;
     status.softwareZeroUnit = softwareZeroUnit_;
     status.softwareZeroValid = softwareZeroValid_;
     if (boardInitialized_) {

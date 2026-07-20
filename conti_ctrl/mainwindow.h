@@ -38,6 +38,9 @@ signals:
     void setJogAxisZeroRequested(const SingleAxisJogConfig &config);
     void startPointMoveRequested(const SingleAxisJogConfig &config);
     void stopPointMoveRequested(bool emergency);
+    void startVelocityControlRequested(const VelocityControlConfig &config);
+    void stopVelocityControlRequested(bool emergency);
+    void resetVelocityControllerRequested();
     void startTelemetryRecordingRequested();
     void stopTelemetryRecordingRequested();
     void refreshBusCycleRequested();
@@ -63,6 +66,13 @@ private slots:
     void onJogPositionDisplayModeChanged();
     void onStartRecordingClicked();
     void onStopRecordingClicked();
+    void onVelocityEnableAxisClicked();
+    void onVelocityDisableAxisClicked();
+    void onVelocityStartClicked();
+    void onVelocityStopClicked();
+    void onVelocityEmergencyStopClicked();
+    void onVelocityResetClicked();
+    void onVelocityClearCurvesClicked();
     void onBusCycleSelectionChanged(int index);
     void onProducerPeriodChanged(int periodMs);
     void appendLog(const QString &message);
@@ -71,10 +81,14 @@ private slots:
 private:
     ContiTestConfig collectConfig() const;
     SingleAxisJogConfig collectJogConfig() const;
+    VelocityControlConfig collectVelocityConfig() const;
     void connectWorker();
     void initializeTelemetryCharts();
     void updateTelemetryCharts();
     void updateContiTrajectoryChart();
+    void initializeVelocityControlCharts();
+    void updateVelocityControlCharts();
+    void clearVelocityControlCharts();
     void updateChartRanges(QChart *chart, QValueAxis *timeAxis, QValueAxis *valueAxis,
                            const QList<QLineSeries *> &series, double timeSeconds,
                            double minimumSpan) const;
@@ -105,6 +119,20 @@ private:
     quint64 lastPlottedTraceSequence_ = 0;
     quint64 lastContiTrajectoryTraceSequence_ = 0;
     quint64 contiTrajectoryTraceStartTimeUs_ = 0;
+    QChart *velocityPositionChart_ = nullptr;
+    QChart *velocityErrorChart_ = nullptr;
+    QChart *velocitySpeedChart_ = nullptr;
+    QLineSeries *velocityPositionSeries_[3] {nullptr, nullptr, nullptr};
+    QLineSeries *velocityErrorSeries_[3] {nullptr, nullptr, nullptr};
+    QLineSeries *velocitySpeedSeries_[4] {nullptr, nullptr, nullptr, nullptr};
+    QValueAxis *velocityPositionTimeAxis_ = nullptr;
+    QValueAxis *velocityPositionValueAxis_ = nullptr;
+    QValueAxis *velocityErrorTimeAxis_ = nullptr;
+    QValueAxis *velocityErrorValueAxis_ = nullptr;
+    QValueAxis *velocitySpeedTimeAxis_ = nullptr;
+    QValueAxis *velocitySpeedValueAxis_ = nullptr;
+    quint64 lastVelocityRunId_ = 0;
+    double lastVelocityPlotTimeS_ = -1.0;
 };
 
 #endif // MAINWINDOW_H

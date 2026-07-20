@@ -31,6 +31,7 @@ MainWindow::MainWindow(QWidget *parent)
     normalizeProducerPeriodForBusCycle();
     updateBusPeriodUi();
     initializeTelemetryCharts();
+    initializeVelocityControlCharts();
     onStageChanged(ui_->stageCombo->currentIndex());
 
     worker_->moveToThread(workerThread_);
@@ -96,6 +97,20 @@ void MainWindow::connectWorker()
             this, &MainWindow::onStartRecordingClicked);
     connect(ui_->stopRecordingButton, &QPushButton::clicked,
             this, &MainWindow::onStopRecordingClicked);
+    connect(ui_->velocityEnableAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityEnableAxisClicked);
+    connect(ui_->velocityDisableAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityDisableAxisClicked);
+    connect(ui_->velocityStartButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityStartClicked);
+    connect(ui_->velocityStopButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityStopClicked);
+    connect(ui_->velocityEmergencyStopButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityEmergencyStopClicked);
+    connect(ui_->velocityResetButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityResetClicked);
+    connect(ui_->velocityClearCurvesButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityClearCurvesClicked);
 
     connect(this, &MainWindow::initializeBoardRequested, worker_, &ContiWorker::initializeBoard);
     connect(this, &MainWindow::closeBoardRequested, worker_, &ContiWorker::closeBoard);
@@ -109,6 +124,12 @@ void MainWindow::connectWorker()
     connect(this, &MainWindow::setJogAxisZeroRequested, worker_, &ContiWorker::setJogAxisZero);
     connect(this, &MainWindow::startPointMoveRequested, worker_, &ContiWorker::startPointMove);
     connect(this, &MainWindow::stopPointMoveRequested, worker_, &ContiWorker::stopPointMove);
+    connect(this, &MainWindow::startVelocityControlRequested,
+            worker_, &ContiWorker::startVelocityControl);
+    connect(this, &MainWindow::stopVelocityControlRequested,
+            worker_, &ContiWorker::stopVelocityControl);
+    connect(this, &MainWindow::resetVelocityControllerRequested,
+            worker_, &ContiWorker::resetVelocityController);
     connect(this, &MainWindow::startTelemetryRecordingRequested,
             worker_, &ContiWorker::startTelemetryRecording);
     connect(this, &MainWindow::stopTelemetryRecordingRequested,
@@ -184,6 +205,35 @@ SingleAxisJogConfig MainWindow::collectJogConfig() const
     config.axis = static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt());
     config.targetPositionUnit = ui_->jogTargetPositionSpin->value();
     config.maxVelocityUnitPerSecond = ui_->jogVelocitySpin->value();
+    return config;
+}
+
+VelocityControlConfig MainWindow::collectVelocityConfig() const
+{
+    VelocityControlConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
+    config.relativeDeltaDegree = ui_->velocityDeltaSpin->value();
+    config.durationS = ui_->velocityDurationSpin->value();
+    config.controlPeriodMs = ui_->velocityControlPeriodSpin->value();
+    config.pidEnabled = ui_->velocityPidEnableCheck->isChecked();
+    config.kp = ui_->velocityKpSpin->value();
+    config.ki = ui_->velocityKiSpin->value();
+    config.kd = ui_->velocityKdSpin->value();
+    config.integralLimitDegreeSecond = ui_->velocityIntegralLimitSpin->value();
+    config.maxPidCorrectionDegreePerSecond = ui_->velocityMaxCorrectionSpin->value();
+    config.velocityFeedforwardEnabled = ui_->velocityFeedforwardCheck->isChecked();
+    config.velocityFeedforwardGain = ui_->velocityFeedforwardGainSpin->value();
+    config.maxVelocityDegreePerSecond = ui_->velocityMaxSpeedSpin->value();
+    config.maxAccelerationDegreePerSecond2 = ui_->velocityMaxAccelerationSpin->value();
+    config.onlineChangeTimeS = ui_->velocityChangeTimeSpin->value();
+    config.startVelocityThresholdDegreePerSecond = ui_->velocityStartThresholdSpin->value();
+    config.positionToleranceDegree = ui_->velocityPositionToleranceSpin->value();
+    config.speedToleranceDegreePerSecond = ui_->velocitySpeedToleranceSpin->value();
+    config.stableDwellMs = ui_->velocityStableDwellSpin->value();
+    config.finishTimeoutMs = ui_->velocityFinishTimeoutSpin->value();
+    config.maxFollowingErrorDegree = ui_->velocityMaxFollowingErrorSpin->value();
+    config.traceTimeoutMs = ui_->velocityTraceTimeoutSpin->value();
     return config;
 }
 
@@ -360,6 +410,47 @@ void MainWindow::onStopRecordingClicked()
     emit stopTelemetryRecordingRequested();
 }
 
+void MainWindow::onVelocityEnableAxisClicked()
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
+    emit enableJogAxisRequested(config);
+}
+
+void MainWindow::onVelocityDisableAxisClicked()
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
+    emit disableJogAxisRequested(config);
+}
+
+void MainWindow::onVelocityStartClicked()
+{
+    emit startVelocityControlRequested(collectVelocityConfig());
+}
+
+void MainWindow::onVelocityStopClicked()
+{
+    emit stopVelocityControlRequested(false);
+}
+
+void MainWindow::onVelocityEmergencyStopClicked()
+{
+    emit stopVelocityControlRequested(true);
+}
+
+void MainWindow::onVelocityResetClicked()
+{
+    emit resetVelocityControllerRequested();
+}
+
+void MainWindow::onVelocityClearCurvesClicked()
+{
+    clearVelocityControlCharts();
+}
+
 void MainWindow::appendLog(const QString &message)
 {
     const QString time = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz"));
@@ -420,6 +511,43 @@ void MainWindow::updateStatus(const ContiStatus &status)
                                                       .arg(status.traceFramesRead)
                                                       .arg(status.traceLastApiResult)
                                                 : QStringLiteral("控制卡未初始化"));
+    const VelocityControlStatus &velocity = status.velocityControl;
+    ui_->velocityStateValueLabel->setText(QStringLiteral("%1；API=%2，耗时=%3 us")
+                                              .arg(velocity.stateText)
+                                              .arg(velocity.lastApiResult)
+                                              .arg(velocity.lastApiDurationUs));
+    ui_->velocityTimingValueLabel->setText(QStringLiteral("%1 s / %2 ms / %3 ms")
+                                               .arg(velocity.elapsedS, 0, 'f', 3)
+                                               .arg(velocity.controlDtMs, 0, 'f', 3)
+                                               .arg(velocity.maximumJitterMs, 0, 'f', 3));
+    ui_->velocityPositionStatusValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 °")
+                                                       .arg(velocity.referencePositionDegree, 0, 'f', 5)
+                                                       .arg(velocity.cardCommandPositionDegree, 0, 'f', 5)
+                                                       .arg(velocity.actualPositionDegree, 0, 'f', 5)
+                                                       .arg(velocity.positionErrorDegree, 0, 'f', 5));
+    ui_->velocitySpeedStatusValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 °/s")
+                                                    .arg(velocity.referenceVelocityDegreePerSecond, 0, 'f', 5)
+                                                    .arg(velocity.commandVelocityDegreePerSecond, 0, 'f', 5)
+                                                    .arg(velocity.cardCommandVelocityDegreePerSecond, 0, 'f', 5)
+                                                    .arg(velocity.actualVelocityDegreePerSecond, 0, 'f', 5));
+    QStringList velocityFlags;
+    if (velocity.velocitySaturated) velocityFlags << QStringLiteral("速度饱和");
+    if (velocity.accelerationLimited) velocityFlags << QStringLiteral("加速度限幅");
+    if (velocity.integralFrozen) velocityFlags << QStringLiteral("积分冻结");
+    if (velocityFlags.isEmpty()) velocityFlags << QStringLiteral("无限幅");
+    ui_->velocityPidStatusValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 / %5")
+                                                  .arg(velocity.feedforwardTermDegreePerSecond, 0, 'f', 5)
+                                                  .arg(velocity.pTermDegreePerSecond, 0, 'f', 5)
+                                                  .arg(velocity.iTermDegreePerSecond, 0, 'f', 5)
+                                                  .arg(velocity.dTermDegreePerSecond, 0, 'f', 5)
+                                                  .arg(velocityFlags.join(QStringLiteral("、"))));
+    ui_->velocityControlParameterGroup->setEnabled(!velocity.active);
+    ui_->velocityStartButton->setEnabled(status.boardInitialized && !velocity.active);
+    ui_->velocityEnableAxisButton->setEnabled(status.boardInitialized && !velocity.active);
+    ui_->velocityDisableAxisButton->setEnabled(status.boardInitialized && !velocity.active);
+    ui_->velocityResetButton->setEnabled(!velocity.active);
+    ui_->velocityStopButton->setEnabled(velocity.active);
+    ui_->velocityEmergencyStopButton->setEnabled(velocity.active);
     ui_->recordingStateValueLabel->setText(status.recorder.recording
                                                ? QStringLiteral("记录中（%1 ms Trace）")
                                                      .arg(status.traceSamplePeriodUs / 1000.0, 0, 'f', 1)
@@ -542,6 +670,7 @@ void MainWindow::initializeTelemetryCharts()
 
 void MainWindow::updateTelemetryCharts()
 {
+    updateVelocityControlCharts();
     if (!hasLatestStatus_ || latestStatus_.latestTraceSequence == 0) {
         return;
     }
@@ -591,6 +720,145 @@ void MainWindow::updateTelemetryCharts()
     ui_->positionChartView->update();
     ui_->followingErrorChartView->update();
     updateContiTrajectoryChart();
+}
+
+void MainWindow::initializeVelocityControlCharts()
+{
+    const auto createChart = [](const QString &title, const QString &valueTitle,
+                                QChartView *view, QChart *&chart,
+                                QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
+        chart = new QChart;
+        chart->setTitle(title);
+        chart->legend()->setVisible(true);
+        timeAxis = new QValueAxis(chart);
+        timeAxis->setTitleText(QStringLiteral("运行时间 (s)"));
+        timeAxis->setRange(0.0, 5.0);
+        valueAxis = new QValueAxis(chart);
+        valueAxis->setTitleText(valueTitle);
+        valueAxis->setRange(-1.0, 1.0);
+        chart->addAxis(timeAxis, Qt::AlignBottom);
+        chart->addAxis(valueAxis, Qt::AlignLeft);
+        view->setChart(chart);
+        view->setRenderHint(QPainter::Antialiasing, false);
+    };
+    createChart(QStringLiteral("位置跟踪：规划 / 板卡指令 / Trace实际"),
+                QStringLiteral("位置 (°)"), ui_->velocityPositionChartView,
+                velocityPositionChart_, velocityPositionTimeAxis_, velocityPositionValueAxis_);
+    createChart(QStringLiteral("位置误差与允许范围"), QStringLiteral("误差 (°)"),
+                ui_->velocityErrorChartView, velocityErrorChart_,
+                velocityErrorTimeAxis_, velocityErrorValueAxis_);
+    createChart(QStringLiteral("速度跟踪：规划 / PID命令 / 板卡指令 / Trace实际"),
+                QStringLiteral("速度 (°/s)"), ui_->velocitySpeedChartView,
+                velocitySpeedChart_, velocitySpeedTimeAxis_, velocitySpeedValueAxis_);
+
+    const QColor blue(0, 102, 204);
+    const QColor purple(128, 64, 160);
+    const QColor red(204, 51, 51);
+    const QColor green(0, 153, 102);
+    const QStringList positionNames {QStringLiteral("规划位置"),
+                                     QStringLiteral("板卡指令位置"),
+                                     QStringLiteral("Trace实际位置")};
+    const QList<QColor> positionColors {blue, purple, red};
+    for (int index = 0; index < 3; ++index) {
+        velocityPositionSeries_[index] = new QLineSeries(velocityPositionChart_);
+        velocityPositionSeries_[index]->setName(positionNames.at(index));
+        velocityPositionSeries_[index]->setPen(QPen(positionColors.at(index), 1.5));
+        velocityPositionChart_->addSeries(velocityPositionSeries_[index]);
+        velocityPositionSeries_[index]->attachAxis(velocityPositionTimeAxis_);
+        velocityPositionSeries_[index]->attachAxis(velocityPositionValueAxis_);
+    }
+    const QStringList errorNames {QStringLiteral("位置误差"),
+                                  QStringLiteral("正允许误差"),
+                                  QStringLiteral("负允许误差")};
+    for (int index = 0; index < 3; ++index) {
+        velocityErrorSeries_[index] = new QLineSeries(velocityErrorChart_);
+        velocityErrorSeries_[index]->setName(errorNames.at(index));
+        velocityErrorSeries_[index]->setPen(QPen(index == 0 ? red : QColor(140, 140, 140),
+                                                  index == 0 ? 1.6 : 1.0,
+                                                  index == 0 ? Qt::SolidLine : Qt::DashLine));
+        velocityErrorChart_->addSeries(velocityErrorSeries_[index]);
+        velocityErrorSeries_[index]->attachAxis(velocityErrorTimeAxis_);
+        velocityErrorSeries_[index]->attachAxis(velocityErrorValueAxis_);
+    }
+    const QStringList speedNames {QStringLiteral("规划速度"), QStringLiteral("PID命令速度"),
+                                  QStringLiteral("板卡指令速度"), QStringLiteral("Trace实际速度")};
+    const QList<QColor> speedColors {blue, green, purple, red};
+    for (int index = 0; index < 4; ++index) {
+        velocitySpeedSeries_[index] = new QLineSeries(velocitySpeedChart_);
+        velocitySpeedSeries_[index]->setName(speedNames.at(index));
+        velocitySpeedSeries_[index]->setPen(QPen(speedColors.at(index), 1.4));
+        velocitySpeedChart_->addSeries(velocitySpeedSeries_[index]);
+        velocitySpeedSeries_[index]->attachAxis(velocitySpeedTimeAxis_);
+        velocitySpeedSeries_[index]->attachAxis(velocitySpeedValueAxis_);
+    }
+}
+
+void MainWindow::clearVelocityControlCharts()
+{
+    for (QLineSeries *series : velocityPositionSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    for (QLineSeries *series : velocityErrorSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    for (QLineSeries *series : velocitySpeedSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    lastVelocityPlotTimeS_ = -1.0;
+}
+
+void MainWindow::updateVelocityControlCharts()
+{
+    if (!hasLatestStatus_) {
+        return;
+    }
+    const VelocityControlStatus &status = latestStatus_.velocityControl;
+    if (status.runId != lastVelocityRunId_) {
+        clearVelocityControlCharts();
+        lastVelocityRunId_ = status.runId;
+    }
+    if (!status.active || status.elapsedS <= lastVelocityPlotTimeS_) {
+        return;
+    }
+    const double time = status.elapsedS;
+    velocityPositionSeries_[0]->append(time, status.referencePositionDegree);
+    velocityPositionSeries_[1]->append(time, status.cardCommandPositionDegree);
+    velocityPositionSeries_[2]->append(time, status.actualPositionDegree);
+    velocityErrorSeries_[0]->append(time, status.positionErrorDegree);
+    velocityErrorSeries_[1]->append(time, ui_->velocityPositionToleranceSpin->value());
+    velocityErrorSeries_[2]->append(time, -ui_->velocityPositionToleranceSpin->value());
+    velocitySpeedSeries_[0]->append(time, status.referenceVelocityDegreePerSecond);
+    velocitySpeedSeries_[1]->append(time, status.commandVelocityDegreePerSecond);
+    velocitySpeedSeries_[2]->append(time, status.cardCommandVelocityDegreePerSecond);
+    velocitySpeedSeries_[3]->append(time, status.actualVelocityDegreePerSecond);
+    lastVelocityPlotTimeS_ = time;
+
+    const auto fitAxes = [time](QValueAxis *timeAxis, QValueAxis *valueAxis,
+                                const QList<QLineSeries *> &series, double minimumSpan) {
+        timeAxis->setRange(0.0, qMax(5.0, time * 1.05));
+        double minimum = std::numeric_limits<double>::max();
+        double maximum = std::numeric_limits<double>::lowest();
+        for (QLineSeries *line : series) {
+            for (const QPointF &point : line->points()) {
+                minimum = qMin(minimum, point.y());
+                maximum = qMax(maximum, point.y());
+            }
+        }
+        if (minimum > maximum) return;
+        const double span = qMax(minimumSpan, maximum - minimum);
+        const double margin = span * 0.15;
+        valueAxis->setRange(minimum - margin, maximum + margin);
+    };
+    fitAxes(velocityPositionTimeAxis_, velocityPositionValueAxis_,
+            {velocityPositionSeries_[0], velocityPositionSeries_[1], velocityPositionSeries_[2]}, 0.1);
+    fitAxes(velocityErrorTimeAxis_, velocityErrorValueAxis_,
+            {velocityErrorSeries_[0], velocityErrorSeries_[1], velocityErrorSeries_[2]}, 0.01);
+    fitAxes(velocitySpeedTimeAxis_, velocitySpeedValueAxis_,
+            {velocitySpeedSeries_[0], velocitySpeedSeries_[1],
+             velocitySpeedSeries_[2], velocitySpeedSeries_[3]}, 0.1);
+    ui_->velocityPositionChartView->update();
+    ui_->velocityErrorChartView->update();
+    ui_->velocitySpeedChartView->update();
 }
 
 void MainWindow::updateContiTrajectoryChart()

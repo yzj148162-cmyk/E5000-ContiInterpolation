@@ -8,6 +8,7 @@
 #include <QMap>
 
 #include "common/ContiTypes.h"
+#include "control/PositionVelocityPid.h"
 #include "hardware/E5000HardwareInterface.h"
 #include "planner/QuinticTrajectory.h"
 #include "telemetry/TelemetryRecorder.h"
@@ -36,6 +37,9 @@ public slots:
     void setJogAxisZero(const SingleAxisJogConfig &config);
     void startPointMove(const SingleAxisJogConfig &config);
     void stopPointMove(bool emergency);
+    void startVelocityControl(const VelocityControlConfig &config);
+    void stopVelocityControl(bool emergency);
+    void resetVelocityController();
     void startTelemetryRecording();
     void stopTelemetryRecording();
     void refreshBusCycle();
@@ -48,6 +52,7 @@ signals:
 private slots:
     void produceNextPoint();
     void monitorContinuousRun();
+    void runVelocityControlCycle();
 
 private:
     bool startAfterPreload();
@@ -75,6 +80,12 @@ private:
     bool safelyStopPointAxis(quint16 axis, const QString &reason);
     void safelyStopAllMotionForShutdown();
     void disableAllEnabledAxesForShutdown();
+    bool validateVelocityControlConfig(const VelocityControlConfig &config,
+                                       QString &errorMessage) const;
+    void evaluateVelocityReference(double elapsedS,
+                                   double &positionDegree,
+                                   double &velocityDegreePerSecond) const;
+    void finishVelocityControl(const QString &message, bool emergency = false);
 
 private:
     // 控制线程只保存状态机与轨迹数据；SDK、Trace PDO 和控制卡状态均在
@@ -89,6 +100,7 @@ private:
     QTimer *producerTimer_ = nullptr;
     QTimer *monitorTimer_ = nullptr;
     QTimer *feedbackTimer_ = nullptr;
+    QTimer *velocityControlTimer_ = nullptr;
     ContiTestConfig config_;
     ContiFeedStatus lastFeedStatus_;
     bool boardInitialized_ = false;
@@ -99,6 +111,22 @@ private:
     bool preparing_ = false;
     bool running_ = false;
     bool pointMoveActive_ = false;
+    bool velocityControlActive_ = false;
+    bool velocityMotionStarted_ = false;
+    bool velocityReferenceInitialized_ = false;
+    bool velocityAutoRecording_ = false;
+    quint64 velocityRunId_ = 0;
+    VelocityControlConfig velocityConfig_;
+    VelocityControlStatus velocityStatus_;
+    PositionVelocityPid velocityPid_;
+    double velocityStartPositionDegree_ = 0.0;
+    double velocityFinalPositionDegree_ = 0.0;
+    QElapsedTimer velocityRunClock_;
+    QElapsedTimer velocityCycleClock_;
+    QElapsedTimer velocityTraceFreshClock_;
+    QElapsedTimer velocityCompletionClock_;
+    quint64 velocityLastTraceSequence_ = 0;
+    qint64 velocityLastDiagnosticMs_ = -1;
     quint16 pointMoveAxis_ = 0;
     bool pointMoveDiagnosticPending_ = false;
     double pointMoveRequestedTargetUnit_ = 0.0;

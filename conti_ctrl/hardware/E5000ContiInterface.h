@@ -20,6 +20,13 @@ public:
     bool readTargetPositionUnit(WORD cardNo, WORD axis, double &position, QString &errorMessage) const;
     bool readAxisFeedback(WORD cardNo, WORD axis, AxisFeedback &feedback) const;
     bool startPointMove(const SingleAxisJogConfig &config, QString &errorMessage) const;
+    bool startVelocityMove(const VelocityControlConfig &config,
+                           double initialVelocityDegreePerSecond,
+                           QString &errorMessage) const;
+    bool changeVelocity(const VelocityControlConfig &config,
+                        double velocityDegreePerSecond,
+                        short &apiResult,
+                        QString &errorMessage) const;
     bool stopAxis(WORD cardNo, WORD axis, bool emergency, QString &errorMessage) const;
     bool isAxisMotionDone(WORD cardNo, WORD axis) const;
     bool axisMotionDone(WORD cardNo, WORD axis, bool &done, QString &errorMessage) const;

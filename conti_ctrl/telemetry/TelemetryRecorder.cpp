@@ -54,7 +54,7 @@ public:
 
         QJsonObject root;
         root.insert(QStringLiteral("format"), QStringLiteral("E5000 Trace Telemetry"));
-        root.insert(QStringLiteral("formatVersion"), 1);
+        root.insert(QStringLiteral("formatVersion"), 2);
         root.insert(QStringLiteral("createdAt"), QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
         root.insert(QStringLiteral("cardNo"), static_cast<int>(metadata.cardNo));
         root.insert(QStringLiteral("traceSamplePeriodUs"), metadata.traceSamplePeriodUs);

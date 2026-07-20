@@ -3,6 +3,9 @@
 #include <QThread>
 #include <QStringList>
 
+#include <algorithm>
+#include <cmath>
+
 #include "LTDMC.h"
 
 namespace {
@@ -197,6 +200,63 @@ bool E5000ContiInterface::startPointMove(const SingleAxisJogConfig &config,
                        .arg(sCurveResult)
                        .arg(moveResult);
     return false;
+}
+
+bool E5000ContiInterface::startVelocityMove(
+    const VelocityControlConfig &config,
+    double initialVelocityDegreePerSecond,
+    QString &errorMessage) const
+{
+    if (config.degreesPerCardUnit <= 0.0
+        || std::abs(initialVelocityDegreePerSecond)
+               < config.startVelocityThresholdDegreePerSecond) {
+        errorMessage = QStringLiteral("速度模式启动参数无效：初始速度=%1°/s，启动阈值=%2°/s")
+                           .arg(initialVelocityDegreePerSecond, 0, 'f', 6)
+                           .arg(config.startVelocityThresholdDegreePerSecond, 0, 'f', 6);
+        return false;
+    }
+    const double initialCardVelocity = std::abs(initialVelocityDegreePerSecond)
+        / config.degreesPerCardUnit;
+    const double transitionTime = std::max(0.001, config.onlineChangeTimeS);
+    const short clearResult = dmc_clear_stop_reason(config.cardNo, config.axis);
+    const short profileResult = dmc_set_profile_unit(config.cardNo, config.axis, 0.0,
+                                                      initialCardVelocity,
+                                                      transitionTime,
+                                                      transitionTime, 0.0);
+    const short sCurveResult = dmc_set_s_profile(config.cardNo, config.axis, 0, 0.0);
+    const WORD direction = initialVelocityDegreePerSecond < 0.0 ? 0U : 1U;
+    const short moveResult = dmc_vmove(config.cardNo, config.axis, direction);
+    if (clearResult == 0 && profileResult == 0 && sCurveResult == 0 && moveResult == 0) {
+        return true;
+    }
+    errorMessage = QStringLiteral("速度模式启动失败：clear=%1，profile=%2，s-curve=%3，vmove=%4")
+                       .arg(clearResult)
+                       .arg(profileResult)
+                       .arg(sCurveResult)
+                       .arg(moveResult);
+    return false;
+}
+
+bool E5000ContiInterface::changeVelocity(
+    const VelocityControlConfig &config,
+    double velocityDegreePerSecond,
+    short &apiResult,
+    QString &errorMessage) const
+{
+    if (config.degreesPerCardUnit <= 0.0) {
+        apiResult = -1;
+        errorMessage = QStringLiteral("速度模式 card unit 定义必须大于0");
+        return false;
+    }
+    const double cardVelocity = velocityDegreePerSecond / config.degreesPerCardUnit;
+    apiResult = dmc_change_speed_unit(config.cardNo, config.axis,
+                                      cardVelocity, config.onlineChangeTimeS);
+    return checkResult(apiResult,
+                       QStringLiteral("dmc_change_speed_unit(axis=%1, velocity=%2 unit/s, T=%3 s)")
+                           .arg(config.axis)
+                           .arg(cardVelocity, 0, 'f', 6)
+                           .arg(config.onlineChangeTimeS, 0, 'f', 4),
+                       errorMessage);
 }
 
 bool E5000ContiInterface::stopAxis(WORD cardNo, WORD axis, bool emergency,

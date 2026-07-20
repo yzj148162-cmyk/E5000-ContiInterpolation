@@ -159,6 +159,68 @@ struct SingleAxisJogConfig
     double maxVelocityUnitPerSecond = 10.0;
 };
 
+// 单轴速度模式位置闭环参数。界面与控制器统一使用角度制，仅在 LTDMC
+// 调用边界转换为当前板卡 card unit。
+struct VelocityControlConfig
+{
+    quint16 cardNo = 0;
+    quint16 axis = 0;
+    double degreesPerCardUnit = 1.0;
+    double relativeDeltaDegree = 30.0;
+    double durationS = 5.0;
+    int controlPeriodMs = 10;
+
+    bool pidEnabled = true;
+    double kp = 0.0;
+    double ki = 0.0;
+    double kd = 0.0;
+    double integralLimitDegreeSecond = 10.0;
+    double maxPidCorrectionDegreePerSecond = 20.0;
+
+    bool velocityFeedforwardEnabled = true;
+    double velocityFeedforwardGain = 1.0;
+    double maxVelocityDegreePerSecond = 30.0;
+    double maxAccelerationDegreePerSecond2 = 100.0;
+    double onlineChangeTimeS = 0.01;
+    double startVelocityThresholdDegreePerSecond = 0.02;
+
+    double positionToleranceDegree = 0.05;
+    double speedToleranceDegreePerSecond = 0.2;
+    int stableDwellMs = 200;
+    int finishTimeoutMs = 3000;
+    double maxFollowingErrorDegree = 10.0;
+    int traceTimeoutMs = 100;
+};
+
+struct VelocityControlStatus
+{
+    bool active = false;
+    bool motionStarted = false;
+    quint64 runId = 0;
+    quint16 axis = 0;
+    double elapsedS = 0.0;
+    double controlDtMs = 0.0;
+    double maximumJitterMs = 0.0;
+    double referencePositionDegree = 0.0;
+    double cardCommandPositionDegree = 0.0;
+    double actualPositionDegree = 0.0;
+    double positionErrorDegree = 0.0;
+    double referenceVelocityDegreePerSecond = 0.0;
+    double commandVelocityDegreePerSecond = 0.0;
+    double cardCommandVelocityDegreePerSecond = 0.0;
+    double actualVelocityDegreePerSecond = 0.0;
+    double feedforwardTermDegreePerSecond = 0.0;
+    double pTermDegreePerSecond = 0.0;
+    double iTermDegreePerSecond = 0.0;
+    double dTermDegreePerSecond = 0.0;
+    bool velocitySaturated = false;
+    bool accelerationLimited = false;
+    bool integralFrozen = false;
+    short lastApiResult = 0;
+    qint64 lastApiDurationUs = 0;
+    QString stateText = QStringLiteral("未运行");
+};
+
 // 一条轴反馈同时保留控制卡指令位置与编码器位置，二者的差值用于观察跟随情况。
 struct AxisFeedback
 {
@@ -168,6 +230,8 @@ struct AxisFeedback
     quint16 axisErrorCode = 0;
     double commandPositionUnit = 0.0;
     double encoderPositionUnit = 0.0;
+    double commandVelocityUnitPerSecond = 0.0;
+    double actualVelocityUnitPerSecond = 0.0;
     bool traceSampleValid = false;
     QString errorText;
 };
@@ -181,6 +245,8 @@ struct TraceTelemetryFrame
     quint16 axes[2] {0, 0};
     qint32 commandPulse[2] {0, 0};
     qint32 actualPulse[2] {0, 0};
+    qint32 commandVelocityPulsePerSecond[2] {0, 0};
+    qint32 actualVelocityPulsePerSecond[2] {0, 0};
     quint16 axisState[2] {0, 0};
     quint16 axisError[2] {0, 0};
     quint8 axisCount = 0;
@@ -242,6 +308,7 @@ struct ContiStatus
     quint64 latestTraceTimeUs = 0;
     int traceSamplePeriodUs = 1000;
     TelemetryRecorderStatus recorder;
+    VelocityControlStatus velocityControl;
     QString stateText = QStringLiteral("未初始化");
 };
 
@@ -249,5 +316,6 @@ Q_DECLARE_METATYPE(AxisFeedback)
 Q_DECLARE_METATYPE(ContiStatus)
 Q_DECLARE_METATYPE(ContiTestConfig)
 Q_DECLARE_METATYPE(SingleAxisJogConfig)
+Q_DECLARE_METATYPE(VelocityControlConfig)
 
 #endif // CONTITYPES_H

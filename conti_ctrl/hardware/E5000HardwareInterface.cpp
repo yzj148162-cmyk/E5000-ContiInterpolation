@@ -299,7 +299,7 @@ public:
         traceConfig.cardNo = cardNo_;
         traceConfig.samplePeriodUs = samplePeriodUs;
         traceConfig.traceBaseCycleUs = traceBaseCycleUs;
-        traceConfig.objects.reserve(traceAxes_.size() * 2);
+        traceConfig.objects.reserve(traceAxes_.size() * 4);
         const auto addObject = [&traceConfig](int logicalIndex, short dataType, quint16 axis) {
             RuntimeTraceSlaveReader::ObjectConfig object;
             object.logicalIndex = logicalIndex;
@@ -312,11 +312,19 @@ public:
             object.scale = 1.0 / MotorUnit::kPhysicalPulsesPerDegree;
             traceConfig.objects.push_back(object);
         };
+        // 固定对象顺序：type 3 指令速度、type 4 实际速度、type 5 指令位置、
+        // type 6 实际位置。速度与位置整型量均按物理 pulse 基准换算。
         for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(index, 5, traceAxes_.at(index));
+            addObject(index, 3, traceAxes_.at(index));
         }
         for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(traceAxes_.size() + index, 6, traceAxes_.at(index));
+            addObject(traceAxes_.size() + index, 4, traceAxes_.at(index));
+        }
+        for (int index = 0; index < traceAxes_.size(); ++index) {
+            addObject(traceAxes_.size() * 2 + index, 5, traceAxes_.at(index));
+        }
+        for (int index = 0; index < traceAxes_.size(); ++index) {
+            addObject(traceAxes_.size() * 3 + index, 6, traceAxes_.at(index));
         }
         if (!feedbackTrace_.configure(traceConfig)) {
             error = QStringLiteral("dmc_trace_* 返回码=%1").arg(feedbackTrace_.lastApiResult());
@@ -325,7 +333,7 @@ public:
         }
         traceFramesRead_ = 0;
         traceSamplePeriodUs_ = samplePeriodUs;
-        traceStateText_ = QStringLiteral("Trace 已配置：%1 us，同帧 type 5/6 位置")
+        traceStateText_ = QStringLiteral("Trace 已配置：%1 us，同帧 type 3/4 速度＋type 5/6 位置")
                               .arg(traceSamplePeriodUs_);
         return true;
     }
@@ -356,15 +364,22 @@ public:
                 ? QStringLiteral("Trace 正常，无新增帧") : QStringLiteral("等待 Trace 首帧");
         } else {
             for (const RuntimeTraceSlaveReader::Sample &sample : samples) {
-                if (sample.values.size() < static_cast<std::size_t>(traceAxes_.size() * 2)) {
+                if (sample.values.size() < static_cast<std::size_t>(traceAxes_.size() * 4)) {
                     error = QStringLiteral("Trace 帧对象数量不足");
                     traceStateText_ = error;
                     return false;
                 }
                 for (int index = 0; index < traceAxes_.size(); ++index) {
                     AxisFeedback &feedback = latestAxisFeedback_[traceAxes_.at(index)];
-                    feedback.commandPositionUnit = sample.values[static_cast<std::size_t>(index)];
-                    feedback.encoderPositionUnit = sample.values[static_cast<std::size_t>(traceAxes_.size() + index)];
+                    const std::size_t axisCount = static_cast<std::size_t>(traceAxes_.size());
+                    feedback.commandVelocityUnitPerSecond =
+                        sample.values[static_cast<std::size_t>(index)];
+                    feedback.actualVelocityUnitPerSecond =
+                        sample.values[axisCount + static_cast<std::size_t>(index)];
+                    feedback.commandPositionUnit =
+                        sample.values[axisCount * 2U + static_cast<std::size_t>(index)];
+                    feedback.encoderPositionUnit =
+                        sample.values[axisCount * 3U + static_cast<std::size_t>(index)];
                     feedback.traceSampleValid = true;
                 }
             }
@@ -392,10 +407,15 @@ public:
                 const quint16 axis = traceAxes_.at(index);
                 const AxisFeedback &feedback = latestAxisFeedback_.at(axis);
                 frame.axes[index] = axis;
-                frame.commandPulse[index] = static_cast<qint32>(std::llround(
+                const std::size_t axisCount = static_cast<std::size_t>(traceAxes_.size());
+                frame.commandVelocityPulsePerSecond[index] = static_cast<qint32>(std::llround(
                     sample.values[static_cast<std::size_t>(index)] * MotorUnit::kPhysicalPulsesPerDegree));
+                frame.actualVelocityPulsePerSecond[index] = static_cast<qint32>(std::llround(
+                    sample.values[axisCount + static_cast<std::size_t>(index)] * MotorUnit::kPhysicalPulsesPerDegree));
+                frame.commandPulse[index] = static_cast<qint32>(std::llround(
+                    sample.values[axisCount * 2U + static_cast<std::size_t>(index)] * MotorUnit::kPhysicalPulsesPerDegree));
                 frame.actualPulse[index] = static_cast<qint32>(std::llround(
-                    sample.values[static_cast<std::size_t>(traceAxes_.size() + index)] * MotorUnit::kPhysicalPulsesPerDegree));
+                    sample.values[axisCount * 3U + static_cast<std::size_t>(index)] * MotorUnit::kPhysicalPulsesPerDegree));
                 frame.axisState[index] = feedback.stateMachine;
                 frame.axisError[index] = feedback.axisErrorCode;
                 if (feedback.valid) {
@@ -505,6 +525,28 @@ bool E5000HardwareInterface::startPointMove(const SingleAxisJogConfig &config, Q
             return false;
         }
         return true;
+    });
+}
+bool E5000HardwareInterface::startVelocityMove(
+    const VelocityControlConfig &config,
+    double initialVelocityDegreePerSecond,
+    QString &error)
+{
+    return invokeHardware(backend_, [&] {
+        return backend_->card_.startVelocityMove(config,
+                                                  initialVelocityDegreePerSecond,
+                                                  error);
+    });
+}
+bool E5000HardwareInterface::changeVelocity(
+    const VelocityControlConfig &config,
+    double velocityDegreePerSecond,
+    short &apiResult,
+    QString &error)
+{
+    return invokeHardware(backend_, [&] {
+        return backend_->card_.changeVelocity(config, velocityDegreePerSecond,
+                                               apiResult, error);
     });
 }
 bool E5000HardwareInterface::stopAxis(quint16 axis, bool emergency, QString &error) const

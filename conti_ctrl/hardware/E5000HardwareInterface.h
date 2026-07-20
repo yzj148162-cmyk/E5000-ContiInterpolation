@@ -29,6 +29,13 @@ public:
     bool readCommandPosition(quint16 axis, double &position, QString &errorMessage) const;
     bool readTargetPositionUnit(quint16 axis, double &position, QString &errorMessage) const;
     bool startPointMove(const SingleAxisJogConfig &config, QString &errorMessage);
+    bool startVelocityMove(const VelocityControlConfig &config,
+                           double initialVelocityDegreePerSecond,
+                           QString &errorMessage);
+    bool changeVelocity(const VelocityControlConfig &config,
+                        double velocityDegreePerSecond,
+                        short &apiResult,
+                        QString &errorMessage);
     bool stopAxis(quint16 axis, bool emergency, QString &errorMessage) const;
     bool stopAxis(quint16 cardNo, quint16 axis, bool emergency, QString &errorMessage) const;
     bool axisMotionDone(quint16 axis, bool &done, QString &errorMessage) const;
