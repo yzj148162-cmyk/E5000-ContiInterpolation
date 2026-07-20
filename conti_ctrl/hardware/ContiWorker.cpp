@@ -4,6 +4,7 @@
 #include <QThread>
 #include <QCoreApplication>
 #include <QDir>
+#include <QStringList>
 
 #include <algorithm>
 #include <cmath>
@@ -101,6 +102,43 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
                        .arg(config.busCycleUs));
         return;
     }
+
+    quint16 detectedSlaveCount = 0;
+    if (!card_.readEthercatSlaveCount(detectedSlaveCount, error)) {
+        QString closeError;
+        card_.closeBoard(closeError);
+        detectedBoardCount_ = 0;
+        actualBusCycleUs_ = 0;
+        enterError(QStringLiteral("读取 EtherCAT 在线从站数量失败：%1").arg(error));
+        return;
+    }
+    if (detectedSlaveCount == 0 || detectedSlaveCount > 8) {
+        QString closeError;
+        card_.closeBoard(closeError);
+        detectedBoardCount_ = 0;
+        actualBusCycleUs_ = 0;
+        enterError(QStringLiteral("EtherCAT 在线从站数量为 %1；当前程序仅支持 1 至 8 个单轴伺服从站。")
+                       .arg(detectedSlaveCount));
+        return;
+    }
+    detectedAxes_.clear();
+    detectedAxes_.reserve(detectedSlaveCount);
+    for (quint16 axis = 0; axis < detectedSlaveCount; ++axis) {
+        detectedAxes_.push_back(axis);
+    }
+    if (!detectedAxes_.contains(config.activeAxis)
+        || !detectedAxes_.contains(config.holdAxis)) {
+        QString closeError;
+        card_.closeBoard(closeError);
+        detectedBoardCount_ = 0;
+        actualBusCycleUs_ = 0;
+        detectedAxes_.clear();
+        enterError(QStringLiteral("当前插补测试轴 %1、%2 超出在线轴范围 0-%3；已关闭控制卡。")
+                       .arg(config.activeAxis)
+                       .arg(config.holdAxis)
+                       .arg(detectedSlaveCount - 1));
+        return;
+    }
     config_ = config;
     config_.busCycleUs = actualBusCycleUs;
     actualBusCycleUs_ = actualBusCycleUs;
@@ -109,6 +147,7 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
         card_.closeBoard(closeError);
         detectedBoardCount_ = 0;
         actualBusCycleUs_ = 0;
+        detectedAxes_.clear();
         enterError(QStringLiteral("基础轴配置失败，已关闭控制卡。"));
         return;
     }
@@ -117,6 +156,7 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
         card_.closeBoard(closeError);
         detectedBoardCount_ = 0;
         actualBusCycleUs_ = 0;
+        detectedAxes_.clear();
         enterError(QStringLiteral("位置 Trace 配置失败：%1").arg(error));
         return;
     }
@@ -142,10 +182,10 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
                         .arg(card_.traceSamplePeriodUs())
                         .arg(config_.producerPeriodMs)
                         .arg(config_.producerPeriodMs * 1000 / actualBusCycleUs_));
-    emit logMessage(QStringLiteral("控制卡初始化成功：检测到 %1 张卡；测试轴 %2、%3 已设置为 %4 pulse/unit（1 unit=%5°）；Trace 仍按 %6 pulse/deg 换算。")
+    emit logMessage(QStringLiteral("控制卡初始化成功：检测到 %1 张卡、%2 个 EtherCAT 伺服轴（轴号 0-%3）；全部在线轴已设置为 %4 pulse/unit（1 unit=%5°）；Trace 仍按 %6 pulse/deg 换算。")
                         .arg(detectedBoardCount_)
-                        .arg(config.activeAxis)
-                        .arg(config.holdAxis)
+                        .arg(detectedAxes_.size())
+                        .arg(detectedAxes_.size() - 1)
                         .arg(MotorUnit::pulsesPerCardUnit(config_.degreesPerCardUnit), 0, 'f', 5)
                         .arg(config_.degreesPerCardUnit, 0, 'g', 3)
                         .arg(MotorUnit::kPhysicalPulsesPerDegree, 0, 'f', 3));
@@ -208,6 +248,7 @@ void ContiWorker::startTelemetryRecording()
         publishStatus();
         return;
     }
+    manualTelemetryRecording_ = true;
     emit logMessage(QStringLiteral("Trace 数据记录已开始：%1")
                         .arg(telemetryRecorder_.status().outputDirectory));
     publishStatus();
@@ -217,10 +258,13 @@ void ContiWorker::stopTelemetryRecording()
 {
     const TelemetryRecorderStatus before = telemetryRecorder_.status();
     if (!before.recording) {
+        manualTelemetryRecording_ = false;
         emit logMessage(QStringLiteral("当前没有正在进行的 Trace 数据记录。"));
+        publishStatus();
         return;
     }
     telemetryRecorder_.stop();
+    manualTelemetryRecording_ = false;
     const TelemetryRecorderStatus after = telemetryRecorder_.status();
     emit logMessage(QStringLiteral("Trace 数据记录已停止：写入 %1 帧，丢弃 %2 帧。")
                         .arg(after.writtenFrames)
@@ -239,6 +283,8 @@ void ContiWorker::shutdownHardware()
     resetRunTimingState();
 
     if (!boardInitialized_) {
+        detectedAxes_.clear();
+        manualTelemetryRecording_ = false;
         return;
     }
 
@@ -255,6 +301,7 @@ void ContiWorker::shutdownHardware()
     traceStateText_ = QStringLiteral("Trace 已停止");
     latestTraceSequence_ = 0;
     latestTraceTimeUs_ = 0;
+    manualTelemetryRecording_ = false;
     trajectoryComparisonActive_ = false;
     trajectoryTraceStartTimeUs_ = 0;
 
@@ -268,6 +315,7 @@ void ContiWorker::shutdownHardware()
     boardInitialized_ = false;
     detectedBoardCount_ = 0;
     actualBusCycleUs_ = 0;
+    detectedAxes_.clear();
     stateText_ = QStringLiteral("控制卡已关闭");
     emit logMessage(stateText_);
     publishStatus();
@@ -369,6 +417,90 @@ void ContiWorker::disableSelectedAxes(const ContiTestConfig &config)
         emit logMessage(QStringLiteral("轴 %1 已失能。").arg(axis));
     }
     stateText_ = QStringLiteral("测试轴已失能");
+    publishStatus();
+}
+
+void ContiWorker::enableAllDetectedAxes()
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("请先初始化控制卡。"));
+        return;
+    }
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
+        emit logMessage(QStringLiteral("运动准备或运行期间不能执行全局轴使能。"));
+        return;
+    }
+    if (detectedAxes_.isEmpty()) {
+        emit logMessage(QStringLiteral("未检测到可使能的 EtherCAT 伺服轴。"));
+        return;
+    }
+
+    QVector<quint16> newlyEnabledAxes;
+    for (const quint16 axis : detectedAxes_) {
+        if (enabledAxes_.contains(axis)) {
+            continue;
+        }
+        QString notice;
+        QString error;
+        if (!card_.enableAxis(axis, notice, error)) {
+            for (const quint16 rollbackAxis : newlyEnabledAxes) {
+                QString ignored;
+                card_.disableAxis(rollbackAxis, ignored);
+                enabledAxes_.remove(rollbackAxis);
+            }
+            stateText_ = QStringLiteral("全局轴使能失败");
+            emit logMessage(QStringLiteral("错误：轴 %1 全局使能失败：%2；本次已使能的轴已回滚失能。")
+                                .arg(axis)
+                                .arg(error));
+            publishStatus();
+            return;
+        }
+        if (!notice.isEmpty()) {
+            emit logMessage(QStringLiteral("轴 %1：%2").arg(axis).arg(notice));
+        }
+        enabledAxes_.insert(axis);
+        newlyEnabledAxes.push_back(axis);
+        emit logMessage(QStringLiteral("全局使能：轴 %1 已使能。").arg(axis));
+    }
+    stateText_ = QStringLiteral("全部在线轴已使能");
+    publishStatus();
+}
+
+void ContiWorker::disableAllDetectedAxes()
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("请先初始化控制卡。"));
+        return;
+    }
+    if (velocityControlActive_) {
+        emit logMessage(QStringLiteral("全局失能前正在停止速度闭环。"));
+        finishVelocityControl(QStringLiteral("速度闭环已因全局失能而减速停止"), false);
+    }
+    if (running_ || preparing_ || pointMoveActive_) {
+        emit logMessage(QStringLiteral("全局失能前正在执行安全停止。"));
+        safelyStopAllMotionForShutdown();
+        trajectoryComparisonActive_ = false;
+        speedRatioPending_ = false;
+        resetRunTimingState();
+    }
+
+    QStringList failures;
+    for (const quint16 axis : detectedAxes_) {
+        QString error;
+        if (!card_.disableAxis(axis, error)) {
+            failures << QStringLiteral("轴 %1：%2").arg(axis).arg(error);
+            continue;
+        }
+        enabledAxes_.remove(axis);
+        emit logMessage(QStringLiteral("全局失能：轴 %1 已失能。").arg(axis));
+    }
+    if (failures.isEmpty()) {
+        stateText_ = QStringLiteral("全部在线轴已失能");
+    } else {
+        stateText_ = QStringLiteral("部分在线轴失能失败");
+        emit logMessage(QStringLiteral("错误：全局失能未全部成功：%1")
+                            .arg(failures.join(QStringLiteral("；"))));
+    }
     publishStatus();
 }
 
@@ -1978,6 +2110,7 @@ void ContiWorker::publishStatus()
         }
     }
     status.detectedBoardCount = detectedBoardCount_;
+    status.detectedAxisCount = detectedAxes_.size();
     status.cardNo = initializedCardNo_;
     status.busCycleUs = actualBusCycleUs_;
     status.traceCycle = config_.traceCycle;
@@ -2019,6 +2152,7 @@ void ContiWorker::publishStatus()
     status.latestTraceSequence = latestTraceSequence_;
     status.latestTraceTimeUs = latestTraceTimeUs_;
     status.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    status.telemetryPlotActive = manualTelemetryRecording_;
     status.recorder = telemetryRecorder_.status();
     status.velocityControl = velocityStatus_;
     status.softwareZeroUnit = softwareZeroUnit_;
@@ -2032,7 +2166,11 @@ void ContiWorker::publishStatus()
 
 bool ContiWorker::configureBaseAxes(const ContiTestConfig &config)
 {
-    for (const quint16 axis : {config.activeAxis, config.holdAxis}) {
+    if (detectedAxes_.isEmpty()) {
+        emit logMessage(QStringLiteral("基础轴配置失败：没有检测到 EtherCAT 伺服轴。"));
+        return false;
+    }
+    for (const quint16 axis : detectedAxes_) {
         QString error;
         if (!card_.setAxisEquivalent(config.cardNo, axis,
                                      MotorUnit::pulsesPerCardUnit(config.degreesPerCardUnit), error)) {

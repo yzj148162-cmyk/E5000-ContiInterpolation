@@ -46,6 +46,16 @@ bool E5000ContiInterface::closeBoard(QString &errorMessage) const
     return checkResult(dmc_board_close(), QStringLiteral("dmc_board_close"), errorMessage);
 }
 
+bool E5000ContiInterface::readEthercatSlaveCount(WORD cardNo, WORD portNo,
+                                                  WORD &slaveCount,
+                                                  QString &errorMessage) const
+{
+    slaveCount = 0;
+    return checkResult(nmc_get_total_slaves(cardNo, portNo, &slaveCount),
+                       QStringLiteral("nmc_get_total_slaves(port=%1)").arg(portNo),
+                       errorMessage);
+}
+
 bool E5000ContiInterface::setAxisEquivalent(WORD cardNo,
                                              WORD axis,
                                              double pulsePerUnit,

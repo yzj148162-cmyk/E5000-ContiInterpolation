@@ -30,6 +30,8 @@ signals:
     void closeBoardRequested();
     void enableAxesRequested(const ContiTestConfig &config);
     void disableAxesRequested(const ContiTestConfig &config);
+    void enableAllAxesRequested();
+    void disableAllAxesRequested();
     void startTestRequested(const ContiTestConfig &config);
     void stopTestRequested(bool emergency);
     void refreshFeedbackRequested();
@@ -51,6 +53,8 @@ private slots:
     void onCloseBoardClicked();
     void onEnableAxesClicked();
     void onDisableAxesClicked();
+    void onEnableAllAxesClicked();
+    void onDisableAllAxesClicked();
     void onStartClicked();
     void onStopClicked();
     void onEmergencyStopClicked();
@@ -103,6 +107,12 @@ private:
     ContiWorker *worker_ = nullptr;
     ContiStatus latestStatus_;
     bool hasLatestStatus_ = false;
+    bool statusUiDirty_ = false;
+    bool telemetryPlotWasActive_ = false;
+    bool axisStatusRendered_ = false;
+    bool lastAxisStatusBoardInitialized_ = false;
+    quint16 lastAxisEnabledMask_ = 0;
+    int lastDetectedAxisCount_ = -1;
     QTimer *telemetryPlotTimer_ = nullptr;
     QChart *positionChart_ = nullptr;
     QChart *followingErrorChart_ = nullptr;
@@ -118,6 +128,7 @@ private:
     QLineSeries *contiExpectedTrajectorySeries_ = nullptr;
     QLineSeries *contiActualTrajectorySeries_ = nullptr;
     quint64 lastPlottedTraceSequence_ = 0;
+    quint64 telemetryPlotStartTimeUs_ = 0;
     quint64 lastContiTrajectoryTraceSequence_ = 0;
     quint64 contiTrajectoryTraceStartTimeUs_ = 0;
     QChart *velocityPositionChart_ = nullptr;

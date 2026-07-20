@@ -12,6 +12,8 @@ class E5000ContiInterface
 public:
     bool initializeBoard(WORD requestedCardNo, short &boardCount, QString &errorMessage) const;
     bool closeBoard(QString &errorMessage) const;
+    bool readEthercatSlaveCount(WORD cardNo, WORD portNo, WORD &slaveCount,
+                                QString &errorMessage) const;
     bool setAxisEquivalent(WORD cardNo, WORD axis, double pulsePerUnit, QString &errorMessage) const;
     bool clearAxisFaults(WORD cardNo, WORD axis, QString &noticeMessage, QString &errorMessage) const;
     bool enableAxis(WORD cardNo, WORD axis, QString &errorMessage) const;

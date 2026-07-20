@@ -76,6 +76,10 @@ void MainWindow::connectWorker()
     connect(ui_->closeBoardButton, &QPushButton::clicked, this, &MainWindow::onCloseBoardClicked);
     connect(ui_->contiEnableAxesButton, &QPushButton::clicked, this, &MainWindow::onEnableAxesClicked);
     connect(ui_->contiDisableAxesButton, &QPushButton::clicked, this, &MainWindow::onDisableAxesClicked);
+    connect(ui_->enableAllAxesButton, &QPushButton::clicked,
+            this, &MainWindow::onEnableAllAxesClicked);
+    connect(ui_->disableAllAxesButton, &QPushButton::clicked,
+            this, &MainWindow::onDisableAllAxesClicked);
     connect(ui_->startButton, &QPushButton::clicked, this, &MainWindow::onStartClicked);
     connect(ui_->stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);
     connect(ui_->emergencyStopButton, &QPushButton::clicked, this, &MainWindow::onEmergencyStopClicked);
@@ -119,6 +123,8 @@ void MainWindow::connectWorker()
     connect(this, &MainWindow::closeBoardRequested, worker_, &ContiWorker::closeBoard);
     connect(this, &MainWindow::enableAxesRequested, worker_, &ContiWorker::enableSelectedAxes);
     connect(this, &MainWindow::disableAxesRequested, worker_, &ContiWorker::disableSelectedAxes);
+    connect(this, &MainWindow::enableAllAxesRequested, worker_, &ContiWorker::enableAllDetectedAxes);
+    connect(this, &MainWindow::disableAllAxesRequested, worker_, &ContiWorker::disableAllDetectedAxes);
     connect(this, &MainWindow::startTestRequested, worker_, &ContiWorker::startTest);
     connect(this, &MainWindow::stopTestRequested, worker_, &ContiWorker::stopTest);
     connect(this, &MainWindow::refreshFeedbackRequested, worker_, &ContiWorker::refreshFeedback);
@@ -142,7 +148,11 @@ void MainWindow::connectWorker()
     connect(ui_->readBusCycleButton, &QPushButton::clicked,
             this, [this] { emit refreshBusCycleRequested(); });
     connect(worker_, &ContiWorker::logMessage, this, &MainWindow::appendLog);
-    connect(worker_, &ContiWorker::statusChanged, this, &MainWindow::updateStatus);
+    connect(worker_, &ContiWorker::statusChanged, this, [this](const ContiStatus &status) {
+        latestStatus_ = status;
+        hasLatestStatus_ = true;
+        statusUiDirty_ = true;
+    });
 }
 
 ContiTestConfig MainWindow::collectConfig() const
@@ -335,6 +345,16 @@ void MainWindow::onDisableAxesClicked()
     emit disableAxesRequested(collectConfig());
 }
 
+void MainWindow::onEnableAllAxesClicked()
+{
+    emit enableAllAxesRequested();
+}
+
+void MainWindow::onDisableAllAxesClicked()
+{
+    emit disableAllAxesRequested();
+}
+
 void MainWindow::onStartClicked()
 {
     emit startTestRequested(collectConfig());
@@ -521,31 +541,49 @@ void MainWindow::updateStatus(const ContiStatus &status)
     ui_->contiRatioApiAgeValueLabel->setText(status.ratioLastApiAgoMs < 0
                                              ? QStringLiteral("-- ms")
                                               : QStringLiteral("%1 ms").arg(status.ratioLastApiAgoMs));
-    const QString unknownStyle = QStringLiteral(
-        "QLabel { color: white; background-color: #757575; border-radius: 4px; padding: 4px; }");
-    const QString enabledStyle = QStringLiteral(
-        "QLabel { color: white; background-color: #2e7d32; border-radius: 4px; padding: 4px; }");
-    const QString disabledStyle = QStringLiteral(
-        "QLabel { color: white; background-color: #c62828; border-radius: 4px; padding: 4px; }");
-    const QList<QLabel *> axisStateLabels {
-        ui_->axis0EnableStateLabel, ui_->axis1EnableStateLabel,
-        ui_->axis2EnableStateLabel, ui_->axis3EnableStateLabel,
-        ui_->axis4EnableStateLabel, ui_->axis5EnableStateLabel,
-        ui_->axis6EnableStateLabel, ui_->axis7EnableStateLabel
-    };
-    for (int axis = 0; axis < axisStateLabels.size(); ++axis) {
-        QLabel *label = axisStateLabels.at(axis);
-        if (!status.boardInitialized) {
-            label->setText(QStringLiteral("轴%1 未知").arg(axis));
-            label->setStyleSheet(unknownStyle);
-        } else if ((status.enabledAxisMask & static_cast<quint16>(1U << axis)) != 0U) {
-            label->setText(QStringLiteral("轴%1 使能").arg(axis));
-            label->setStyleSheet(enabledStyle);
-        } else {
-            label->setText(QStringLiteral("轴%1 失能").arg(axis));
-            label->setStyleSheet(disabledStyle);
+    const int detectedAxisCount = qBound(0, status.detectedAxisCount, 8);
+    if (!axisStatusRendered_
+        || lastAxisStatusBoardInitialized_ != status.boardInitialized
+        || lastAxisEnabledMask_ != status.enabledAxisMask
+        || lastDetectedAxisCount_ != detectedAxisCount) {
+        const QString unknownStyle = QStringLiteral(
+            "QLabel { color: white; background-color: #757575; border-radius: 4px; padding: 4px; }");
+        const QString enabledStyle = QStringLiteral(
+            "QLabel { color: white; background-color: #2e7d32; border-radius: 4px; padding: 4px; }");
+        const QString disabledStyle = QStringLiteral(
+            "QLabel { color: white; background-color: #c62828; border-radius: 4px; padding: 4px; }");
+        const QList<QLabel *> axisStateLabels {
+            ui_->axis0EnableStateLabel, ui_->axis1EnableStateLabel,
+            ui_->axis2EnableStateLabel, ui_->axis3EnableStateLabel,
+            ui_->axis4EnableStateLabel, ui_->axis5EnableStateLabel,
+            ui_->axis6EnableStateLabel, ui_->axis7EnableStateLabel
+        };
+        for (int axis = 0; axis < axisStateLabels.size(); ++axis) {
+            QLabel *label = axisStateLabels.at(axis);
+            if (!status.boardInitialized) {
+                label->setText(QStringLiteral("轴%1 未知").arg(axis));
+                label->setStyleSheet(unknownStyle);
+            } else if (axis >= detectedAxisCount) {
+                label->setText(QStringLiteral("轴%1 未连接").arg(axis));
+                label->setStyleSheet(unknownStyle);
+            } else if ((status.enabledAxisMask & static_cast<quint16>(1U << axis)) != 0U) {
+                label->setText(QStringLiteral("轴%1 使能").arg(axis));
+                label->setStyleSheet(enabledStyle);
+            } else {
+                label->setText(QStringLiteral("轴%1 失能").arg(axis));
+                label->setStyleSheet(disabledStyle);
+            }
         }
+        axisStatusRendered_ = true;
+        lastAxisStatusBoardInitialized_ = status.boardInitialized;
+        lastAxisEnabledMask_ = status.enabledAxisMask;
+        lastDetectedAxisCount_ = detectedAxisCount;
+        ui_->axisEnableStatusGroup->setTitle(status.boardInitialized
+            ? QStringLiteral("总线轴使能状态（在线 %1 轴）").arg(detectedAxisCount)
+            : QStringLiteral("总线轴使能状态"));
     }
+    ui_->enableAllAxesButton->setEnabled(status.boardInitialized && detectedAxisCount > 0);
+    ui_->disableAllAxesButton->setEnabled(status.boardInitialized && detectedAxisCount > 0);
     ui_->feedbackSummaryValueLabel->setText(status.boardInitialized
                                                 ? QStringLiteral("总线错误码：%1；%2；本次 Trace 帧：%3；API=%4")
                                                       .arg(status.busErrorCode)
@@ -594,6 +632,8 @@ void MainWindow::updateStatus(const ContiStatus &status)
                                                ? QStringLiteral("记录中（%1 ms Trace）")
                                                      .arg(status.traceSamplePeriodUs / 1000.0, 0, 'f', 1)
                                                : QStringLiteral("未记录"));
+    ui_->startRecordingButton->setEnabled(status.boardInitialized && !status.recorder.recording);
+    ui_->stopRecordingButton->setEnabled(status.telemetryPlotActive);
     ui_->recordPathValueLabel->setText(status.recorder.outputDirectory.isEmpty()
                                            ? QStringLiteral("开始记录后自动创建 records/run_*")
                                            : status.recorder.outputDirectory);
@@ -712,9 +752,29 @@ void MainWindow::initializeTelemetryCharts()
 
 void MainWindow::updateTelemetryCharts()
 {
+    if (statusUiDirty_) {
+        statusUiDirty_ = false;
+        updateStatus(latestStatus_);
+    }
     updateVelocityControlCharts();
-    if (!hasLatestStatus_ || latestStatus_.latestTraceSequence == 0) {
+    updateContiTrajectoryChart();
+    if (!hasLatestStatus_ || !latestStatus_.telemetryPlotActive) {
+        telemetryPlotWasActive_ = false;
         return;
+    }
+    if (latestStatus_.latestTraceSequence == 0) {
+        return;
+    }
+    if (!telemetryPlotWasActive_) {
+        for (QLineSeries *series : positionSeries_) {
+            series->clear();
+        }
+        for (QLineSeries *series : followingErrorSeries_) {
+            series->clear();
+        }
+        lastPlottedTraceSequence_ = 0;
+        telemetryPlotStartTimeUs_ = latestStatus_.latestTraceTimeUs;
+        telemetryPlotWasActive_ = true;
     }
     if (latestStatus_.latestTraceSequence < lastPlottedTraceSequence_) {
         for (QLineSeries *series : positionSeries_) {
@@ -724,6 +784,7 @@ void MainWindow::updateTelemetryCharts()
             series->clear();
         }
         lastPlottedTraceSequence_ = 0;
+        telemetryPlotStartTimeUs_ = latestStatus_.latestTraceTimeUs;
     }
     if (latestStatus_.latestTraceSequence == lastPlottedTraceSequence_) {
         return;
@@ -742,7 +803,9 @@ void MainWindow::updateTelemetryCharts()
         return;
     }
 
-    const double timeSeconds = static_cast<double>(latestStatus_.latestTraceTimeUs) / 1000000.0;
+    const double timeSeconds = latestStatus_.latestTraceTimeUs >= telemetryPlotStartTimeUs_
+        ? static_cast<double>(latestStatus_.latestTraceTimeUs - telemetryPlotStartTimeUs_) / 1000000.0
+        : 0.0;
     for (int index = 0; index < traceFeedback.size(); ++index) {
         const AxisFeedback &feedback = *traceFeedback.at(index);
         positionSeries_[index * 2]->setName(QStringLiteral("轴%1 指令").arg(feedback.axis));
@@ -761,7 +824,6 @@ void MainWindow::updateTelemetryCharts()
                       {followingErrorSeries_[0], followingErrorSeries_[1]}, timeSeconds, 0.01);
     ui_->positionChartView->update();
     ui_->followingErrorChartView->update();
-    updateContiTrajectoryChart();
 }
 
 void MainWindow::initializeVelocityControlCharts()

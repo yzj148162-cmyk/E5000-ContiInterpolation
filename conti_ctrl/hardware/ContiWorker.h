@@ -29,6 +29,8 @@ public slots:
     void closeBoard();
     void enableSelectedAxes(const ContiTestConfig &config);
     void disableSelectedAxes(const ContiTestConfig &config);
+    void enableAllDetectedAxes();
+    void disableAllDetectedAxes();
     void startTest(const ContiTestConfig &config);
     void stopTest(bool emergency);
     void refreshFeedback();
@@ -95,6 +97,7 @@ private:
     QuinticTrajectory trajectory_;
     QQueue<ContiPoint> hostQueue_;
     QSet<quint16> enabledAxes_;
+    QVector<quint16> detectedAxes_;
     QVector<quint16> traceAxes_;
     QVector<AxisFeedback> latestAxisFeedback_;
     QTimer *producerTimer_ = nullptr;
@@ -115,6 +118,7 @@ private:
     bool velocityMotionStarted_ = false;
     bool velocityReferenceInitialized_ = false;
     bool velocityAutoRecording_ = false;
+    bool manualTelemetryRecording_ = false;
     quint64 velocityRunId_ = 0;
     VelocityControlConfig velocityConfig_;
     VelocityControlStatus velocityStatus_;

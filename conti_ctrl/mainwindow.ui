@@ -193,7 +193,7 @@
              <string notr="true">QLabel { color: white; background-color: #757575; border-radius: 4px; padding: 4px; }</string>
             </property>
             <property name="title">
-             <string>测试轴使能状态</string>
+             <string>总线轴使能状态</string>
             </property>
             <layout class="QGridLayout" name="axisEnableStatusLayout">
              <item row="0" column="0">
@@ -273,6 +273,26 @@
                </property>
                <property name="alignment">
                 <set>Qt::AlignmentFlag::AlignCenter</set>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="0">
+              <widget class="QPushButton" name="enableAllAxesButton">
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
+               <property name="text">
+                <string>一键使能全部在线轴</string>
+               </property>
+              </widget>
+             </item>
+             <item row="4" column="1">
+              <widget class="QPushButton" name="disableAllAxesButton">
+               <property name="enabled">
+                <bool>false</bool>
+               </property>
+               <property name="text">
+                <string>一键失能全部在线轴</string>
                </property>
               </widget>
              </item>
@@ -1890,6 +1910,9 @@
            <layout class="QGridLayout" name="telemetryRecordLayout">
             <item row="0" column="0">
              <widget class="QPushButton" name="startRecordingButton">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="text">
                <string>开始记录</string>
               </property>
@@ -1897,6 +1920,9 @@
             </item>
             <item row="0" column="1">
              <widget class="QPushButton" name="stopRecordingButton">
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
               <property name="text">
                <string>停止记录并写入文件</string>
               </property>
@@ -1972,7 +1998,7 @@
          <item>
           <widget class="QLabel" name="telemetryHintLabel">
            <property name="text">
-            <string>曲线仅以 20 Hz 显示最新 Trace 快照；原始 1 ms Trace 帧由独立写盘线程保存，不在 UI 线程绘制或写入文本。</string>
+             <string>点击“开始记录”后，曲线以 20 Hz 显示最新 Trace 快照；点击“停止记录并写入文件”后停止追加。原始 1 ms Trace 帧由独立写盘线程保存。</string>
            </property>
            <property name="wordWrap">
             <bool>true</bool>

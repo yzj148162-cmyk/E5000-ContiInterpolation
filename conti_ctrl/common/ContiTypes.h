@@ -269,6 +269,7 @@ struct ContiStatus
 {
     bool boardInitialized = false;
     quint16 enabledAxisMask = 0;
+    int detectedAxisCount = 0;
     int detectedBoardCount = 0;
     quint16 cardNo = 0;
     int busCycleUs = 0;
@@ -308,6 +309,7 @@ struct ContiStatus
     quint64 latestTraceSequence = 0;
     quint64 latestTraceTimeUs = 0;
     int traceSamplePeriodUs = 1000;
+    bool telemetryPlotActive = false;
     TelemetryRecorderStatus recorder;
     VelocityControlStatus velocityControl;
     QString stateText = QStringLiteral("未初始化");

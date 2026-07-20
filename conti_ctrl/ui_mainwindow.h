@@ -69,6 +69,8 @@ public:
     QLabel *axis5EnableStateLabel;
     QLabel *axis6EnableStateLabel;
     QLabel *axis7EnableStateLabel;
+    QPushButton *enableAllAxesButton;
+    QPushButton *disableAllAxesButton;
     QGroupBox *globalEmergencyGroup;
     QVBoxLayout *globalEmergencyLayout;
     QPushButton *emergencyStopButton;
@@ -478,6 +480,18 @@ public:
         axis7EnableStateLabel->setAlignment(Qt::AlignmentFlag::AlignCenter);
 
         axisEnableStatusLayout->addWidget(axis7EnableStateLabel, 3, 1, 1, 1);
+
+        enableAllAxesButton = new QPushButton(axisEnableStatusGroup);
+        enableAllAxesButton->setObjectName("enableAllAxesButton");
+        enableAllAxesButton->setEnabled(false);
+
+        axisEnableStatusLayout->addWidget(enableAllAxesButton, 4, 0, 1, 1);
+
+        disableAllAxesButton = new QPushButton(axisEnableStatusGroup);
+        disableAllAxesButton->setObjectName("disableAllAxesButton");
+        disableAllAxesButton->setEnabled(false);
+
+        axisEnableStatusLayout->addWidget(disableAllAxesButton, 4, 1, 1, 1);
 
 
         globalActionLayout->addWidget(axisEnableStatusGroup);
@@ -1415,11 +1429,13 @@ public:
         telemetryRecordLayout->setObjectName("telemetryRecordLayout");
         startRecordingButton = new QPushButton(telemetryRecordGroup);
         startRecordingButton->setObjectName("startRecordingButton");
+        startRecordingButton->setEnabled(false);
 
         telemetryRecordLayout->addWidget(startRecordingButton, 0, 0, 1, 1);
 
         stopRecordingButton = new QPushButton(telemetryRecordGroup);
         stopRecordingButton->setObjectName("stopRecordingButton");
+        stopRecordingButton->setEnabled(false);
 
         telemetryRecordLayout->addWidget(stopRecordingButton, 0, 1, 1, 1);
 
@@ -1987,7 +2003,7 @@ public:
         globalActionGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241\346\223\215\344\275\234\344\270\216\350\275\264\347\212\266\346\200\201", nullptr));
         initializeButton->setText(QCoreApplication::translate("MainWindow", "\345\210\235\345\247\213\345\214\226\346\216\247\345\210\266\345\215\241", nullptr));
         closeBoardButton->setText(QCoreApplication::translate("MainWindow", "\345\256\211\345\205\250\345\205\263\351\227\255\346\216\247\345\210\266\345\215\241", nullptr));
-        axisEnableStatusGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\264\344\275\277\350\203\275\347\212\266\346\200\201", nullptr));
+        axisEnableStatusGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\200\273\347\272\277\350\275\264\344\275\277\350\203\275\347\212\266\346\200\201", nullptr));
         axis0EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2640 \346\234\252\347\237\245", nullptr));
         axis1EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2641 \346\234\252\347\237\245", nullptr));
         axis2EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2642 \346\234\252\347\237\245", nullptr));
@@ -1996,6 +2012,8 @@ public:
         axis5EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2645 \346\234\252\347\237\245", nullptr));
         axis6EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2646 \346\234\252\347\237\245", nullptr));
         axis7EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2647 \346\234\252\347\237\245", nullptr));
+        enableAllAxesButton->setText(QCoreApplication::translate("MainWindow", "\344\270\200\351\224\256\344\275\277\350\203\275\345\205\250\351\203\250\345\234\250\347\272\277\350\275\264", nullptr));
+        disableAllAxesButton->setText(QCoreApplication::translate("MainWindow", "\344\270\200\351\224\256\345\244\261\350\203\275\345\205\250\351\203\250\345\234\250\347\272\277\350\275\264", nullptr));
         globalEmergencyGroup->setTitle(QCoreApplication::translate("MainWindow", "\347\264\247\346\200\245\346\223\215\344\275\234", nullptr));
         emergencyStopButton->setText(QCoreApplication::translate("MainWindow", "\345\205\250\345\261\200\347\253\213\345\215\263\345\201\234\346\255\242", nullptr));
         globalEmergencyHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\253\213\345\215\263\345\201\234\346\255\242\345\275\223\345\211\215\346\255\243\345\234\250\346\211\247\350\241\214\347\232\204\350\277\236\347\273\255\346\217\222\350\241\245\343\200\201\345\215\225\350\275\264\347\202\271\344\275\215\346\210\226\351\200\237\345\272\246\351\227\255\347\216\257\350\277\220\345\212\250\343\200\202", nullptr));
@@ -2185,7 +2203,7 @@ public:
         recordPathValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\256\260\345\275\225\345\220\216\350\207\252\345\212\250\345\210\233\345\273\272 records/run_*", nullptr));
         recordStatsLabel->setText(QCoreApplication::translate("MainWindow", "\345\206\231\345\205\245 / \351\230\237\345\210\227 / \344\270\242\345\270\247", nullptr));
         recordStatsValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0", nullptr));
-        telemetryHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\233\262\347\272\277\344\273\205\344\273\245 20 Hz \346\230\276\347\244\272\346\234\200\346\226\260 Trace \345\277\253\347\205\247\357\274\233\345\216\237\345\247\213 1 ms Trace \345\270\247\347\224\261\347\213\254\347\253\213\345\206\231\347\233\230\347\272\277\347\250\213\344\277\235\345\255\230\357\274\214\344\270\215\345\234\250 UI \347\272\277\347\250\213\347\273\230\345\210\266\346\210\226\345\206\231\345\205\245\346\226\207\346\234\254\343\200\202", nullptr));
+        telemetryHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\202\271\345\207\273\342\200\234\345\274\200\345\247\213\350\256\260\345\275\225\342\200\235\345\220\216\357\274\214\346\233\262\347\272\277\344\273\245 20 Hz \346\230\276\347\244\272\346\234\200\346\226\260 Trace \345\277\253\347\205\247\357\274\233\347\202\271\345\207\273\342\200\234\345\201\234\346\255\242\350\256\260\345\275\225\345\271\266\345\206\231\345\205\245\346\226\207\344\273\266\342\200\235\345\220\216\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\345\216\237\345\247\213 1 ms Trace \345\270\247\347\224\261\347\213\254\347\253\213\345\206\231\347\233\230\347\272\277\347\250\213\344\277\235\345\255\230\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(telemetryTab), QCoreApplication::translate("MainWindow", "\346\225\260\346\215\256\350\256\260\345\275\225\344\270\216\346\233\262\347\272\277", nullptr));
         velocityControlParameterGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\350\275\264\351\200\237\345\272\246\346\250\241\345\274\217\344\275\215\347\275\256\351\227\255\347\216\257\345\217\202\346\225\260", nullptr));
         velocityAxisLabel->setText(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\264", nullptr));

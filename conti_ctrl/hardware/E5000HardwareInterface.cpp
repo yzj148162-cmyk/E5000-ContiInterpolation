@@ -257,6 +257,16 @@ public:
         return true;
     }
 
+    bool readEthercatSlaveCount(quint16 &slaveCount, QString &error) const
+    {
+        WORD count = 0;
+        if (!card_.readEthercatSlaveCount(cardNo_, kEthercatPort, count, error)) {
+            return false;
+        }
+        slaveCount = count;
+        return true;
+    }
+
     bool close(QString &error)
     {
         stopFeedScheduler(true);
@@ -488,6 +498,8 @@ bool E5000HardwareInterface::setBusCycle(int cycleUs, QString &error)
 { return invokeHardware(backend_, [&] { return backend_->setBusCycle(cycleUs, error); }); }
 bool E5000HardwareInterface::readBusCycle(int &cycleUs, QString &error) const
 { return invokeHardware(backend_, [&] { return backend_->readBusCycle(cycleUs, error); }); }
+bool E5000HardwareInterface::readEthercatSlaveCount(quint16 &slaveCount, QString &error) const
+{ return invokeHardware(backend_, [&] { return backend_->readEthercatSlaveCount(slaveCount, error); }); }
 bool E5000HardwareInterface::configureTrace(const QVector<quint16> &axes, int samplePeriodUs,
                                              int traceBaseCycleUs, QString &error)
 { return invokeHardware(backend_, [&] { return backend_->configureTrace(axes, samplePeriodUs, traceBaseCycleUs, error); }); }
