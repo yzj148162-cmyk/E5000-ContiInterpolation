@@ -16,6 +16,7 @@ class ContiWorker;
 class QChart;
 class QLineSeries;
 class QValueAxis;
+class ZoomableChartView;
 
 class MainWindow : public QMainWindow
 {
@@ -94,7 +95,7 @@ private:
     void initializeVelocityControlCharts();
     void updateVelocityControlCharts();
     void clearVelocityControlCharts();
-    void updateChartRanges(QChart *chart, QValueAxis *timeAxis, QValueAxis *valueAxis,
+    void updateChartRanges(ZoomableChartView *view,
                            const QList<QLineSeries *> &series, double timeSeconds,
                            double minimumSpan) const;
     int selectedBusCycleUs() const;

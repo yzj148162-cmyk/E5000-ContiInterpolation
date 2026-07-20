@@ -1499,7 +1499,10 @@
                </property>
                <layout class="QVBoxLayout" name="contiTrajectoryLayout">
                 <item>
-                 <widget class="QChartView" name="contiTrajectoryChartView">
+                  <widget class="ZoomableChartView" name="contiTrajectoryChartView">
+                   <property name="toolTip">
+                    <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+                   </property>
                   <property name="minimumSize">
                    <size>
                     <width>0</width>
@@ -1977,7 +1980,10 @@
            <property name="childrenCollapsible">
             <bool>false</bool>
            </property>
-           <widget class="QChartView" name="positionChartView">
+            <widget class="ZoomableChartView" name="positionChartView">
+             <property name="toolTip">
+              <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+             </property>
             <property name="minimumSize">
              <size>
               <width>0</width>
@@ -1985,7 +1991,10 @@
              </size>
             </property>
            </widget>
-           <widget class="QChartView" name="followingErrorChartView">
+            <widget class="ZoomableChartView" name="followingErrorChartView">
+             <property name="toolTip">
+              <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+             </property>
             <property name="minimumSize">
              <size>
               <width>0</width>
@@ -1998,7 +2007,7 @@
          <item>
           <widget class="QLabel" name="telemetryHintLabel">
            <property name="text">
-             <string>点击“开始记录”后，曲线以 20 Hz 显示最新 Trace 快照；点击“停止记录并写入文件”后停止追加。原始 1 ms Trace 帧由独立写盘线程保存。</string>
+             <string>点击“开始记录”后，曲线以 20 Hz 显示最新 Trace 快照；点击“停止记录并写入文件”后停止追加。原始 1 ms Trace 帧由独立写盘线程保存。绘图区内滚动滚轮可缩放，双击恢复自动量程。</string>
            </property>
            <property name="wordWrap">
             <bool>true</bool>
@@ -2688,7 +2697,10 @@
                <property name="childrenCollapsible">
                 <bool>false</bool>
                </property>
-               <widget class="QChartView" name="velocityPositionChartView">
+                <widget class="ZoomableChartView" name="velocityPositionChartView">
+                 <property name="toolTip">
+                  <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+                 </property>
                 <property name="minimumSize">
                  <size>
                   <width>0</width>
@@ -2696,7 +2708,10 @@
                  </size>
                 </property>
                </widget>
-               <widget class="QChartView" name="velocityErrorChartView">
+                <widget class="ZoomableChartView" name="velocityErrorChartView">
+                 <property name="toolTip">
+                  <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+                 </property>
                 <property name="minimumSize">
                  <size>
                   <width>0</width>
@@ -2704,7 +2719,10 @@
                  </size>
                 </property>
                </widget>
-               <widget class="QChartView" name="velocitySpeedChartView">
+                <widget class="ZoomableChartView" name="velocitySpeedChartView">
+                 <property name="toolTip">
+                  <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+                 </property>
                 <property name="minimumSize">
                  <size>
                   <width>0</width>
@@ -2717,7 +2735,7 @@
              <item>
               <widget class="QLabel" name="velocityControlHintLabel">
                <property name="text">
-                <string>控制数据按控制周期产生；UI 每 50 ms 绘制最新快照。运行结束或停止后曲线立即停止追加。首次试验请先关闭 PID，仅用低速前馈核对 Trace type 3/4 的单位和方向。</string>
+                 <string>控制数据按控制周期产生；UI 每 50 ms 绘制最新快照。运行结束或停止后曲线立即停止追加。绘图区内滚动滚轮可缩放，双击恢复自动量程。首次试验请先关闭 PID，仅用低速前馈核对 Trace type 3/4 的单位和方向。</string>
                </property>
                <property name="wordWrap">
                 <bool>true</bool>
@@ -2828,6 +2846,11 @@
    <class>QChartView</class>
    <extends>QGraphicsView</extends>
    <header location="global">QtCharts/QChartView</header>
+  </customwidget>
+  <customwidget>
+   <class>ZoomableChartView</class>
+   <extends>QChartView</extends>
+   <header>widgets/ZoomableChartView.h</header>
   </customwidget>
  </customwidgets>
  <resources/>

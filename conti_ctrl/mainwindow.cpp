@@ -22,6 +22,7 @@
 #include <limits>
 
 #include "hardware/ContiWorker.h"
+#include "widgets/ZoomableChartView.h"
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -686,8 +687,8 @@ void MainWindow::updateStatus(const ContiStatus &status)
 void MainWindow::initializeTelemetryCharts()
 {
     const auto createChart = [](const QString &title, const QString &valueTitle,
-                                QChartView *view, QChart *&chart,
-                                QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
+                                 ZoomableChartView *view, QChart *&chart,
+                                 QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
         chart = new QChart;
         chart->setTitle(title);
         chart->legend()->setVisible(true);
@@ -701,6 +702,7 @@ void MainWindow::initializeTelemetryCharts()
         chart->addAxis(valueAxis, Qt::AlignLeft);
         view->setChart(chart);
         view->setRenderHint(QPainter::Antialiasing, false);
+        view->setAutomaticRange(0.0, 30.0, -1.0, 1.0);
     };
 
     createChart(QStringLiteral("两轴 Trace 指令与实际位置"), QStringLiteral("位置 (°)"),
@@ -774,6 +776,8 @@ void MainWindow::updateTelemetryCharts()
         }
         lastPlottedTraceSequence_ = 0;
         telemetryPlotStartTimeUs_ = latestStatus_.latestTraceTimeUs;
+        ui_->positionChartView->resetAutomaticRangeMode();
+        ui_->followingErrorChartView->resetAutomaticRangeMode();
         telemetryPlotWasActive_ = true;
     }
     if (latestStatus_.latestTraceSequence < lastPlottedTraceSequence_) {
@@ -785,6 +789,8 @@ void MainWindow::updateTelemetryCharts()
         }
         lastPlottedTraceSequence_ = 0;
         telemetryPlotStartTimeUs_ = latestStatus_.latestTraceTimeUs;
+        ui_->positionChartView->resetAutomaticRangeMode();
+        ui_->followingErrorChartView->resetAutomaticRangeMode();
     }
     if (latestStatus_.latestTraceSequence == lastPlottedTraceSequence_) {
         return;
@@ -817,10 +823,10 @@ void MainWindow::updateTelemetryCharts()
                                              feedback.commandPositionUnit - feedback.encoderPositionUnit);
     }
     lastPlottedTraceSequence_ = latestStatus_.latestTraceSequence;
-    updateChartRanges(positionChart_, positionTimeAxis_, positionValueAxis_,
+    updateChartRanges(ui_->positionChartView,
                       {positionSeries_[0], positionSeries_[1], positionSeries_[2], positionSeries_[3]},
                       timeSeconds, 0.1);
-    updateChartRanges(followingErrorChart_, errorTimeAxis_, errorValueAxis_,
+    updateChartRanges(ui_->followingErrorChartView,
                       {followingErrorSeries_[0], followingErrorSeries_[1]}, timeSeconds, 0.01);
     ui_->positionChartView->update();
     ui_->followingErrorChartView->update();
@@ -829,8 +835,8 @@ void MainWindow::updateTelemetryCharts()
 void MainWindow::initializeVelocityControlCharts()
 {
     const auto createChart = [](const QString &title, const QString &valueTitle,
-                                QChartView *view, QChart *&chart,
-                                QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
+                                 ZoomableChartView *view, QChart *&chart,
+                                 QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
         chart = new QChart;
         chart->setTitle(title);
         chart->legend()->setVisible(true);
@@ -844,6 +850,7 @@ void MainWindow::initializeVelocityControlCharts()
         chart->addAxis(valueAxis, Qt::AlignLeft);
         view->setChart(chart);
         view->setRenderHint(QPainter::Antialiasing, false);
+        view->setAutomaticRange(0.0, 5.0, -1.0, 1.0);
     };
     createChart(QStringLiteral("位置跟踪：规划 / 板卡指令 / Trace实际"),
                 QStringLiteral("位置 (°)"), ui_->velocityPositionChartView,
@@ -909,6 +916,9 @@ void MainWindow::clearVelocityControlCharts()
         if (series != nullptr) series->clear();
     }
     lastVelocityPlotTimeS_ = -1.0;
+    ui_->velocityPositionChartView->resetAutomaticRangeMode();
+    ui_->velocityErrorChartView->resetAutomaticRangeMode();
+    ui_->velocitySpeedChartView->resetAutomaticRangeMode();
 }
 
 void MainWindow::updateVelocityControlCharts()
@@ -937,9 +947,8 @@ void MainWindow::updateVelocityControlCharts()
     velocitySpeedSeries_[3]->append(time, status.actualVelocityDegreePerSecond);
     lastVelocityPlotTimeS_ = time;
 
-    const auto fitAxes = [time](QValueAxis *timeAxis, QValueAxis *valueAxis,
+    const auto fitAxes = [time](ZoomableChartView *view,
                                 const QList<QLineSeries *> &series, double minimumSpan) {
-        timeAxis->setRange(0.0, qMax(5.0, time * 1.05));
         double minimum = std::numeric_limits<double>::max();
         double maximum = std::numeric_limits<double>::lowest();
         for (QLineSeries *line : series) {
@@ -951,13 +960,14 @@ void MainWindow::updateVelocityControlCharts()
         if (minimum > maximum) return;
         const double span = qMax(minimumSpan, maximum - minimum);
         const double margin = span * 0.15;
-        valueAxis->setRange(minimum - margin, maximum + margin);
+        view->setAutomaticRange(0.0, qMax(5.0, time * 1.05),
+                                minimum - margin, maximum + margin);
     };
-    fitAxes(velocityPositionTimeAxis_, velocityPositionValueAxis_,
+    fitAxes(ui_->velocityPositionChartView,
             {velocityPositionSeries_[0], velocityPositionSeries_[1], velocityPositionSeries_[2]}, 0.1);
-    fitAxes(velocityErrorTimeAxis_, velocityErrorValueAxis_,
+    fitAxes(ui_->velocityErrorChartView,
             {velocityErrorSeries_[0], velocityErrorSeries_[1], velocityErrorSeries_[2]}, 0.01);
-    fitAxes(velocitySpeedTimeAxis_, velocitySpeedValueAxis_,
+    fitAxes(ui_->velocitySpeedChartView,
             {velocitySpeedSeries_[0], velocitySpeedSeries_[1],
              velocitySpeedSeries_[2], velocitySpeedSeries_[3]}, 0.1);
     ui_->velocityPositionChartView->update();
@@ -986,6 +996,7 @@ void MainWindow::updateContiTrajectoryChart()
         contiActualTrajectorySeries_->clear();
         contiTrajectoryTraceStartTimeUs_ = latestStatus_.trajectoryTraceStartTimeUs;
         lastContiTrajectoryTraceSequence_ = 0;
+        ui_->contiTrajectoryChartView->resetAutomaticRangeMode();
     }
     if (latestStatus_.latestTraceSequence == 0
         || latestStatus_.latestTraceSequence == lastContiTrajectoryTraceSequence_)
@@ -1013,18 +1024,17 @@ void MainWindow::updateContiTrajectoryChart()
     contiExpectedTrajectorySeries_->append(timeSeconds, latestStatus_.trajectoryExpectedActiveUnit);
     contiActualTrajectorySeries_->append(timeSeconds, activeFeedback->encoderPositionUnit);
     lastContiTrajectoryTraceSequence_ = latestStatus_.latestTraceSequence;
-    updateChartRanges(contiTrajectoryChart_, contiTrajectoryTimeAxis_, contiTrajectoryValueAxis_,
+    updateChartRanges(ui_->contiTrajectoryChartView,
                       {contiExpectedTrajectorySeries_, contiActualTrajectorySeries_}, timeSeconds, 0.1);
     ui_->contiTrajectoryChartView->update();
 }
 
-void MainWindow::updateChartRanges(QChart *, QValueAxis *timeAxis, QValueAxis *valueAxis,
+void MainWindow::updateChartRanges(ZoomableChartView *view,
                                    const QList<QLineSeries *> &series, double timeSeconds,
                                    double minimumSpan) const
 {
     constexpr double kTimeWindowSeconds = 30.0;
     const double left = qMax(0.0, timeSeconds - kTimeWindowSeconds);
-    timeAxis->setRange(left, qMax(kTimeWindowSeconds, timeSeconds));
     double minimum = std::numeric_limits<double>::max();
     double maximum = std::numeric_limits<double>::lowest();
     for (QLineSeries *line : series) {
@@ -1047,5 +1057,6 @@ void MainWindow::updateChartRanges(QChart *, QValueAxis *timeAxis, QValueAxis *v
     }
     const double span = qMax(minimumSpan, maximum - minimum);
     const double margin = span * 0.15;
-    valueAxis->setRange(minimum - margin, maximum + margin);
+    view->setAutomaticRange(left, qMax(kTimeWindowSeconds, timeSeconds),
+                            minimum - margin, maximum + margin);
 }

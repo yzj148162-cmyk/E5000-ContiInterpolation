@@ -17,7 +17,8 @@ SOURCES += \
     hardware/RuntimeTraceSlaveReader.cpp \
     hardware/ContiWorker.cpp \
     telemetry/TelemetryRecorder.cpp \
-    planner/QuinticTrajectory.cpp
+    planner/QuinticTrajectory.cpp \
+    widgets/ZoomableChartView.cpp
 
 HEADERS += \
     common/ContiTypes.h \
@@ -28,7 +29,8 @@ HEADERS += \
     hardware/ContiWorker.h \
     telemetry/TelemetryRecorder.h \
     mainwindow.h \
-    planner/QuinticTrajectory.h
+    planner/QuinticTrajectory.h \
+    widgets/ZoomableChartView.h
 
 FORMS += mainwindow.ui
 

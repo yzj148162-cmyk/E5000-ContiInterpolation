@@ -32,6 +32,7 @@
 #include <QtWidgets/QTableWidget>
 #include <QtWidgets/QVBoxLayout>
 #include <QtWidgets/QWidget>
+#include "widgets/ZoomableChartView.h"
 
 QT_BEGIN_NAMESPACE
 
@@ -193,7 +194,7 @@ public:
     QPushButton *stopButton;
     QGroupBox *contiTrajectoryGroup;
     QVBoxLayout *contiTrajectoryLayout;
-    QChartView *contiTrajectoryChartView;
+    ZoomableChartView *contiTrajectoryChartView;
     QWidget *axisFeedbackTab;
     QVBoxLayout *axisFeedbackLayout;
     QGroupBox *baseConfigGroup;
@@ -242,8 +243,8 @@ public:
     QLabel *recordStatsLabel;
     QLabel *recordStatsValueLabel;
     QSplitter *telemetryPlotSplitter;
-    QChartView *positionChartView;
-    QChartView *followingErrorChartView;
+    ZoomableChartView *positionChartView;
+    ZoomableChartView *followingErrorChartView;
     QLabel *telemetryHintLabel;
     QWidget *velocityControlTab;
     QVBoxLayout *velocityControlTabLayout;
@@ -313,9 +314,9 @@ public:
     QLabel *velocityPidStatusLabel;
     QLabel *velocityPidStatusValueLabel;
     QSplitter *velocityControlChartSplitter;
-    QChartView *velocityPositionChartView;
-    QChartView *velocityErrorChartView;
-    QChartView *velocitySpeedChartView;
+    ZoomableChartView *velocityPositionChartView;
+    ZoomableChartView *velocityErrorChartView;
+    ZoomableChartView *velocitySpeedChartView;
     QLabel *velocityControlHintLabel;
     QWidget *extensionTab;
     QVBoxLayout *extensionLayout;
@@ -1192,7 +1193,7 @@ public:
         contiTrajectoryGroup->setObjectName("contiTrajectoryGroup");
         contiTrajectoryLayout = new QVBoxLayout(contiTrajectoryGroup);
         contiTrajectoryLayout->setObjectName("contiTrajectoryLayout");
-        contiTrajectoryChartView = new QChartView(contiTrajectoryGroup);
+        contiTrajectoryChartView = new ZoomableChartView(contiTrajectoryGroup);
         contiTrajectoryChartView->setObjectName("contiTrajectoryChartView");
         contiTrajectoryChartView->setMinimumSize(QSize(0, 300));
 
@@ -1472,11 +1473,11 @@ public:
         telemetryPlotSplitter->setObjectName("telemetryPlotSplitter");
         telemetryPlotSplitter->setOrientation(Qt::Orientation::Vertical);
         telemetryPlotSplitter->setChildrenCollapsible(false);
-        positionChartView = new QChartView(telemetryPlotSplitter);
+        positionChartView = new ZoomableChartView(telemetryPlotSplitter);
         positionChartView->setObjectName("positionChartView");
         positionChartView->setMinimumSize(QSize(0, 240));
         telemetryPlotSplitter->addWidget(positionChartView);
-        followingErrorChartView = new QChartView(telemetryPlotSplitter);
+        followingErrorChartView = new ZoomableChartView(telemetryPlotSplitter);
         followingErrorChartView->setObjectName("followingErrorChartView");
         followingErrorChartView->setMinimumSize(QSize(0, 240));
         telemetryPlotSplitter->addWidget(followingErrorChartView);
@@ -1886,15 +1887,15 @@ public:
         velocityControlChartSplitter->setObjectName("velocityControlChartSplitter");
         velocityControlChartSplitter->setOrientation(Qt::Orientation::Vertical);
         velocityControlChartSplitter->setChildrenCollapsible(false);
-        velocityPositionChartView = new QChartView(velocityControlChartSplitter);
+        velocityPositionChartView = new ZoomableChartView(velocityControlChartSplitter);
         velocityPositionChartView->setObjectName("velocityPositionChartView");
         velocityPositionChartView->setMinimumSize(QSize(0, 240));
         velocityControlChartSplitter->addWidget(velocityPositionChartView);
-        velocityErrorChartView = new QChartView(velocityControlChartSplitter);
+        velocityErrorChartView = new ZoomableChartView(velocityControlChartSplitter);
         velocityErrorChartView->setObjectName("velocityErrorChartView");
         velocityErrorChartView->setMinimumSize(QSize(0, 220));
         velocityControlChartSplitter->addWidget(velocityErrorChartView);
-        velocitySpeedChartView = new QChartView(velocityControlChartSplitter);
+        velocitySpeedChartView = new ZoomableChartView(velocityControlChartSplitter);
         velocitySpeedChartView->setObjectName("velocitySpeedChartView");
         velocitySpeedChartView->setMinimumSize(QSize(0, 240));
         velocityControlChartSplitter->addWidget(velocitySpeedChartView);
@@ -2139,6 +2140,9 @@ public:
         startButton->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\277\236\347\273\255\346\217\222\350\241\245", nullptr));
         stopButton->setText(QCoreApplication::translate("MainWindow", "\345\207\217\351\200\237\345\201\234\346\255\242", nullptr));
         contiTrajectoryGroup->setTitle(QCoreApplication::translate("MainWindow", "\344\270\273\345\212\250\350\275\264\350\275\250\350\277\271\345\257\271\346\257\224\357\274\210\344\275\216\351\242\221\346\230\276\347\244\272\357\274\211", nullptr));
+#if QT_CONFIG(tooltip)
+        contiTrajectoryChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\346\250\252\347\272\265\345\235\220\346\240\207\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
         tabWidget->setTabText(tabWidget->indexOf(contiTestTab), QCoreApplication::translate("MainWindow", "\350\277\236\347\273\255\346\217\222\350\241\245\346\265\213\350\257\225", nullptr));
         baseConfigGroup->setTitle(QCoreApplication::translate("MainWindow", "E5000 \345\237\272\347\241\200\351\205\215\347\275\256", nullptr));
         axisRangeLabel->setText(QCoreApplication::translate("MainWindow", "\345\237\272\347\241\200\351\205\215\347\275\256\350\275\264\350\214\203\345\233\264", nullptr));
@@ -2203,7 +2207,13 @@ public:
         recordPathValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\256\260\345\275\225\345\220\216\350\207\252\345\212\250\345\210\233\345\273\272 records/run_*", nullptr));
         recordStatsLabel->setText(QCoreApplication::translate("MainWindow", "\345\206\231\345\205\245 / \351\230\237\345\210\227 / \344\270\242\345\270\247", nullptr));
         recordStatsValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0", nullptr));
-        telemetryHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\202\271\345\207\273\342\200\234\345\274\200\345\247\213\350\256\260\345\275\225\342\200\235\345\220\216\357\274\214\346\233\262\347\272\277\344\273\245 20 Hz \346\230\276\347\244\272\346\234\200\346\226\260 Trace \345\277\253\347\205\247\357\274\233\347\202\271\345\207\273\342\200\234\345\201\234\346\255\242\350\256\260\345\275\225\345\271\266\345\206\231\345\205\245\346\226\207\344\273\266\342\200\235\345\220\216\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\345\216\237\345\247\213 1 ms Trace \345\270\247\347\224\261\347\213\254\347\253\213\345\206\231\347\233\230\347\272\277\347\250\213\344\277\235\345\255\230\343\200\202", nullptr));
+#if QT_CONFIG(tooltip)
+        positionChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\346\250\252\347\272\265\345\235\220\346\240\207\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        followingErrorChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\346\250\252\347\272\265\345\235\220\346\240\207\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        telemetryHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\202\271\345\207\273\342\200\234\345\274\200\345\247\213\350\256\260\345\275\225\342\200\235\345\220\216\357\274\214\346\233\262\347\272\277\344\273\245 20 Hz \346\230\276\347\244\272\346\234\200\346\226\260 Trace \345\277\253\347\205\247\357\274\233\347\202\271\345\207\273\342\200\234\345\201\234\346\255\242\350\256\260\345\275\225\345\271\266\345\206\231\345\205\245\346\226\207\344\273\266\342\200\235\345\220\216\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\345\216\237\345\247\213 1 ms Trace \345\270\247\347\224\261\347\213\254\347\253\213\345\206\231\347\233\230\347\272\277\347\250\213\344\277\235\345\255\230\343\200\202\347\273\230\345\233\276\345\214\272\345\206\205\346\273\232\345\212\250\346\273\232\350\275\256\345\217\257\347\274\251\346\224\276\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(telemetryTab), QCoreApplication::translate("MainWindow", "\346\225\260\346\215\256\350\256\260\345\275\225\344\270\216\346\233\262\347\272\277", nullptr));
         velocityControlParameterGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\350\275\264\351\200\237\345\272\246\346\250\241\345\274\217\344\275\215\347\275\256\351\227\255\347\216\257\345\217\202\346\225\260", nullptr));
         velocityAxisLabel->setText(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\264", nullptr));
@@ -2269,7 +2279,16 @@ public:
         velocitySpeedStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 / 0 \302\260/s", nullptr));
         velocityPidStatusLabel->setText(QCoreApplication::translate("MainWindow", "\345\211\215\351\246\210 / P / I / D / \351\231\220\345\271\205\347\212\266\346\200\201", nullptr));
         velocityPidStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 / 0 / --", nullptr));
-        velocityControlHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\346\225\260\346\215\256\346\214\211\346\216\247\345\210\266\345\221\250\346\234\237\344\272\247\347\224\237\357\274\233UI \346\257\217 50 ms \347\273\230\345\210\266\346\234\200\346\226\260\345\277\253\347\205\247\343\200\202\350\277\220\350\241\214\347\273\223\346\235\237\346\210\226\345\201\234\346\255\242\345\220\216\346\233\262\347\272\277\347\253\213\345\215\263\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\351\246\226\346\254\241\350\257\225\351\252\214\350\257\267\345\205\210\345\205\263\351\227\255 PID\357\274\214\344\273\205\347\224\250\344\275\216\351\200\237\345\211\215\351\246\210\346\240\270\345\257\271 Trace type 3/4 \347\232\204\345\215\225\344\275\215\345\222\214\346\226\271\345\220\221\343\200\202", nullptr));
+#if QT_CONFIG(tooltip)
+        velocityPositionChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\346\250\252\347\272\265\345\235\220\346\240\207\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        velocityErrorChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\346\250\252\347\272\265\345\235\220\346\240\207\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        velocitySpeedChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\346\250\252\347\272\265\345\235\220\346\240\207\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        velocityControlHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\346\225\260\346\215\256\346\214\211\346\216\247\345\210\266\345\221\250\346\234\237\344\272\247\347\224\237\357\274\233UI \346\257\217 50 ms \347\273\230\345\210\266\346\234\200\346\226\260\345\277\253\347\205\247\343\200\202\350\277\220\350\241\214\347\273\223\346\235\237\346\210\226\345\201\234\346\255\242\345\220\216\346\233\262\347\272\277\347\253\213\345\215\263\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\347\273\230\345\233\276\345\214\272\345\206\205\346\273\232\345\212\250\346\273\232\350\275\256\345\217\257\347\274\251\346\224\276\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202\351\246\226\346\254\241\350\257\225\351\252\214\350\257\267\345\205\210\345\205\263\351\227\255 PID\357\274\214\344\273\205\347\224\250\344\275\216\351\200\237\345\211\215\351\246\210\346\240\270\345\257\271 Trace type 3/4 \347\232\204\345\215\225\344\275\215\345\222\214\346\226\271\345\220\221\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(velocityControlTab), QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\351\227\255\347\216\257\346\265\213\350\257\225", nullptr));
         extensionHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\255\244\351\241\265\351\235\242\351\242\204\347\225\231\347\273\231\345\220\216\347\273\255\347\232\204 8 \350\275\264 CDPR\343\200\201\345\212\250\345\212\233\345\255\246\346\261\202\350\247\243\343\200\201\345\212\233\344\274\240\346\204\237\345\231\250\345\222\214\347\274\223\345\206\262\346\260\264\344\275\215\350\207\252\345\212\250\350\260\203\351\200\237\347\255\211\345\212\237\350\203\275\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(extensionTab), QCoreApplication::translate("MainWindow", "\346\211\251\345\261\225\345\212\237\350\203\275\357\274\210\351\242\204\347\225\231\357\274\211", nullptr));
