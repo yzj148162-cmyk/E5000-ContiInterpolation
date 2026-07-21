@@ -2041,8 +2041,8 @@
                <property name="title">
                 <string>单轴速度模式位置闭环参数</string>
                </property>
-               <layout class="QVBoxLayout" name="velocityControlParameterLayout">
-                <item>
+               <layout class="QGridLayout" name="velocityControlParameterLayout">
+                <item row="0" column="0">
                  <widget class="QGroupBox" name="velocityTrajectoryGroup">
                   <property name="title">
                    <string>轨迹设置</string>
@@ -2125,14 +2125,14 @@
                   </property>
                  </widget>
                 </item>
-                <item row="0" column="4">
+                <item row="1" column="2">
                  <widget class="QLabel" name="velocityDurationLabel">
                   <property name="text">
                    <string>轨迹时间</string>
                   </property>
                  </widget>
                 </item>
-                <item row="0" column="5">
+                <item row="1" column="3">
                  <widget class="QDoubleSpinBox" name="velocityDurationSpin">
                   <property name="suffix">
                    <string> s</string>
@@ -2174,7 +2174,7 @@
                   </property>
                  </widget>
                 </item>
-                   <item row="0" column="6" rowspan="2">
+                   <item row="0" column="4" rowspan="2">
                     <spacer name="velocityTrajectorySpacer">
                      <property name="orientation">
                       <enum>Qt::Orientation::Horizontal</enum>
@@ -2190,7 +2190,7 @@
                   </layout>
                  </widget>
                 </item>
-                <item>
+                <item row="0" column="1">
                  <widget class="QGroupBox" name="velocityClosedLoopGroup">
                   <property name="title">
                    <string>闭环控制</string>
@@ -2266,14 +2266,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="4">
+                 <item row="2" column="0">
                   <widget class="QLabel" name="velocityKdLabel">
                   <property name="text">
                    <string>Kd</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="5">
+                 <item row="2" column="1">
                   <widget class="QDoubleSpinBox" name="velocityKdSpin">
                   <property name="decimals">
                    <number>5</number>
@@ -2283,14 +2283,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="2" column="0">
+                 <item row="2" column="2">
                   <widget class="QLabel" name="velocityIntegralLimitLabel">
                   <property name="text">
                    <string>积分状态上限</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="2" column="1">
+                 <item row="2" column="3">
                   <widget class="QDoubleSpinBox" name="velocityIntegralLimitSpin">
                   <property name="suffix">
                    <string> °·s</string>
@@ -2306,14 +2306,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="2" column="2">
+                 <item row="3" column="0">
                   <widget class="QLabel" name="velocityMaxCorrectionLabel">
                   <property name="text">
                    <string>PID修正上限</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="2" column="3">
+                 <item row="3" column="1">
                   <widget class="QDoubleSpinBox" name="velocityMaxCorrectionSpin">
                   <property name="suffix">
                    <string> °/s</string>
@@ -2329,7 +2329,7 @@
                   </property>
                  </widget>
                 </item>
-                   <item row="0" column="6" rowspan="3">
+                   <item row="0" column="4" rowspan="4">
                     <spacer name="velocityClosedLoopSpacer">
                      <property name="orientation">
                       <enum>Qt::Orientation::Horizontal</enum>
@@ -2345,7 +2345,7 @@
                   </layout>
                  </widget>
                 </item>
-                <item>
+                <item row="1" column="0">
                  <widget class="QGroupBox" name="velocityLimitGroup">
                   <property name="title">
                    <string>运动限制</string>
@@ -2403,14 +2403,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="0" column="4">
+                 <item row="1" column="0">
                   <widget class="QLabel" name="velocityChangeTimeLabel">
                   <property name="text">
                    <string>在线变速时间</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="0" column="5">
+                 <item row="1" column="1">
                   <widget class="QDoubleSpinBox" name="velocityChangeTimeSpin">
                   <property name="suffix">
                    <string> s</string>
@@ -2432,14 +2432,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="0">
+                 <item row="1" column="2">
                   <widget class="QLabel" name="velocityStartThresholdLabel">
                   <property name="text">
                    <string>启动速度阈值</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="1">
+                 <item row="1" column="3">
                   <widget class="QDoubleSpinBox" name="velocityStartThresholdSpin">
                   <property name="suffix">
                    <string> °/s</string>
@@ -2458,7 +2458,7 @@
                   </property>
                  </widget>
                 </item>
-                   <item row="0" column="6" rowspan="2">
+                   <item row="0" column="4" rowspan="2">
                     <spacer name="velocityLimitSpacer">
                      <property name="orientation">
                       <enum>Qt::Orientation::Horizontal</enum>
@@ -2474,7 +2474,7 @@
                   </layout>
                  </widget>
                 </item>
-                <item>
+                <item row="1" column="1">
                  <widget class="QGroupBox" name="velocityCriterionGroup">
                   <property name="title">
                    <string>判定保护</string>
@@ -2532,14 +2532,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="0" column="4">
+                 <item row="1" column="0">
                   <widget class="QLabel" name="velocityStableDwellLabel">
                   <property name="text">
                    <string>稳态确认</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="0" column="5">
+                 <item row="1" column="1">
                   <widget class="QSpinBox" name="velocityStableDwellSpin">
                   <property name="suffix">
                    <string> ms</string>
@@ -2555,14 +2555,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="0">
+                 <item row="1" column="2">
                   <widget class="QLabel" name="velocityFinishTimeoutLabel">
                   <property name="text">
                    <string>终点超时</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="1">
+                 <item row="1" column="3">
                   <widget class="QSpinBox" name="velocityFinishTimeoutSpin">
                   <property name="suffix">
                    <string> ms</string>
@@ -2578,14 +2578,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="2">
+                 <item row="2" column="0">
                   <widget class="QLabel" name="velocityMaxFollowingErrorLabel">
                   <property name="text">
                    <string>最大跟随误差</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="3">
+                 <item row="2" column="1">
                   <widget class="QDoubleSpinBox" name="velocityMaxFollowingErrorSpin">
                   <property name="suffix">
                    <string> °</string>
@@ -2604,14 +2604,14 @@
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="4">
+                 <item row="2" column="2">
                   <widget class="QLabel" name="velocityTraceTimeoutLabel">
                   <property name="text">
                    <string>Trace超时</string>
                   </property>
                  </widget>
                 </item>
-                 <item row="1" column="5">
+                 <item row="2" column="3">
                   <widget class="QSpinBox" name="velocityTraceTimeoutSpin">
                   <property name="suffix">
                    <string> ms</string>
@@ -2627,7 +2627,7 @@
                   </property>
                  </widget>
                 </item>
-                   <item row="0" column="6" rowspan="2">
+                   <item row="0" column="4" rowspan="3">
                     <spacer name="velocityCriterionSpacer">
                      <property name="orientation">
                       <enum>Qt::Orientation::Horizontal</enum>
