@@ -252,7 +252,9 @@ public:
     QWidget *velocityControlScrollContent;
     QVBoxLayout *velocityControlContentLayout;
     QGroupBox *velocityControlParameterGroup;
-    QGridLayout *velocityControlParameterLayout;
+    QVBoxLayout *velocityControlParameterLayout;
+    QGroupBox *velocityTrajectoryGroup;
+    QGridLayout *velocityTrajectoryLayout;
     QLabel *velocityAxisLabel;
     QComboBox *velocityAxisCombo;
     QLabel *velocityDeltaLabel;
@@ -261,6 +263,9 @@ public:
     QDoubleSpinBox *velocityDurationSpin;
     QLabel *velocityControlPeriodLabel;
     QSpinBox *velocityControlPeriodSpin;
+    QSpacerItem *velocityTrajectorySpacer;
+    QGroupBox *velocityClosedLoopGroup;
+    QGridLayout *velocityClosedLoopLayout;
     QCheckBox *velocityFeedforwardCheck;
     QDoubleSpinBox *velocityFeedforwardGainSpin;
     QCheckBox *velocityPidEnableCheck;
@@ -274,6 +279,9 @@ public:
     QDoubleSpinBox *velocityIntegralLimitSpin;
     QLabel *velocityMaxCorrectionLabel;
     QDoubleSpinBox *velocityMaxCorrectionSpin;
+    QSpacerItem *velocityClosedLoopSpacer;
+    QGroupBox *velocityLimitGroup;
+    QGridLayout *velocityLimitLayout;
     QLabel *velocityMaxSpeedLabel;
     QDoubleSpinBox *velocityMaxSpeedSpin;
     QLabel *velocityMaxAccelerationLabel;
@@ -282,6 +290,9 @@ public:
     QDoubleSpinBox *velocityChangeTimeSpin;
     QLabel *velocityStartThresholdLabel;
     QDoubleSpinBox *velocityStartThresholdSpin;
+    QSpacerItem *velocityLimitSpacer;
+    QGroupBox *velocityCriterionGroup;
+    QGridLayout *velocityCriterionLayout;
     QLabel *velocityPositionToleranceLabel;
     QDoubleSpinBox *velocityPositionToleranceSpin;
     QLabel *velocitySpeedToleranceLabel;
@@ -294,6 +305,7 @@ public:
     QDoubleSpinBox *velocityMaxFollowingErrorSpin;
     QLabel *velocityTraceTimeoutLabel;
     QSpinBox *velocityTraceTimeoutSpin;
+    QSpacerItem *velocityCriterionSpacer;
     QGroupBox *velocityControlOperationGroup;
     QGridLayout *velocityControlOperationLayout;
     QPushButton *velocityEnableAxisButton;
@@ -1505,14 +1517,18 @@ public:
         velocityControlContentLayout->setObjectName("velocityControlContentLayout");
         velocityControlParameterGroup = new QGroupBox(velocityControlScrollContent);
         velocityControlParameterGroup->setObjectName("velocityControlParameterGroup");
-        velocityControlParameterLayout = new QGridLayout(velocityControlParameterGroup);
+        velocityControlParameterLayout = new QVBoxLayout(velocityControlParameterGroup);
         velocityControlParameterLayout->setObjectName("velocityControlParameterLayout");
-        velocityAxisLabel = new QLabel(velocityControlParameterGroup);
+        velocityTrajectoryGroup = new QGroupBox(velocityControlParameterGroup);
+        velocityTrajectoryGroup->setObjectName("velocityTrajectoryGroup");
+        velocityTrajectoryLayout = new QGridLayout(velocityTrajectoryGroup);
+        velocityTrajectoryLayout->setObjectName("velocityTrajectoryLayout");
+        velocityAxisLabel = new QLabel(velocityTrajectoryGroup);
         velocityAxisLabel->setObjectName("velocityAxisLabel");
 
-        velocityControlParameterLayout->addWidget(velocityAxisLabel, 0, 0, 1, 1);
+        velocityTrajectoryLayout->addWidget(velocityAxisLabel, 0, 0, 1, 1);
 
-        velocityAxisCombo = new QComboBox(velocityControlParameterGroup);
+        velocityAxisCombo = new QComboBox(velocityTrajectoryGroup);
         velocityAxisCombo->addItem(QString());
         velocityAxisCombo->addItem(QString());
         velocityAxisCombo->addItem(QString());
@@ -1523,166 +1539,188 @@ public:
         velocityAxisCombo->addItem(QString());
         velocityAxisCombo->setObjectName("velocityAxisCombo");
 
-        velocityControlParameterLayout->addWidget(velocityAxisCombo, 0, 1, 1, 1);
+        velocityTrajectoryLayout->addWidget(velocityAxisCombo, 0, 1, 1, 1);
 
-        velocityDeltaLabel = new QLabel(velocityControlParameterGroup);
+        velocityDeltaLabel = new QLabel(velocityTrajectoryGroup);
         velocityDeltaLabel->setObjectName("velocityDeltaLabel");
 
-        velocityControlParameterLayout->addWidget(velocityDeltaLabel, 0, 2, 1, 1);
+        velocityTrajectoryLayout->addWidget(velocityDeltaLabel, 0, 2, 1, 1);
 
-        velocityDeltaSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityDeltaSpin = new QDoubleSpinBox(velocityTrajectoryGroup);
         velocityDeltaSpin->setObjectName("velocityDeltaSpin");
         velocityDeltaSpin->setDecimals(4);
         velocityDeltaSpin->setMinimum(-1000000.000000000000000);
         velocityDeltaSpin->setMaximum(1000000.000000000000000);
         velocityDeltaSpin->setValue(30.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityDeltaSpin, 0, 3, 1, 1);
+        velocityTrajectoryLayout->addWidget(velocityDeltaSpin, 0, 3, 1, 1);
 
-        velocityDurationLabel = new QLabel(velocityControlParameterGroup);
+        velocityDurationLabel = new QLabel(velocityTrajectoryGroup);
         velocityDurationLabel->setObjectName("velocityDurationLabel");
 
-        velocityControlParameterLayout->addWidget(velocityDurationLabel, 0, 4, 1, 1);
+        velocityTrajectoryLayout->addWidget(velocityDurationLabel, 0, 4, 1, 1);
 
-        velocityDurationSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityDurationSpin = new QDoubleSpinBox(velocityTrajectoryGroup);
         velocityDurationSpin->setObjectName("velocityDurationSpin");
         velocityDurationSpin->setDecimals(3);
         velocityDurationSpin->setMinimum(0.100000000000000);
         velocityDurationSpin->setMaximum(3600.000000000000000);
         velocityDurationSpin->setValue(5.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityDurationSpin, 0, 5, 1, 1);
+        velocityTrajectoryLayout->addWidget(velocityDurationSpin, 0, 5, 1, 1);
 
-        velocityControlPeriodLabel = new QLabel(velocityControlParameterGroup);
+        velocityControlPeriodLabel = new QLabel(velocityTrajectoryGroup);
         velocityControlPeriodLabel->setObjectName("velocityControlPeriodLabel");
 
-        velocityControlParameterLayout->addWidget(velocityControlPeriodLabel, 1, 0, 1, 1);
+        velocityTrajectoryLayout->addWidget(velocityControlPeriodLabel, 1, 0, 1, 1);
 
-        velocityControlPeriodSpin = new QSpinBox(velocityControlParameterGroup);
+        velocityControlPeriodSpin = new QSpinBox(velocityTrajectoryGroup);
         velocityControlPeriodSpin->setObjectName("velocityControlPeriodSpin");
         velocityControlPeriodSpin->setMinimum(1);
         velocityControlPeriodSpin->setMaximum(100);
         velocityControlPeriodSpin->setValue(10);
 
-        velocityControlParameterLayout->addWidget(velocityControlPeriodSpin, 1, 1, 1, 1);
+        velocityTrajectoryLayout->addWidget(velocityControlPeriodSpin, 1, 1, 1, 1);
 
-        velocityFeedforwardCheck = new QCheckBox(velocityControlParameterGroup);
+        velocityTrajectorySpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
+
+        velocityTrajectoryLayout->addItem(velocityTrajectorySpacer, 0, 6, 2, 1);
+
+
+        velocityControlParameterLayout->addWidget(velocityTrajectoryGroup);
+
+        velocityClosedLoopGroup = new QGroupBox(velocityControlParameterGroup);
+        velocityClosedLoopGroup->setObjectName("velocityClosedLoopGroup");
+        velocityClosedLoopLayout = new QGridLayout(velocityClosedLoopGroup);
+        velocityClosedLoopLayout->setObjectName("velocityClosedLoopLayout");
+        velocityFeedforwardCheck = new QCheckBox(velocityClosedLoopGroup);
         velocityFeedforwardCheck->setObjectName("velocityFeedforwardCheck");
         velocityFeedforwardCheck->setChecked(true);
 
-        velocityControlParameterLayout->addWidget(velocityFeedforwardCheck, 1, 2, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityFeedforwardCheck, 0, 0, 1, 1);
 
-        velocityFeedforwardGainSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityFeedforwardGainSpin = new QDoubleSpinBox(velocityClosedLoopGroup);
         velocityFeedforwardGainSpin->setObjectName("velocityFeedforwardGainSpin");
         velocityFeedforwardGainSpin->setDecimals(3);
         velocityFeedforwardGainSpin->setMinimum(0.000000000000000);
         velocityFeedforwardGainSpin->setMaximum(5.000000000000000);
         velocityFeedforwardGainSpin->setValue(1.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityFeedforwardGainSpin, 1, 3, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityFeedforwardGainSpin, 0, 1, 1, 1);
 
-        velocityPidEnableCheck = new QCheckBox(velocityControlParameterGroup);
+        velocityPidEnableCheck = new QCheckBox(velocityClosedLoopGroup);
         velocityPidEnableCheck->setObjectName("velocityPidEnableCheck");
         velocityPidEnableCheck->setChecked(true);
 
-        velocityControlParameterLayout->addWidget(velocityPidEnableCheck, 1, 4, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityPidEnableCheck, 0, 2, 1, 1);
 
-        velocityKpLabel = new QLabel(velocityControlParameterGroup);
+        velocityKpLabel = new QLabel(velocityClosedLoopGroup);
         velocityKpLabel->setObjectName("velocityKpLabel");
 
-        velocityControlParameterLayout->addWidget(velocityKpLabel, 2, 0, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityKpLabel, 1, 0, 1, 1);
 
-        velocityKpSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityKpSpin = new QDoubleSpinBox(velocityClosedLoopGroup);
         velocityKpSpin->setObjectName("velocityKpSpin");
         velocityKpSpin->setDecimals(5);
         velocityKpSpin->setMaximum(1000.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityKpSpin, 2, 1, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityKpSpin, 1, 1, 1, 1);
 
-        velocityKiLabel = new QLabel(velocityControlParameterGroup);
+        velocityKiLabel = new QLabel(velocityClosedLoopGroup);
         velocityKiLabel->setObjectName("velocityKiLabel");
 
-        velocityControlParameterLayout->addWidget(velocityKiLabel, 2, 2, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityKiLabel, 1, 2, 1, 1);
 
-        velocityKiSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityKiSpin = new QDoubleSpinBox(velocityClosedLoopGroup);
         velocityKiSpin->setObjectName("velocityKiSpin");
         velocityKiSpin->setDecimals(5);
         velocityKiSpin->setMaximum(1000.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityKiSpin, 2, 3, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityKiSpin, 1, 3, 1, 1);
 
-        velocityKdLabel = new QLabel(velocityControlParameterGroup);
+        velocityKdLabel = new QLabel(velocityClosedLoopGroup);
         velocityKdLabel->setObjectName("velocityKdLabel");
 
-        velocityControlParameterLayout->addWidget(velocityKdLabel, 2, 4, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityKdLabel, 1, 4, 1, 1);
 
-        velocityKdSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityKdSpin = new QDoubleSpinBox(velocityClosedLoopGroup);
         velocityKdSpin->setObjectName("velocityKdSpin");
         velocityKdSpin->setDecimals(5);
         velocityKdSpin->setMaximum(1000.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityKdSpin, 2, 5, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityKdSpin, 1, 5, 1, 1);
 
-        velocityIntegralLimitLabel = new QLabel(velocityControlParameterGroup);
+        velocityIntegralLimitLabel = new QLabel(velocityClosedLoopGroup);
         velocityIntegralLimitLabel->setObjectName("velocityIntegralLimitLabel");
 
-        velocityControlParameterLayout->addWidget(velocityIntegralLimitLabel, 3, 0, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityIntegralLimitLabel, 2, 0, 1, 1);
 
-        velocityIntegralLimitSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityIntegralLimitSpin = new QDoubleSpinBox(velocityClosedLoopGroup);
         velocityIntegralLimitSpin->setObjectName("velocityIntegralLimitSpin");
         velocityIntegralLimitSpin->setDecimals(3);
         velocityIntegralLimitSpin->setMaximum(100000.000000000000000);
         velocityIntegralLimitSpin->setValue(10.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityIntegralLimitSpin, 3, 1, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityIntegralLimitSpin, 2, 1, 1, 1);
 
-        velocityMaxCorrectionLabel = new QLabel(velocityControlParameterGroup);
+        velocityMaxCorrectionLabel = new QLabel(velocityClosedLoopGroup);
         velocityMaxCorrectionLabel->setObjectName("velocityMaxCorrectionLabel");
 
-        velocityControlParameterLayout->addWidget(velocityMaxCorrectionLabel, 3, 2, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityMaxCorrectionLabel, 2, 2, 1, 1);
 
-        velocityMaxCorrectionSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityMaxCorrectionSpin = new QDoubleSpinBox(velocityClosedLoopGroup);
         velocityMaxCorrectionSpin->setObjectName("velocityMaxCorrectionSpin");
         velocityMaxCorrectionSpin->setDecimals(3);
         velocityMaxCorrectionSpin->setMaximum(10000.000000000000000);
         velocityMaxCorrectionSpin->setValue(20.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityMaxCorrectionSpin, 3, 3, 1, 1);
+        velocityClosedLoopLayout->addWidget(velocityMaxCorrectionSpin, 2, 3, 1, 1);
 
-        velocityMaxSpeedLabel = new QLabel(velocityControlParameterGroup);
+        velocityClosedLoopSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
+
+        velocityClosedLoopLayout->addItem(velocityClosedLoopSpacer, 0, 6, 3, 1);
+
+
+        velocityControlParameterLayout->addWidget(velocityClosedLoopGroup);
+
+        velocityLimitGroup = new QGroupBox(velocityControlParameterGroup);
+        velocityLimitGroup->setObjectName("velocityLimitGroup");
+        velocityLimitLayout = new QGridLayout(velocityLimitGroup);
+        velocityLimitLayout->setObjectName("velocityLimitLayout");
+        velocityMaxSpeedLabel = new QLabel(velocityLimitGroup);
         velocityMaxSpeedLabel->setObjectName("velocityMaxSpeedLabel");
 
-        velocityControlParameterLayout->addWidget(velocityMaxSpeedLabel, 3, 4, 1, 1);
+        velocityLimitLayout->addWidget(velocityMaxSpeedLabel, 0, 0, 1, 1);
 
-        velocityMaxSpeedSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityMaxSpeedSpin = new QDoubleSpinBox(velocityLimitGroup);
         velocityMaxSpeedSpin->setObjectName("velocityMaxSpeedSpin");
         velocityMaxSpeedSpin->setDecimals(3);
         velocityMaxSpeedSpin->setMinimum(0.001000000000000);
         velocityMaxSpeedSpin->setMaximum(10000.000000000000000);
         velocityMaxSpeedSpin->setValue(30.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityMaxSpeedSpin, 3, 5, 1, 1);
+        velocityLimitLayout->addWidget(velocityMaxSpeedSpin, 0, 1, 1, 1);
 
-        velocityMaxAccelerationLabel = new QLabel(velocityControlParameterGroup);
+        velocityMaxAccelerationLabel = new QLabel(velocityLimitGroup);
         velocityMaxAccelerationLabel->setObjectName("velocityMaxAccelerationLabel");
 
-        velocityControlParameterLayout->addWidget(velocityMaxAccelerationLabel, 4, 0, 1, 1);
+        velocityLimitLayout->addWidget(velocityMaxAccelerationLabel, 0, 2, 1, 1);
 
-        velocityMaxAccelerationSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityMaxAccelerationSpin = new QDoubleSpinBox(velocityLimitGroup);
         velocityMaxAccelerationSpin->setObjectName("velocityMaxAccelerationSpin");
         velocityMaxAccelerationSpin->setDecimals(3);
         velocityMaxAccelerationSpin->setMinimum(0.001000000000000);
         velocityMaxAccelerationSpin->setMaximum(100000.000000000000000);
         velocityMaxAccelerationSpin->setValue(100.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityMaxAccelerationSpin, 4, 1, 1, 1);
+        velocityLimitLayout->addWidget(velocityMaxAccelerationSpin, 0, 3, 1, 1);
 
-        velocityChangeTimeLabel = new QLabel(velocityControlParameterGroup);
+        velocityChangeTimeLabel = new QLabel(velocityLimitGroup);
         velocityChangeTimeLabel->setObjectName("velocityChangeTimeLabel");
 
-        velocityControlParameterLayout->addWidget(velocityChangeTimeLabel, 4, 2, 1, 1);
+        velocityLimitLayout->addWidget(velocityChangeTimeLabel, 0, 4, 1, 1);
 
-        velocityChangeTimeSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityChangeTimeSpin = new QDoubleSpinBox(velocityLimitGroup);
         velocityChangeTimeSpin->setObjectName("velocityChangeTimeSpin");
         velocityChangeTimeSpin->setDecimals(3);
         velocityChangeTimeSpin->setMinimum(0.000000000000000);
@@ -1690,102 +1728,120 @@ public:
         velocityChangeTimeSpin->setSingleStep(0.010000000000000);
         velocityChangeTimeSpin->setValue(0.010000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityChangeTimeSpin, 4, 3, 1, 1);
+        velocityLimitLayout->addWidget(velocityChangeTimeSpin, 0, 5, 1, 1);
 
-        velocityStartThresholdLabel = new QLabel(velocityControlParameterGroup);
+        velocityStartThresholdLabel = new QLabel(velocityLimitGroup);
         velocityStartThresholdLabel->setObjectName("velocityStartThresholdLabel");
 
-        velocityControlParameterLayout->addWidget(velocityStartThresholdLabel, 4, 4, 1, 1);
+        velocityLimitLayout->addWidget(velocityStartThresholdLabel, 1, 0, 1, 1);
 
-        velocityStartThresholdSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityStartThresholdSpin = new QDoubleSpinBox(velocityLimitGroup);
         velocityStartThresholdSpin->setObjectName("velocityStartThresholdSpin");
         velocityStartThresholdSpin->setDecimals(4);
         velocityStartThresholdSpin->setMinimum(0.000100000000000);
         velocityStartThresholdSpin->setMaximum(1000.000000000000000);
         velocityStartThresholdSpin->setValue(0.020000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityStartThresholdSpin, 4, 5, 1, 1);
+        velocityLimitLayout->addWidget(velocityStartThresholdSpin, 1, 1, 1, 1);
 
-        velocityPositionToleranceLabel = new QLabel(velocityControlParameterGroup);
+        velocityLimitSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
+
+        velocityLimitLayout->addItem(velocityLimitSpacer, 0, 6, 2, 1);
+
+
+        velocityControlParameterLayout->addWidget(velocityLimitGroup);
+
+        velocityCriterionGroup = new QGroupBox(velocityControlParameterGroup);
+        velocityCriterionGroup->setObjectName("velocityCriterionGroup");
+        velocityCriterionLayout = new QGridLayout(velocityCriterionGroup);
+        velocityCriterionLayout->setObjectName("velocityCriterionLayout");
+        velocityPositionToleranceLabel = new QLabel(velocityCriterionGroup);
         velocityPositionToleranceLabel->setObjectName("velocityPositionToleranceLabel");
 
-        velocityControlParameterLayout->addWidget(velocityPositionToleranceLabel, 5, 0, 1, 1);
+        velocityCriterionLayout->addWidget(velocityPositionToleranceLabel, 0, 0, 1, 1);
 
-        velocityPositionToleranceSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityPositionToleranceSpin = new QDoubleSpinBox(velocityCriterionGroup);
         velocityPositionToleranceSpin->setObjectName("velocityPositionToleranceSpin");
         velocityPositionToleranceSpin->setDecimals(4);
         velocityPositionToleranceSpin->setMinimum(0.000100000000000);
         velocityPositionToleranceSpin->setMaximum(1000.000000000000000);
         velocityPositionToleranceSpin->setValue(0.050000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityPositionToleranceSpin, 5, 1, 1, 1);
+        velocityCriterionLayout->addWidget(velocityPositionToleranceSpin, 0, 1, 1, 1);
 
-        velocitySpeedToleranceLabel = new QLabel(velocityControlParameterGroup);
+        velocitySpeedToleranceLabel = new QLabel(velocityCriterionGroup);
         velocitySpeedToleranceLabel->setObjectName("velocitySpeedToleranceLabel");
 
-        velocityControlParameterLayout->addWidget(velocitySpeedToleranceLabel, 5, 2, 1, 1);
+        velocityCriterionLayout->addWidget(velocitySpeedToleranceLabel, 0, 2, 1, 1);
 
-        velocitySpeedToleranceSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocitySpeedToleranceSpin = new QDoubleSpinBox(velocityCriterionGroup);
         velocitySpeedToleranceSpin->setObjectName("velocitySpeedToleranceSpin");
         velocitySpeedToleranceSpin->setDecimals(3);
         velocitySpeedToleranceSpin->setMinimum(0.001000000000000);
         velocitySpeedToleranceSpin->setMaximum(1000.000000000000000);
         velocitySpeedToleranceSpin->setValue(0.200000000000000);
 
-        velocityControlParameterLayout->addWidget(velocitySpeedToleranceSpin, 5, 3, 1, 1);
+        velocityCriterionLayout->addWidget(velocitySpeedToleranceSpin, 0, 3, 1, 1);
 
-        velocityStableDwellLabel = new QLabel(velocityControlParameterGroup);
+        velocityStableDwellLabel = new QLabel(velocityCriterionGroup);
         velocityStableDwellLabel->setObjectName("velocityStableDwellLabel");
 
-        velocityControlParameterLayout->addWidget(velocityStableDwellLabel, 5, 4, 1, 1);
+        velocityCriterionLayout->addWidget(velocityStableDwellLabel, 0, 4, 1, 1);
 
-        velocityStableDwellSpin = new QSpinBox(velocityControlParameterGroup);
+        velocityStableDwellSpin = new QSpinBox(velocityCriterionGroup);
         velocityStableDwellSpin->setObjectName("velocityStableDwellSpin");
         velocityStableDwellSpin->setMinimum(10);
         velocityStableDwellSpin->setMaximum(10000);
         velocityStableDwellSpin->setValue(200);
 
-        velocityControlParameterLayout->addWidget(velocityStableDwellSpin, 5, 5, 1, 1);
+        velocityCriterionLayout->addWidget(velocityStableDwellSpin, 0, 5, 1, 1);
 
-        velocityFinishTimeoutLabel = new QLabel(velocityControlParameterGroup);
+        velocityFinishTimeoutLabel = new QLabel(velocityCriterionGroup);
         velocityFinishTimeoutLabel->setObjectName("velocityFinishTimeoutLabel");
 
-        velocityControlParameterLayout->addWidget(velocityFinishTimeoutLabel, 6, 0, 1, 1);
+        velocityCriterionLayout->addWidget(velocityFinishTimeoutLabel, 1, 0, 1, 1);
 
-        velocityFinishTimeoutSpin = new QSpinBox(velocityControlParameterGroup);
+        velocityFinishTimeoutSpin = new QSpinBox(velocityCriterionGroup);
         velocityFinishTimeoutSpin->setObjectName("velocityFinishTimeoutSpin");
         velocityFinishTimeoutSpin->setMinimum(10);
         velocityFinishTimeoutSpin->setMaximum(60000);
         velocityFinishTimeoutSpin->setValue(3000);
 
-        velocityControlParameterLayout->addWidget(velocityFinishTimeoutSpin, 6, 1, 1, 1);
+        velocityCriterionLayout->addWidget(velocityFinishTimeoutSpin, 1, 1, 1, 1);
 
-        velocityMaxFollowingErrorLabel = new QLabel(velocityControlParameterGroup);
+        velocityMaxFollowingErrorLabel = new QLabel(velocityCriterionGroup);
         velocityMaxFollowingErrorLabel->setObjectName("velocityMaxFollowingErrorLabel");
 
-        velocityControlParameterLayout->addWidget(velocityMaxFollowingErrorLabel, 6, 2, 1, 1);
+        velocityCriterionLayout->addWidget(velocityMaxFollowingErrorLabel, 1, 2, 1, 1);
 
-        velocityMaxFollowingErrorSpin = new QDoubleSpinBox(velocityControlParameterGroup);
+        velocityMaxFollowingErrorSpin = new QDoubleSpinBox(velocityCriterionGroup);
         velocityMaxFollowingErrorSpin->setObjectName("velocityMaxFollowingErrorSpin");
         velocityMaxFollowingErrorSpin->setDecimals(3);
         velocityMaxFollowingErrorSpin->setMinimum(0.001000000000000);
         velocityMaxFollowingErrorSpin->setMaximum(100000.000000000000000);
         velocityMaxFollowingErrorSpin->setValue(10.000000000000000);
 
-        velocityControlParameterLayout->addWidget(velocityMaxFollowingErrorSpin, 6, 3, 1, 1);
+        velocityCriterionLayout->addWidget(velocityMaxFollowingErrorSpin, 1, 3, 1, 1);
 
-        velocityTraceTimeoutLabel = new QLabel(velocityControlParameterGroup);
+        velocityTraceTimeoutLabel = new QLabel(velocityCriterionGroup);
         velocityTraceTimeoutLabel->setObjectName("velocityTraceTimeoutLabel");
 
-        velocityControlParameterLayout->addWidget(velocityTraceTimeoutLabel, 6, 4, 1, 1);
+        velocityCriterionLayout->addWidget(velocityTraceTimeoutLabel, 1, 4, 1, 1);
 
-        velocityTraceTimeoutSpin = new QSpinBox(velocityControlParameterGroup);
+        velocityTraceTimeoutSpin = new QSpinBox(velocityCriterionGroup);
         velocityTraceTimeoutSpin->setObjectName("velocityTraceTimeoutSpin");
         velocityTraceTimeoutSpin->setMinimum(10);
         velocityTraceTimeoutSpin->setMaximum(10000);
         velocityTraceTimeoutSpin->setValue(100);
 
-        velocityControlParameterLayout->addWidget(velocityTraceTimeoutSpin, 6, 5, 1, 1);
+        velocityCriterionLayout->addWidget(velocityTraceTimeoutSpin, 1, 5, 1, 1);
+
+        velocityCriterionSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
+
+        velocityCriterionLayout->addItem(velocityCriterionSpacer, 0, 6, 2, 1);
+
+
+        velocityControlParameterLayout->addWidget(velocityCriterionGroup);
 
 
         velocityControlContentLayout->addWidget(velocityControlParameterGroup);
@@ -2216,6 +2272,7 @@ public:
         telemetryHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\202\271\345\207\273\342\200\234\345\274\200\345\247\213\350\256\260\345\275\225\342\200\235\345\220\216\357\274\214\346\233\262\347\272\277\344\273\245 20 Hz \346\230\276\347\244\272\346\234\200\346\226\260 Trace \345\277\253\347\205\247\357\274\233\347\202\271\345\207\273\342\200\234\345\201\234\346\255\242\350\256\260\345\275\225\345\271\266\345\206\231\345\205\245\346\226\207\344\273\266\342\200\235\345\220\216\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\345\216\237\345\247\213 1 ms Trace \345\270\247\347\224\261\347\213\254\347\253\213\345\206\231\347\233\230\347\272\277\347\250\213\344\277\235\345\255\230\343\200\202\347\273\230\345\233\276\345\214\272\345\206\205\346\273\232\345\212\250\346\273\232\350\275\256\345\217\257\347\274\251\346\224\276\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(telemetryTab), QCoreApplication::translate("MainWindow", "\346\225\260\346\215\256\350\256\260\345\275\225\344\270\216\346\233\262\347\272\277", nullptr));
         velocityControlParameterGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\350\275\264\351\200\237\345\272\246\346\250\241\345\274\217\344\275\215\347\275\256\351\227\255\347\216\257\345\217\202\346\225\260", nullptr));
+        velocityTrajectoryGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\350\256\276\347\275\256", nullptr));
         velocityAxisLabel->setText(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\264", nullptr));
         velocityAxisCombo->setItemText(0, QCoreApplication::translate("MainWindow", "0", nullptr));
         velocityAxisCombo->setItemText(1, QCoreApplication::translate("MainWindow", "1", nullptr));
@@ -2232,6 +2289,7 @@ public:
         velocityDurationSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
         velocityControlPeriodLabel->setText(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\221\250\346\234\237", nullptr));
         velocityControlPeriodSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        velocityClosedLoopGroup->setTitle(QCoreApplication::translate("MainWindow", "\351\227\255\347\216\257\346\216\247\345\210\266", nullptr));
         velocityFeedforwardCheck->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\345\211\215\351\246\210", nullptr));
         velocityPidEnableCheck->setText(QCoreApplication::translate("MainWindow", "\345\220\257\347\224\250PID", nullptr));
         velocityKpLabel->setText(QCoreApplication::translate("MainWindow", "Kp (1/s)", nullptr));
@@ -2241,6 +2299,7 @@ public:
         velocityIntegralLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260\302\267s", nullptr));
         velocityMaxCorrectionLabel->setText(QCoreApplication::translate("MainWindow", "PID\344\277\256\346\255\243\344\270\212\351\231\220", nullptr));
         velocityMaxCorrectionSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
+        velocityLimitGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\277\220\345\212\250\351\231\220\345\210\266", nullptr));
         velocityMaxSpeedLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\344\270\212\351\231\220", nullptr));
         velocityMaxSpeedSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
         velocityMaxAccelerationLabel->setText(QCoreApplication::translate("MainWindow", "\345\212\240\351\200\237\345\272\246\344\270\212\351\231\220", nullptr));
@@ -2249,6 +2308,7 @@ public:
         velocityChangeTimeSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
         velocityStartThresholdLabel->setText(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\351\200\237\345\272\246\351\230\210\345\200\274", nullptr));
         velocityStartThresholdSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
+        velocityCriterionGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\210\244\345\256\232\344\277\235\346\212\244", nullptr));
         velocityPositionToleranceLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\215\347\275\256\345\256\271\345\267\256", nullptr));
         velocityPositionToleranceSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
         velocitySpeedToleranceLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\345\256\271\345\267\256", nullptr));
