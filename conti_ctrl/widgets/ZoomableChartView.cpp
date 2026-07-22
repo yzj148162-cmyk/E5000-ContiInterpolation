@@ -109,6 +109,117 @@ void ZoomableChartView::wheelEvent(QWheelEvent *event)
     event->accept();
 }
 
+void ZoomableChartView::mousePressEvent(QMouseEvent *event)
+{
+    if (event->button() == Qt::LeftButton && pointInPlotArea(event->pos())) {
+        panning_ = true;
+        lastPanPosition_ = event->pos();
+        setCursor(Qt::ClosedHandCursor);
+        event->accept();
+        return;
+    }
+    QChartView::mousePressEvent(event);
+}
+
+void ZoomableChartView::mouseMoveEvent(QMouseEvent *event)
+{
+    if (!panning_) {
+        setCursor(pointInPlotArea(event->pos()) ? Qt::OpenHandCursor : Qt::ArrowCursor);
+        QChartView::mouseMoveEvent(event);
+        return;
+    }
+
+    if (chart() == nullptr || !(event->buttons() & Qt::LeftButton)) {
+        panning_ = false;
+        setCursor(Qt::OpenHandCursor);
+        QChartView::mouseMoveEvent(event);
+        return;
+    }
+
+    QValueAxis *horizontalAxis = nullptr;
+    QValueAxis *verticalAxis = nullptr;
+    for (QAbstractAxis *axis : chart()->axes(Qt::Horizontal)) {
+        if ((horizontalAxis = qobject_cast<QValueAxis *>(axis)) != nullptr) {
+            break;
+        }
+    }
+    for (QAbstractAxis *axis : chart()->axes(Qt::Vertical)) {
+        if ((verticalAxis = qobject_cast<QValueAxis *>(axis)) != nullptr) {
+            break;
+        }
+    }
+
+    const QRectF plotArea = chart()->plotArea();
+    if (horizontalAxis == nullptr || verticalAxis == nullptr
+        || plotArea.width() <= 0.0 || plotArea.height() <= 0.0) {
+        event->accept();
+        return;
+    }
+
+    const QPoint delta = event->pos() - lastPanPosition_;
+    lastPanPosition_ = event->pos();
+    if (delta.isNull()) {
+        event->accept();
+        return;
+    }
+
+    const double horizontalSpan = horizontalAxis->max() - horizontalAxis->min();
+    const double verticalSpan = verticalAxis->max() - verticalAxis->min();
+    double horizontalMinimum = horizontalAxis->min()
+        - static_cast<double>(delta.x()) * horizontalSpan / plotArea.width();
+    double horizontalMaximum = horizontalMinimum + horizontalSpan;
+    double verticalMinimum = verticalAxis->min()
+        + static_cast<double>(delta.y()) * verticalSpan / plotArea.height();
+    double verticalMaximum = verticalMinimum + verticalSpan;
+
+    const auto clampToAutomaticRange = [](double &minimum, double &maximum,
+                                          double currentMinimum, double currentMaximum,
+                                          double automaticMinimum, double automaticMaximum) {
+        const double span = maximum - minimum;
+        const double automaticSpan = automaticMaximum - automaticMinimum;
+        if (automaticSpan <= 0.0) {
+            return;
+        }
+        if (span >= automaticSpan) {
+            minimum = currentMinimum;
+            maximum = currentMaximum;
+            return;
+        }
+        if (minimum < automaticMinimum) {
+            minimum = automaticMinimum;
+            maximum = minimum + span;
+        }
+        if (maximum > automaticMaximum) {
+            maximum = automaticMaximum;
+            minimum = maximum - span;
+        }
+    };
+    if (automaticRangeValid_) {
+        clampToAutomaticRange(horizontalMinimum, horizontalMaximum,
+                              horizontalAxis->min(), horizontalAxis->max(),
+                              automaticHorizontalMinimum_, automaticHorizontalMaximum_);
+        clampToAutomaticRange(verticalMinimum, verticalMaximum,
+                              verticalAxis->min(), verticalAxis->max(),
+                              automaticVerticalMinimum_, automaticVerticalMaximum_);
+    }
+
+    horizontalAxis->setRange(horizontalMinimum, horizontalMaximum);
+    verticalAxis->setRange(verticalMinimum, verticalMaximum);
+    manualZoomActive_ = true;
+    event->accept();
+}
+
+void ZoomableChartView::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (panning_ && event->button() == Qt::LeftButton) {
+        panning_ = false;
+        setCursor(pointInPlotArea(event->pos()) ? Qt::OpenHandCursor : Qt::ArrowCursor);
+        event->accept();
+        return;
+    }
+    QChartView::mouseReleaseEvent(event);
+}
+
 void ZoomableChartView::mouseDoubleClickEvent(QMouseEvent *event)
 {
     if (pointInPlotArea(event->pos())) {

@@ -1501,7 +1501,7 @@
                 <item>
                   <widget class="ZoomableChartView" name="contiTrajectoryChartView">
                    <property name="toolTip">
-                    <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+                    <string>鼠标滚轮以光标位置为中心缩放；按住左键拖动查看时间历程；双击恢复自动量程。</string>
                    </property>
                   <property name="minimumSize">
                    <size>
@@ -1982,7 +1982,7 @@
            </property>
             <widget class="ZoomableChartView" name="positionChartView">
              <property name="toolTip">
-              <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+              <string>鼠标滚轮以光标位置为中心缩放；按住左键拖动查看时间历程；双击恢复自动量程。</string>
              </property>
             <property name="minimumSize">
              <size>
@@ -1993,7 +1993,7 @@
            </widget>
             <widget class="ZoomableChartView" name="followingErrorChartView">
              <property name="toolTip">
-              <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+              <string>鼠标滚轮以光标位置为中心缩放；按住左键拖动查看时间历程；双击恢复自动量程。</string>
              </property>
             <property name="minimumSize">
              <size>
@@ -2007,7 +2007,7 @@
          <item>
           <widget class="QLabel" name="telemetryHintLabel">
            <property name="text">
-             <string>点击“开始记录”后，曲线以 20 Hz 显示最新 Trace 快照；点击“停止记录并写入文件”后停止追加。原始 1 ms Trace 帧由独立写盘线程保存。绘图区内滚动滚轮可缩放，双击恢复自动量程。</string>
+             <string>点击“开始记录”后，曲线以 20 Hz 显示最新 Trace 快照；点击“停止记录并写入文件”后停止追加。原始 1 ms Trace 帧由独立写盘线程保存。绘图区内滚动滚轮可缩放，按住左键可拖动查看，双击恢复自动量程。</string>
            </property>
            <property name="wordWrap">
             <bool>true</bool>
@@ -2779,6 +2779,12 @@
              </item>
              <item>
               <widget class="QSplitter" name="velocityControlChartSplitter">
+               <property name="minimumSize">
+                <size>
+                 <width>0</width>
+                 <height>760</height>
+                </size>
+               </property>
                <property name="orientation">
                 <enum>Qt::Orientation::Vertical</enum>
                </property>
@@ -2787,7 +2793,7 @@
                </property>
                 <widget class="ZoomableChartView" name="velocityPositionChartView">
                  <property name="toolTip">
-                  <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+                  <string>鼠标滚轮以光标位置为中心缩放；按住左键拖动查看时间历程；双击恢复自动量程。</string>
                  </property>
                 <property name="minimumSize">
                  <size>
@@ -2798,7 +2804,7 @@
                </widget>
                 <widget class="ZoomableChartView" name="velocityErrorChartView">
                  <property name="toolTip">
-                  <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+                  <string>鼠标滚轮以光标位置为中心缩放；按住左键拖动查看时间历程；双击恢复自动量程。</string>
                  </property>
                 <property name="minimumSize">
                  <size>
@@ -2809,7 +2815,7 @@
                </widget>
                 <widget class="ZoomableChartView" name="velocitySpeedChartView">
                  <property name="toolTip">
-                  <string>鼠标滚轮以光标位置为中心缩放横纵坐标；双击恢复自动量程。</string>
+                  <string>鼠标滚轮以光标位置为中心缩放；按住左键拖动查看时间历程；双击恢复自动量程。</string>
                  </property>
                 <property name="minimumSize">
                  <size>
@@ -2823,7 +2829,7 @@
              <item>
               <widget class="QLabel" name="velocityControlHintLabel">
                <property name="text">
-                 <string>控制数据按控制周期产生；UI 每 50 ms 绘制最新快照。运行结束或停止后曲线立即停止追加。绘图区内滚动滚轮可缩放，双击恢复自动量程。首次试验请先关闭 PID，仅用低速前馈核对 Trace type 3/4 的单位和方向。</string>
+                 <string>控制数据按控制周期产生；UI 每 50 ms 绘制最新快照。运行结束或停止后曲线立即停止追加。绘图区内滚动滚轮可缩放，按住左键可拖动查看，双击恢复自动量程。首次试验请先关闭 PID，仅用低速前馈核对 Trace type 3/4 的单位和方向。</string>
                </property>
                <property name="wordWrap">
                 <bool>true</bool>

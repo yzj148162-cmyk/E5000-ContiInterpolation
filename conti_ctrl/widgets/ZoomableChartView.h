@@ -1,6 +1,7 @@
 #ifndef ZOOMABLECHARTVIEW_H
 #define ZOOMABLECHARTVIEW_H
 
+#include <QPoint>
 #include <QtCharts/QChartView>
 
 class QMouseEvent;
@@ -18,6 +19,9 @@ public:
 
 protected:
     void wheelEvent(QWheelEvent *event) override;
+    void mousePressEvent(QMouseEvent *event) override;
+    void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
 
 private:
@@ -31,6 +35,8 @@ private:
     double automaticHorizontalMaximum_ = 1.0;
     double automaticVerticalMinimum_ = 0.0;
     double automaticVerticalMaximum_ = 1.0;
+    bool panning_ = false;
+    QPoint lastPanPosition_;
 };
 
 #endif // ZOOMABLECHARTVIEW_H

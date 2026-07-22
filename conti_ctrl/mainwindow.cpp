@@ -694,6 +694,10 @@ void MainWindow::initializeTelemetryCharts()
         chart->legend()->setVisible(true);
         timeAxis = new QValueAxis(chart);
         timeAxis->setTitleText(QStringLiteral("Trace 时间 (s)"));
+        timeAxis->setTitleVisible(true);
+        timeAxis->setLabelsVisible(true);
+        timeAxis->setLabelFormat(QStringLiteral("%.1f"));
+        timeAxis->setTickCount(6);
         timeAxis->setRange(0.0, 30.0);
         valueAxis = new QValueAxis(chart);
         valueAxis->setTitleText(valueTitle);
@@ -842,6 +846,10 @@ void MainWindow::initializeVelocityControlCharts()
         chart->legend()->setVisible(true);
         timeAxis = new QValueAxis(chart);
         timeAxis->setTitleText(QStringLiteral("运行时间 (s)"));
+        timeAxis->setTitleVisible(true);
+        timeAxis->setLabelsVisible(true);
+        timeAxis->setLabelFormat(QStringLiteral("%.1f"));
+        timeAxis->setTickCount(6);
         timeAxis->setRange(0.0, 5.0);
         valueAxis = new QValueAxis(chart);
         valueAxis->setTitleText(valueTitle);
