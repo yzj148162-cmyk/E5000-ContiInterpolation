@@ -1551,7 +1551,7 @@ public:
         velocityDeltaSpin->setDecimals(4);
         velocityDeltaSpin->setMinimum(-1000000.000000000000000);
         velocityDeltaSpin->setMaximum(1000000.000000000000000);
-        velocityDeltaSpin->setValue(30.000000000000000);
+        velocityDeltaSpin->setValue(500.000000000000000);
 
         velocityTrajectoryLayout->addWidget(velocityDeltaSpin, 0, 3, 1, 1);
 
@@ -1565,7 +1565,7 @@ public:
         velocityDurationSpin->setDecimals(3);
         velocityDurationSpin->setMinimum(0.100000000000000);
         velocityDurationSpin->setMaximum(3600.000000000000000);
-        velocityDurationSpin->setValue(5.000000000000000);
+        velocityDurationSpin->setValue(10.000000000000000);
 
         velocityTrajectoryLayout->addWidget(velocityDurationSpin, 1, 3, 1, 1);
 
@@ -1697,7 +1697,7 @@ public:
         velocityMaxSpeedSpin->setDecimals(3);
         velocityMaxSpeedSpin->setMinimum(0.001000000000000);
         velocityMaxSpeedSpin->setMaximum(10000.000000000000000);
-        velocityMaxSpeedSpin->setValue(30.000000000000000);
+        velocityMaxSpeedSpin->setValue(720.000000000000000);
 
         velocityLimitLayout->addWidget(velocityMaxSpeedSpin, 0, 1, 1, 1);
 
@@ -1711,7 +1711,7 @@ public:
         velocityMaxAccelerationSpin->setDecimals(3);
         velocityMaxAccelerationSpin->setMinimum(0.001000000000000);
         velocityMaxAccelerationSpin->setMaximum(100000.000000000000000);
-        velocityMaxAccelerationSpin->setValue(100.000000000000000);
+        velocityMaxAccelerationSpin->setValue(2000.000000000000000);
 
         velocityLimitLayout->addWidget(velocityMaxAccelerationSpin, 0, 3, 1, 1);
 
@@ -1725,8 +1725,8 @@ public:
         velocityChangeTimeSpin->setDecimals(3);
         velocityChangeTimeSpin->setMinimum(0.000000000000000);
         velocityChangeTimeSpin->setMaximum(1.000000000000000);
-        velocityChangeTimeSpin->setSingleStep(0.010000000000000);
-        velocityChangeTimeSpin->setValue(0.010000000000000);
+        velocityChangeTimeSpin->setSingleStep(0.001000000000000);
+        velocityChangeTimeSpin->setValue(0.005000000000000);
 
         velocityLimitLayout->addWidget(velocityChangeTimeSpin, 1, 1, 1, 1);
 
@@ -1819,7 +1819,7 @@ public:
         velocityMaxFollowingErrorSpin->setDecimals(3);
         velocityMaxFollowingErrorSpin->setMinimum(0.001000000000000);
         velocityMaxFollowingErrorSpin->setMaximum(100000.000000000000000);
-        velocityMaxFollowingErrorSpin->setValue(10.000000000000000);
+        velocityMaxFollowingErrorSpin->setValue(5.000000000000000);
 
         velocityCriterionLayout->addWidget(velocityMaxFollowingErrorSpin, 2, 1, 1, 1);
 

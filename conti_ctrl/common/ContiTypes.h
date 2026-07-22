@@ -166,8 +166,8 @@ struct VelocityControlConfig
     quint16 cardNo = 0;
     quint16 axis = 0;
     double degreesPerCardUnit = 1.0;
-    double relativeDeltaDegree = 30.0;
-    double durationS = 5.0;
+    double relativeDeltaDegree = 500.0;
+    double durationS = 10.0;
     int controlPeriodMs = 10;
 
     bool pidEnabled = true;
@@ -179,16 +179,16 @@ struct VelocityControlConfig
 
     bool velocityFeedforwardEnabled = true;
     double velocityFeedforwardGain = 1.0;
-    double maxVelocityDegreePerSecond = 30.0;
-    double maxAccelerationDegreePerSecond2 = 100.0;
-    double onlineChangeTimeS = 0.01;
+    double maxVelocityDegreePerSecond = 720.0;
+    double maxAccelerationDegreePerSecond2 = 2000.0;
+    double onlineChangeTimeS = 0.005;
     double startVelocityThresholdDegreePerSecond = 0.02;
 
     double positionToleranceDegree = 0.05;
     double speedToleranceDegreePerSecond = 0.2;
     int stableDwellMs = 200;
     int finishTimeoutMs = 3000;
-    double maxFollowingErrorDegree = 10.0;
+    double maxFollowingErrorDegree = 5.0;
     int traceTimeoutMs = 100;
 };
 
