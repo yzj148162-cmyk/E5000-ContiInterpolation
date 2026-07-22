@@ -2829,7 +2829,7 @@
              <item>
               <widget class="QLabel" name="velocityControlHintLabel">
                <property name="text">
-                 <string>1 ms Trace 帧先在控制线程缓存，UI 每 50 ms 批量追加并重绘一次，保留每帧位置和速度细节。运行结束或停止后曲线立即停止追加。绘图区内滚动滚轮可缩放，按住左键可拖动查看，双击恢复自动量程。首次试验请先关闭 PID，仅用低速前馈核对 Trace type 3/4 的单位和方向。</string>
+                 <string>1 ms Trace 原始帧完整异步记录；实时曲线按 10 ms 窗口抽取末值与极值，UI 每 50 ms 使用有限显示缓存整体刷新，避免高频绘图阻塞。运行结束或停止后曲线立即停止追加。绘图区内滚动滚轮可缩放，按住左键可拖动查看，双击恢复自动量程。</string>
                </property>
                <property name="wordWrap">
                 <bool>true</bool>

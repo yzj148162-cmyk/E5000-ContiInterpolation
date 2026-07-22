@@ -145,6 +145,11 @@ private:
     QValueAxis *velocitySpeedTimeAxis_ = nullptr;
     QValueAxis *velocitySpeedValueAxis_ = nullptr;
     QVector<VelocityPlotSample> pendingVelocityPlotSamples_;
+    QVector<VelocityPlotSample> velocityPlotBucket_;
+    QList<QPointF> velocityPositionDisplayPoints_[3];
+    QList<QPointF> velocityErrorDisplayPoints_[3];
+    QList<QPointF> velocitySpeedDisplayPoints_[4];
+    qint64 velocityPlotBucketIndex_ = -1;
     quint64 lastVelocityRunId_ = 0;
     double lastVelocityPlotTimeS_ = -1.0;
 };

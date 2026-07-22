@@ -19,6 +19,8 @@
 #include <QtCharts/QLineSeries>
 #include <QtCharts/QValueAxis>
 
+#include <cmath>
+#include <initializer_list>
 #include <limits>
 
 #include "hardware/ContiWorker.h"
@@ -933,6 +935,11 @@ void MainWindow::clearVelocityControlCharts()
         if (series != nullptr) series->clear();
     }
     pendingVelocityPlotSamples_.clear();
+    velocityPlotBucket_.clear();
+    for (QList<QPointF> &points : velocityPositionDisplayPoints_) points.clear();
+    for (QList<QPointF> &points : velocityErrorDisplayPoints_) points.clear();
+    for (QList<QPointF> &points : velocitySpeedDisplayPoints_) points.clear();
+    velocityPlotBucketIndex_ = -1;
     lastVelocityPlotTimeS_ = -1.0;
     ui_->velocityPositionChartView->resetAutomaticRangeMode();
     ui_->velocityErrorChartView->resetAutomaticRangeMode();
@@ -943,64 +950,152 @@ void MainWindow::updateVelocityControlCharts()
 {
     QVector<VelocityPlotSample> samples;
     samples.swap(pendingVelocityPlotSamples_);
-    if (samples.isEmpty()) {
+    const bool controlInactive = hasLatestStatus_ && !latestStatus_.velocityControl.active;
+    if (samples.isEmpty() && (velocityPlotBucket_.isEmpty() || !controlInactive)) {
         return;
     }
 
-    const quint64 newestRunId = samples.constLast().runId;
+    const quint64 newestRunId = samples.isEmpty() ? lastVelocityRunId_
+                                                   : samples.constLast().runId;
     if (newestRunId != lastVelocityRunId_) {
         clearVelocityControlCharts();
         lastVelocityRunId_ = newestRunId;
     }
 
-    QList<QPointF> referencePositionPoints;
-    QList<QPointF> cardPositionPoints;
-    QList<QPointF> actualPositionPoints;
-    QList<QPointF> errorPoints;
-    QList<QPointF> positiveTolerancePoints;
-    QList<QPointF> negativeTolerancePoints;
-    QList<QPointF> referenceVelocityPoints;
-    QList<QPointF> commandVelocityPoints;
-    QList<QPointF> cardVelocityPoints;
-    QList<QPointF> actualVelocityPoints;
+    constexpr double kDisplayBucketSeconds = 0.010;
+    constexpr double kDisplayHistorySeconds = 20.0;
+    constexpr qsizetype kMaximumDisplayPointsPerSeries = 4000;
+    bool displayChanged = false;
+
+    const auto appendExtrema = [this](QList<QPointF> &points, const auto &valueOf) {
+        const VelocityPlotSample *minimumSample = &velocityPlotBucket_.constFirst();
+        const VelocityPlotSample *maximumSample = minimumSample;
+        double minimumValue = valueOf(*minimumSample);
+        double maximumValue = minimumValue;
+        for (const VelocityPlotSample &sample : velocityPlotBucket_) {
+            const double value = valueOf(sample);
+            if (value < minimumValue) {
+                minimumValue = value;
+                minimumSample = &sample;
+            }
+            if (value > maximumValue) {
+                maximumValue = value;
+                maximumSample = &sample;
+            }
+        }
+        if (minimumSample == maximumSample || qFuzzyCompare(minimumValue, maximumValue)) {
+            const VelocityPlotSample &last = velocityPlotBucket_.constLast();
+            points.append(QPointF(last.elapsedS, valueOf(last)));
+            return;
+        }
+        if (minimumSample->elapsedS <= maximumSample->elapsedS) {
+            points.append(QPointF(minimumSample->elapsedS, minimumValue));
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+        } else {
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+            points.append(QPointF(minimumSample->elapsedS, minimumValue));
+        }
+    };
+    const auto trimPoints = [kMaximumDisplayPointsPerSeries](QList<QPointF> &points,
+                                                             double cutoffTime) {
+        qsizetype removeCount = 0;
+        while (removeCount < points.size() && points.at(removeCount).x() < cutoffTime) {
+            ++removeCount;
+        }
+        if (removeCount > 0) {
+            points.remove(0, removeCount);
+        }
+        const qsizetype overflow = points.size() - kMaximumDisplayPointsPerSeries;
+        if (overflow > 0) {
+            points.remove(0, overflow);
+        }
+    };
+    const auto flushBucket = [this, &appendExtrema, &trimPoints, &displayChanged]() {
+        if (velocityPlotBucket_.isEmpty()) {
+            return;
+        }
+        const VelocityPlotSample &last = velocityPlotBucket_.constLast();
+        const double time = last.elapsedS;
+        velocityPositionDisplayPoints_[0].append(QPointF(time, last.referencePositionDegree));
+        velocityPositionDisplayPoints_[1].append(QPointF(time, last.cardCommandPositionDegree));
+        appendExtrema(velocityPositionDisplayPoints_[2],
+                      [](const VelocityPlotSample &sample) { return sample.actualPositionDegree; });
+        appendExtrema(velocityErrorDisplayPoints_[0],
+                      [](const VelocityPlotSample &sample) { return sample.positionErrorDegree; });
+        velocityErrorDisplayPoints_[1].append(QPointF(time, last.positionToleranceDegree));
+        velocityErrorDisplayPoints_[2].append(QPointF(time, -last.positionToleranceDegree));
+        velocitySpeedDisplayPoints_[0].append(QPointF(time, last.referenceVelocityDegreePerSecond));
+        velocitySpeedDisplayPoints_[1].append(QPointF(time, last.commandVelocityDegreePerSecond));
+        velocitySpeedDisplayPoints_[2].append(QPointF(time, last.cardCommandVelocityDegreePerSecond));
+        appendExtrema(velocitySpeedDisplayPoints_[3],
+                      [](const VelocityPlotSample &sample) {
+            return sample.actualVelocityDegreePerSecond;
+        });
+
+        const double cutoffTime = qMax(0.0, time - kDisplayHistorySeconds);
+        for (QList<QPointF> &points : velocityPositionDisplayPoints_) trimPoints(points, cutoffTime);
+        for (QList<QPointF> &points : velocityErrorDisplayPoints_) trimPoints(points, cutoffTime);
+        for (QList<QPointF> &points : velocitySpeedDisplayPoints_) trimPoints(points, cutoffTime);
+        velocityPlotBucket_.clear();
+        velocityPlotBucketIndex_ = -1;
+        displayChanged = true;
+    };
+
     for (const VelocityPlotSample &sample : samples) {
         if (sample.runId != newestRunId || sample.elapsedS <= lastVelocityPlotTimeS_) {
             continue;
         }
-        const double time = sample.elapsedS;
-        referencePositionPoints.append(QPointF(time, sample.referencePositionDegree));
-        cardPositionPoints.append(QPointF(time, sample.cardCommandPositionDegree));
-        actualPositionPoints.append(QPointF(time, sample.actualPositionDegree));
-        errorPoints.append(QPointF(time, sample.positionErrorDegree));
-        positiveTolerancePoints.append(QPointF(time, sample.positionToleranceDegree));
-        negativeTolerancePoints.append(QPointF(time, -sample.positionToleranceDegree));
-        referenceVelocityPoints.append(QPointF(time, sample.referenceVelocityDegreePerSecond));
-        commandVelocityPoints.append(QPointF(time, sample.commandVelocityDegreePerSecond));
-        cardVelocityPoints.append(QPointF(time, sample.cardCommandVelocityDegreePerSecond));
-        actualVelocityPoints.append(QPointF(time, sample.actualVelocityDegreePerSecond));
-        lastVelocityPlotTimeS_ = time;
+        const qint64 bucketIndex = static_cast<qint64>(
+            std::floor((sample.elapsedS + 1e-12) / kDisplayBucketSeconds));
+        if (velocityPlotBucketIndex_ >= 0 && bucketIndex != velocityPlotBucketIndex_) {
+            flushBucket();
+        }
+        if (velocityPlotBucketIndex_ < 0) {
+            velocityPlotBucketIndex_ = bucketIndex;
+        }
+        velocityPlotBucket_.push_back(sample);
+        lastVelocityPlotTimeS_ = sample.elapsedS;
     }
-    if (referencePositionPoints.isEmpty()) {
+    if (controlInactive) {
+        flushBucket();
+    }
+    if (!displayChanged) {
         return;
     }
-    velocityPositionSeries_[0]->append(referencePositionPoints);
-    velocityPositionSeries_[1]->append(cardPositionPoints);
-    velocityPositionSeries_[2]->append(actualPositionPoints);
-    velocityErrorSeries_[0]->append(errorPoints);
-    velocityErrorSeries_[1]->append(positiveTolerancePoints);
-    velocityErrorSeries_[2]->append(negativeTolerancePoints);
-    velocitySpeedSeries_[0]->append(referenceVelocityPoints);
-    velocitySpeedSeries_[1]->append(commandVelocityPoints);
-    velocitySpeedSeries_[2]->append(cardVelocityPoints);
-    velocitySpeedSeries_[3]->append(actualVelocityPoints);
 
-    const double latestTime = lastVelocityPlotTimeS_;
-    const auto fitAxes = [latestTime](ZoomableChartView *view,
-                                const QList<QLineSeries *> &series, double minimumSpan) {
+    for (int index = 0; index < 3; ++index) {
+        velocityPositionSeries_[index]->replace(velocityPositionDisplayPoints_[index]);
+        velocityErrorSeries_[index]->replace(velocityErrorDisplayPoints_[index]);
+    }
+    for (int index = 0; index < 4; ++index) {
+        velocitySpeedSeries_[index]->replace(velocitySpeedDisplayPoints_[index]);
+    }
+
+    double earliestTime = std::numeric_limits<double>::max();
+    double latestTime = 0.0;
+    const auto includeTimeRange = [&earliestTime, &latestTime](const QList<QPointF> &points) {
+        if (!points.isEmpty()) {
+            earliestTime = qMin(earliestTime, points.constFirst().x());
+            latestTime = qMax(latestTime, points.constLast().x());
+        }
+    };
+    for (const QList<QPointF> &points : velocityPositionDisplayPoints_) includeTimeRange(points);
+    for (const QList<QPointF> &points : velocityErrorDisplayPoints_) includeTimeRange(points);
+    for (const QList<QPointF> &points : velocitySpeedDisplayPoints_) includeTimeRange(points);
+    if (earliestTime > latestTime) {
+        return;
+    }
+    const double horizontalMinimum = earliestTime <= kDisplayBucketSeconds ? 0.0 : earliestTime;
+    const double horizontalMargin = qMax(0.05, (latestTime - horizontalMinimum) * 0.05);
+    const double horizontalMaximum = qMax(horizontalMinimum + 5.0, latestTime + horizontalMargin);
+    const auto fitAxes = [horizontalMinimum, horizontalMaximum](
+                             ZoomableChartView *view,
+                             const std::initializer_list<const QList<QPointF> *> &pointSets,
+                             double minimumSpan) {
         double minimum = std::numeric_limits<double>::max();
         double maximum = std::numeric_limits<double>::lowest();
-        for (QLineSeries *line : series) {
-            for (const QPointF &point : line->points()) {
+        for (const QList<QPointF> *points : pointSets) {
+            for (const QPointF &point : *points) {
                 minimum = qMin(minimum, point.y());
                 maximum = qMax(maximum, point.y());
             }
@@ -1008,16 +1103,18 @@ void MainWindow::updateVelocityControlCharts()
         if (minimum > maximum) return;
         const double span = qMax(minimumSpan, maximum - minimum);
         const double margin = span * 0.15;
-        view->setAutomaticRange(0.0, qMax(5.0, latestTime * 1.05),
+        view->setAutomaticRange(horizontalMinimum, horizontalMaximum,
                                 minimum - margin, maximum + margin);
     };
     fitAxes(ui_->velocityPositionChartView,
-            {velocityPositionSeries_[0], velocityPositionSeries_[1], velocityPositionSeries_[2]}, 0.1);
+            {&velocityPositionDisplayPoints_[0], &velocityPositionDisplayPoints_[1],
+             &velocityPositionDisplayPoints_[2]}, 0.1);
     fitAxes(ui_->velocityErrorChartView,
-            {velocityErrorSeries_[0], velocityErrorSeries_[1], velocityErrorSeries_[2]}, 0.01);
+            {&velocityErrorDisplayPoints_[0], &velocityErrorDisplayPoints_[1],
+             &velocityErrorDisplayPoints_[2]}, 0.01);
     fitAxes(ui_->velocitySpeedChartView,
-            {velocitySpeedSeries_[0], velocitySpeedSeries_[1],
-             velocitySpeedSeries_[2], velocitySpeedSeries_[3]}, 0.1);
+            {&velocitySpeedDisplayPoints_[0], &velocitySpeedDisplayPoints_[1],
+             &velocitySpeedDisplayPoints_[2], &velocitySpeedDisplayPoints_[3]}, 0.1);
     ui_->velocityPositionChartView->update();
     ui_->velocityErrorChartView->update();
     ui_->velocitySpeedChartView->update();
