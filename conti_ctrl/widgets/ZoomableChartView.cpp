@@ -12,6 +12,23 @@ namespace {
 constexpr double kZoomStep = 1.15;
 constexpr double kMinimumAxisSpan = 1.0e-9;
 constexpr double kMaximumAxisSpan = 1.0e12;
+
+void updateHorizontalLabelPrecision(QValueAxis *axis)
+{
+    if (axis == nullptr) {
+        return;
+    }
+    const int intervalCount = qMax(1, axis->tickCount() - 1);
+    const double tickInterval = (axis->max() - axis->min()) / intervalCount;
+    if (!std::isfinite(tickInterval) || tickInterval <= 0.0) {
+        return;
+    }
+    const int decimals = qBound(1,
+                                static_cast<int>(std::ceil(-std::log10(tickInterval))) + 1,
+                                12);
+    axis->setLabelFormat(QStringLiteral("%.") + QString::number(decimals)
+                         + QStringLiteral("f"));
+}
 }
 
 ZoomableChartView::ZoomableChartView(QWidget *parent)
@@ -105,6 +122,7 @@ void ZoomableChartView::wheelEvent(QWheelEvent *event)
                              horizontalAnchor + (1.0 - horizontalRatio) * newHorizontalSpan);
     verticalAxis->setRange(verticalAnchor - verticalRatio * newVerticalSpan,
                            verticalAnchor + (1.0 - verticalRatio) * newVerticalSpan);
+    updateHorizontalLabelPrecision(horizontalAxis);
     manualZoomActive_ = true;
     event->accept();
 }
@@ -205,6 +223,7 @@ void ZoomableChartView::mouseMoveEvent(QMouseEvent *event)
 
     horizontalAxis->setRange(horizontalMinimum, horizontalMaximum);
     verticalAxis->setRange(verticalMinimum, verticalMaximum);
+    updateHorizontalLabelPrecision(horizontalAxis);
     manualZoomActive_ = true;
     event->accept();
 }
@@ -250,6 +269,7 @@ void ZoomableChartView::applyStoredAutomaticRange()
     for (QAbstractAxis *axis : chart()->axes(Qt::Horizontal)) {
         if (QValueAxis *valueAxis = qobject_cast<QValueAxis *>(axis)) {
             valueAxis->setRange(automaticHorizontalMinimum_, automaticHorizontalMaximum_);
+            updateHorizontalLabelPrecision(valueAxis);
             break;
         }
     }
