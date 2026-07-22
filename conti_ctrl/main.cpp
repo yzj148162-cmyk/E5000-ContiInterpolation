@@ -10,6 +10,7 @@ int main(int argc, char *argv[])
     qRegisterMetaType<ContiTestConfig>("ContiTestConfig");
     qRegisterMetaType<SingleAxisJogConfig>("SingleAxisJogConfig");
     qRegisterMetaType<VelocityControlConfig>("VelocityControlConfig");
+    qRegisterMetaType<QVector<VelocityPlotSample>>("QVector<VelocityPlotSample>");
 
     MainWindow window;
     window.show();

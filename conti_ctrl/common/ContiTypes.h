@@ -221,6 +221,24 @@ struct VelocityControlStatus
     QString stateText = QStringLiteral("未运行");
 };
 
+// 速度闭环曲线使用的轻量样本。控制线程按每个 Trace 帧生成，UI 低频批量追加，
+// 避免把图表重绘开销带入控制周期，同时保留 1 ms 反馈细节。
+struct VelocityPlotSample
+{
+    quint64 runId = 0;
+    quint64 traceSequence = 0;
+    double elapsedS = 0.0;
+    double referencePositionDegree = 0.0;
+    double cardCommandPositionDegree = 0.0;
+    double actualPositionDegree = 0.0;
+    double positionErrorDegree = 0.0;
+    double positionToleranceDegree = 0.0;
+    double referenceVelocityDegreePerSecond = 0.0;
+    double commandVelocityDegreePerSecond = 0.0;
+    double cardCommandVelocityDegreePerSecond = 0.0;
+    double actualVelocityDegreePerSecond = 0.0;
+};
+
 // 一条轴反馈同时保留控制卡指令位置与编码器位置，二者的差值用于观察跟随情况。
 struct AxisFeedback
 {
@@ -320,5 +338,7 @@ Q_DECLARE_METATYPE(ContiStatus)
 Q_DECLARE_METATYPE(ContiTestConfig)
 Q_DECLARE_METATYPE(SingleAxisJogConfig)
 Q_DECLARE_METATYPE(VelocityControlConfig)
+Q_DECLARE_METATYPE(VelocityPlotSample)
+Q_DECLARE_METATYPE(QVector<VelocityPlotSample>)
 
 #endif // CONTITYPES_H

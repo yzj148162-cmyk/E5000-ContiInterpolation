@@ -50,6 +50,7 @@ public slots:
 signals:
     void logMessage(const QString &message);
     void statusChanged(const ContiStatus &status);
+    void velocityPlotSamplesReady(const QVector<VelocityPlotSample> &samples);
 
 private slots:
     void produceNextPoint();
@@ -88,6 +89,8 @@ private:
                                    double &positionDegree,
                                    double &velocityDegreePerSecond) const;
     void finishVelocityControl(const QString &message, bool emergency = false);
+    void appendVelocityPlotFrames(const QVector<TraceTelemetryFrame> &frames);
+    void flushVelocityPlotSamples();
 
 private:
     // 控制线程只保存状态机与轨迹数据；SDK、Trace PDO 和控制卡状态均在
@@ -131,6 +134,10 @@ private:
     QElapsedTimer velocityCompletionClock_;
     quint64 velocityLastTraceSequence_ = 0;
     qint64 velocityLastDiagnosticMs_ = -1;
+    QVector<VelocityPlotSample> pendingVelocityPlotSamples_;
+    QElapsedTimer velocityPlotPublishClock_;
+    quint64 velocityPlotTraceStartTimeUs_ = 0;
+    bool velocityPlotTraceStartValid_ = false;
     quint16 pointMoveAxis_ = 0;
     bool pointMoveDiagnosticPending_ = false;
     double pointMoveRequestedTargetUnit_ = 0.0;

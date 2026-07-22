@@ -16,6 +16,7 @@ constexpr int kEmergencyStopTimeoutMs = 250;
 constexpr int kContiDiagnosticPeriodMs = 250;
 constexpr int kFirstSegmentTimeoutMs = 2000;
 constexpr int kCompletionStableDwellMs = 150;
+constexpr int kVelocityPlotPublishIntervalMs = 50;
 constexpr double kCompletionPositionToleranceDeg = 0.02;
 constexpr double kCompletionVelocityToleranceDegPerSecond = 1.0;
 constexpr double kDuplicatePositionToleranceDeg = 1e-12;
@@ -1112,6 +1113,10 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
     velocityReferenceInitialized_ = false;
     velocityLastTraceSequence_ = latestTraceSequence_;
     velocityLastDiagnosticMs_ = -1;
+    pendingVelocityPlotSamples_.clear();
+    velocityPlotPublishClock_.invalidate();
+    velocityPlotTraceStartTimeUs_ = 0;
+    velocityPlotTraceStartValid_ = false;
     velocityPid_.reset();
     velocityRunClock_.invalidate();
     velocityCycleClock_.invalidate();
@@ -1223,6 +1228,20 @@ void ContiWorker::runVelocityControlCycle()
         velocityStatus_.referencePositionDegree = velocityStartPositionDegree_;
         velocityStatus_.stateText = QStringLiteral("闭环运行中");
         stateText_ = QStringLiteral("速度闭环运行中");
+        velocityPlotTraceStartTimeUs_ = latestTraceTimeUs_;
+        velocityPlotTraceStartValid_ = true;
+        velocityPlotPublishClock_.start();
+        VelocityPlotSample initialSample;
+        initialSample.runId = velocityRunId_;
+        initialSample.traceSequence = latestTraceSequence_;
+        initialSample.referencePositionDegree = velocityStartPositionDegree_;
+        initialSample.cardCommandPositionDegree = feedback.commandPositionUnit;
+        initialSample.actualPositionDegree = feedback.encoderPositionUnit;
+        initialSample.positionErrorDegree = velocityStartPositionDegree_ - feedback.encoderPositionUnit;
+        initialSample.positionToleranceDegree = velocityConfig_.positionToleranceDegree;
+        initialSample.cardCommandVelocityDegreePerSecond = feedback.commandVelocityUnitPerSecond;
+        initialSample.actualVelocityDegreePerSecond = feedback.actualVelocityUnitPerSecond;
+        pendingVelocityPlotSamples_.push_back(initialSample);
         emit logMessage(QStringLiteral("速度闭环取得首帧：轴 %1 起点=%2°，目标=%3°。")
                             .arg(velocityConfig_.axis)
                             .arg(velocityStartPositionDegree_, 0, 'f', 6)
@@ -1352,6 +1371,7 @@ void ContiWorker::runVelocityControlCycle()
 void ContiWorker::finishVelocityControl(const QString &message, bool emergency)
 {
     velocityControlTimer_->stop();
+    flushVelocityPlotSamples();
     if (velocityMotionStarted_ && boardInitialized_) {
         QString stopError;
         if (!card_.stopAxis(initializedCardNo_, velocityConfig_.axis, emergency, stopError)) {
@@ -1377,6 +1397,67 @@ void ContiWorker::finishVelocityControl(const QString &message, bool emergency)
         feedbackTimer_->start();
     }
     publishStatus();
+}
+
+void ContiWorker::appendVelocityPlotFrames(const QVector<TraceTelemetryFrame> &frames)
+{
+    if (!velocityControlActive_ || !velocityReferenceInitialized_
+        || !velocityPlotTraceStartValid_ || frames.isEmpty()) {
+        return;
+    }
+
+    constexpr double kPulseToDegree = 1.0 / MotorUnit::kPhysicalPulsesPerDegree;
+    for (const TraceTelemetryFrame &frame : frames) {
+        if (frame.traceTimeUs < velocityPlotTraceStartTimeUs_) {
+            continue;
+        }
+        int axisIndex = -1;
+        for (int index = 0; index < frame.axisCount; ++index) {
+            if (frame.axes[index] == velocityConfig_.axis) {
+                axisIndex = index;
+                break;
+            }
+        }
+        if (axisIndex < 0
+            || (frame.validAxisMask & static_cast<quint8>(1U << axisIndex)) == 0U) {
+            continue;
+        }
+
+        VelocityPlotSample sample;
+        sample.runId = velocityRunId_;
+        sample.traceSequence = frame.traceSequence;
+        sample.elapsedS = static_cast<double>(frame.traceTimeUs - velocityPlotTraceStartTimeUs_)
+            / 1000000.0;
+        evaluateVelocityReference(sample.elapsedS, sample.referencePositionDegree,
+                                  sample.referenceVelocityDegreePerSecond);
+        sample.cardCommandPositionDegree = frame.commandPulse[axisIndex] * kPulseToDegree;
+        sample.actualPositionDegree = frame.actualPulse[axisIndex] * kPulseToDegree;
+        sample.positionErrorDegree = sample.referencePositionDegree - sample.actualPositionDegree;
+        sample.positionToleranceDegree = velocityConfig_.positionToleranceDegree;
+        sample.commandVelocityDegreePerSecond = velocityStatus_.commandVelocityDegreePerSecond;
+        sample.cardCommandVelocityDegreePerSecond =
+            frame.commandVelocityPulsePerSecond[axisIndex] * kPulseToDegree;
+        sample.actualVelocityDegreePerSecond =
+            frame.actualVelocityPulsePerSecond[axisIndex] * kPulseToDegree;
+        pendingVelocityPlotSamples_.push_back(sample);
+    }
+
+    if (!pendingVelocityPlotSamples_.isEmpty()
+        && velocityPlotPublishClock_.isValid()
+        && velocityPlotPublishClock_.elapsed() >= kVelocityPlotPublishIntervalMs) {
+        flushVelocityPlotSamples();
+    }
+}
+
+void ContiWorker::flushVelocityPlotSamples()
+{
+    if (pendingVelocityPlotSamples_.isEmpty()) {
+        return;
+    }
+    QVector<VelocityPlotSample> batch;
+    batch.swap(pendingVelocityPlotSamples_);
+    emit velocityPlotSamplesReady(batch);
+    velocityPlotPublishClock_.restart();
 }
 
 void ContiWorker::stopVelocityControl(bool emergency)
@@ -2063,6 +2144,7 @@ void ContiWorker::enterError(const QString &message)
         pointMoveActive_ = false;
     }
     if (velocityControlActive_ && boardInitialized_) {
+        flushVelocityPlotSamples();
         QString ignored;
         card_.stopAxis(initializedCardNo_, velocityConfig_.axis, true, ignored);
     }
@@ -2373,6 +2455,7 @@ bool ContiWorker::pollTraceFeedback()
         latestTraceSequence_ = frames.constLast().traceSequence;
         latestTraceTimeUs_ = frames.constLast().traceTimeUs;
         updateTraceVelocityDiagnostics(frames);
+        appendVelocityPlotFrames(frames);
         telemetryRecorder_.pushFrames(frames);
     }
     return true;

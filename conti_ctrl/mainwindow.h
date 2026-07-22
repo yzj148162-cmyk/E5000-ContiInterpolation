@@ -144,6 +144,7 @@ private:
     QValueAxis *velocityErrorValueAxis_ = nullptr;
     QValueAxis *velocitySpeedTimeAxis_ = nullptr;
     QValueAxis *velocitySpeedValueAxis_ = nullptr;
+    QVector<VelocityPlotSample> pendingVelocityPlotSamples_;
     quint64 lastVelocityRunId_ = 0;
     double lastVelocityPlotTimeS_ = -1.0;
 };
