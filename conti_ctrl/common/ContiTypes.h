@@ -161,12 +161,25 @@ struct SingleAxisJogConfig
 
 // 单轴速度模式位置闭环参数。界面与控制器统一使用角度制，仅在 LTDMC
 // 调用边界转换为当前板卡 card unit。
+enum class VelocityTrajectoryType : quint8
+{
+    Quintic = 0,
+    Sine = 1,
+    LinearChirp = 2
+};
+
 struct VelocityControlConfig
 {
     quint16 cardNo = 0;
     quint16 axis = 0;
     double degreesPerCardUnit = 1.0;
+    VelocityTrajectoryType trajectoryType = VelocityTrajectoryType::Quintic;
     double relativeDeltaDegree = 500.0;
+    double sineAmplitudeDegree = 30.0;
+    double sineFrequencyHz = 0.2;
+    double chirpAmplitudeDegree = 30.0;
+    double chirpStartFrequencyHz = 0.1;
+    double chirpEndFrequencyHz = 1.0;
     double durationS = 10.0;
     int controlPeriodMs = 10;
 

@@ -20,6 +20,7 @@ constexpr int kVelocityPlotPublishIntervalMs = 50;
 constexpr double kCompletionPositionToleranceDeg = 0.02;
 constexpr double kCompletionVelocityToleranceDegPerSecond = 1.0;
 constexpr double kDuplicatePositionToleranceDeg = 1e-12;
+constexpr double kTwoPi = 6.283185307179586476925286766559;
 
 qint64 degreeToEstimatedPulse(double degree)
 {
@@ -36,6 +37,19 @@ bool supportedCardUnitDefinition(double degreesPerCardUnit)
     return sameCardUnitDefinition(degreesPerCardUnit, 1.0)
         || sameCardUnitDefinition(degreesPerCardUnit, 0.1)
         || sameCardUnitDefinition(degreesPerCardUnit, 0.01);
+}
+
+QString velocityTrajectoryName(VelocityTrajectoryType type)
+{
+    switch (type) {
+    case VelocityTrajectoryType::Quintic:
+        return QStringLiteral("五次多项式");
+    case VelocityTrajectoryType::Sine:
+        return QStringLiteral("正弦往复");
+    case VelocityTrajectoryType::LinearChirp:
+        return QStringLiteral("扫频正弦");
+    }
+    return QStringLiteral("未知");
 }
 }
 
@@ -1028,6 +1042,11 @@ bool ContiWorker::validateVelocityControlConfig(
     QString &errorMessage) const
 {
     const bool finite = std::isfinite(config.relativeDeltaDegree)
+        && std::isfinite(config.sineAmplitudeDegree)
+        && std::isfinite(config.sineFrequencyHz)
+        && std::isfinite(config.chirpAmplitudeDegree)
+        && std::isfinite(config.chirpStartFrequencyHz)
+        && std::isfinite(config.chirpEndFrequencyHz)
         && std::isfinite(config.durationS)
         && std::isfinite(config.degreesPerCardUnit)
         && std::isfinite(config.kp)
@@ -1043,7 +1062,20 @@ bool ContiWorker::validateVelocityControlConfig(
         && std::isfinite(config.positionToleranceDegree)
         && std::isfinite(config.speedToleranceDegreePerSecond)
         && std::isfinite(config.maxFollowingErrorDegree);
-    if (!finite || config.axis >= 8 || config.durationS <= 0.0
+    const double nyquistFrequencyHz = 500.0 / std::max(1, config.controlPeriodMs);
+    const bool trajectoryValid =
+        (config.trajectoryType == VelocityTrajectoryType::Quintic)
+        || (config.trajectoryType == VelocityTrajectoryType::Sine
+            && config.sineAmplitudeDegree > 0.0
+            && config.sineFrequencyHz > 0.0
+            && config.sineFrequencyHz < nyquistFrequencyHz)
+        || (config.trajectoryType == VelocityTrajectoryType::LinearChirp
+            && config.chirpAmplitudeDegree > 0.0
+            && config.chirpStartFrequencyHz > 0.0
+            && config.chirpEndFrequencyHz > 0.0
+            && config.chirpStartFrequencyHz < nyquistFrequencyHz
+            && config.chirpEndFrequencyHz < nyquistFrequencyHz);
+    if (!finite || !trajectoryValid || config.axis >= 8 || config.durationS <= 0.0
         || config.degreesPerCardUnit <= 0.0
         || actualBusCycleUs_ <= 0 || config.controlPeriodMs <= 0
         || config.controlPeriodMs * 1000 < actualBusCycleUs_
@@ -1061,7 +1093,9 @@ bool ContiWorker::validateVelocityControlConfig(
         || config.finishTimeoutMs < config.controlPeriodMs
         || config.maxFollowingErrorDegree <= config.positionToleranceDegree
         || config.traceTimeoutMs < config.controlPeriodMs) {
-        errorMessage = QStringLiteral("速度闭环参数无效：请检查周期、轨迹、PID、限幅、完成和安全参数");
+        errorMessage = QStringLiteral(
+            "速度闭环参数无效：请检查周期、轨迹参数（频率须低于控制周期奈奎斯特频率）、"
+            "PID、限幅、完成和安全参数");
         return false;
     }
     return true;
@@ -1135,7 +1169,9 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
     metadata.degreesPerCardUnit = config.degreesPerCardUnit;
     metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
                                  .filePath(QStringLiteral("records"));
-    metadata.description = QStringLiteral("单轴速度模式位置闭环：Trace type 3/4 速度＋type 5/6 位置");
+    metadata.description = QStringLiteral("单轴速度模式位置闭环：%1；"
+                                          "Trace type 3/4 速度＋type 5/6 位置")
+                               .arg(velocityTrajectoryName(config.trajectoryType));
     velocityAutoRecording_ = telemetryRecorder_.start(metadata, error);
     if (!velocityAutoRecording_) {
         emit logMessage(QStringLiteral("警告：速度闭环自动记录未启动：%1").arg(error));
@@ -1145,11 +1181,31 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
     velocityControlTimer_->setInterval(config.controlPeriodMs);
     velocityControlTimer_->start();
     stateText_ = QStringLiteral("速度闭环等待 Trace");
-    emit logMessage(QStringLiteral("速度闭环已准备：轴 %1，相对位移=%2°，轨迹时间=%3 s，控制周期=%4 ms；"
-                                   "脉冲当量=%5 pulse/unit（1 unit=%6°）；"
-                                   "Trace=type 3/4/5/6，自动记录=%7。")
+    QString trajectoryParameters;
+    switch (config.trajectoryType) {
+    case VelocityTrajectoryType::Quintic:
+        trajectoryParameters = QStringLiteral("相对位移=%1°")
+                                   .arg(config.relativeDeltaDegree, 0, 'f', 4);
+        break;
+    case VelocityTrajectoryType::Sine:
+        trajectoryParameters = QStringLiteral("振幅=%1°，频率=%2 Hz")
+                                   .arg(config.sineAmplitudeDegree, 0, 'f', 4)
+                                   .arg(config.sineFrequencyHz, 0, 'f', 4);
+        break;
+    case VelocityTrajectoryType::LinearChirp:
+        trajectoryParameters = QStringLiteral("振幅=%1°，频率=%2→%3 Hz")
+                                   .arg(config.chirpAmplitudeDegree, 0, 'f', 4)
+                                   .arg(config.chirpStartFrequencyHz, 0, 'f', 4)
+                                   .arg(config.chirpEndFrequencyHz, 0, 'f', 4);
+        break;
+    }
+    emit logMessage(QStringLiteral("速度闭环已准备：轴 %1，轨迹=%2（%3），"
+                                   "轨迹时间=%4 s，控制周期=%5 ms；"
+                                   "脉冲当量=%6 pulse/unit（1 unit=%7°）；"
+                                   "Trace=type 3/4/5/6，自动记录=%8。")
                         .arg(config.axis)
-                        .arg(config.relativeDeltaDegree, 0, 'f', 4)
+                        .arg(velocityTrajectoryName(config.trajectoryType))
+                        .arg(trajectoryParameters)
                         .arg(config.durationS, 0, 'f', 3)
                         .arg(config.controlPeriodMs)
                         .arg(MotorUnit::pulsesPerCardUnit(config.degreesPerCardUnit), 0, 'f', 6)
@@ -1174,14 +1230,58 @@ void ContiWorker::evaluateVelocityReference(double elapsedS,
 {
     const double duration = std::max(1e-9, velocityConfig_.durationS);
     const double time = std::clamp(elapsedS, 0.0, duration);
-    const double tau = time / duration;
-    const double ratio = 10.0 * std::pow(tau, 3)
-        - 15.0 * std::pow(tau, 4) + 6.0 * std::pow(tau, 5);
-    const double ratioRate = (30.0 * std::pow(tau, 2)
-        - 60.0 * std::pow(tau, 3) + 30.0 * std::pow(tau, 4)) / duration;
-    positionDegree = velocityStartPositionDegree_
-        + velocityConfig_.relativeDeltaDegree * ratio;
-    velocityDegreePerSecond = velocityConfig_.relativeDeltaDegree * ratioRate;
+    if (velocityConfig_.trajectoryType == VelocityTrajectoryType::Quintic) {
+        const double tau = time / duration;
+        const double ratio = 10.0 * std::pow(tau, 3)
+            - 15.0 * std::pow(tau, 4) + 6.0 * std::pow(tau, 5);
+        const double ratioRate = (30.0 * std::pow(tau, 2)
+            - 60.0 * std::pow(tau, 3) + 30.0 * std::pow(tau, 4)) / duration;
+        positionDegree = velocityStartPositionDegree_
+            + velocityConfig_.relativeDeltaDegree * ratio;
+        velocityDegreePerSecond = velocityConfig_.relativeDeltaDegree * ratioRate;
+    } else {
+        // 固定使用轨迹时长 10%（且不超过 0.5 s）的五次平滑包络，
+        // 使往复轨迹在首尾的位置和速度均与静止状态连续。
+        const double fadeDuration = std::min(0.5, duration * 0.1);
+        double envelope = 1.0;
+        double envelopeRate = 0.0;
+        auto smoothStep = [](double u) {
+            return 10.0 * std::pow(u, 3)
+                - 15.0 * std::pow(u, 4) + 6.0 * std::pow(u, 5);
+        };
+        auto smoothStepRate = [](double u) {
+            return 30.0 * std::pow(u, 2)
+                - 60.0 * std::pow(u, 3) + 30.0 * std::pow(u, 4);
+        };
+        if (time < fadeDuration) {
+            const double u = time / fadeDuration;
+            envelope = smoothStep(u);
+            envelopeRate = smoothStepRate(u) / fadeDuration;
+        } else if (time > duration - fadeDuration) {
+            const double u = (duration - time) / fadeDuration;
+            envelope = smoothStep(u);
+            envelopeRate = -smoothStepRate(u) / fadeDuration;
+        }
+
+        double amplitude = velocityConfig_.sineAmplitudeDegree;
+        double phase = kTwoPi * velocityConfig_.sineFrequencyHz * time;
+        double phaseRate = kTwoPi * velocityConfig_.sineFrequencyHz;
+        if (velocityConfig_.trajectoryType == VelocityTrajectoryType::LinearChirp) {
+            amplitude = velocityConfig_.chirpAmplitudeDegree;
+            const double sweepRate =
+                (velocityConfig_.chirpEndFrequencyHz
+                 - velocityConfig_.chirpStartFrequencyHz) / duration;
+            phase = kTwoPi * (velocityConfig_.chirpStartFrequencyHz * time
+                             + 0.5 * sweepRate * time * time);
+            phaseRate = kTwoPi
+                * (velocityConfig_.chirpStartFrequencyHz + sweepRate * time);
+        }
+        positionDegree = velocityStartPositionDegree_
+            + amplitude * envelope * std::sin(phase);
+        velocityDegreePerSecond = amplitude
+            * (envelopeRate * std::sin(phase)
+               + envelope * std::cos(phase) * phaseRate);
+    }
     if (elapsedS >= duration) {
         positionDegree = velocityFinalPositionDegree_;
         velocityDegreePerSecond = 0.0;
@@ -1226,8 +1326,10 @@ void ContiWorker::runVelocityControlCycle()
     if (!velocityReferenceInitialized_) {
         velocityReferenceInitialized_ = true;
         velocityStartPositionDegree_ = feedback.encoderPositionUnit;
-        velocityFinalPositionDegree_ = velocityStartPositionDegree_
-            + velocityConfig_.relativeDeltaDegree;
+        velocityFinalPositionDegree_ = velocityConfig_.trajectoryType
+                == VelocityTrajectoryType::Quintic
+            ? velocityStartPositionDegree_ + velocityConfig_.relativeDeltaDegree
+            : velocityStartPositionDegree_;
         velocityPid_.reset();
         velocityRunClock_.start();
         velocityCycleClock_.start();
@@ -1250,7 +1352,7 @@ void ContiWorker::runVelocityControlCycle()
         initialSample.cardCommandVelocityDegreePerSecond = feedback.commandVelocityUnitPerSecond;
         initialSample.actualVelocityDegreePerSecond = feedback.actualVelocityUnitPerSecond;
         pendingVelocityPlotSamples_.push_back(initialSample);
-        emit logMessage(QStringLiteral("速度闭环取得首帧：轴 %1 起点=%2°，目标=%3°。")
+        emit logMessage(QStringLiteral("速度闭环取得首帧：轴 %1 起点=%2°，结束参考=%3°。")
                             .arg(velocityConfig_.axis)
                             .arg(velocityStartPositionDegree_, 0, 'f', 6)
                             .arg(velocityFinalPositionDegree_, 0, 'f', 6));

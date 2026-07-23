@@ -28,6 +28,7 @@
 #include <QtWidgets/QSpacerItem>
 #include <QtWidgets/QSpinBox>
 #include <QtWidgets/QSplitter>
+#include <QtWidgets/QStackedWidget>
 #include <QtWidgets/QTabWidget>
 #include <QtWidgets/QTableWidget>
 #include <QtWidgets/QVBoxLayout>
@@ -254,20 +255,41 @@ public:
     QGroupBox *velocityControlParameterGroup;
     QGridLayout *velocityControlParameterLayout;
     QGroupBox *velocityTrajectoryGroup;
-    QGridLayout *velocityTrajectoryLayout;
+    QGridLayout *gridLayout_2;
+    QLabel *velocityTrajectoryTypeLabel;
+    QComboBox *velocityTrajectoryTypeCombo;
     QLabel *velocityAxisLabel;
     QComboBox *velocityAxisCombo;
-    QLabel *velocityDeltaLabel;
-    QDoubleSpinBox *velocityDeltaSpin;
     QLabel *velocityDurationLabel;
     QDoubleSpinBox *velocityDurationSpin;
     QLabel *velocityControlPeriodLabel;
     QSpinBox *velocityControlPeriodSpin;
+    QStackedWidget *velocityTrajectoryParameterStack;
+    QWidget *velocityQuinticPage;
+    QHBoxLayout *velocityQuinticLayout;
+    QLabel *velocityDeltaLabel;
+    QDoubleSpinBox *velocityDeltaSpin;
+    QSpacerItem *velocityQuinticSpacer;
+    QWidget *velocitySinePage;
+    QHBoxLayout *velocitySineLayout;
+    QLabel *velocitySineAmplitudeLabel;
+    QDoubleSpinBox *velocitySineAmplitudeSpin;
+    QLabel *velocitySineFrequencyLabel;
+    QDoubleSpinBox *velocitySineFrequencySpin;
+    QSpacerItem *velocitySineSpacer;
+    QWidget *velocityChirpPage;
+    QHBoxLayout *velocityChirpLayout;
+    QLabel *velocityChirpAmplitudeLabel;
+    QDoubleSpinBox *velocityChirpAmplitudeSpin;
+    QLabel *velocityChirpStartFrequencyLabel;
+    QDoubleSpinBox *velocityChirpStartFrequencySpin;
+    QLabel *velocityChirpEndFrequencyLabel;
+    QDoubleSpinBox *velocityChirpEndFrequencySpin;
+    QSpacerItem *velocityChirpSpacer;
     QLabel *velocityUnitDefinitionLabel;
     QComboBox *velocityUnitDefinitionCombo;
     QLabel *velocityCustomEquivalentLabel;
     QDoubleSpinBox *velocityCustomEquivalentSpin;
-    QSpacerItem *velocityTrajectorySpacer;
     QGroupBox *velocityClosedLoopGroup;
     QGridLayout *velocityClosedLoopLayout;
     QCheckBox *velocityFeedforwardCheck;
@@ -1525,12 +1547,30 @@ public:
         velocityControlParameterLayout->setObjectName("velocityControlParameterLayout");
         velocityTrajectoryGroup = new QGroupBox(velocityControlParameterGroup);
         velocityTrajectoryGroup->setObjectName("velocityTrajectoryGroup");
-        velocityTrajectoryLayout = new QGridLayout(velocityTrajectoryGroup);
-        velocityTrajectoryLayout->setObjectName("velocityTrajectoryLayout");
+        QSizePolicy sizePolicy(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Preferred);
+        sizePolicy.setHorizontalStretch(0);
+        sizePolicy.setVerticalStretch(0);
+        sizePolicy.setHeightForWidth(velocityTrajectoryGroup->sizePolicy().hasHeightForWidth());
+        velocityTrajectoryGroup->setSizePolicy(sizePolicy);
+        gridLayout_2 = new QGridLayout(velocityTrajectoryGroup);
+        gridLayout_2->setObjectName("gridLayout_2");
+        velocityTrajectoryTypeLabel = new QLabel(velocityTrajectoryGroup);
+        velocityTrajectoryTypeLabel->setObjectName("velocityTrajectoryTypeLabel");
+
+        gridLayout_2->addWidget(velocityTrajectoryTypeLabel, 0, 0, 1, 1);
+
+        velocityTrajectoryTypeCombo = new QComboBox(velocityTrajectoryGroup);
+        velocityTrajectoryTypeCombo->addItem(QString());
+        velocityTrajectoryTypeCombo->addItem(QString());
+        velocityTrajectoryTypeCombo->addItem(QString());
+        velocityTrajectoryTypeCombo->setObjectName("velocityTrajectoryTypeCombo");
+
+        gridLayout_2->addWidget(velocityTrajectoryTypeCombo, 0, 1, 1, 1);
+
         velocityAxisLabel = new QLabel(velocityTrajectoryGroup);
         velocityAxisLabel->setObjectName("velocityAxisLabel");
 
-        velocityTrajectoryLayout->addWidget(velocityAxisLabel, 0, 0, 1, 1);
+        gridLayout_2->addWidget(velocityAxisLabel, 0, 2, 1, 1);
 
         velocityAxisCombo = new QComboBox(velocityTrajectoryGroup);
         velocityAxisCombo->addItem(QString());
@@ -1543,26 +1583,12 @@ public:
         velocityAxisCombo->addItem(QString());
         velocityAxisCombo->setObjectName("velocityAxisCombo");
 
-        velocityTrajectoryLayout->addWidget(velocityAxisCombo, 0, 1, 1, 1);
-
-        velocityDeltaLabel = new QLabel(velocityTrajectoryGroup);
-        velocityDeltaLabel->setObjectName("velocityDeltaLabel");
-
-        velocityTrajectoryLayout->addWidget(velocityDeltaLabel, 0, 2, 1, 1);
-
-        velocityDeltaSpin = new QDoubleSpinBox(velocityTrajectoryGroup);
-        velocityDeltaSpin->setObjectName("velocityDeltaSpin");
-        velocityDeltaSpin->setDecimals(4);
-        velocityDeltaSpin->setMinimum(-1000000.000000000000000);
-        velocityDeltaSpin->setMaximum(1000000.000000000000000);
-        velocityDeltaSpin->setValue(500.000000000000000);
-
-        velocityTrajectoryLayout->addWidget(velocityDeltaSpin, 0, 3, 1, 1);
+        gridLayout_2->addWidget(velocityAxisCombo, 0, 3, 1, 1);
 
         velocityDurationLabel = new QLabel(velocityTrajectoryGroup);
         velocityDurationLabel->setObjectName("velocityDurationLabel");
 
-        velocityTrajectoryLayout->addWidget(velocityDurationLabel, 1, 2, 1, 1);
+        gridLayout_2->addWidget(velocityDurationLabel, 1, 0, 1, 1);
 
         velocityDurationSpin = new QDoubleSpinBox(velocityTrajectoryGroup);
         velocityDurationSpin->setObjectName("velocityDurationSpin");
@@ -1571,25 +1597,144 @@ public:
         velocityDurationSpin->setMaximum(3600.000000000000000);
         velocityDurationSpin->setValue(10.000000000000000);
 
-        velocityTrajectoryLayout->addWidget(velocityDurationSpin, 1, 3, 1, 1);
+        gridLayout_2->addWidget(velocityDurationSpin, 1, 1, 1, 1);
 
         velocityControlPeriodLabel = new QLabel(velocityTrajectoryGroup);
         velocityControlPeriodLabel->setObjectName("velocityControlPeriodLabel");
 
-        velocityTrajectoryLayout->addWidget(velocityControlPeriodLabel, 1, 0, 1, 1);
+        gridLayout_2->addWidget(velocityControlPeriodLabel, 1, 2, 1, 1);
 
         velocityControlPeriodSpin = new QSpinBox(velocityTrajectoryGroup);
         velocityControlPeriodSpin->setObjectName("velocityControlPeriodSpin");
         velocityControlPeriodSpin->setMinimum(1);
         velocityControlPeriodSpin->setMaximum(100);
-        velocityControlPeriodSpin->setValue(10);
+        velocityControlPeriodSpin->setValue(1);
 
-        velocityTrajectoryLayout->addWidget(velocityControlPeriodSpin, 1, 1, 1, 1);
+        gridLayout_2->addWidget(velocityControlPeriodSpin, 1, 3, 1, 1);
+
+        velocityTrajectoryParameterStack = new QStackedWidget(velocityTrajectoryGroup);
+        velocityTrajectoryParameterStack->setObjectName("velocityTrajectoryParameterStack");
+        velocityQuinticPage = new QWidget();
+        velocityQuinticPage->setObjectName("velocityQuinticPage");
+        velocityQuinticLayout = new QHBoxLayout(velocityQuinticPage);
+        velocityQuinticLayout->setObjectName("velocityQuinticLayout");
+        velocityQuinticLayout->setContentsMargins(0, 0, 0, 0);
+        velocityDeltaLabel = new QLabel(velocityQuinticPage);
+        velocityDeltaLabel->setObjectName("velocityDeltaLabel");
+
+        velocityQuinticLayout->addWidget(velocityDeltaLabel);
+
+        velocityDeltaSpin = new QDoubleSpinBox(velocityQuinticPage);
+        velocityDeltaSpin->setObjectName("velocityDeltaSpin");
+        velocityDeltaSpin->setDecimals(4);
+        velocityDeltaSpin->setMinimum(-1000000.000000000000000);
+        velocityDeltaSpin->setMaximum(1000000.000000000000000);
+        velocityDeltaSpin->setValue(500.000000000000000);
+
+        velocityQuinticLayout->addWidget(velocityDeltaSpin);
+
+        velocityQuinticSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
+
+        velocityQuinticLayout->addItem(velocityQuinticSpacer);
+
+        velocityTrajectoryParameterStack->addWidget(velocityQuinticPage);
+        velocitySinePage = new QWidget();
+        velocitySinePage->setObjectName("velocitySinePage");
+        velocitySineLayout = new QHBoxLayout(velocitySinePage);
+        velocitySineLayout->setObjectName("velocitySineLayout");
+        velocitySineLayout->setContentsMargins(0, 0, 0, 0);
+        velocitySineAmplitudeLabel = new QLabel(velocitySinePage);
+        velocitySineAmplitudeLabel->setObjectName("velocitySineAmplitudeLabel");
+
+        velocitySineLayout->addWidget(velocitySineAmplitudeLabel);
+
+        velocitySineAmplitudeSpin = new QDoubleSpinBox(velocitySinePage);
+        velocitySineAmplitudeSpin->setObjectName("velocitySineAmplitudeSpin");
+        velocitySineAmplitudeSpin->setDecimals(4);
+        velocitySineAmplitudeSpin->setMinimum(0.001000000000000);
+        velocitySineAmplitudeSpin->setMaximum(1000000.000000000000000);
+        velocitySineAmplitudeSpin->setValue(30.000000000000000);
+
+        velocitySineLayout->addWidget(velocitySineAmplitudeSpin);
+
+        velocitySineFrequencyLabel = new QLabel(velocitySinePage);
+        velocitySineFrequencyLabel->setObjectName("velocitySineFrequencyLabel");
+
+        velocitySineLayout->addWidget(velocitySineFrequencyLabel);
+
+        velocitySineFrequencySpin = new QDoubleSpinBox(velocitySinePage);
+        velocitySineFrequencySpin->setObjectName("velocitySineFrequencySpin");
+        velocitySineFrequencySpin->setDecimals(4);
+        velocitySineFrequencySpin->setMinimum(0.001000000000000);
+        velocitySineFrequencySpin->setMaximum(100.000000000000000);
+        velocitySineFrequencySpin->setValue(0.200000000000000);
+
+        velocitySineLayout->addWidget(velocitySineFrequencySpin);
+
+        velocitySineSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
+
+        velocitySineLayout->addItem(velocitySineSpacer);
+
+        velocityTrajectoryParameterStack->addWidget(velocitySinePage);
+        velocityChirpPage = new QWidget();
+        velocityChirpPage->setObjectName("velocityChirpPage");
+        velocityChirpLayout = new QHBoxLayout(velocityChirpPage);
+        velocityChirpLayout->setObjectName("velocityChirpLayout");
+        velocityChirpLayout->setContentsMargins(0, 0, 0, 0);
+        velocityChirpAmplitudeLabel = new QLabel(velocityChirpPage);
+        velocityChirpAmplitudeLabel->setObjectName("velocityChirpAmplitudeLabel");
+
+        velocityChirpLayout->addWidget(velocityChirpAmplitudeLabel);
+
+        velocityChirpAmplitudeSpin = new QDoubleSpinBox(velocityChirpPage);
+        velocityChirpAmplitudeSpin->setObjectName("velocityChirpAmplitudeSpin");
+        velocityChirpAmplitudeSpin->setDecimals(4);
+        velocityChirpAmplitudeSpin->setMinimum(0.001000000000000);
+        velocityChirpAmplitudeSpin->setMaximum(1000000.000000000000000);
+        velocityChirpAmplitudeSpin->setValue(30.000000000000000);
+
+        velocityChirpLayout->addWidget(velocityChirpAmplitudeSpin);
+
+        velocityChirpStartFrequencyLabel = new QLabel(velocityChirpPage);
+        velocityChirpStartFrequencyLabel->setObjectName("velocityChirpStartFrequencyLabel");
+
+        velocityChirpLayout->addWidget(velocityChirpStartFrequencyLabel);
+
+        velocityChirpStartFrequencySpin = new QDoubleSpinBox(velocityChirpPage);
+        velocityChirpStartFrequencySpin->setObjectName("velocityChirpStartFrequencySpin");
+        velocityChirpStartFrequencySpin->setDecimals(4);
+        velocityChirpStartFrequencySpin->setMinimum(0.001000000000000);
+        velocityChirpStartFrequencySpin->setMaximum(100.000000000000000);
+        velocityChirpStartFrequencySpin->setValue(0.100000000000000);
+
+        velocityChirpLayout->addWidget(velocityChirpStartFrequencySpin);
+
+        velocityChirpEndFrequencyLabel = new QLabel(velocityChirpPage);
+        velocityChirpEndFrequencyLabel->setObjectName("velocityChirpEndFrequencyLabel");
+
+        velocityChirpLayout->addWidget(velocityChirpEndFrequencyLabel);
+
+        velocityChirpEndFrequencySpin = new QDoubleSpinBox(velocityChirpPage);
+        velocityChirpEndFrequencySpin->setObjectName("velocityChirpEndFrequencySpin");
+        velocityChirpEndFrequencySpin->setDecimals(4);
+        velocityChirpEndFrequencySpin->setMinimum(0.001000000000000);
+        velocityChirpEndFrequencySpin->setMaximum(100.000000000000000);
+        velocityChirpEndFrequencySpin->setValue(1.000000000000000);
+
+        velocityChirpLayout->addWidget(velocityChirpEndFrequencySpin);
+
+        velocityChirpSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
+
+        velocityChirpLayout->addItem(velocityChirpSpacer);
+
+        velocityTrajectoryParameterStack->addWidget(velocityChirpPage);
+
+        gridLayout_2->addWidget(velocityTrajectoryParameterStack, 2, 0, 1, 4);
 
         velocityUnitDefinitionLabel = new QLabel(velocityTrajectoryGroup);
         velocityUnitDefinitionLabel->setObjectName("velocityUnitDefinitionLabel");
 
-        velocityTrajectoryLayout->addWidget(velocityUnitDefinitionLabel, 2, 0, 1, 1);
+        gridLayout_2->addWidget(velocityUnitDefinitionLabel, 3, 0, 1, 1);
 
         velocityUnitDefinitionCombo = new QComboBox(velocityTrajectoryGroup);
         velocityUnitDefinitionCombo->addItem(QString());
@@ -1598,13 +1743,13 @@ public:
         velocityUnitDefinitionCombo->addItem(QString());
         velocityUnitDefinitionCombo->setObjectName("velocityUnitDefinitionCombo");
 
-        velocityTrajectoryLayout->addWidget(velocityUnitDefinitionCombo, 2, 1, 1, 1);
+        gridLayout_2->addWidget(velocityUnitDefinitionCombo, 3, 1, 1, 1);
 
         velocityCustomEquivalentLabel = new QLabel(velocityTrajectoryGroup);
         velocityCustomEquivalentLabel->setObjectName("velocityCustomEquivalentLabel");
         velocityCustomEquivalentLabel->setEnabled(false);
 
-        velocityTrajectoryLayout->addWidget(velocityCustomEquivalentLabel, 2, 2, 1, 1);
+        gridLayout_2->addWidget(velocityCustomEquivalentLabel, 3, 2, 1, 1);
 
         velocityCustomEquivalentSpin = new QDoubleSpinBox(velocityTrajectoryGroup);
         velocityCustomEquivalentSpin->setObjectName("velocityCustomEquivalentSpin");
@@ -1614,11 +1759,7 @@ public:
         velocityCustomEquivalentSpin->setMaximum(1000000000.000000000000000);
         velocityCustomEquivalentSpin->setValue(500.622000000000014);
 
-        velocityTrajectoryLayout->addWidget(velocityCustomEquivalentSpin, 2, 3, 1, 1);
-
-        velocityTrajectorySpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
-
-        velocityTrajectoryLayout->addItem(velocityTrajectorySpacer, 0, 4, 3, 1);
+        gridLayout_2->addWidget(velocityCustomEquivalentSpin, 3, 3, 1, 1);
 
 
         velocityControlParameterLayout->addWidget(velocityTrajectoryGroup, 0, 0, 1, 1);
@@ -1760,7 +1901,7 @@ public:
         velocityChangeTimeSpin->setMinimum(0.000000000000000);
         velocityChangeTimeSpin->setMaximum(1.000000000000000);
         velocityChangeTimeSpin->setSingleStep(0.001000000000000);
-        velocityChangeTimeSpin->setValue(0.005000000000000);
+        velocityChangeTimeSpin->setValue(0.001000000000000);
 
         velocityLimitLayout->addWidget(velocityChangeTimeSpin, 1, 1, 1, 1);
 
@@ -1774,7 +1915,7 @@ public:
         velocityStartThresholdSpin->setDecimals(4);
         velocityStartThresholdSpin->setMinimum(0.000100000000000);
         velocityStartThresholdSpin->setMaximum(1000.000000000000000);
-        velocityStartThresholdSpin->setValue(0.020000000000000);
+        velocityStartThresholdSpin->setValue(0.001000000000000);
 
         velocityLimitLayout->addWidget(velocityStartThresholdSpin, 1, 3, 1, 1);
 
@@ -1839,7 +1980,7 @@ public:
         velocityFinishTimeoutSpin->setObjectName("velocityFinishTimeoutSpin");
         velocityFinishTimeoutSpin->setMinimum(10);
         velocityFinishTimeoutSpin->setMaximum(60000);
-        velocityFinishTimeoutSpin->setValue(3000);
+        velocityFinishTimeoutSpin->setValue(1000);
 
         velocityCriterionLayout->addWidget(velocityFinishTimeoutSpin, 1, 3, 1, 1);
 
@@ -1853,7 +1994,7 @@ public:
         velocityMaxFollowingErrorSpin->setDecimals(3);
         velocityMaxFollowingErrorSpin->setMinimum(0.001000000000000);
         velocityMaxFollowingErrorSpin->setMaximum(100000.000000000000000);
-        velocityMaxFollowingErrorSpin->setValue(5.000000000000000);
+        velocityMaxFollowingErrorSpin->setValue(2.000000000000000);
 
         velocityCriterionLayout->addWidget(velocityMaxFollowingErrorSpin, 2, 1, 1, 1);
 
@@ -2063,6 +2204,7 @@ public:
         busCycleCombo->setCurrentIndex(2);
         tabWidget->setCurrentIndex(3);
         holdAxisCombo->setCurrentIndex(1);
+        velocityTrajectoryParameterStack->setCurrentIndex(0);
 
 
         QMetaObject::connectSlotsByName(MainWindow);
@@ -2308,6 +2450,11 @@ public:
         tabWidget->setTabText(tabWidget->indexOf(telemetryTab), QCoreApplication::translate("MainWindow", "\346\225\260\346\215\256\350\256\260\345\275\225\344\270\216\346\233\262\347\272\277", nullptr));
         velocityControlParameterGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\350\275\264\351\200\237\345\272\246\346\250\241\345\274\217\344\275\215\347\275\256\351\227\255\347\216\257\345\217\202\346\225\260", nullptr));
         velocityTrajectoryGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\350\256\276\347\275\256", nullptr));
+        velocityTrajectoryTypeLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\347\261\273\345\236\213", nullptr));
+        velocityTrajectoryTypeCombo->setItemText(0, QCoreApplication::translate("MainWindow", "\344\272\224\346\254\241\345\244\232\351\241\271\345\274\217", nullptr));
+        velocityTrajectoryTypeCombo->setItemText(1, QCoreApplication::translate("MainWindow", "\346\255\243\345\274\246\345\276\200\345\244\215", nullptr));
+        velocityTrajectoryTypeCombo->setItemText(2, QCoreApplication::translate("MainWindow", "\346\211\253\351\242\221\346\255\243\345\274\246", nullptr));
+
         velocityAxisLabel->setText(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\264", nullptr));
         velocityAxisCombo->setItemText(0, QCoreApplication::translate("MainWindow", "0", nullptr));
         velocityAxisCombo->setItemText(1, QCoreApplication::translate("MainWindow", "1", nullptr));
@@ -2318,16 +2465,32 @@ public:
         velocityAxisCombo->setItemText(6, QCoreApplication::translate("MainWindow", "6", nullptr));
         velocityAxisCombo->setItemText(7, QCoreApplication::translate("MainWindow", "7", nullptr));
 
-        velocityDeltaLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\345\257\271\344\275\215\347\247\273", nullptr));
-        velocityDeltaSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
         velocityDurationLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\346\227\266\351\227\264", nullptr));
         velocityDurationSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
         velocityControlPeriodLabel->setText(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\221\250\346\234\237", nullptr));
         velocityControlPeriodSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
-        velocityUnitDefinitionLabel->setText(QCoreApplication::translate("MainWindow", "\350\204\211\345\206\262\345\275\223\351\207\217", nullptr));
+        velocityDeltaLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\270\345\257\271\344\275\215\347\247\273", nullptr));
+        velocityDeltaSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
+        velocitySineAmplitudeLabel->setText(QCoreApplication::translate("MainWindow", "\346\214\257\345\271\205", nullptr));
+#if QT_CONFIG(tooltip)
+        velocitySineAmplitudeSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\233\270\345\257\271\344\272\216\345\220\257\345\212\250\346\227\266\345\256\236\351\231\205\344\275\215\347\275\256\347\232\204\345\276\200\345\244\215\346\214\257\345\271\205\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        velocitySineAmplitudeSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
+        velocitySineFrequencyLabel->setText(QCoreApplication::translate("MainWindow", "\351\242\221\347\216\207", nullptr));
+        velocitySineFrequencySpin->setSuffix(QCoreApplication::translate("MainWindow", " Hz", nullptr));
+        velocityChirpAmplitudeLabel->setText(QCoreApplication::translate("MainWindow", "\346\214\257\345\271\205", nullptr));
+#if QT_CONFIG(tooltip)
+        velocityChirpAmplitudeSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\233\270\345\257\271\344\272\216\345\220\257\345\212\250\346\227\266\345\256\236\351\231\205\344\275\215\347\275\256\347\232\204\346\211\253\351\242\221\346\214\257\345\271\205\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        velocityChirpAmplitudeSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
+        velocityChirpStartFrequencyLabel->setText(QCoreApplication::translate("MainWindow", "\350\265\267\345\247\213\351\242\221\347\216\207", nullptr));
+        velocityChirpStartFrequencySpin->setSuffix(QCoreApplication::translate("MainWindow", " Hz", nullptr));
+        velocityChirpEndFrequencyLabel->setText(QCoreApplication::translate("MainWindow", "\347\273\210\346\255\242\351\242\221\347\216\207", nullptr));
+        velocityChirpEndFrequencySpin->setSuffix(QCoreApplication::translate("MainWindow", " Hz", nullptr));
 #if QT_CONFIG(tooltip)
         velocityUnitDefinitionLabel->setToolTip(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\351\227\255\347\216\257\345\220\257\345\212\250\346\227\266\345\206\231\345\205\245\346\265\213\350\257\225\350\275\264\347\232\204 pulse/unit\343\200\202\350\257\245\350\256\276\347\275\256\345\220\214\346\227\266\345\206\263\345\256\232\346\235\277\345\215\241\351\200\237\345\272\246\345\215\225\344\275\215\344\270\216 Trace \351\200\237\345\272\246\346\215\242\347\256\227\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityUnitDefinitionLabel->setText(QCoreApplication::translate("MainWindow", "\350\204\211\345\206\262\345\275\223\351\207\217", nullptr));
         velocityUnitDefinitionCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622\357\274\2101 unit = 1\302\260\357\274\211", nullptr));
         velocityUnitDefinitionCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622\357\274\2101 unit = 0.1\302\260\357\274\211", nullptr));
         velocityUnitDefinitionCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622\357\274\2101 unit = 0.01\302\260\357\274\211", nullptr));
@@ -2336,10 +2499,10 @@ public:
 #if QT_CONFIG(tooltip)
         velocityUnitDefinitionCombo->setToolTip(QCoreApplication::translate("MainWindow", "\351\200\211\346\213\251\351\200\237\345\272\246\351\227\255\347\216\257\346\265\213\350\257\225\350\275\264\347\232\204\350\204\211\345\206\262\345\275\223\351\207\217\343\200\202\344\270\211\347\247\215\351\242\204\350\256\276\345\210\206\345\210\253\345\257\271\345\272\224 1\343\200\2010.1\343\200\2010.01 \302\260/unit\357\274\233\351\200\211\346\213\251\342\200\234\350\207\252\345\256\232\344\271\211\342\200\235\345\220\216\345\234\250\345\217\263\344\276\247\350\276\223\345\205\245 pulse/unit\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
-        velocityCustomEquivalentLabel->setText(QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\345\200\274", nullptr));
 #if QT_CONFIG(tooltip)
         velocityCustomEquivalentLabel->setToolTip(QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\346\257\217\344\270\252\346\235\277\345\215\241 unit \345\257\271\345\272\224\347\232\204\350\204\211\345\206\262\346\225\260\343\200\202\347\250\213\345\272\217\346\214\211 500.622 pulse/deg \350\256\241\347\256\227\345\205\266\345\257\271\345\272\224\347\232\204 \302\260/unit\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityCustomEquivalentLabel->setText(QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\345\200\274", nullptr));
 #if QT_CONFIG(tooltip)
         velocityCustomEquivalentSpin->setToolTip(QCoreApplication::translate("MainWindow", "\350\276\223\345\205\245\350\207\252\345\256\232\344\271\211\350\204\211\345\206\262\345\275\223\351\207\217\357\274\214\345\215\225\344\275\215\344\270\272 pulse/unit\357\274\214\345\277\205\351\241\273\345\244\247\344\272\2160\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)

@@ -2044,223 +2044,259 @@
                <layout class="QGridLayout" name="velocityControlParameterLayout">
                 <item row="0" column="0">
                  <widget class="QGroupBox" name="velocityTrajectoryGroup">
+                  <property name="sizePolicy">
+                   <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                    <horstretch>0</horstretch>
+                    <verstretch>0</verstretch>
+                   </sizepolicy>
+                  </property>
                   <property name="title">
                    <string>轨迹设置</string>
                   </property>
-                  <layout class="QGridLayout" name="velocityTrajectoryLayout">
-                <item row="0" column="0">
-                 <widget class="QLabel" name="velocityAxisLabel">
-                  <property name="text">
-                   <string>测试轴</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="0" column="1">
-                 <widget class="QComboBox" name="velocityAxisCombo">
-                  <item>
-                   <property name="text">
-                    <string>0</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>1</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>2</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>3</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>4</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>5</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>6</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>7</string>
-                   </property>
-                  </item>
-                 </widget>
-                </item>
-                <item row="0" column="2">
-                 <widget class="QLabel" name="velocityDeltaLabel">
-                  <property name="text">
-                   <string>相对位移</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="0" column="3">
-                 <widget class="QDoubleSpinBox" name="velocityDeltaSpin">
-                  <property name="suffix">
-                   <string> °</string>
-                  </property>
-                  <property name="decimals">
-                   <number>4</number>
-                  </property>
-                  <property name="minimum">
-                   <double>-1000000.000000000000000</double>
-                  </property>
-                  <property name="maximum">
-                   <double>1000000.000000000000000</double>
-                  </property>
-                   <property name="value">
-                    <double>500.000000000000000</double>
-                  </property>
-                 </widget>
-                </item>
-                <item row="1" column="2">
-                 <widget class="QLabel" name="velocityDurationLabel">
-                  <property name="text">
-                   <string>轨迹时间</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="1" column="3">
-                 <widget class="QDoubleSpinBox" name="velocityDurationSpin">
-                  <property name="suffix">
-                   <string> s</string>
-                  </property>
-                  <property name="decimals">
-                   <number>3</number>
-                  </property>
-                  <property name="minimum">
-                   <double>0.100000000000000</double>
-                  </property>
-                  <property name="maximum">
-                   <double>3600.000000000000000</double>
-                  </property>
-                   <property name="value">
-                    <double>10.000000000000000</double>
-                  </property>
-                 </widget>
-                </item>
-                <item row="1" column="0">
-                 <widget class="QLabel" name="velocityControlPeriodLabel">
-                  <property name="text">
-                   <string>控制周期</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="1" column="1">
-                 <widget class="QSpinBox" name="velocityControlPeriodSpin">
-                  <property name="suffix">
-                   <string> ms</string>
-                  </property>
-                  <property name="minimum">
-                   <number>1</number>
-                  </property>
-                  <property name="maximum">
-                   <number>100</number>
-                  </property>
-                  <property name="value">
-                   <number>1</number>
-                  </property>
-                 </widget>
-                </item>
-                <item row="2" column="0">
-                 <widget class="QLabel" name="velocityUnitDefinitionLabel">
-                  <property name="text">
-                   <string>脉冲当量</string>
-                  </property>
-                  <property name="toolTip">
-                   <string>速度闭环启动时写入测试轴的 pulse/unit。该设置同时决定板卡速度单位与 Trace 速度换算。</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="2" column="1">
-                 <widget class="QComboBox" name="velocityUnitDefinitionCombo">
-                  <property name="toolTip">
-                   <string>选择速度闭环测试轴的脉冲当量。三种预设分别对应 1、0.1、0.01 °/unit；选择“自定义”后在右侧输入 pulse/unit。</string>
-                  </property>
-                  <item>
-                   <property name="text">
-                    <string>500.622（1 unit = 1°）</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>50.0622（1 unit = 0.1°）</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>5.00622（1 unit = 0.01°）</string>
-                   </property>
-                  </item>
-                  <item>
-                   <property name="text">
-                    <string>自定义</string>
-                   </property>
-                  </item>
-                 </widget>
-                </item>
-                <item row="2" column="2">
-                 <widget class="QLabel" name="velocityCustomEquivalentLabel">
-                  <property name="enabled">
-                   <bool>false</bool>
-                  </property>
-                  <property name="text">
-                   <string>自定义值</string>
-                  </property>
-                  <property name="toolTip">
-                   <string>自定义每个板卡 unit 对应的脉冲数。程序按 500.622 pulse/deg 计算其对应的 °/unit。</string>
-                  </property>
-                 </widget>
-                </item>
-                <item row="2" column="3">
-                 <widget class="QDoubleSpinBox" name="velocityCustomEquivalentSpin">
-                  <property name="enabled">
-                   <bool>false</bool>
-                  </property>
-                  <property name="toolTip">
-                   <string>输入自定义脉冲当量，单位为 pulse/unit，必须大于0。</string>
-                  </property>
-                  <property name="suffix">
-                   <string> pulse/unit</string>
-                  </property>
-                  <property name="decimals">
-                   <number>6</number>
-                  </property>
-                  <property name="minimum">
-                   <double>0.000001000000000</double>
-                  </property>
-                  <property name="maximum">
-                   <double>1000000000.000000000000000</double>
-                  </property>
-                  <property name="value">
-                   <double>500.622000000000014</double>
-                  </property>
-                 </widget>
-                </item>
-                   <item row="0" column="4" rowspan="3">
-                    <spacer name="velocityTrajectorySpacer">
-                     <property name="orientation">
-                      <enum>Qt::Orientation::Horizontal</enum>
+                  <layout class="QGridLayout" name="gridLayout_2">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="velocityTrajectoryTypeLabel">
+                     <property name="text">
+                      <string>轨迹类型</string>
                      </property>
-                     <property name="sizeHint" stdset="0">
-                      <size>
-                       <width>40</width>
-                       <height>20</height>
-                      </size>
+                    </widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QComboBox" name="velocityTrajectoryTypeCombo">
+                     <item>
+                      <property name="text">
+                       <string>五次多项式</string>
+                      </property>
+                     </item>
+                     <item>
+                      <property name="text">
+                       <string>正弦往复</string>
+                      </property>
+                     </item>
+                     <item>
+                      <property name="text">
+                       <string>扫频正弦</string>
+                      </property>
+                     </item>
+                    </widget>
+                   </item>
+                   <item row="0" column="2">
+                    <widget class="QLabel" name="velocityAxisLabel">
+                     <property name="text">
+                      <string>测试轴</string>
                      </property>
-                    </spacer>
+                    </widget>
+                   </item>
+                   <item row="0" column="3">
+                    <widget class="QComboBox" name="velocityAxisCombo">
+                     <item><property name="text"><string>0</string></property></item>
+                     <item><property name="text"><string>1</string></property></item>
+                     <item><property name="text"><string>2</string></property></item>
+                     <item><property name="text"><string>3</string></property></item>
+                     <item><property name="text"><string>4</string></property></item>
+                     <item><property name="text"><string>5</string></property></item>
+                     <item><property name="text"><string>6</string></property></item>
+                     <item><property name="text"><string>7</string></property></item>
+                    </widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QLabel" name="velocityDurationLabel">
+                     <property name="text"><string>轨迹时间</string></property>
+                    </widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QDoubleSpinBox" name="velocityDurationSpin">
+                     <property name="suffix"><string> s</string></property>
+                     <property name="decimals"><number>3</number></property>
+                     <property name="minimum"><double>0.100000000000000</double></property>
+                     <property name="maximum"><double>3600.000000000000000</double></property>
+                     <property name="value"><double>10.000000000000000</double></property>
+                    </widget>
+                   </item>
+                   <item row="1" column="2">
+                    <widget class="QLabel" name="velocityControlPeriodLabel">
+                     <property name="text"><string>控制周期</string></property>
+                    </widget>
+                   </item>
+                   <item row="1" column="3">
+                    <widget class="QSpinBox" name="velocityControlPeriodSpin">
+                     <property name="suffix"><string> ms</string></property>
+                     <property name="minimum"><number>1</number></property>
+                     <property name="maximum"><number>100</number></property>
+                     <property name="value"><number>1</number></property>
+                    </widget>
+                   </item>
+                   <item row="2" column="0" colspan="4">
+                    <widget class="QStackedWidget" name="velocityTrajectoryParameterStack">
+                     <property name="currentIndex"><number>0</number></property>
+                     <widget class="QWidget" name="velocityQuinticPage">
+                      <layout class="QHBoxLayout" name="velocityQuinticLayout">
+                       <property name="leftMargin"><number>0</number></property>
+                       <property name="topMargin"><number>0</number></property>
+                       <property name="rightMargin"><number>0</number></property>
+                       <property name="bottomMargin"><number>0</number></property>
+                       <item>
+                        <widget class="QLabel" name="velocityDeltaLabel">
+                         <property name="text"><string>相对位移</string></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QDoubleSpinBox" name="velocityDeltaSpin">
+                         <property name="suffix"><string> °</string></property>
+                         <property name="decimals"><number>4</number></property>
+                         <property name="minimum"><double>-1000000.000000000000000</double></property>
+                         <property name="maximum"><double>1000000.000000000000000</double></property>
+                         <property name="value"><double>500.000000000000000</double></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <spacer name="velocityQuinticSpacer">
+                         <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                         <property name="sizeHint" stdset="0">
+                          <size><width>40</width><height>20</height></size>
+                         </property>
+                        </spacer>
+                       </item>
+                      </layout>
+                     </widget>
+                     <widget class="QWidget" name="velocitySinePage">
+                      <layout class="QHBoxLayout" name="velocitySineLayout">
+                       <property name="leftMargin"><number>0</number></property>
+                       <property name="topMargin"><number>0</number></property>
+                       <property name="rightMargin"><number>0</number></property>
+                       <property name="bottomMargin"><number>0</number></property>
+                       <item>
+                        <widget class="QLabel" name="velocitySineAmplitudeLabel">
+                         <property name="text"><string>振幅</string></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QDoubleSpinBox" name="velocitySineAmplitudeSpin">
+                         <property name="toolTip"><string>相对于启动时实际位置的往复振幅。</string></property>
+                         <property name="suffix"><string> °</string></property>
+                         <property name="decimals"><number>4</number></property>
+                         <property name="minimum"><double>0.001000000000000</double></property>
+                         <property name="maximum"><double>1000000.000000000000000</double></property>
+                         <property name="value"><double>30.000000000000000</double></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="velocitySineFrequencyLabel">
+                         <property name="text"><string>频率</string></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QDoubleSpinBox" name="velocitySineFrequencySpin">
+                         <property name="suffix"><string> Hz</string></property>
+                         <property name="decimals"><number>4</number></property>
+                         <property name="minimum"><double>0.001000000000000</double></property>
+                         <property name="maximum"><double>100.000000000000000</double></property>
+                         <property name="value"><double>0.200000000000000</double></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <spacer name="velocitySineSpacer">
+                         <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                         <property name="sizeHint" stdset="0">
+                          <size><width>40</width><height>20</height></size>
+                         </property>
+                        </spacer>
+                       </item>
+                      </layout>
+                     </widget>
+                     <widget class="QWidget" name="velocityChirpPage">
+                      <layout class="QHBoxLayout" name="velocityChirpLayout">
+                       <property name="leftMargin"><number>0</number></property>
+                       <property name="topMargin"><number>0</number></property>
+                       <property name="rightMargin"><number>0</number></property>
+                       <property name="bottomMargin"><number>0</number></property>
+                       <item>
+                        <widget class="QLabel" name="velocityChirpAmplitudeLabel">
+                         <property name="text"><string>振幅</string></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QDoubleSpinBox" name="velocityChirpAmplitudeSpin">
+                         <property name="toolTip"><string>相对于启动时实际位置的扫频振幅。</string></property>
+                         <property name="suffix"><string> °</string></property>
+                         <property name="decimals"><number>4</number></property>
+                         <property name="minimum"><double>0.001000000000000</double></property>
+                         <property name="maximum"><double>1000000.000000000000000</double></property>
+                         <property name="value"><double>30.000000000000000</double></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="velocityChirpStartFrequencyLabel">
+                         <property name="text"><string>起始频率</string></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QDoubleSpinBox" name="velocityChirpStartFrequencySpin">
+                         <property name="suffix"><string> Hz</string></property>
+                         <property name="decimals"><number>4</number></property>
+                         <property name="minimum"><double>0.001000000000000</double></property>
+                         <property name="maximum"><double>100.000000000000000</double></property>
+                         <property name="value"><double>0.100000000000000</double></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QLabel" name="velocityChirpEndFrequencyLabel">
+                         <property name="text"><string>终止频率</string></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <widget class="QDoubleSpinBox" name="velocityChirpEndFrequencySpin">
+                         <property name="suffix"><string> Hz</string></property>
+                         <property name="decimals"><number>4</number></property>
+                         <property name="minimum"><double>0.001000000000000</double></property>
+                         <property name="maximum"><double>100.000000000000000</double></property>
+                         <property name="value"><double>1.000000000000000</double></property>
+                        </widget>
+                       </item>
+                       <item>
+                        <spacer name="velocityChirpSpacer">
+                         <property name="orientation"><enum>Qt::Horizontal</enum></property>
+                         <property name="sizeHint" stdset="0">
+                          <size><width>40</width><height>20</height></size>
+                         </property>
+                        </spacer>
+                       </item>
+                      </layout>
+                     </widget>
+                    </widget>
+                   </item>
+                   <item row="3" column="0">
+                    <widget class="QLabel" name="velocityUnitDefinitionLabel">
+                     <property name="toolTip"><string>速度闭环启动时写入测试轴的 pulse/unit。该设置同时决定板卡速度单位与 Trace 速度换算。</string></property>
+                     <property name="text"><string>脉冲当量</string></property>
+                    </widget>
+                   </item>
+                   <item row="3" column="1">
+                    <widget class="QComboBox" name="velocityUnitDefinitionCombo">
+                     <property name="toolTip"><string>选择速度闭环测试轴的脉冲当量。三种预设分别对应 1、0.1、0.01 °/unit；选择“自定义”后在右侧输入 pulse/unit。</string></property>
+                     <item><property name="text"><string>500.622（1 unit = 1°）</string></property></item>
+                     <item><property name="text"><string>50.0622（1 unit = 0.1°）</string></property></item>
+                     <item><property name="text"><string>5.00622（1 unit = 0.01°）</string></property></item>
+                     <item><property name="text"><string>自定义</string></property></item>
+                    </widget>
+                   </item>
+                   <item row="3" column="2">
+                    <widget class="QLabel" name="velocityCustomEquivalentLabel">
+                     <property name="enabled"><bool>false</bool></property>
+                     <property name="toolTip"><string>自定义每个板卡 unit 对应的脉冲数。程序按 500.622 pulse/deg 计算其对应的 °/unit。</string></property>
+                     <property name="text"><string>自定义值</string></property>
+                    </widget>
+                   </item>
+                   <item row="3" column="3">
+                    <widget class="QDoubleSpinBox" name="velocityCustomEquivalentSpin">
+                     <property name="enabled"><bool>false</bool></property>
+                     <property name="toolTip"><string>输入自定义脉冲当量，单位为 pulse/unit，必须大于0。</string></property>
+                     <property name="suffix"><string> pulse/unit</string></property>
+                     <property name="decimals"><number>6</number></property>
+                     <property name="minimum"><double>0.000001000000000</double></property>
+                     <property name="maximum"><double>1000000000.000000000000000</double></property>
+                     <property name="value"><double>500.622000000000014</double></property>
+                    </widget>
                    </item>
                   </layout>
                  </widget>

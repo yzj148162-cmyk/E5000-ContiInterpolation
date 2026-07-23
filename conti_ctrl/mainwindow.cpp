@@ -79,6 +79,10 @@ void MainWindow::connectWorker()
         ui_->velocityCustomEquivalentLabel->setEnabled(custom);
         ui_->velocityCustomEquivalentSpin->setEnabled(custom);
     });
+    connect(ui_->velocityTrajectoryTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            ui_->velocityTrajectoryParameterStack, &QStackedWidget::setCurrentIndex);
+    ui_->velocityTrajectoryParameterStack->setCurrentIndex(
+        ui_->velocityTrajectoryTypeCombo->currentIndex());
     connect(ui_->producerPeriodSpin, qOverload<int>(&QSpinBox::valueChanged),
             this, &MainWindow::onProducerPeriodChanged);
     connect(ui_->initializeButton, &QPushButton::clicked, this, &MainWindow::onInitializeClicked);
@@ -244,6 +248,8 @@ VelocityControlConfig MainWindow::collectVelocityConfig() const
     VelocityControlConfig config;
     config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
     config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
+    config.trajectoryType = static_cast<VelocityTrajectoryType>(
+        ui_->velocityTrajectoryTypeCombo->currentIndex());
     switch (ui_->velocityUnitDefinitionCombo->currentIndex()) {
     case 1:
         config.degreesPerCardUnit = 0.1;
@@ -260,6 +266,11 @@ VelocityControlConfig MainWindow::collectVelocityConfig() const
         break;
     }
     config.relativeDeltaDegree = ui_->velocityDeltaSpin->value();
+    config.sineAmplitudeDegree = ui_->velocitySineAmplitudeSpin->value();
+    config.sineFrequencyHz = ui_->velocitySineFrequencySpin->value();
+    config.chirpAmplitudeDegree = ui_->velocityChirpAmplitudeSpin->value();
+    config.chirpStartFrequencyHz = ui_->velocityChirpStartFrequencySpin->value();
+    config.chirpEndFrequencyHz = ui_->velocityChirpEndFrequencySpin->value();
     config.durationS = ui_->velocityDurationSpin->value();
     config.controlPeriodMs = ui_->velocityControlPeriodSpin->value();
     config.pidEnabled = ui_->velocityPidEnableCheck->isChecked();
