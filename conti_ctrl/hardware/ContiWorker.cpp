@@ -152,7 +152,8 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
         enterError(QStringLiteral("基础轴配置失败，已关闭控制卡。"));
         return;
     }
-    if (!configureFeedbackTrace({config_.activeAxis, config_.holdAxis}, error)) {
+    if (!configureFeedbackTrace({config_.activeAxis, config_.holdAxis},
+                                config_.degreesPerCardUnit, error)) {
         QString closeError;
         card_.closeBoard(closeError);
         detectedBoardCount_ = 0;
@@ -356,7 +357,8 @@ void ContiWorker::enableSelectedAxes(const ContiTestConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.activeAxis, config.holdAxis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, traceError)) {
+        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis},
+                                    config_.degreesPerCardUnit, traceError)) {
             enterError(QStringLiteral("位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -403,7 +405,8 @@ void ContiWorker::disableSelectedAxes(const ContiTestConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.activeAxis, config.holdAxis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, traceError)) {
+        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis},
+                                    config_.degreesPerCardUnit, traceError)) {
             enterError(QStringLiteral("位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -547,7 +550,8 @@ void ContiWorker::startTest(const ContiTestConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.activeAxis, config.holdAxis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis}, traceError)) {
+        if (!configureFeedbackTrace({config.activeAxis, config.holdAxis},
+                                    config_.degreesPerCardUnit, traceError)) {
             enterError(QStringLiteral("位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -800,7 +804,7 @@ void ContiWorker::enableJogAxis(const SingleAxisJogConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.axis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.axis}, traceError)) {
+        if (!configureFeedbackTrace({config.axis}, config_.degreesPerCardUnit, traceError)) {
             enterError(QStringLiteral("单轴位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -901,7 +905,7 @@ void ContiWorker::setJogAxisZero(const SingleAxisJogConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.axis}) {
         QString error;
-        if (!configureFeedbackTrace({config.axis}, error)) {
+        if (!configureFeedbackTrace({config.axis}, config_.degreesPerCardUnit, error)) {
             emit logMessage(QStringLiteral("设置软件零位前 Trace 重配失败：%1").arg(error));
             return;
         }
@@ -951,7 +955,7 @@ void ContiWorker::startPointMove(const SingleAxisJogConfig &config)
     }
     if (traceAxes_ != QVector<quint16> {config.axis}) {
         QString traceError;
-        if (!configureFeedbackTrace({config.axis}, traceError)) {
+        if (!configureFeedbackTrace({config.axis}, config_.degreesPerCardUnit, traceError)) {
             enterError(QStringLiteral("单轴位置 Trace 重配失败：%1").arg(traceError));
             return;
         }
@@ -1025,6 +1029,7 @@ bool ContiWorker::validateVelocityControlConfig(
 {
     const bool finite = std::isfinite(config.relativeDeltaDegree)
         && std::isfinite(config.durationS)
+        && std::isfinite(config.degreesPerCardUnit)
         && std::isfinite(config.kp)
         && std::isfinite(config.ki)
         && std::isfinite(config.kd)
@@ -1039,6 +1044,7 @@ bool ContiWorker::validateVelocityControlConfig(
         && std::isfinite(config.speedToleranceDegreePerSecond)
         && std::isfinite(config.maxFollowingErrorDegree);
     if (!finite || config.axis >= 8 || config.durationS <= 0.0
+        || config.degreesPerCardUnit <= 0.0
         || actualBusCycleUs_ <= 0 || config.controlPeriodMs <= 0
         || config.controlPeriodMs * 1000 < actualBusCycleUs_
         || (config.controlPeriodMs * 1000) % actualBusCycleUs_ != 0
@@ -1072,7 +1078,6 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
         return;
     }
     VelocityControlConfig config = requestedConfig;
-    config.degreesPerCardUnit = config_.degreesPerCardUnit;
     if (config.cardNo != initializedCardNo_) {
         emit logMessage(QStringLiteral("当前已初始化卡号为 %1，请勿切换卡号。")
                             .arg(initializedCardNo_));
@@ -1096,7 +1101,7 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
         enterError(QStringLiteral("轴 %1 脉冲当量设置失败：%2").arg(config.axis).arg(error));
         return;
     }
-    if (!configureFeedbackTrace({config.axis}, error)) {
+    if (!configureFeedbackTrace({config.axis}, config.degreesPerCardUnit, error)) {
         enterError(QStringLiteral("速度闭环 Trace 配置失败：%1").arg(error));
         return;
     }
@@ -1141,11 +1146,14 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
     velocityControlTimer_->start();
     stateText_ = QStringLiteral("速度闭环等待 Trace");
     emit logMessage(QStringLiteral("速度闭环已准备：轴 %1，相对位移=%2°，轨迹时间=%3 s，控制周期=%4 ms；"
-                                   "Trace=type 3/4/5/6，自动记录=%5。")
+                                   "脉冲当量=%5 pulse/unit（1 unit=%6°）；"
+                                   "Trace=type 3/4/5/6，自动记录=%7。")
                         .arg(config.axis)
                         .arg(config.relativeDeltaDegree, 0, 'f', 4)
                         .arg(config.durationS, 0, 'f', 3)
                         .arg(config.controlPeriodMs)
+                        .arg(MotorUnit::pulsesPerCardUnit(config.degreesPerCardUnit), 0, 'f', 6)
+                        .arg(config.degreesPerCardUnit, 0, 'g', 12)
                         .arg(velocityAutoRecording_ ? QStringLiteral("是") : QStringLiteral("否")));
     emit logMessage(QStringLiteral("速度闭环参数：前馈=%1×%2，Kp/Ki/Kd=%3/%4/%5，"
                                    "速度上限=%6°/s，加速度上限=%7°/s²，在线变速时间=%8 ms。")
@@ -2395,6 +2403,7 @@ void ContiWorker::refreshAxisStates()
 #endif
 
 bool ContiWorker::configureFeedbackTrace(const QVector<quint16> &axes,
+                                         double degreesPerCardUnit,
                                          QString &errorMessage)
 {
     if (telemetryRecorder_.status().recording) {
@@ -2409,7 +2418,8 @@ bool ContiWorker::configureFeedbackTrace(const QVector<quint16> &axes,
                            .arg(config_.traceCycle);
         return false;
     }
-    if (!card_.configureTrace(axes, traceSamplePeriodUs, config_.busCycleUs, errorMessage)) {
+    if (!card_.configureTrace(axes, traceSamplePeriodUs, config_.busCycleUs,
+                              degreesPerCardUnit, errorMessage)) {
         return false;
     }
     traceAxes_ = card_.traceAxes();

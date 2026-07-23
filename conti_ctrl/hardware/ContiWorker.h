@@ -73,7 +73,8 @@ private:
     void resetRunTimingState();
     void publishStatus();
     bool configureBaseAxes(const ContiTestConfig &config);
-    bool configureFeedbackTrace(const QVector<quint16> &axes, QString &errorMessage);
+    bool configureFeedbackTrace(const QVector<quint16> &axes, double degreesPerCardUnit,
+                                QString &errorMessage);
     bool pollTraceFeedback();
     void updateTraceVelocityDiagnostics(const QVector<TraceTelemetryFrame> &frames);
     void refreshAxisStates();

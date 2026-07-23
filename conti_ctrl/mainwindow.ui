@@ -2174,7 +2174,82 @@
                   </property>
                  </widget>
                 </item>
-                   <item row="0" column="4" rowspan="2">
+                <item row="2" column="0">
+                 <widget class="QLabel" name="velocityUnitDefinitionLabel">
+                  <property name="text">
+                   <string>脉冲当量</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>速度闭环启动时写入测试轴的 pulse/unit。该设置同时决定板卡速度单位与 Trace 速度换算。</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QComboBox" name="velocityUnitDefinitionCombo">
+                  <property name="toolTip">
+                   <string>选择速度闭环测试轴的脉冲当量。三种预设分别对应 1、0.1、0.01 °/unit；选择“自定义”后在右侧输入 pulse/unit。</string>
+                  </property>
+                  <item>
+                   <property name="text">
+                    <string>500.622（1 unit = 1°）</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>50.0622（1 unit = 0.1°）</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>5.00622（1 unit = 0.01°）</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>自定义</string>
+                   </property>
+                  </item>
+                 </widget>
+                </item>
+                <item row="2" column="2">
+                 <widget class="QLabel" name="velocityCustomEquivalentLabel">
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="text">
+                   <string>自定义值</string>
+                  </property>
+                  <property name="toolTip">
+                   <string>自定义每个板卡 unit 对应的脉冲数。程序按 500.622 pulse/deg 计算其对应的 °/unit。</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="3">
+                 <widget class="QDoubleSpinBox" name="velocityCustomEquivalentSpin">
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="toolTip">
+                   <string>输入自定义脉冲当量，单位为 pulse/unit，必须大于0。</string>
+                  </property>
+                  <property name="suffix">
+                   <string> pulse/unit</string>
+                  </property>
+                  <property name="decimals">
+                   <number>6</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.000001000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>1000000000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>500.622000000000014</double>
+                  </property>
+                 </widget>
+                </item>
+                   <item row="0" column="4" rowspan="3">
                     <spacer name="velocityTrajectorySpacer">
                      <property name="orientation">
                       <enum>Qt::Orientation::Horizontal</enum>
@@ -2288,10 +2363,16 @@
                   <property name="text">
                    <string>积分状态上限</string>
                   </property>
+                  <property name="toolTip">
+                   <string>将位置误差积分 ∫e·dt 限制在正负该值以内，防止积分持续累积造成饱和和过冲。</string>
+                  </property>
                  </widget>
                 </item>
                  <item row="2" column="3">
                   <widget class="QDoubleSpinBox" name="velocityIntegralLimitSpin">
+                  <property name="toolTip">
+                   <string>将位置误差积分 ∫e·dt 限制在正负该值以内，防止积分持续累积造成饱和和过冲。</string>
+                  </property>
                   <property name="suffix">
                    <string> °·s</string>
                   </property>
@@ -2311,10 +2392,16 @@
                   <property name="text">
                    <string>PID修正上限</string>
                   </property>
+                  <property name="toolTip">
+                   <string>把 P、I、D 三项之和限制在正负该速度范围内；限幅后的PID修正量再与速度前馈相加。</string>
+                  </property>
                  </widget>
                 </item>
                  <item row="3" column="1">
                   <widget class="QDoubleSpinBox" name="velocityMaxCorrectionSpin">
+                  <property name="toolTip">
+                   <string>把 P、I、D 三项之和限制在正负该速度范围内；限幅后的PID修正量再与速度前馈相加。</string>
+                  </property>
                   <property name="suffix">
                    <string> °/s</string>
                   </property>
@@ -2485,10 +2572,16 @@
                   <property name="text">
                    <string>位置容差</string>
                   </property>
+                  <property name="toolTip">
+                   <string>轨迹时间结束后，只有绝对位置误差不大于该值，才满足终点位置条件。</string>
+                  </property>
                  </widget>
                 </item>
                  <item row="0" column="1">
                   <widget class="QDoubleSpinBox" name="velocityPositionToleranceSpin">
+                  <property name="toolTip">
+                   <string>轨迹时间结束后，只有绝对位置误差不大于该值，才满足终点位置条件。</string>
+                  </property>
                   <property name="suffix">
                    <string> °</string>
                   </property>
@@ -2511,10 +2604,16 @@
                   <property name="text">
                    <string>速度容差</string>
                   </property>
+                  <property name="toolTip">
+                   <string>轨迹时间结束后，只有 Trace 实际速度绝对值不大于该值，才满足终点速度条件。</string>
+                  </property>
                  </widget>
                 </item>
                  <item row="0" column="3">
                   <widget class="QDoubleSpinBox" name="velocitySpeedToleranceSpin">
+                  <property name="toolTip">
+                   <string>轨迹时间结束后，只有 Trace 实际速度绝对值不大于该值，才满足终点速度条件。</string>
+                  </property>
                   <property name="suffix">
                    <string> °/s</string>
                   </property>
@@ -2537,10 +2636,16 @@
                   <property name="text">
                    <string>稳态确认</string>
                   </property>
+                  <property name="toolTip">
+                   <string>位置误差和实际速度同时进入各自容差后，必须连续保持该时长，才判定轨迹完成。</string>
+                  </property>
                  </widget>
                 </item>
                  <item row="1" column="1">
                   <widget class="QSpinBox" name="velocityStableDwellSpin">
+                  <property name="toolTip">
+                   <string>位置误差和实际速度同时进入各自容差后，必须连续保持该时长，才判定轨迹完成。</string>
+                  </property>
                   <property name="suffix">
                    <string> ms</string>
                   </property>
@@ -2560,10 +2665,16 @@
                   <property name="text">
                    <string>终点超时</string>
                   </property>
+                  <property name="toolTip">
+                   <string>轨迹规划时间结束后允许继续等待终点稳态的最长时间；超时仍未满足条件则安全停止并报告异常。</string>
+                  </property>
                  </widget>
                 </item>
                  <item row="1" column="3">
                   <widget class="QSpinBox" name="velocityFinishTimeoutSpin">
+                  <property name="toolTip">
+                   <string>轨迹规划时间结束后允许继续等待终点稳态的最长时间；超时仍未满足条件则安全停止并报告异常。</string>
+                  </property>
                   <property name="suffix">
                    <string> ms</string>
                   </property>
@@ -2583,10 +2694,16 @@
                   <property name="text">
                    <string>最大跟随误差</string>
                   </property>
+                  <property name="toolTip">
+                   <string>运行期间允许的最大绝对位置跟随误差；超过该值立即按故障流程停止，防止运动失控。</string>
+                  </property>
                  </widget>
                 </item>
                  <item row="2" column="1">
                   <widget class="QDoubleSpinBox" name="velocityMaxFollowingErrorSpin">
+                  <property name="toolTip">
+                   <string>运行期间允许的最大绝对位置跟随误差；超过该值立即按故障流程停止，防止运动失控。</string>
+                  </property>
                   <property name="suffix">
                    <string> °</string>
                   </property>
@@ -2609,10 +2726,16 @@
                   <property name="text">
                    <string>Trace超时</string>
                   </property>
+                  <property name="toolTip">
+                   <string>运行期间允许没有收到新Trace反馈帧的最长时间；超过该值立即停止，避免使用过期反馈继续控制。</string>
+                  </property>
                  </widget>
                 </item>
                  <item row="2" column="3">
                   <widget class="QSpinBox" name="velocityTraceTimeoutSpin">
+                  <property name="toolTip">
+                   <string>运行期间允许没有收到新Trace反馈帧的最长时间；超过该值立即停止，避免使用过期反馈继续控制。</string>
+                  </property>
                   <property name="suffix">
                    <string> ms</string>
                   </property>

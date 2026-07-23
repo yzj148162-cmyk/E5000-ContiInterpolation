@@ -282,7 +282,7 @@ public:
     }
 
     bool configureTrace(const QVector<quint16> &axes, int samplePeriodUs,
-                        int traceBaseCycleUs, QString &error)
+                        int traceBaseCycleUs, double degreesPerCardUnit, QString &error)
     {
         QSet<quint16> uniqueAxes;
         for (const quint16 axis : axes) {
@@ -290,6 +290,11 @@ public:
         }
         if (axes.isEmpty() || axes.size() > 8 || uniqueAxes.size() != axes.size()) {
             error = QStringLiteral("Trace 测试轴必须为 1 至 8 个互不重复的轴");
+            return false;
+        }
+        if (!std::isfinite(degreesPerCardUnit) || degreesPerCardUnit <= 0.0) {
+            error = QStringLiteral("Trace 板卡 unit 定义无效：%1 °/unit")
+                        .arg(degreesPerCardUnit, 0, 'g', 12);
             return false;
         }
         traceAxes_ = axes;
@@ -310,7 +315,8 @@ public:
         traceConfig.samplePeriodUs = samplePeriodUs;
         traceConfig.traceBaseCycleUs = traceBaseCycleUs;
         traceConfig.objects.reserve(traceAxes_.size() * 4);
-        const auto addObject = [&traceConfig](int logicalIndex, short dataType, quint16 axis) {
+        const auto addObject = [&traceConfig](int logicalIndex, short dataType,
+                                               quint16 axis, double scale) {
             RuntimeTraceSlaveReader::ObjectConfig object;
             object.logicalIndex = logicalIndex;
             object.dataType = dataType;
@@ -319,22 +325,25 @@ public:
             object.slaveId = 0;
             object.apiDataBytes = 4;
             object.valueBytes = 4;
-            object.scale = 1.0 / MotorUnit::kPhysicalPulsesPerDegree;
+            object.scale = scale;
             traceConfig.objects.push_back(object);
         };
         // 固定对象顺序：type 3 指令速度、type 4 实际速度、type 5 指令位置、
-        // type 6 实际位置。速度与位置整型量均按物理 pulse 基准换算。
+        // type 6 实际位置。type 3/4 原始值为 card unit/s，type 5/6 为 pulse。
         for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(index, 3, traceAxes_.at(index));
+            addObject(index, 3, traceAxes_.at(index), degreesPerCardUnit);
         }
         for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(traceAxes_.size() + index, 4, traceAxes_.at(index));
+            addObject(traceAxes_.size() + index, 4, traceAxes_.at(index),
+                      degreesPerCardUnit);
         }
         for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(traceAxes_.size() * 2 + index, 5, traceAxes_.at(index));
+            addObject(traceAxes_.size() * 2 + index, 5, traceAxes_.at(index),
+                      1.0 / MotorUnit::kPhysicalPulsesPerDegree);
         }
         for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(traceAxes_.size() * 3 + index, 6, traceAxes_.at(index));
+            addObject(traceAxes_.size() * 3 + index, 6, traceAxes_.at(index),
+                      1.0 / MotorUnit::kPhysicalPulsesPerDegree);
         }
         if (!feedbackTrace_.configure(traceConfig)) {
             error = QStringLiteral("dmc_trace_* 返回码=%1").arg(feedbackTrace_.lastApiResult());
@@ -501,8 +510,12 @@ bool E5000HardwareInterface::readBusCycle(int &cycleUs, QString &error) const
 bool E5000HardwareInterface::readEthercatSlaveCount(quint16 &slaveCount, QString &error) const
 { return invokeHardware(backend_, [&] { return backend_->readEthercatSlaveCount(slaveCount, error); }); }
 bool E5000HardwareInterface::configureTrace(const QVector<quint16> &axes, int samplePeriodUs,
-                                             int traceBaseCycleUs, QString &error)
-{ return invokeHardware(backend_, [&] { return backend_->configureTrace(axes, samplePeriodUs, traceBaseCycleUs, error); }); }
+                                             int traceBaseCycleUs,
+                                             double degreesPerCardUnit, QString &error)
+{ return invokeHardware(backend_, [&] {
+    return backend_->configureTrace(axes, samplePeriodUs, traceBaseCycleUs,
+                                    degreesPerCardUnit, error);
+}); }
 bool E5000HardwareInterface::enableAxis(quint16 axis, QString &notice, QString &error)
 { return invokeHardware(backend_, [&] { return backend_->enable(axis, notice, error); }); }
 bool E5000HardwareInterface::disableAxis(quint16 axis, QString &error)

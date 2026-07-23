@@ -73,6 +73,12 @@ void MainWindow::connectWorker()
         };
         ui_->equivValueLabel->setText(equivalents.value(index, equivalents.first()));
     });
+    connect(ui_->velocityUnitDefinitionCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+        const bool custom = index == 3;
+        ui_->velocityCustomEquivalentLabel->setEnabled(custom);
+        ui_->velocityCustomEquivalentSpin->setEnabled(custom);
+    });
     connect(ui_->producerPeriodSpin, qOverload<int>(&QSpinBox::valueChanged),
             this, &MainWindow::onProducerPeriodChanged);
     connect(ui_->initializeButton, &QPushButton::clicked, this, &MainWindow::onInitializeClicked);
@@ -238,6 +244,21 @@ VelocityControlConfig MainWindow::collectVelocityConfig() const
     VelocityControlConfig config;
     config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
     config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
+    switch (ui_->velocityUnitDefinitionCombo->currentIndex()) {
+    case 1:
+        config.degreesPerCardUnit = 0.1;
+        break;
+    case 2:
+        config.degreesPerCardUnit = 0.01;
+        break;
+    case 3:
+        config.degreesPerCardUnit = ui_->velocityCustomEquivalentSpin->value()
+            / MotorUnit::kPhysicalPulsesPerDegree;
+        break;
+    default:
+        config.degreesPerCardUnit = 1.0;
+        break;
+    }
     config.relativeDeltaDegree = ui_->velocityDeltaSpin->value();
     config.durationS = ui_->velocityDurationSpin->value();
     config.controlPeriodMs = ui_->velocityControlPeriodSpin->value();

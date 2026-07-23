@@ -23,7 +23,7 @@ public:
     bool readEthercatSlaveCount(quint16 &slaveCount, QString &errorMessage) const;
 
     bool configureTrace(const QVector<quint16> &axes, int samplePeriodUs, int traceBaseCycleUs,
-                        QString &errorMessage);
+                        double degreesPerCardUnit, QString &errorMessage);
     bool enableAxis(quint16 axis, QString &noticeMessage, QString &errorMessage);
     bool disableAxis(quint16 axis, QString &errorMessage);
 
