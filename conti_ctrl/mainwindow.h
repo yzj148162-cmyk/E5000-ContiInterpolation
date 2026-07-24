@@ -148,7 +148,7 @@ private:
     QChart *velocityErrorChart_ = nullptr;
     QChart *velocitySpeedChart_ = nullptr;
     QLineSeries *velocityPositionSeries_[3] {nullptr, nullptr, nullptr};
-    QLineSeries *velocityErrorSeries_[3] {nullptr, nullptr, nullptr};
+    QLineSeries *velocityErrorSeries_[4] {nullptr, nullptr, nullptr, nullptr};
     QLineSeries *velocitySpeedSeries_[4] {nullptr, nullptr, nullptr, nullptr};
     QValueAxis *velocityPositionTimeAxis_ = nullptr;
     QValueAxis *velocityPositionValueAxis_ = nullptr;
@@ -159,7 +159,7 @@ private:
     QVector<VelocityPlotSample> pendingVelocityPlotSamples_;
     QVector<VelocityPlotSample> velocityPlotBucket_;
     QList<QPointF> velocityPositionDisplayPoints_[3];
-    QList<QPointF> velocityErrorDisplayPoints_[3];
+    QList<QPointF> velocityErrorDisplayPoints_[4];
     QList<QPointF> velocitySpeedDisplayPoints_[4];
     qint64 velocityPlotBucketIndex_ = -1;
     quint64 lastVelocityRunId_ = 0;

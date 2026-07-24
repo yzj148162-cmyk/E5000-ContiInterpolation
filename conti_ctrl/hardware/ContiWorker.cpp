@@ -1206,6 +1206,8 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
     velocityPlotPublishClock_.invalidate();
     velocityPlotTraceStartTimeUs_ = 0;
     velocityPlotTraceStartValid_ = false;
+    velocityPlotCommandHistory_.clear();
+    velocityPlotLastTraceSequence_ = 0;
     velocityPid_.reset();
     velocityRunClock_.invalidate();
     velocityCycleClock_.invalidate();
@@ -1386,6 +1388,11 @@ void ContiWorker::runVelocityControlCycle()
         velocityTraceFreshClock_.restart();
         velocityStatus_.actualPositionDegree = feedback.encoderPositionUnit;
         velocityStatus_.referencePositionDegree = velocityStartPositionDegree_;
+        velocityStatus_.delayAlignedFollowingErrorDegree =
+            feedback.delayCompensatedFollowingErrorUnit;
+        velocityStatus_.delayCompensationMs = feedback.delayCompensationMs;
+        velocityStatus_.delayAlignedFollowingErrorValid =
+            feedback.delayCompensationValid;
         velocityStatus_.stateText = QStringLiteral("闭环运行中");
         stateText_ = QStringLiteral("速度闭环运行中");
         velocityPlotTraceStartTimeUs_ = latestTraceTimeUs_;
@@ -1398,6 +1405,10 @@ void ContiWorker::runVelocityControlCycle()
         initialSample.cardCommandPositionDegree = feedback.commandPositionUnit;
         initialSample.actualPositionDegree = feedback.encoderPositionUnit;
         initialSample.positionErrorDegree = velocityStartPositionDegree_ - feedback.encoderPositionUnit;
+        initialSample.delayAlignedFollowingErrorDegree =
+            feedback.delayCompensatedFollowingErrorUnit;
+        initialSample.delayAlignedFollowingErrorValid =
+            feedback.delayCompensationValid;
         initialSample.positionToleranceDegree = velocityConfig_.positionToleranceDegree;
         initialSample.cardCommandVelocityDegreePerSecond = feedback.commandVelocityUnitPerSecond;
         initialSample.actualVelocityDegreePerSecond = feedback.actualVelocityUnitPerSecond;
@@ -1469,6 +1480,11 @@ void ContiWorker::runVelocityControlCycle()
     velocityStatus_.cardCommandPositionDegree = feedback.commandPositionUnit;
     velocityStatus_.actualPositionDegree = feedback.encoderPositionUnit;
     velocityStatus_.positionErrorDegree = positionError;
+    velocityStatus_.delayAlignedFollowingErrorDegree =
+        feedback.delayCompensatedFollowingErrorUnit;
+    velocityStatus_.delayCompensationMs = feedback.delayCompensationMs;
+    velocityStatus_.delayAlignedFollowingErrorValid =
+        feedback.delayCompensationValid;
     velocityStatus_.referenceVelocityDegreePerSecond = referenceVelocity;
     velocityStatus_.commandVelocityDegreePerSecond = output.commandVelocity;
     velocityStatus_.cardCommandVelocityDegreePerSecond = feedback.commandVelocityUnitPerSecond;
@@ -1543,6 +1559,8 @@ void ContiWorker::finishVelocityControl(const QString &message, bool emergency)
     velocityReferenceInitialized_ = false;
     velocityStatus_.active = false;
     velocityStatus_.motionStarted = false;
+    velocityPlotCommandHistory_.clear();
+    velocityPlotLastTraceSequence_ = 0;
     velocityStatus_.stateText = emergency ? QStringLiteral("异常停止") : QStringLiteral("已完成");
     stateText_ = velocityStatus_.stateText;
     telemetryRecorder_.appendEvent(emergency
@@ -1582,6 +1600,52 @@ void ContiWorker::appendVelocityPlotFrames(const QVector<TraceTelemetryFrame> &f
             || (frame.validAxisMask & static_cast<quint8>(1U << axisIndex)) == 0U) {
             continue;
         }
+        if (velocityPlotLastTraceSequence_ > 0
+            && frame.traceSequence != velocityPlotLastTraceSequence_ + 1) {
+            velocityPlotCommandHistory_.clear();
+        }
+        velocityPlotLastTraceSequence_ = frame.traceSequence;
+
+        const double cardCommandPositionDegree =
+            frame.commandPulse[axisIndex] * kPulseToDegree;
+        velocityPlotCommandHistory_.enqueue(
+            {frame.traceTimeUs, cardCommandPositionDegree});
+        const double appliedDelayMs =
+            velocityConfig_.axis < traceDelayAxisResults_.size()
+            ? traceDelayAxisResults_.at(velocityConfig_.axis).appliedDelayMs
+            : kDefaultTracePositionDelayMs;
+        const quint64 delayUs = static_cast<quint64>(std::llround(
+            std::max(0.0, appliedDelayMs) * 1000.0));
+        bool delayAlignedErrorValid = false;
+        double delayAlignedCommandPositionDegree = 0.0;
+        if (frame.traceTimeUs >= delayUs) {
+            const quint64 targetTimeUs = frame.traceTimeUs - delayUs;
+            while (velocityPlotCommandHistory_.size() >= 2
+                   && velocityPlotCommandHistory_.at(1).traceTimeUs <= targetTimeUs) {
+                velocityPlotCommandHistory_.dequeue();
+            }
+            if (!velocityPlotCommandHistory_.isEmpty()
+                && velocityPlotCommandHistory_.first().traceTimeUs == targetTimeUs) {
+                delayAlignedCommandPositionDegree =
+                    velocityPlotCommandHistory_.first().commandPositionDegree;
+                delayAlignedErrorValid = true;
+            } else if (velocityPlotCommandHistory_.size() >= 2
+                       && velocityPlotCommandHistory_.first().traceTimeUs < targetTimeUs
+                       && velocityPlotCommandHistory_.at(1).traceTimeUs > targetTimeUs) {
+                const TraceCommandHistorySample &left =
+                    velocityPlotCommandHistory_.at(0);
+                const TraceCommandHistorySample &right =
+                    velocityPlotCommandHistory_.at(1);
+                const double ratio =
+                    (targetTimeUs - left.traceTimeUs)
+                    / static_cast<double>(right.traceTimeUs - left.traceTimeUs);
+                delayAlignedCommandPositionDegree =
+                    left.commandPositionDegree
+                    + ratio * (right.commandPositionDegree
+                               - left.commandPositionDegree);
+                delayAlignedErrorValid = true;
+            }
+        }
 
         VelocityPlotSample sample;
         sample.runId = velocityRunId_;
@@ -1590,9 +1654,12 @@ void ContiWorker::appendVelocityPlotFrames(const QVector<TraceTelemetryFrame> &f
             / 1000000.0;
         evaluateVelocityReference(sample.elapsedS, sample.referencePositionDegree,
                                   sample.referenceVelocityDegreePerSecond);
-        sample.cardCommandPositionDegree = frame.commandPulse[axisIndex] * kPulseToDegree;
+        sample.cardCommandPositionDegree = cardCommandPositionDegree;
         sample.actualPositionDegree = frame.actualPulse[axisIndex] * kPulseToDegree;
         sample.positionErrorDegree = sample.referencePositionDegree - sample.actualPositionDegree;
+        sample.delayAlignedFollowingErrorDegree =
+            delayAlignedCommandPositionDegree - sample.actualPositionDegree;
+        sample.delayAlignedFollowingErrorValid = delayAlignedErrorValid;
         sample.positionToleranceDegree = velocityConfig_.positionToleranceDegree;
         sample.commandVelocityDegreePerSecond = velocityStatus_.commandVelocityDegreePerSecond;
         sample.cardCommandVelocityDegreePerSecond =

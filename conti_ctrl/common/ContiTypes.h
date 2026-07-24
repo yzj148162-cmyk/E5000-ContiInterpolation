@@ -218,6 +218,9 @@ struct VelocityControlStatus
     double cardCommandPositionDegree = 0.0;
     double actualPositionDegree = 0.0;
     double positionErrorDegree = 0.0;
+    double delayAlignedFollowingErrorDegree = 0.0;
+    double delayCompensationMs = 8.0;
+    bool delayAlignedFollowingErrorValid = false;
     double referenceVelocityDegreePerSecond = 0.0;
     double commandVelocityDegreePerSecond = 0.0;
     double cardCommandVelocityDegreePerSecond = 0.0;
@@ -302,6 +305,8 @@ struct VelocityPlotSample
     double cardCommandPositionDegree = 0.0;
     double actualPositionDegree = 0.0;
     double positionErrorDegree = 0.0;
+    double delayAlignedFollowingErrorDegree = 0.0;
+    bool delayAlignedFollowingErrorValid = false;
     double positionToleranceDegree = 0.0;
     double referenceVelocityDegreePerSecond = 0.0;
     double commandVelocityDegreePerSecond = 0.0;

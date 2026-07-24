@@ -733,11 +733,19 @@ void MainWindow::updateStatus(const ContiStatus &status)
                                                .arg(velocity.elapsedS, 0, 'f', 3)
                                                .arg(velocity.controlDtMs, 0, 'f', 3)
                                                .arg(velocity.maximumJitterMs, 0, 'f', 3));
-    ui_->velocityPositionStatusValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 °")
-                                                       .arg(velocity.referencePositionDegree, 0, 'f', 5)
-                                                       .arg(velocity.cardCommandPositionDegree, 0, 'f', 5)
-                                                       .arg(velocity.actualPositionDegree, 0, 'f', 5)
-                                                       .arg(velocity.positionErrorDegree, 0, 'f', 5));
+    const QString delayAlignedErrorText =
+        velocity.delayAlignedFollowingErrorValid
+        ? QStringLiteral("%1°（τ=%2 ms）")
+              .arg(velocity.delayAlignedFollowingErrorDegree, 0, 'f', 5)
+              .arg(velocity.delayCompensationMs, 0, 'f', 3)
+        : QStringLiteral("--（等待延迟历史帧）");
+    ui_->velocityPositionStatusValueLabel->setText(
+        QStringLiteral("%1 / %2 / %3 / %4 °；延迟对齐=%5")
+            .arg(velocity.referencePositionDegree, 0, 'f', 5)
+            .arg(velocity.cardCommandPositionDegree, 0, 'f', 5)
+            .arg(velocity.actualPositionDegree, 0, 'f', 5)
+            .arg(velocity.positionErrorDegree, 0, 'f', 5)
+            .arg(delayAlignedErrorText));
     ui_->velocitySpeedStatusValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 °/s")
                                                     .arg(velocity.referenceVelocityDegreePerSecond, 0, 'f', 5)
                                                     .arg(velocity.commandVelocityDegreePerSecond, 0, 'f', 5)
@@ -1059,9 +1067,10 @@ void MainWindow::initializeVelocityControlCharts()
     createChart(QStringLiteral("位置跟踪：规划 / 板卡指令 / Trace实际"),
                 QStringLiteral("位置 (°)"), ui_->velocityPositionChartView,
                 velocityPositionChart_, velocityPositionTimeAxis_, velocityPositionValueAxis_);
-    createChart(QStringLiteral("位置误差与允许范围"), QStringLiteral("误差 (°)"),
-                ui_->velocityErrorChartView, velocityErrorChart_,
-                velocityErrorTimeAxis_, velocityErrorValueAxis_);
+    createChart(QStringLiteral("位置误差：轨迹时间 / 延迟对齐 / 允许范围"),
+                QStringLiteral("误差 (°)"),
+                 ui_->velocityErrorChartView, velocityErrorChart_,
+                 velocityErrorTimeAxis_, velocityErrorValueAxis_);
     createChart(QStringLiteral("速度跟踪：规划 / PID命令 / 板卡指令 / Trace实际"),
                 QStringLiteral("速度 (°/s)"), ui_->velocitySpeedChartView,
                 velocitySpeedChart_, velocitySpeedTimeAxis_, velocitySpeedValueAxis_);
@@ -1082,15 +1091,19 @@ void MainWindow::initializeVelocityControlCharts()
         velocityPositionSeries_[index]->attachAxis(velocityPositionTimeAxis_);
         velocityPositionSeries_[index]->attachAxis(velocityPositionValueAxis_);
     }
-    const QStringList errorNames {QStringLiteral("位置误差"),
+    const QStringList errorNames {QStringLiteral("轨迹时间误差"),
+                                  QStringLiteral("延迟对齐误差"),
                                   QStringLiteral("正允许误差"),
                                   QStringLiteral("负允许误差")};
-    for (int index = 0; index < 3; ++index) {
+    const QList<QColor> errorColors {red, green,
+                                     QColor(140, 140, 140),
+                                     QColor(140, 140, 140)};
+    for (int index = 0; index < 4; ++index) {
         velocityErrorSeries_[index] = new QLineSeries(velocityErrorChart_);
         velocityErrorSeries_[index]->setName(errorNames.at(index));
-        velocityErrorSeries_[index]->setPen(QPen(index == 0 ? red : QColor(140, 140, 140),
-                                                  index == 0 ? 1.6 : 1.0,
-                                                  index == 0 ? Qt::SolidLine : Qt::DashLine));
+        velocityErrorSeries_[index]->setPen(
+            QPen(errorColors.at(index), index < 2 ? 1.6 : 1.0,
+                 index < 2 ? Qt::SolidLine : Qt::DashLine));
         velocityErrorChart_->addSeries(velocityErrorSeries_[index]);
         velocityErrorSeries_[index]->attachAxis(velocityErrorTimeAxis_);
         velocityErrorSeries_[index]->attachAxis(velocityErrorValueAxis_);
@@ -1366,6 +1379,40 @@ void MainWindow::updateVelocityControlCharts()
             points.append(QPointF(minimumSample->elapsedS, minimumValue));
         }
     };
+    const auto appendValidExtrema = [this](QList<QPointF> &points,
+                                            const auto &valueOf,
+                                            const auto &isValid) {
+        const VelocityPlotSample *minimumSample = nullptr;
+        const VelocityPlotSample *maximumSample = nullptr;
+        double minimumValue = 0.0;
+        double maximumValue = 0.0;
+        for (const VelocityPlotSample &sample : velocityPlotBucket_) {
+            if (!isValid(sample)) {
+                continue;
+            }
+            const double value = valueOf(sample);
+            if (minimumSample == nullptr || value < minimumValue) {
+                minimumSample = &sample;
+                minimumValue = value;
+            }
+            if (maximumSample == nullptr || value > maximumValue) {
+                maximumSample = &sample;
+                maximumValue = value;
+            }
+        }
+        if (minimumSample == nullptr || maximumSample == nullptr) {
+            return;
+        }
+        if (minimumSample == maximumSample || qFuzzyCompare(minimumValue, maximumValue)) {
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+        } else if (minimumSample->elapsedS <= maximumSample->elapsedS) {
+            points.append(QPointF(minimumSample->elapsedS, minimumValue));
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+        } else {
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+            points.append(QPointF(minimumSample->elapsedS, minimumValue));
+        }
+    };
     const auto trimPoints = [kMaximumDisplayPointsPerSeries](QList<QPointF> &points,
                                                              double cutoffTime) {
         qsizetype removeCount = 0;
@@ -1380,7 +1427,8 @@ void MainWindow::updateVelocityControlCharts()
             points.remove(0, overflow);
         }
     };
-    const auto flushBucket = [this, &appendExtrema, &trimPoints, &displayChanged]() {
+    const auto flushBucket = [this, &appendExtrema, &appendValidExtrema,
+                              &trimPoints, &displayChanged]() {
         if (velocityPlotBucket_.isEmpty()) {
             return;
         }
@@ -1392,8 +1440,16 @@ void MainWindow::updateVelocityControlCharts()
                       [](const VelocityPlotSample &sample) { return sample.actualPositionDegree; });
         appendExtrema(velocityErrorDisplayPoints_[0],
                       [](const VelocityPlotSample &sample) { return sample.positionErrorDegree; });
-        velocityErrorDisplayPoints_[1].append(QPointF(time, last.positionToleranceDegree));
-        velocityErrorDisplayPoints_[2].append(QPointF(time, -last.positionToleranceDegree));
+        appendValidExtrema(
+            velocityErrorDisplayPoints_[1],
+            [](const VelocityPlotSample &sample) {
+                return sample.delayAlignedFollowingErrorDegree;
+            },
+            [](const VelocityPlotSample &sample) {
+                return sample.delayAlignedFollowingErrorValid;
+            });
+        velocityErrorDisplayPoints_[2].append(QPointF(time, last.positionToleranceDegree));
+        velocityErrorDisplayPoints_[3].append(QPointF(time, -last.positionToleranceDegree));
         velocitySpeedDisplayPoints_[0].append(QPointF(time, last.referenceVelocityDegreePerSecond));
         velocitySpeedDisplayPoints_[1].append(QPointF(time, last.commandVelocityDegreePerSecond));
         velocitySpeedDisplayPoints_[2].append(QPointF(time, last.cardCommandVelocityDegreePerSecond));
@@ -1435,6 +1491,8 @@ void MainWindow::updateVelocityControlCharts()
 
     for (int index = 0; index < 3; ++index) {
         velocityPositionSeries_[index]->replace(velocityPositionDisplayPoints_[index]);
+    }
+    for (int index = 0; index < 4; ++index) {
         velocityErrorSeries_[index]->replace(velocityErrorDisplayPoints_[index]);
     }
     for (int index = 0; index < 4; ++index) {
@@ -1481,7 +1539,7 @@ void MainWindow::updateVelocityControlCharts()
              &velocityPositionDisplayPoints_[2]}, 0.1);
     fitAxes(ui_->velocityErrorChartView,
             {&velocityErrorDisplayPoints_[0], &velocityErrorDisplayPoints_[1],
-             &velocityErrorDisplayPoints_[2]}, 0.01);
+             &velocityErrorDisplayPoints_[2], &velocityErrorDisplayPoints_[3]}, 0.01);
     fitAxes(ui_->velocitySpeedChartView,
             {&velocitySpeedDisplayPoints_[0], &velocitySpeedDisplayPoints_[1],
              &velocitySpeedDisplayPoints_[2], &velocitySpeedDisplayPoints_[3]}, 0.1);

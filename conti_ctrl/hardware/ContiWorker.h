@@ -178,6 +178,8 @@ private:
     QElapsedTimer velocityPlotPublishClock_;
     quint64 velocityPlotTraceStartTimeUs_ = 0;
     bool velocityPlotTraceStartValid_ = false;
+    QQueue<TraceCommandHistorySample> velocityPlotCommandHistory_;
+    quint64 velocityPlotLastTraceSequence_ = 0;
     TraceDelayCalibrationConfig traceDelayConfig_;
     TraceDelayCalibrationStatus traceDelayStatus_;
     QVector<TraceDelayAxisResult> traceDelayAxisResults_;
