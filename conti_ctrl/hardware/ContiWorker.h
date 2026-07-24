@@ -9,6 +9,7 @@
 
 #include "common/ContiTypes.h"
 #include "control/PositionVelocityPid.h"
+#include "control/TraceDelayCalibration.h"
 #include "hardware/E5000HardwareInterface.h"
 #include "planner/QuinticTrajectory.h"
 #include "telemetry/TelemetryRecorder.h"
@@ -42,6 +43,9 @@ public slots:
     void startVelocityControl(const VelocityControlConfig &config);
     void stopVelocityControl(bool emergency);
     void resetVelocityController();
+    void startTraceDelayCalibration(const TraceDelayCalibrationConfig &config);
+    void stopTraceDelayCalibration(bool emergency);
+    void resetTraceDelayCalibrationAxis(quint16 axis);
     void startTelemetryRecording();
     void stopTelemetryRecording();
     void refreshBusCycle();
@@ -51,11 +55,13 @@ signals:
     void logMessage(const QString &message);
     void statusChanged(const ContiStatus &status);
     void velocityPlotSamplesReady(const QVector<VelocityPlotSample> &samples);
+    void traceDelayPlotSamplesReady(const QVector<TraceDelayPlotSample> &samples);
 
 private slots:
     void produceNextPoint();
     void monitorContinuousRun();
     void runVelocityControlCycle();
+    void runTraceDelayCalibrationCycle();
 
 private:
     bool startAfterPreload();
@@ -92,8 +98,37 @@ private:
     void finishVelocityControl(const QString &message, bool emergency = false);
     void appendVelocityPlotFrames(const QVector<TraceTelemetryFrame> &frames);
     void flushVelocityPlotSamples();
+    bool validateTraceDelayCalibrationConfig(const TraceDelayCalibrationConfig &config,
+                                             QString &errorMessage) const;
+    bool startNextTraceDelaySegment(QString &errorMessage);
+    void analyzeTraceDelayCalibration();
+    void finishTraceDelayCalibration(const QString &message,
+                                     bool failed = false,
+                                     bool emergency = false);
+    void appendTraceDelayCalibrationFrames(const QVector<TraceTelemetryFrame> &frames);
+    void flushTraceDelayPlotSamples();
+    void resetTraceDelayHistory();
+    void applyTraceDelayCompensation(const QVector<TraceTelemetryFrame> &frames);
+    void loadTraceDelayCalibrationResults();
+    void saveTraceDelayCalibrationResults();
+    void validateLoadedTraceDelayTiming();
+    QString traceDelayCalibrationFilePath() const;
 
 private:
+    enum class TraceDelayPhase
+    {
+        Idle,
+        Resting,
+        Moving,
+        Stopping
+    };
+
+    struct TraceCommandHistorySample
+    {
+        quint64 traceTimeUs = 0;
+        double commandPositionDegree = 0.0;
+    };
+
     // 控制线程只保存状态机与轨迹数据；SDK、Trace PDO 和控制卡状态均在
     // E5000HardwareInterface 的独占硬件线程内。
     E5000HardwareInterface card_;
@@ -108,6 +143,7 @@ private:
     QTimer *monitorTimer_ = nullptr;
     QTimer *feedbackTimer_ = nullptr;
     QTimer *velocityControlTimer_ = nullptr;
+    QTimer *traceDelayCalibrationTimer_ = nullptr;
     ContiTestConfig config_;
     ContiFeedStatus lastFeedStatus_;
     bool boardInitialized_ = false;
@@ -122,6 +158,9 @@ private:
     bool velocityMotionStarted_ = false;
     bool velocityReferenceInitialized_ = false;
     bool velocityAutoRecording_ = false;
+    bool traceDelayCalibrationActive_ = false;
+    bool traceDelayMotionStarted_ = false;
+    bool traceDelayAutoRecording_ = false;
     bool manualTelemetryRecording_ = false;
     quint64 velocityRunId_ = 0;
     VelocityControlConfig velocityConfig_;
@@ -139,6 +178,23 @@ private:
     QElapsedTimer velocityPlotPublishClock_;
     quint64 velocityPlotTraceStartTimeUs_ = 0;
     bool velocityPlotTraceStartValid_ = false;
+    TraceDelayCalibrationConfig traceDelayConfig_;
+    TraceDelayCalibrationStatus traceDelayStatus_;
+    QVector<TraceDelayAxisResult> traceDelayAxisResults_;
+    QVector<double> traceDelaySegmentTargets_;
+    QVector<TraceDelaySegmentCapture> traceDelaySegments_;
+    QVector<TraceTelemetryFrame> traceDelayCurrentSegmentFrames_;
+    TraceDelayPhase traceDelayPhase_ = TraceDelayPhase::Idle;
+    int traceDelayCurrentSegmentIndex_ = 0;
+    quint64 traceDelayRunId_ = 0;
+    QElapsedTimer traceDelayPhaseClock_;
+    QElapsedTimer traceDelayPlotPublishClock_;
+    quint64 traceDelayPlotStartTimeUs_ = 0;
+    QVector<TraceDelayPlotSample> pendingTraceDelayPlotSamples_;
+    std::array<QQueue<TraceCommandHistorySample>, 8> traceCommandHistory_;
+    quint64 lastTraceDelaySequence_ = 0;
+    int savedCalibrationBusCycleUs_ = 0;
+    int savedCalibrationTracePeriodUs_ = 0;
     quint16 pointMoveAxis_ = 0;
     bool pointMoveDiagnosticPending_ = false;
     double pointMoveRequestedTargetUnit_ = 0.0;

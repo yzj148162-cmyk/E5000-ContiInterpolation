@@ -23,6 +23,7 @@
 #include <QtWidgets/QLabel>
 #include <QtWidgets/QMainWindow>
 #include <QtWidgets/QPlainTextEdit>
+#include <QtWidgets/QProgressBar>
 #include <QtWidgets/QPushButton>
 #include <QtWidgets/QScrollArea>
 #include <QtWidgets/QSpacerItem>
@@ -356,6 +357,52 @@ public:
     ZoomableChartView *velocityErrorChartView;
     ZoomableChartView *velocitySpeedChartView;
     QLabel *velocityControlHintLabel;
+    QWidget *traceDelayCalibrationTab;
+    QVBoxLayout *traceDelayCalibrationTabLayout;
+    QScrollArea *traceDelayCalibrationScrollArea;
+    QWidget *traceDelayCalibrationScrollContent;
+    QVBoxLayout *traceDelayCalibrationContentLayout;
+    QGroupBox *traceDelayCalibrationParameterGroup;
+    QGridLayout *traceDelayCalibrationParameterLayout;
+    QLabel *traceDelayAxisLabel;
+    QComboBox *traceDelayAxisCombo;
+    QLabel *traceDelayUnitLabel;
+    QComboBox *traceDelayUnitCombo;
+    QLabel *traceDelayCustomEquivalentLabel;
+    QDoubleSpinBox *traceDelayCustomEquivalentSpin;
+    QLabel *traceDelaySpeed1Label;
+    QDoubleSpinBox *traceDelaySpeed1Spin;
+    QLabel *traceDelaySpeed2Label;
+    QDoubleSpinBox *traceDelaySpeed2Spin;
+    QLabel *traceDelaySpeed3Label;
+    QDoubleSpinBox *traceDelaySpeed3Spin;
+    QLabel *traceDelayHoldLabel;
+    QSpinBox *traceDelayHoldSpin;
+    QLabel *traceDelaySampleWindowLabel;
+    QSpinBox *traceDelaySampleWindowSpin;
+    QLabel *traceDelayRestLabel;
+    QSpinBox *traceDelayRestSpin;
+    QLabel *traceDelayChangeTimeLabel;
+    QDoubleSpinBox *traceDelayChangeTimeSpin;
+    QLabel *traceDelayTravelLimitLabel;
+    QDoubleSpinBox *traceDelayTravelLimitSpin;
+    QLabel *traceDelayAcceptanceHintLabel;
+    QGroupBox *traceDelayCalibrationControlGroup;
+    QGridLayout *traceDelayCalibrationControlLayout;
+    QPushButton *traceDelayStartButton;
+    QPushButton *traceDelayStopButton;
+    QPushButton *traceDelayEmergencyStopButton;
+    QPushButton *traceDelayResetAxisButton;
+    QLabel *traceDelayPhaseLabel;
+    QLabel *traceDelayPhaseValueLabel;
+    QProgressBar *traceDelayProgressBar;
+    QGroupBox *traceDelayResultGroup;
+    QVBoxLayout *traceDelayResultLayout;
+    QTableWidget *traceDelayResultTable;
+    QSplitter *traceDelayChartSplitter;
+    ZoomableChartView *traceDelayVelocityChartView;
+    ZoomableChartView *traceDelayFitChartView;
+    QLabel *traceDelayCalibrationHintLabel;
     QWidget *extensionTab;
     QVBoxLayout *extensionLayout;
     QLabel *extensionHintLabel;
@@ -2145,6 +2192,295 @@ public:
         velocityControlTabLayout->addWidget(velocityControlScrollArea);
 
         tabWidget->addTab(velocityControlTab, QString());
+        traceDelayCalibrationTab = new QWidget();
+        traceDelayCalibrationTab->setObjectName("traceDelayCalibrationTab");
+        traceDelayCalibrationTabLayout = new QVBoxLayout(traceDelayCalibrationTab);
+        traceDelayCalibrationTabLayout->setObjectName("traceDelayCalibrationTabLayout");
+        traceDelayCalibrationScrollArea = new QScrollArea(traceDelayCalibrationTab);
+        traceDelayCalibrationScrollArea->setObjectName("traceDelayCalibrationScrollArea");
+        traceDelayCalibrationScrollArea->setWidgetResizable(true);
+        traceDelayCalibrationScrollContent = new QWidget();
+        traceDelayCalibrationScrollContent->setObjectName("traceDelayCalibrationScrollContent");
+        traceDelayCalibrationScrollContent->setGeometry(QRect(0, 0, 940, 1050));
+        traceDelayCalibrationContentLayout = new QVBoxLayout(traceDelayCalibrationScrollContent);
+        traceDelayCalibrationContentLayout->setObjectName("traceDelayCalibrationContentLayout");
+        traceDelayCalibrationParameterGroup = new QGroupBox(traceDelayCalibrationScrollContent);
+        traceDelayCalibrationParameterGroup->setObjectName("traceDelayCalibrationParameterGroup");
+        traceDelayCalibrationParameterLayout = new QGridLayout(traceDelayCalibrationParameterGroup);
+        traceDelayCalibrationParameterLayout->setObjectName("traceDelayCalibrationParameterLayout");
+        traceDelayAxisLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelayAxisLabel->setObjectName("traceDelayAxisLabel");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayAxisLabel, 0, 0, 1, 1);
+
+        traceDelayAxisCombo = new QComboBox(traceDelayCalibrationParameterGroup);
+        traceDelayAxisCombo->addItem(QString());
+        traceDelayAxisCombo->addItem(QString());
+        traceDelayAxisCombo->addItem(QString());
+        traceDelayAxisCombo->addItem(QString());
+        traceDelayAxisCombo->addItem(QString());
+        traceDelayAxisCombo->addItem(QString());
+        traceDelayAxisCombo->addItem(QString());
+        traceDelayAxisCombo->addItem(QString());
+        traceDelayAxisCombo->setObjectName("traceDelayAxisCombo");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayAxisCombo, 0, 1, 1, 1);
+
+        traceDelayUnitLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelayUnitLabel->setObjectName("traceDelayUnitLabel");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayUnitLabel, 0, 2, 1, 1);
+
+        traceDelayUnitCombo = new QComboBox(traceDelayCalibrationParameterGroup);
+        traceDelayUnitCombo->addItem(QString());
+        traceDelayUnitCombo->addItem(QString());
+        traceDelayUnitCombo->addItem(QString());
+        traceDelayUnitCombo->addItem(QString());
+        traceDelayUnitCombo->setObjectName("traceDelayUnitCombo");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayUnitCombo, 0, 3, 1, 1);
+
+        traceDelayCustomEquivalentLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelayCustomEquivalentLabel->setObjectName("traceDelayCustomEquivalentLabel");
+        traceDelayCustomEquivalentLabel->setEnabled(false);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayCustomEquivalentLabel, 0, 4, 1, 1);
+
+        traceDelayCustomEquivalentSpin = new QDoubleSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelayCustomEquivalentSpin->setObjectName("traceDelayCustomEquivalentSpin");
+        traceDelayCustomEquivalentSpin->setEnabled(false);
+        traceDelayCustomEquivalentSpin->setDecimals(6);
+        traceDelayCustomEquivalentSpin->setMinimum(0.000001000000000);
+        traceDelayCustomEquivalentSpin->setMaximum(1000000.000000000000000);
+        traceDelayCustomEquivalentSpin->setValue(500.622000000000014);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayCustomEquivalentSpin, 0, 5, 1, 1);
+
+        traceDelaySpeed1Label = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelaySpeed1Label->setObjectName("traceDelaySpeed1Label");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelaySpeed1Label, 1, 0, 1, 1);
+
+        traceDelaySpeed1Spin = new QDoubleSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelaySpeed1Spin->setObjectName("traceDelaySpeed1Spin");
+        traceDelaySpeed1Spin->setDecimals(3);
+        traceDelaySpeed1Spin->setMinimum(0.001000000000000);
+        traceDelaySpeed1Spin->setMaximum(720.000000000000000);
+        traceDelaySpeed1Spin->setValue(30.000000000000000);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelaySpeed1Spin, 1, 1, 1, 1);
+
+        traceDelaySpeed2Label = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelaySpeed2Label->setObjectName("traceDelaySpeed2Label");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelaySpeed2Label, 1, 2, 1, 1);
+
+        traceDelaySpeed2Spin = new QDoubleSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelaySpeed2Spin->setObjectName("traceDelaySpeed2Spin");
+        traceDelaySpeed2Spin->setDecimals(3);
+        traceDelaySpeed2Spin->setMinimum(0.001000000000000);
+        traceDelaySpeed2Spin->setMaximum(720.000000000000000);
+        traceDelaySpeed2Spin->setValue(60.000000000000000);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelaySpeed2Spin, 1, 3, 1, 1);
+
+        traceDelaySpeed3Label = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelaySpeed3Label->setObjectName("traceDelaySpeed3Label");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelaySpeed3Label, 1, 4, 1, 1);
+
+        traceDelaySpeed3Spin = new QDoubleSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelaySpeed3Spin->setObjectName("traceDelaySpeed3Spin");
+        traceDelaySpeed3Spin->setDecimals(3);
+        traceDelaySpeed3Spin->setMinimum(0.001000000000000);
+        traceDelaySpeed3Spin->setMaximum(720.000000000000000);
+        traceDelaySpeed3Spin->setValue(100.000000000000000);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelaySpeed3Spin, 1, 5, 1, 1);
+
+        traceDelayHoldLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelayHoldLabel->setObjectName("traceDelayHoldLabel");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayHoldLabel, 2, 0, 1, 1);
+
+        traceDelayHoldSpin = new QSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelayHoldSpin->setObjectName("traceDelayHoldSpin");
+        traceDelayHoldSpin->setMinimum(200);
+        traceDelayHoldSpin->setMaximum(10000);
+        traceDelayHoldSpin->setValue(1500);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayHoldSpin, 2, 1, 1, 1);
+
+        traceDelaySampleWindowLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelaySampleWindowLabel->setObjectName("traceDelaySampleWindowLabel");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelaySampleWindowLabel, 2, 2, 1, 1);
+
+        traceDelaySampleWindowSpin = new QSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelaySampleWindowSpin->setObjectName("traceDelaySampleWindowSpin");
+        traceDelaySampleWindowSpin->setMinimum(100);
+        traceDelaySampleWindowSpin->setMaximum(5000);
+        traceDelaySampleWindowSpin->setValue(500);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelaySampleWindowSpin, 2, 3, 1, 1);
+
+        traceDelayRestLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelayRestLabel->setObjectName("traceDelayRestLabel");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayRestLabel, 2, 4, 1, 1);
+
+        traceDelayRestSpin = new QSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelayRestSpin->setObjectName("traceDelayRestSpin");
+        traceDelayRestSpin->setMinimum(100);
+        traceDelayRestSpin->setMaximum(10000);
+        traceDelayRestSpin->setValue(500);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayRestSpin, 2, 5, 1, 1);
+
+        traceDelayChangeTimeLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelayChangeTimeLabel->setObjectName("traceDelayChangeTimeLabel");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayChangeTimeLabel, 3, 0, 1, 1);
+
+        traceDelayChangeTimeSpin = new QDoubleSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelayChangeTimeSpin->setObjectName("traceDelayChangeTimeSpin");
+        traceDelayChangeTimeSpin->setDecimals(3);
+        traceDelayChangeTimeSpin->setMinimum(0.001000000000000);
+        traceDelayChangeTimeSpin->setMaximum(1.000000000000000);
+        traceDelayChangeTimeSpin->setSingleStep(0.001000000000000);
+        traceDelayChangeTimeSpin->setValue(0.001000000000000);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayChangeTimeSpin, 3, 1, 1, 1);
+
+        traceDelayTravelLimitLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelayTravelLimitLabel->setObjectName("traceDelayTravelLimitLabel");
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayTravelLimitLabel, 3, 2, 1, 1);
+
+        traceDelayTravelLimitSpin = new QDoubleSpinBox(traceDelayCalibrationParameterGroup);
+        traceDelayTravelLimitSpin->setObjectName("traceDelayTravelLimitSpin");
+        traceDelayTravelLimitSpin->setDecimals(3);
+        traceDelayTravelLimitSpin->setMinimum(1.000000000000000);
+        traceDelayTravelLimitSpin->setMaximum(100000.000000000000000);
+        traceDelayTravelLimitSpin->setValue(180.000000000000000);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayTravelLimitSpin, 3, 3, 1, 1);
+
+        traceDelayAcceptanceHintLabel = new QLabel(traceDelayCalibrationParameterGroup);
+        traceDelayAcceptanceHintLabel->setObjectName("traceDelayAcceptanceHintLabel");
+        traceDelayAcceptanceHintLabel->setWordWrap(true);
+
+        traceDelayCalibrationParameterLayout->addWidget(traceDelayAcceptanceHintLabel, 3, 4, 1, 2);
+
+
+        traceDelayCalibrationContentLayout->addWidget(traceDelayCalibrationParameterGroup);
+
+        traceDelayCalibrationControlGroup = new QGroupBox(traceDelayCalibrationScrollContent);
+        traceDelayCalibrationControlGroup->setObjectName("traceDelayCalibrationControlGroup");
+        traceDelayCalibrationControlLayout = new QGridLayout(traceDelayCalibrationControlGroup);
+        traceDelayCalibrationControlLayout->setObjectName("traceDelayCalibrationControlLayout");
+        traceDelayStartButton = new QPushButton(traceDelayCalibrationControlGroup);
+        traceDelayStartButton->setObjectName("traceDelayStartButton");
+
+        traceDelayCalibrationControlLayout->addWidget(traceDelayStartButton, 0, 0, 1, 1);
+
+        traceDelayStopButton = new QPushButton(traceDelayCalibrationControlGroup);
+        traceDelayStopButton->setObjectName("traceDelayStopButton");
+        traceDelayStopButton->setEnabled(false);
+
+        traceDelayCalibrationControlLayout->addWidget(traceDelayStopButton, 0, 1, 1, 1);
+
+        traceDelayEmergencyStopButton = new QPushButton(traceDelayCalibrationControlGroup);
+        traceDelayEmergencyStopButton->setObjectName("traceDelayEmergencyStopButton");
+        traceDelayEmergencyStopButton->setEnabled(false);
+
+        traceDelayCalibrationControlLayout->addWidget(traceDelayEmergencyStopButton, 0, 2, 1, 1);
+
+        traceDelayResetAxisButton = new QPushButton(traceDelayCalibrationControlGroup);
+        traceDelayResetAxisButton->setObjectName("traceDelayResetAxisButton");
+
+        traceDelayCalibrationControlLayout->addWidget(traceDelayResetAxisButton, 0, 3, 1, 1);
+
+        traceDelayPhaseLabel = new QLabel(traceDelayCalibrationControlGroup);
+        traceDelayPhaseLabel->setObjectName("traceDelayPhaseLabel");
+
+        traceDelayCalibrationControlLayout->addWidget(traceDelayPhaseLabel, 1, 0, 1, 1);
+
+        traceDelayPhaseValueLabel = new QLabel(traceDelayCalibrationControlGroup);
+        traceDelayPhaseValueLabel->setObjectName("traceDelayPhaseValueLabel");
+
+        traceDelayCalibrationControlLayout->addWidget(traceDelayPhaseValueLabel, 1, 1, 1, 2);
+
+        traceDelayProgressBar = new QProgressBar(traceDelayCalibrationControlGroup);
+        traceDelayProgressBar->setObjectName("traceDelayProgressBar");
+        traceDelayProgressBar->setValue(0);
+
+        traceDelayCalibrationControlLayout->addWidget(traceDelayProgressBar, 1, 3, 1, 1);
+
+
+        traceDelayCalibrationContentLayout->addWidget(traceDelayCalibrationControlGroup);
+
+        traceDelayResultGroup = new QGroupBox(traceDelayCalibrationScrollContent);
+        traceDelayResultGroup->setObjectName("traceDelayResultGroup");
+        traceDelayResultLayout = new QVBoxLayout(traceDelayResultGroup);
+        traceDelayResultLayout->setObjectName("traceDelayResultLayout");
+        traceDelayResultTable = new QTableWidget(traceDelayResultGroup);
+        if (traceDelayResultTable->columnCount() < 7)
+            traceDelayResultTable->setColumnCount(7);
+        QTableWidgetItem *__qtablewidgetitem8 = new QTableWidgetItem();
+        traceDelayResultTable->setHorizontalHeaderItem(0, __qtablewidgetitem8);
+        QTableWidgetItem *__qtablewidgetitem9 = new QTableWidgetItem();
+        traceDelayResultTable->setHorizontalHeaderItem(1, __qtablewidgetitem9);
+        QTableWidgetItem *__qtablewidgetitem10 = new QTableWidgetItem();
+        traceDelayResultTable->setHorizontalHeaderItem(2, __qtablewidgetitem10);
+        QTableWidgetItem *__qtablewidgetitem11 = new QTableWidgetItem();
+        traceDelayResultTable->setHorizontalHeaderItem(3, __qtablewidgetitem11);
+        QTableWidgetItem *__qtablewidgetitem12 = new QTableWidgetItem();
+        traceDelayResultTable->setHorizontalHeaderItem(4, __qtablewidgetitem12);
+        QTableWidgetItem *__qtablewidgetitem13 = new QTableWidgetItem();
+        traceDelayResultTable->setHorizontalHeaderItem(5, __qtablewidgetitem13);
+        QTableWidgetItem *__qtablewidgetitem14 = new QTableWidgetItem();
+        traceDelayResultTable->setHorizontalHeaderItem(6, __qtablewidgetitem14);
+        if (traceDelayResultTable->rowCount() < 8)
+            traceDelayResultTable->setRowCount(8);
+        traceDelayResultTable->setObjectName("traceDelayResultTable");
+        traceDelayResultTable->setEditTriggers(QAbstractItemView::EditTrigger::NoEditTriggers);
+        traceDelayResultTable->setAlternatingRowColors(true);
+        traceDelayResultTable->setSelectionBehavior(QAbstractItemView::SelectionBehavior::SelectRows);
+        traceDelayResultTable->setRowCount(8);
+        traceDelayResultTable->setColumnCount(7);
+
+        traceDelayResultLayout->addWidget(traceDelayResultTable);
+
+
+        traceDelayCalibrationContentLayout->addWidget(traceDelayResultGroup);
+
+        traceDelayChartSplitter = new QSplitter(traceDelayCalibrationScrollContent);
+        traceDelayChartSplitter->setObjectName("traceDelayChartSplitter");
+        traceDelayChartSplitter->setOrientation(Qt::Orientation::Vertical);
+        traceDelayChartSplitter->setChildrenCollapsible(false);
+        traceDelayVelocityChartView = new ZoomableChartView(traceDelayChartSplitter);
+        traceDelayVelocityChartView->setObjectName("traceDelayVelocityChartView");
+        traceDelayVelocityChartView->setMinimumSize(QSize(0, 260));
+        traceDelayChartSplitter->addWidget(traceDelayVelocityChartView);
+        traceDelayFitChartView = new ZoomableChartView(traceDelayChartSplitter);
+        traceDelayFitChartView->setObjectName("traceDelayFitChartView");
+        traceDelayFitChartView->setMinimumSize(QSize(0, 260));
+        traceDelayChartSplitter->addWidget(traceDelayFitChartView);
+
+        traceDelayCalibrationContentLayout->addWidget(traceDelayChartSplitter);
+
+        traceDelayCalibrationHintLabel = new QLabel(traceDelayCalibrationScrollContent);
+        traceDelayCalibrationHintLabel->setObjectName("traceDelayCalibrationHintLabel");
+        traceDelayCalibrationHintLabel->setWordWrap(true);
+
+        traceDelayCalibrationContentLayout->addWidget(traceDelayCalibrationHintLabel);
+
+        traceDelayCalibrationScrollArea->setWidget(traceDelayCalibrationScrollContent);
+
+        traceDelayCalibrationTabLayout->addWidget(traceDelayCalibrationScrollArea);
+
+        tabWidget->addTab(traceDelayCalibrationTab, QString());
         extensionTab = new QWidget();
         extensionTab->setObjectName("extensionTab");
         extensionLayout = new QVBoxLayout(extensionTab);
@@ -2428,7 +2764,7 @@ public:
         QTableWidgetItem *___qtablewidgetitem5 = axisFeedbackTable->horizontalHeaderItem(5);
         ___qtablewidgetitem5->setText(QCoreApplication::translate("MainWindow", "\345\256\236\351\231\205\344\275\215\347\275\256 (\302\260)", nullptr));
         QTableWidgetItem *___qtablewidgetitem6 = axisFeedbackTable->horizontalHeaderItem(6);
-        ___qtablewidgetitem6->setText(QCoreApplication::translate("MainWindow", "\350\267\237\351\232\217\350\257\257\345\267\256 (\302\260)", nullptr));
+        ___qtablewidgetitem6->setText(QCoreApplication::translate("MainWindow", "\350\241\245\345\201\277\350\257\257\345\267\256 (\302\260)", nullptr));
         QTableWidgetItem *___qtablewidgetitem7 = axisFeedbackTable->horizontalHeaderItem(7);
         ___qtablewidgetitem7->setText(QCoreApplication::translate("MainWindow", "\345\244\207\346\263\250", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(axisFeedbackTab), QCoreApplication::translate("MainWindow", "\350\275\264\351\205\215\347\275\256\344\270\216\345\217\215\351\246\210", nullptr));
@@ -2617,6 +2953,81 @@ public:
         velocityControlHintLabel->setText(QCoreApplication::translate("MainWindow", "1 ms Trace \345\216\237\345\247\213\345\270\247\345\256\214\346\225\264\345\274\202\346\255\245\350\256\260\345\275\225\357\274\233\345\256\236\346\227\266\346\233\262\347\272\277\346\214\211 10 ms \347\252\227\345\217\243\346\212\275\345\217\226\346\234\253\345\200\274\344\270\216\346\236\201\345\200\274\357\274\214UI \346\257\217 50 ms \344\275\277\347\224\250\346\234\211\351\231\220\346\230\276\347\244\272\347\274\223\345\255\230\346\225\264\344\275\223\345\210\267\346\226\260\357\274\214\351\201\277\345\205\215\351\253\230\351\242\221\347\273\230\345\233\276\351\230\273\345\241\236\343\200\202\350\277\220\350\241\214\347\273\223\346\235\237\346\210\226\345\201\234\346\255\242\345\220\216\346\233\262\347\272\277\347\253\213\345\215\263\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\347\273\230\345\233\276\345\214\272\345\206\205\346\273\232\345\212\250\346\273\232\350\275\256\345\217\257\347\274\251\346\224\276\357\274\214\346\214\211\344\275\217\345\267\246\351\224\256\345\217\257\346\213\226\345"
                         "\212\250\346\237\245\347\234\213\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(velocityControlTab), QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\351\227\255\347\216\257\346\265\213\350\257\225", nullptr));
+        traceDelayCalibrationParameterGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\350\275\264\346\240\207\345\256\232\345\217\202\346\225\260", nullptr));
+        traceDelayAxisLabel->setText(QCoreApplication::translate("MainWindow", "\346\240\207\345\256\232\350\275\264", nullptr));
+        traceDelayAxisCombo->setItemText(0, QCoreApplication::translate("MainWindow", "0", nullptr));
+        traceDelayAxisCombo->setItemText(1, QCoreApplication::translate("MainWindow", "1", nullptr));
+        traceDelayAxisCombo->setItemText(2, QCoreApplication::translate("MainWindow", "2", nullptr));
+        traceDelayAxisCombo->setItemText(3, QCoreApplication::translate("MainWindow", "3", nullptr));
+        traceDelayAxisCombo->setItemText(4, QCoreApplication::translate("MainWindow", "4", nullptr));
+        traceDelayAxisCombo->setItemText(5, QCoreApplication::translate("MainWindow", "5", nullptr));
+        traceDelayAxisCombo->setItemText(6, QCoreApplication::translate("MainWindow", "6", nullptr));
+        traceDelayAxisCombo->setItemText(7, QCoreApplication::translate("MainWindow", "7", nullptr));
+
+        traceDelayUnitLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241 unit", nullptr));
+        traceDelayUnitCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622 pulse/unit\357\274\2101 unit=1\302\260\357\274\211", nullptr));
+        traceDelayUnitCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622 pulse/unit\357\274\2101 unit=0.1\302\260\357\274\211", nullptr));
+        traceDelayUnitCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622 pulse/unit\357\274\2101 unit=0.01\302\260\357\274\211", nullptr));
+        traceDelayUnitCombo->setItemText(3, QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211 pulse/unit", nullptr));
+
+        traceDelayCustomEquivalentLabel->setText(QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\345\275\223\351\207\217", nullptr));
+        traceDelayCustomEquivalentSpin->setSuffix(QCoreApplication::translate("MainWindow", " pulse/unit", nullptr));
+        traceDelaySpeed1Label->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246 V1", nullptr));
+        traceDelaySpeed1Spin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
+        traceDelaySpeed2Label->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246 V2", nullptr));
+        traceDelaySpeed2Spin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
+        traceDelaySpeed3Label->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246 V3", nullptr));
+        traceDelaySpeed3Spin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
+#if QT_CONFIG(tooltip)
+        traceDelayHoldLabel->setToolTip(QCoreApplication::translate("MainWindow", "\346\257\217\344\270\252\346\255\243\345\220\221\346\210\226\345\217\215\345\220\221\351\200\237\345\272\246\346\256\265\347\232\204\346\200\273\344\277\235\346\214\201\346\227\266\351\227\264\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        traceDelayHoldLabel->setText(QCoreApplication::translate("MainWindow", "\344\277\235\346\214\201\346\227\266\351\227\264", nullptr));
+        traceDelayHoldSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+#if QT_CONFIG(tooltip)
+        traceDelaySampleWindowLabel->setToolTip(QCoreApplication::translate("MainWindow", "\345\217\252\344\273\216\347\250\263\345\256\232\351\200\237\345\272\246\345\270\247\344\270\255\346\210\252\345\217\226\350\257\245\351\225\277\345\272\246\347\232\204\344\270\255\345\244\256\347\252\227\345\217\243\345\217\202\344\270\216\346\213\237\345\220\210\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        traceDelaySampleWindowLabel->setText(QCoreApplication::translate("MainWindow", "\351\207\207\346\240\267\347\252\227\345\217\243", nullptr));
+        traceDelaySampleWindowSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        traceDelayRestLabel->setText(QCoreApplication::translate("MainWindow", "\346\256\265\351\227\264\351\235\231\346\255\242", nullptr));
+        traceDelayRestSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        traceDelayChangeTimeLabel->setText(QCoreApplication::translate("MainWindow", "\345\234\250\347\272\277\345\217\230\351\200\237\346\227\266\351\227\264", nullptr));
+        traceDelayChangeTimeSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
+#if QT_CONFIG(tooltip)
+        traceDelayTravelLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\345\211\215\344\274\260\347\256\227\346\257\217\346\256\265\344\275\215\347\247\273\357\274\214\350\266\205\350\277\207\350\257\245\345\200\274\346\213\222\347\273\235\350\277\220\350\241\214\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        traceDelayTravelLimitLabel->setText(QCoreApplication::translate("MainWindow", "\345\215\225\346\256\265\350\241\214\347\250\213\344\270\212\351\231\220", nullptr));
+        traceDelayTravelLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
+        traceDelayAcceptanceHintLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\232\350\277\207\346\235\241\344\273\266\357\274\232\346\227\240\344\270\242\345\270\247\343\200\2010\357\275\23620 ms\343\200\201R\302\262\342\211\2450.98\343\200\201\346\255\243\345\217\215\345\220\221\347\246\273\346\225\243\342\211\2441.5 ms", nullptr));
+        traceDelayCalibrationControlGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\240\207\345\256\232\346\216\247\345\210\266", nullptr));
+        traceDelayStartButton->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\345\215\225\350\275\264\346\240\207\345\256\232", nullptr));
+        traceDelayStopButton->setText(QCoreApplication::translate("MainWindow", "\345\207\217\351\200\237\345\201\234\346\255\242", nullptr));
+        traceDelayEmergencyStopButton->setText(QCoreApplication::translate("MainWindow", "\347\253\213\345\215\263\345\201\234\346\255\242", nullptr));
+        traceDelayResetAxisButton->setText(QCoreApplication::translate("MainWindow", "\351\207\215\347\275\256\346\211\200\351\200\211\350\275\264\347\273\223\346\236\234", nullptr));
+        traceDelayPhaseLabel->setText(QCoreApplication::translate("MainWindow", "\345\275\223\345\211\215\347\212\266\346\200\201", nullptr));
+        traceDelayPhaseValueLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\252\350\277\220\350\241\214", nullptr));
+        traceDelayResultGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\220\204\350\275\264\345\273\266\350\277\237\347\273\223\346\236\234", nullptr));
+        QTableWidgetItem *___qtablewidgetitem8 = traceDelayResultTable->horizontalHeaderItem(0);
+        ___qtablewidgetitem8->setText(QCoreApplication::translate("MainWindow", "\350\275\264\345\217\267", nullptr));
+        QTableWidgetItem *___qtablewidgetitem9 = traceDelayResultTable->horizontalHeaderItem(1);
+        ___qtablewidgetitem9->setText(QCoreApplication::translate("MainWindow", "\345\272\224\347\224\250\345\273\266\350\277\237(ms)", nullptr));
+        QTableWidgetItem *___qtablewidgetitem10 = traceDelayResultTable->horizontalHeaderItem(2);
+        ___qtablewidgetitem10->setText(QCoreApplication::translate("MainWindow", "\345\256\236\346\265\213\345\273\266\350\277\237(ms)", nullptr));
+        QTableWidgetItem *___qtablewidgetitem11 = traceDelayResultTable->horizontalHeaderItem(3);
+        ___qtablewidgetitem11->setText(QCoreApplication::translate("MainWindow", "\351\235\231\346\200\201\345\201\217\347\275\256(\302\260)", nullptr));
+        QTableWidgetItem *___qtablewidgetitem12 = traceDelayResultTable->horizontalHeaderItem(4);
+        ___qtablewidgetitem12->setText(QCoreApplication::translate("MainWindow", "R\302\262", nullptr));
+        QTableWidgetItem *___qtablewidgetitem13 = traceDelayResultTable->horizontalHeaderItem(5);
+        ___qtablewidgetitem13->setText(QCoreApplication::translate("MainWindow", "\346\235\245\346\272\220", nullptr));
+        QTableWidgetItem *___qtablewidgetitem14 = traceDelayResultTable->horizontalHeaderItem(6);
+        ___qtablewidgetitem14->setText(QCoreApplication::translate("MainWindow", "\347\212\266\346\200\201", nullptr));
+#if QT_CONFIG(tooltip)
+        traceDelayVelocityChartView->setToolTip(QCoreApplication::translate("MainWindow", "\346\273\232\350\275\256\347\274\251\346\224\276\357\274\214\346\214\211\344\275\217\345\267\246\351\224\256\346\213\226\345\212\250\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        traceDelayFitChartView->setToolTip(QCoreApplication::translate("MainWindow", "\346\250\252\350\275\264\344\270\272\347\250\263\345\256\232\346\256\265\346\214\207\344\273\244\351\200\237\345\272\246\357\274\214\347\272\265\350\275\264\344\270\272\345\220\214\345\270\247 type05-type06\357\274\233\347\233\264\347\272\277\346\226\234\347\216\207\345\215\263\345\273\266\350\277\237\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        traceDelayCalibrationHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\240\207\345\256\232\346\214\211 +V1/-V1\343\200\201+V2/-V2\343\200\201+V3/-V3 \350\207\252\345\212\250\346\211\247\350\241\214\343\200\202\345\217\252\344\277\256\346\255\243 Trace \350\257\212\346\226\255\350\267\237\351\232\217\350\257\257\345\267\256\357\274\214\344\270\215\346\224\271\345\217\230 PID \347\232\204\342\200\234\350\247\204\345\210\222\344\275\215\347\275\256\357\274\215\345\256\236\351\231\205\344\275\215\347\275\256\342\200\235\346\216\247\345\210\266\350\257\257\345\267\256\357\274\233\345\216\237\345\247\213 type03/04/05/06 \345\270\247\350\207\252\345\212\250\344\277\235\345\255\230\343\200\202", nullptr));
+        tabWidget->setTabText(tabWidget->indexOf(traceDelayCalibrationTab), QCoreApplication::translate("MainWindow", "Trace\345\273\266\350\277\237\346\240\207\345\256\232", nullptr));
         extensionHintLabel->setText(QCoreApplication::translate("MainWindow", "\346\255\244\351\241\265\351\235\242\351\242\204\347\225\231\347\273\231\345\220\216\347\273\255\347\232\204 8 \350\275\264 CDPR\343\200\201\345\212\250\345\212\233\345\255\246\346\261\202\350\247\243\343\200\201\345\212\233\344\274\240\346\204\237\345\231\250\345\222\214\347\274\223\345\206\262\346\260\264\344\275\215\350\207\252\345\212\250\350\260\203\351\200\237\347\255\211\345\212\237\350\203\275\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(extensionTab), QCoreApplication::translate("MainWindow", "\346\211\251\345\261\225\345\212\237\350\203\275\357\274\210\351\242\204\347\225\231\357\274\211", nullptr));
         logGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\277\220\350\241\214\346\227\245\345\277\227", nullptr));

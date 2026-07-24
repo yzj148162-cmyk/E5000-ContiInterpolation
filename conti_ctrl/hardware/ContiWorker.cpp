@@ -3,7 +3,14 @@
 #include <QTimer>
 #include <QThread>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
+#include <QFile>
+#include <QFileInfo>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include <QStandardPaths>
 #include <QStringList>
 
 #include <algorithm>
@@ -17,6 +24,9 @@ constexpr int kContiDiagnosticPeriodMs = 250;
 constexpr int kFirstSegmentTimeoutMs = 2000;
 constexpr int kCompletionStableDwellMs = 150;
 constexpr int kVelocityPlotPublishIntervalMs = 50;
+constexpr int kTraceDelayPlotPublishIntervalMs = 50;
+constexpr int kTraceDelayStopTimeoutMs = 2000;
+constexpr double kDefaultTracePositionDelayMs = 8.0;
 constexpr double kCompletionPositionToleranceDeg = 0.02;
 constexpr double kCompletionVelocityToleranceDegPerSecond = 1.0;
 constexpr double kDuplicatePositionToleranceDeg = 1e-12;
@@ -51,6 +61,16 @@ QString velocityTrajectoryName(VelocityTrajectoryType type)
     }
     return QStringLiteral("未知");
 }
+
+int traceFrameAxisIndex(const TraceTelemetryFrame &frame, quint16 axis)
+{
+    for (int index = 0; index < frame.axisCount; ++index) {
+        if (frame.axes[index] == axis) {
+            return index;
+        }
+    }
+    return -1;
+}
 }
 
 ContiWorker::ContiWorker(QObject *parent)
@@ -59,6 +79,7 @@ ContiWorker::ContiWorker(QObject *parent)
     , monitorTimer_(new QTimer(this))
     , feedbackTimer_(new QTimer(this))
     , velocityControlTimer_(new QTimer(this))
+    , traceDelayCalibrationTimer_(new QTimer(this))
 {
     softwareZeroUnit_.fill(0.0, 8);
     softwareZeroValid_.fill(false, 8);
@@ -70,12 +91,17 @@ ContiWorker::ContiWorker(QObject *parent)
     feedbackTimer_->setInterval(10);
     velocityControlTimer_->setTimerType(Qt::PreciseTimer);
     velocityControlTimer_->setInterval(10);
+    traceDelayCalibrationTimer_->setTimerType(Qt::PreciseTimer);
+    traceDelayCalibrationTimer_->setInterval(5);
 
     connect(producerTimer_, &QTimer::timeout, this, &ContiWorker::produceNextPoint);
     connect(monitorTimer_, &QTimer::timeout, this, &ContiWorker::monitorContinuousRun);
     connect(feedbackTimer_, &QTimer::timeout, this, &ContiWorker::refreshFeedback);
     connect(velocityControlTimer_, &QTimer::timeout,
             this, &ContiWorker::runVelocityControlCycle);
+    connect(traceDelayCalibrationTimer_, &QTimer::timeout,
+            this, &ContiWorker::runTraceDelayCalibrationCycle);
+    loadTraceDelayCalibrationResults();
 }
 
 void ContiWorker::initializeBoard(const ContiTestConfig &config)
@@ -157,6 +183,7 @@ void ContiWorker::initializeBoard(const ContiTestConfig &config)
     config_ = config;
     config_.busCycleUs = actualBusCycleUs;
     actualBusCycleUs_ = actualBusCycleUs;
+    validateLoadedTraceDelayTiming();
     if (!configureBaseAxes(config_)) {
         QString closeError;
         card_.closeBoard(closeError);
@@ -296,11 +323,14 @@ void ContiWorker::shutdownHardware()
     monitorTimer_->stop();
     feedbackTimer_->stop();
     velocityControlTimer_->stop();
+    traceDelayCalibrationTimer_->stop();
     resetRunTimingState();
 
     if (!boardInitialized_) {
         detectedAxes_.clear();
         manualTelemetryRecording_ = false;
+        traceDelayCalibrationActive_ = false;
+        traceDelayStatus_.active = false;
         return;
     }
 
@@ -320,6 +350,11 @@ void ContiWorker::shutdownHardware()
     manualTelemetryRecording_ = false;
     trajectoryComparisonActive_ = false;
     trajectoryTraceStartTimeUs_ = 0;
+    traceDelayCalibrationActive_ = false;
+    traceDelayMotionStarted_ = false;
+    traceDelayStatus_.active = false;
+    traceDelayStatus_.phaseText = QStringLiteral("控制卡已关闭");
+    resetTraceDelayHistory();
 
     QString error;
     if (!card_.closeBoard(error)) {
@@ -343,7 +378,8 @@ void ContiWorker::enableSelectedAxes(const ContiTestConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能切换轴使能。"));
         return;
     }
@@ -409,7 +445,8 @@ void ContiWorker::disableSelectedAxes(const ContiTestConfig &config)
     if (!boardInitialized_) {
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_) {
         stopTest(false);
     }
     if (config.cardNo != initializedCardNo_) {
@@ -444,7 +481,8 @@ void ContiWorker::enableAllDetectedAxes()
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能执行全局轴使能。"));
         return;
     }
@@ -494,6 +532,11 @@ void ContiWorker::disableAllDetectedAxes()
         emit logMessage(QStringLiteral("全局失能前正在停止速度闭环。"));
         finishVelocityControl(QStringLiteral("速度闭环已因全局失能而减速停止"), false);
     }
+    if (traceDelayCalibrationActive_) {
+        emit logMessage(QStringLiteral("全局失能前正在停止 Trace 延迟标定。"));
+        finishTraceDelayCalibration(QStringLiteral("Trace 延迟标定已因全局失能而停止"),
+                                    true, false);
+    }
     if (running_ || preparing_ || pointMoveActive_) {
         emit logMessage(QStringLiteral("全局失能前正在执行安全停止。"));
         safelyStopAllMotionForShutdown();
@@ -528,7 +571,7 @@ void ContiWorker::startTest(const ContiTestConfig &config)
         emit logMessage(QStringLiteral("启动前请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || velocityControlActive_) {
+    if (running_ || preparing_ || velocityControlActive_ || traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("已有测试正在准备或运行。"));
         return;
     }
@@ -701,6 +744,10 @@ void ContiWorker::startTest(const ContiTestConfig &config)
 
 void ContiWorker::stopTest(bool emergency)
 {
+    if (traceDelayCalibrationActive_) {
+        stopTraceDelayCalibration(emergency);
+        return;
+    }
     if (velocityControlActive_) {
         stopVelocityControl(emergency);
         return;
@@ -807,7 +854,8 @@ void ContiWorker::enableJogAxis(const SingleAxisJogConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("连续插补准备、运行或单轴点位运动期间不能切换点动测试轴。"));
         return;
     }
@@ -872,7 +920,7 @@ void ContiWorker::disableJogAxis(const SingleAxisJogConfig &config)
                             .arg(initializedCardNo_));
         return;
     }
-    if (running_ || preparing_ || velocityControlActive_) {
+    if (running_ || preparing_ || velocityControlActive_ || traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间不能失能点动测试轴。"));
         return;
     }
@@ -909,7 +957,8 @@ void ContiWorker::setJogAxisZero(const SingleAxisJogConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能修改点动软件零位。"));
         return;
     }
@@ -948,7 +997,7 @@ void ContiWorker::startPointMove(const SingleAxisJogConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || velocityControlActive_) {
+    if (running_ || preparing_ || velocityControlActive_ || traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间禁止单轴点动。"));
         return;
     }
@@ -1107,7 +1156,8 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_) {
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动速度闭环。"));
         return;
     }
@@ -1594,6 +1644,707 @@ void ContiWorker::resetVelocityController()
     publishStatus();
 }
 
+bool ContiWorker::validateTraceDelayCalibrationConfig(
+    const TraceDelayCalibrationConfig &config,
+    QString &errorMessage) const
+{
+    if (!std::isfinite(config.degreesPerCardUnit)
+        || config.degreesPerCardUnit <= 0.0
+        || config.axis >= 8U
+        || config.holdMs < 200
+        || config.sampleWindowMs < 100
+        || config.sampleWindowMs > config.holdMs - 100
+        || config.restMs < 100
+        || !std::isfinite(config.onlineChangeTimeS)
+        || config.onlineChangeTimeS < 0.001
+        || !std::isfinite(config.maximumSegmentTravelDegree)
+        || config.maximumSegmentTravelDegree <= 0.0) {
+        errorMessage = QStringLiteral(
+            "Trace 延迟标定参数无效：请检查 unit、保持/采样/静止时间、在线变速时间和单段行程。");
+        return false;
+    }
+    double previousSpeed = 0.0;
+    for (const double speed : config.speedDegreePerSecond) {
+        if (!std::isfinite(speed) || speed <= previousSpeed) {
+            errorMessage = QStringLiteral("三档标定速度必须为严格递增的正数。");
+            return false;
+        }
+        if (speed * config.holdMs / 1000.0 > config.maximumSegmentTravelDegree) {
+            errorMessage = QStringLiteral(
+                "速度 %1°/s 在保持 %2 ms 时的单段位移约 %3°，超过行程上限 %4°。")
+                               .arg(speed, 0, 'f', 3)
+                               .arg(config.holdMs)
+                               .arg(speed * config.holdMs / 1000.0, 0, 'f', 3)
+                               .arg(config.maximumSegmentTravelDegree, 0, 'f', 3);
+            return false;
+        }
+        previousSpeed = speed;
+    }
+    return true;
+}
+
+void ContiWorker::startTraceDelayCalibration(
+    const TraceDelayCalibrationConfig &requestedConfig)
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("请先初始化控制卡。"));
+        return;
+    }
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_) {
+        emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动 Trace 延迟标定。"));
+        return;
+    }
+    TraceDelayCalibrationConfig config = requestedConfig;
+    if (config.cardNo != initializedCardNo_) {
+        emit logMessage(QStringLiteral("当前已初始化卡号为 %1，请勿切换卡号。")
+                            .arg(initializedCardNo_));
+        return;
+    }
+    QString error;
+    if (!validateTraceDelayCalibrationConfig(config, error)) {
+        emit logMessage(error);
+        return;
+    }
+    if (!detectedAxes_.contains(config.axis) || !enabledAxes_.contains(config.axis)) {
+        emit logMessage(QStringLiteral("请先使能在线标定轴 %1。").arg(config.axis));
+        return;
+    }
+    if (telemetryRecorder_.status().recording) {
+        emit logMessage(QStringLiteral("请先停止当前 Trace 数据记录，再启动延迟标定。"));
+        return;
+    }
+    if (!card_.setAxisEquivalent(
+            config.cardNo, config.axis,
+            MotorUnit::pulsesPerCardUnit(config.degreesPerCardUnit), error)) {
+        enterError(QStringLiteral("轴 %1 脉冲当量设置失败：%2")
+                       .arg(config.axis).arg(error));
+        return;
+    }
+    if (!configureFeedbackTrace({config.axis}, config.degreesPerCardUnit, error)) {
+        enterError(QStringLiteral("Trace 延迟标定重配失败：%1").arg(error));
+        return;
+    }
+
+    traceDelayConfig_ = config;
+    traceDelaySegmentTargets_.clear();
+    for (const double speed : config.speedDegreePerSecond) {
+        traceDelaySegmentTargets_ << speed << -speed;
+    }
+    traceDelaySegments_.clear();
+    traceDelayCurrentSegmentFrames_.clear();
+    pendingTraceDelayPlotSamples_.clear();
+    resetTraceDelayHistory();
+    ++traceDelayRunId_;
+    traceDelayCurrentSegmentIndex_ = 0;
+    traceDelayPhase_ = TraceDelayPhase::Resting;
+    traceDelayCalibrationActive_ = true;
+    traceDelayMotionStarted_ = false;
+    traceDelayStatus_ = {};
+    traceDelayStatus_.active = true;
+    traceDelayStatus_.axis = config.axis;
+    traceDelayStatus_.totalSegments = traceDelaySegmentTargets_.size();
+    traceDelayStatus_.phaseText = QStringLiteral("启动前静止");
+    traceDelayStatus_.axisResults = traceDelayAxisResults_;
+    traceDelayPhaseClock_.start();
+    traceDelayPlotPublishClock_.start();
+    traceDelayPlotStartTimeUs_ = 0;
+
+    TelemetryRunMetadata metadata;
+    metadata.cardNo = initializedCardNo_;
+    metadata.axes = {config.axis};
+    metadata.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    metadata.degreesPerCardUnit = config.degreesPerCardUnit;
+    metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
+                                 .filePath(QStringLiteral("records"));
+    metadata.description = QStringLiteral(
+        "单轴 Trace 位置延迟标定：type 3/4 速度＋type 5/6 位置原始帧");
+    traceDelayAutoRecording_ = telemetryRecorder_.start(metadata, error);
+    if (!traceDelayAutoRecording_) {
+        emit logMessage(QStringLiteral("警告：标定原始 Trace 自动记录未启动：%1").arg(error));
+    } else {
+        emit logMessage(QStringLiteral("标定原始 Trace 已自动记录到：%1")
+                            .arg(telemetryRecorder_.status().outputDirectory));
+    }
+
+    feedbackTimer_->stop();
+    traceDelayCalibrationTimer_->start();
+    stateText_ = QStringLiteral("Trace 延迟标定中");
+    emit logMessage(QStringLiteral(
+        "Trace 延迟标定已启动：轴 %1，速度序列=±%2/±%3/±%4°/s，"
+        "保持=%5 ms，采样窗=%6 ms，段间静止=%7 ms；标定运动不会自动使能轴。")
+                        .arg(config.axis)
+                        .arg(config.speedDegreePerSecond[0], 0, 'f', 3)
+                        .arg(config.speedDegreePerSecond[1], 0, 'f', 3)
+                        .arg(config.speedDegreePerSecond[2], 0, 'f', 3)
+                        .arg(config.holdMs)
+                        .arg(config.sampleWindowMs)
+                        .arg(config.restMs));
+    publishStatus();
+}
+
+bool ContiWorker::startNextTraceDelaySegment(QString &errorMessage)
+{
+    if (traceDelayCurrentSegmentIndex_ < 0
+        || traceDelayCurrentSegmentIndex_ >= traceDelaySegmentTargets_.size()) {
+        errorMessage = QStringLiteral("标定段索引越界");
+        return false;
+    }
+    VelocityControlConfig motionConfig;
+    motionConfig.cardNo = traceDelayConfig_.cardNo;
+    motionConfig.axis = traceDelayConfig_.axis;
+    motionConfig.degreesPerCardUnit = traceDelayConfig_.degreesPerCardUnit;
+    motionConfig.onlineChangeTimeS = traceDelayConfig_.onlineChangeTimeS;
+    motionConfig.startVelocityThresholdDegreePerSecond = 0.001;
+    const double target = traceDelaySegmentTargets_.at(traceDelayCurrentSegmentIndex_);
+    if (!card_.startVelocityMove(motionConfig, target, errorMessage)) {
+        return false;
+    }
+    traceDelayMotionStarted_ = true;
+    traceDelayCurrentSegmentFrames_.clear();
+    traceDelayPhase_ = TraceDelayPhase::Moving;
+    traceDelayPhaseClock_.restart();
+    traceDelayStatus_.currentSegment = traceDelayCurrentSegmentIndex_ + 1;
+    traceDelayStatus_.targetSpeedDegreePerSecond = target;
+    traceDelayStatus_.phaseText = QStringLiteral("第 %1/%2 段：%3°/s 保持采样")
+                                      .arg(traceDelayStatus_.currentSegment)
+                                      .arg(traceDelayStatus_.totalSegments)
+                                      .arg(target, 0, 'f', 3);
+    emit logMessage(QStringLiteral("Trace 延迟标定：开始第 %1/%2 段，目标速度=%3°/s。")
+                        .arg(traceDelayStatus_.currentSegment)
+                        .arg(traceDelayStatus_.totalSegments)
+                        .arg(target, 0, 'f', 3));
+    return true;
+}
+
+void ContiWorker::runTraceDelayCalibrationCycle()
+{
+    if (!traceDelayCalibrationActive_) {
+        return;
+    }
+    if (!pollTraceFeedback()) {
+        finishTraceDelayCalibration(
+            QStringLiteral("Trace 延迟标定读取失败：%1").arg(traceStateText_), true, true);
+        return;
+    }
+    if (traceDelayConfig_.axis >= static_cast<quint16>(latestAxisFeedback_.size())) {
+        finishTraceDelayCalibration(QStringLiteral("Trace 延迟标定反馈轴索引越界"),
+                                    true, true);
+        return;
+    }
+    const AxisFeedback &feedback = latestAxisFeedback_.at(traceDelayConfig_.axis);
+    if (feedback.valid
+        && (feedback.stateMachine != 4U || feedback.axisErrorCode != 0U)) {
+        finishTraceDelayCalibration(
+            QStringLiteral("标定轴状态异常：状态机=%1，轴错误码=%2")
+                .arg(feedback.stateMachine).arg(feedback.axisErrorCode),
+            true, true);
+        return;
+    }
+
+    switch (traceDelayPhase_) {
+    case TraceDelayPhase::Resting:
+        traceDelayStatus_.progressPercent = static_cast<int>(
+            100.0 * traceDelayCurrentSegmentIndex_
+            / std::max(1, static_cast<int>(traceDelaySegmentTargets_.size())));
+        if (traceDelayPhaseClock_.elapsed() >= traceDelayConfig_.restMs) {
+            QString error;
+            if (!startNextTraceDelaySegment(error)) {
+                finishTraceDelayCalibration(
+                    QStringLiteral("Trace 延迟标定启动运动失败：%1").arg(error),
+                    true, true);
+                return;
+            }
+        }
+        break;
+    case TraceDelayPhase::Moving:
+        traceDelayStatus_.progressPercent = static_cast<int>(
+            100.0 * (traceDelayCurrentSegmentIndex_
+                     + std::min(1.0, traceDelayPhaseClock_.elapsed()
+                                          / static_cast<double>(traceDelayConfig_.holdMs)))
+            / std::max(1, static_cast<int>(traceDelaySegmentTargets_.size())));
+        if (traceDelayPhaseClock_.elapsed() >= traceDelayConfig_.holdMs) {
+            TraceDelaySegmentCapture capture;
+            capture.targetSpeedDegreePerSecond =
+                traceDelaySegmentTargets_.at(traceDelayCurrentSegmentIndex_);
+            capture.frames.swap(traceDelayCurrentSegmentFrames_);
+            traceDelaySegments_.push_back(capture);
+            QString error;
+            if (!card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, false, error)) {
+                finishTraceDelayCalibration(
+                    QStringLiteral("Trace 延迟标定减速停止失败：%1").arg(error),
+                    true, true);
+                return;
+            }
+            traceDelayPhase_ = TraceDelayPhase::Stopping;
+            traceDelayPhaseClock_.restart();
+            traceDelayStatus_.phaseText = QStringLiteral("第 %1/%2 段：等待停止")
+                                              .arg(traceDelayCurrentSegmentIndex_ + 1)
+                                              .arg(traceDelaySegmentTargets_.size());
+        }
+        break;
+    case TraceDelayPhase::Stopping: {
+        bool done = false;
+        QString error;
+        if (!card_.axisMotionDone(traceDelayConfig_.axis, done, error)) {
+            finishTraceDelayCalibration(
+                QStringLiteral("Trace 延迟标定读取停止状态失败：%1").arg(error),
+                true, true);
+            return;
+        }
+        if (!done && traceDelayPhaseClock_.elapsed() > kTraceDelayStopTimeoutMs) {
+            finishTraceDelayCalibration(QStringLiteral("Trace 延迟标定段间停止超时"),
+                                        true, true);
+            return;
+        }
+        if (done) {
+            traceDelayMotionStarted_ = false;
+            ++traceDelayCurrentSegmentIndex_;
+            if (traceDelayCurrentSegmentIndex_ >= traceDelaySegmentTargets_.size()) {
+                analyzeTraceDelayCalibration();
+                return;
+            }
+            traceDelayPhase_ = TraceDelayPhase::Resting;
+            traceDelayPhaseClock_.restart();
+            traceDelayStatus_.phaseText = QStringLiteral("段间静止");
+        }
+        break;
+    }
+    case TraceDelayPhase::Idle:
+        break;
+    }
+    publishStatus();
+}
+
+void ContiWorker::analyzeTraceDelayCalibration()
+{
+    const TraceDelayFitResult fit = TraceDelayCalibrationAnalyzer::analyze(
+        traceDelayConfig_, card_.traceSamplePeriodUs(), traceDelaySegments_);
+    TraceDelayAxisResult attempt = fit.axisResult;
+    attempt.timestamp = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
+    traceDelayStatus_.fittedSpeedDegreePerSecond =
+        fit.measuredSpeedDegreePerSecond;
+    traceDelayStatus_.fittedPositionGapDegree =
+        fit.measuredPositionGapDegree;
+    traceDelayStatus_.fittedSlopeSecond = fit.axisResult.measuredDelayMs / 1000.0;
+    traceDelayStatus_.fittedInterceptDegree = fit.axisResult.staticOffsetDegree;
+    QStringList fitPoints;
+    for (int index = 0;
+         index < fit.measuredSpeedDegreePerSecond.size()
+         && index < fit.measuredPositionGapDegree.size();
+         ++index) {
+        fitPoints << QStringLiteral("(%1°/s,%2°)")
+                         .arg(fit.measuredSpeedDegreePerSecond.at(index),
+                              0, 'f', 4)
+                         .arg(fit.measuredPositionGapDegree.at(index),
+                              0, 'f', 6);
+    }
+    emit logMessage(QStringLiteral(
+        "Trace 延迟标定拟合数据：%1；τ=%2 ms，b=%3°，R²=%4，"
+        "RMSE=%5°，正反向最大离散=%6 ms，丢帧=%7。")
+                        .arg(fitPoints.join(QStringLiteral("、")))
+                        .arg(attempt.measuredDelayMs, 0, 'f', 4)
+                        .arg(attempt.staticOffsetDegree, 0, 'f', 6)
+                        .arg(attempt.rSquared, 0, 'f', 5)
+                        .arg(attempt.rmseDegree, 0, 'f', 6)
+                        .arg(attempt.pairSpreadMs, 0, 'f', 4)
+                        .arg(attempt.lostFrameCount));
+
+    if (fit.axisResult.valid) {
+        traceDelayAxisResults_[traceDelayConfig_.axis] = attempt;
+        saveTraceDelayCalibrationResults();
+    } else {
+        const TraceDelayAxisResult previous =
+            traceDelayAxisResults_.at(traceDelayConfig_.axis);
+        attempt.appliedDelayMs = previous.appliedDelayMs;
+        attempt.source = previous.calibrated
+            ? QStringLiteral("沿用实测") : QStringLiteral("默认");
+        attempt.detail += QStringLiteral("；本次未覆盖原结果");
+    }
+    traceDelayStatus_.axisResults = traceDelayAxisResults_;
+    traceDelayStatus_.axisResults[traceDelayConfig_.axis] = attempt;
+    if (fit.axisResult.valid) {
+        finishTraceDelayCalibration(
+            QStringLiteral(
+                "Trace 延迟标定通过：轴 %1，延迟=%2 ms，静态偏置=%3°，R²=%4，RMSE=%5°。")
+                .arg(traceDelayConfig_.axis)
+                .arg(attempt.measuredDelayMs, 0, 'f', 4)
+                .arg(attempt.staticOffsetDegree, 0, 'f', 6)
+                .arg(attempt.rSquared, 0, 'f', 5)
+                .arg(attempt.rmseDegree, 0, 'f', 6));
+    } else {
+        finishTraceDelayCalibration(
+            QStringLiteral(
+                "Trace 延迟标定未通过：轴 %1，拟合延迟=%2 ms，R²=%3，"
+                "丢帧=%4，正反向离散=%5 ms；诊断继续使用 %6 ms（%7）。")
+                .arg(traceDelayConfig_.axis)
+                .arg(attempt.measuredDelayMs, 0, 'f', 4)
+                .arg(attempt.rSquared, 0, 'f', 5)
+                .arg(attempt.lostFrameCount)
+                .arg(attempt.pairSpreadMs, 0, 'f', 4)
+                .arg(attempt.appliedDelayMs, 0, 'f', 4)
+                .arg(attempt.source),
+            true, false);
+    }
+}
+
+void ContiWorker::stopTraceDelayCalibration(bool emergency)
+{
+    if (!traceDelayCalibrationActive_) {
+        emit logMessage(QStringLiteral("当前没有正在运行的 Trace 延迟标定。"));
+        return;
+    }
+    finishTraceDelayCalibration(emergency
+                                    ? QStringLiteral("Trace 延迟标定已立即停止")
+                                    : QStringLiteral("Trace 延迟标定已减速停止"),
+                                true, emergency);
+}
+
+void ContiWorker::finishTraceDelayCalibration(const QString &message,
+                                               bool failed,
+                                               bool emergency)
+{
+    traceDelayCalibrationTimer_->stop();
+    if (traceDelayMotionStarted_ && boardInitialized_) {
+        QString error;
+        bool stopped = card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis,
+                                      emergency, error);
+        if (stopped && !emergency) {
+            stopped = waitForAxisStop(traceDelayConfig_.axis,
+                                      kGracefulStopTimeoutMs);
+        }
+        if (!stopped && !emergency) {
+            emit logMessage(QStringLiteral(
+                "Trace 延迟标定减速停止未确认，改为立即停止。"));
+            error.clear();
+            stopped = card_.stopAxis(initializedCardNo_,
+                                     traceDelayConfig_.axis, true, error)
+                && waitForAxisStop(traceDelayConfig_.axis,
+                                   kEmergencyStopTimeoutMs);
+        }
+        if (!stopped) {
+            emit logMessage(QStringLiteral("停止标定轴失败：%1").arg(error));
+        }
+    }
+    traceDelayMotionStarted_ = false;
+    flushTraceDelayPlotSamples();
+    if (traceDelayAutoRecording_) {
+        telemetryRecorder_.appendEvent(failed
+            ? QStringLiteral("trace_delay_calibration_failed_or_stopped")
+            : QStringLiteral("trace_delay_calibration_completed"));
+        telemetryRecorder_.stop();
+        traceDelayAutoRecording_ = false;
+    }
+    traceDelayCalibrationActive_ = false;
+    traceDelayPhase_ = TraceDelayPhase::Idle;
+    traceDelayStatus_.active = false;
+    traceDelayStatus_.progressPercent = failed
+        ? traceDelayStatus_.progressPercent : 100;
+    traceDelayStatus_.targetSpeedDegreePerSecond = 0.0;
+    traceDelayStatus_.phaseText = failed ? QStringLiteral("未通过/已停止")
+                                         : QStringLiteral("标定完成");
+    stateText_ = failed ? QStringLiteral("Trace 延迟标定未通过/已停止")
+                        : QStringLiteral("Trace 延迟标定完成");
+    if (boardInitialized_) {
+        feedbackTimer_->start();
+    }
+    emit logMessage(message);
+    publishStatus();
+}
+
+void ContiWorker::resetTraceDelayCalibrationAxis(quint16 axis)
+{
+    if (traceDelayCalibrationActive_) {
+        emit logMessage(QStringLiteral("标定运行中不能重置结果。"));
+        return;
+    }
+    if (axis >= 8U) {
+        emit logMessage(QStringLiteral("Trace 延迟标定轴号无效：%1").arg(axis));
+        return;
+    }
+    TraceDelayAxisResult result;
+    result.axis = axis;
+    result.appliedDelayMs = kDefaultTracePositionDelayMs;
+    result.source = QStringLiteral("默认");
+    result.detail = QStringLiteral("已重置为默认延迟");
+    traceDelayAxisResults_[axis] = result;
+    traceDelayStatus_.axisResults = traceDelayAxisResults_;
+    saveTraceDelayCalibrationResults();
+    resetTraceDelayHistory();
+    emit logMessage(QStringLiteral("轴 %1 的 Trace 延迟结果已重置为默认 %2 ms。")
+                        .arg(axis).arg(kDefaultTracePositionDelayMs, 0, 'f', 1));
+    publishStatus();
+}
+
+void ContiWorker::appendTraceDelayCalibrationFrames(
+    const QVector<TraceTelemetryFrame> &frames)
+{
+    if (!traceDelayCalibrationActive_ || frames.isEmpty()) {
+        return;
+    }
+    for (const TraceTelemetryFrame &frame : frames) {
+        const int axisIndex = traceFrameAxisIndex(frame, traceDelayConfig_.axis);
+        if (axisIndex < 0
+            || (frame.validAxisMask & static_cast<quint8>(1U << axisIndex)) == 0U) {
+            continue;
+        }
+        if (traceDelayPlotStartTimeUs_ == 0) {
+            traceDelayPlotStartTimeUs_ = frame.traceTimeUs;
+        }
+        TraceDelayPlotSample sample;
+        sample.runId = traceDelayRunId_;
+        sample.elapsedS =
+            (frame.traceTimeUs - traceDelayPlotStartTimeUs_) / 1000000.0;
+        sample.commandVelocityDegreePerSecond =
+            frame.commandVelocityPulsePerSecond[axisIndex]
+            / MotorUnit::kPhysicalPulsesPerDegree;
+        sample.actualVelocityDegreePerSecond =
+            frame.actualVelocityPulsePerSecond[axisIndex]
+            / MotorUnit::kPhysicalPulsesPerDegree;
+        sample.rawPositionGapDegree =
+            (frame.commandPulse[axisIndex] - frame.actualPulse[axisIndex])
+            / MotorUnit::kPhysicalPulsesPerDegree;
+        pendingTraceDelayPlotSamples_.push_back(sample);
+        if (traceDelayPhase_ == TraceDelayPhase::Moving) {
+            traceDelayCurrentSegmentFrames_.push_back(frame);
+        }
+    }
+    if (!pendingTraceDelayPlotSamples_.isEmpty()
+        && traceDelayPlotPublishClock_.elapsed()
+               >= kTraceDelayPlotPublishIntervalMs) {
+        flushTraceDelayPlotSamples();
+    }
+}
+
+void ContiWorker::flushTraceDelayPlotSamples()
+{
+    if (pendingTraceDelayPlotSamples_.isEmpty()) {
+        return;
+    }
+    QVector<TraceDelayPlotSample> batch;
+    batch.swap(pendingTraceDelayPlotSamples_);
+    emit traceDelayPlotSamplesReady(batch);
+    traceDelayPlotPublishClock_.restart();
+}
+
+void ContiWorker::resetTraceDelayHistory()
+{
+    for (QQueue<TraceCommandHistorySample> &history : traceCommandHistory_) {
+        history.clear();
+    }
+    lastTraceDelaySequence_ = 0;
+    for (AxisFeedback &feedback : latestAxisFeedback_) {
+        feedback.delayCompensationValid = false;
+    }
+}
+
+void ContiWorker::applyTraceDelayCompensation(
+    const QVector<TraceTelemetryFrame> &frames)
+{
+    if (frames.isEmpty()) {
+        return;
+    }
+    for (const TraceTelemetryFrame &frame : frames) {
+        if (lastTraceDelaySequence_ > 0
+            && frame.traceSequence != lastTraceDelaySequence_ + 1) {
+            resetTraceDelayHistory();
+        }
+        lastTraceDelaySequence_ = frame.traceSequence;
+        for (int axisIndex = 0; axisIndex < frame.axisCount; ++axisIndex) {
+            if ((frame.validAxisMask & static_cast<quint8>(1U << axisIndex)) == 0U) {
+                continue;
+            }
+            const quint16 axis = frame.axes[axisIndex];
+            if (axis >= 8U || axis >= static_cast<quint16>(latestAxisFeedback_.size())) {
+                continue;
+            }
+            const double commandDegree =
+                frame.commandPulse[axisIndex] / MotorUnit::kPhysicalPulsesPerDegree;
+            const double actualDegree =
+                frame.actualPulse[axisIndex] / MotorUnit::kPhysicalPulsesPerDegree;
+            QQueue<TraceCommandHistorySample> &history = traceCommandHistory_[axis];
+            history.enqueue({frame.traceTimeUs, commandDegree});
+
+            const TraceDelayAxisResult &calibration = traceDelayAxisResults_.at(axis);
+            const quint64 delayUs = static_cast<quint64>(std::llround(
+                std::max(0.0, calibration.appliedDelayMs) * 1000.0));
+            AxisFeedback &feedback = latestAxisFeedback_[axis];
+            feedback.rawFollowingErrorUnit = commandDegree - actualDegree;
+            feedback.delayCompensationMs = calibration.appliedDelayMs;
+            feedback.delayCompensationSource = calibration.source;
+            feedback.delayCompensationValid = false;
+
+            if (frame.traceTimeUs >= delayUs) {
+                const quint64 targetTimeUs = frame.traceTimeUs - delayUs;
+                while (history.size() >= 2
+                       && history.at(1).traceTimeUs <= targetTimeUs) {
+                    history.dequeue();
+                }
+                if (!history.isEmpty()
+                    && history.first().traceTimeUs == targetTimeUs) {
+                    feedback.delayAlignedCommandPositionUnit =
+                        history.first().commandPositionDegree;
+                    feedback.delayCompensationValid = true;
+                } else if (history.size() >= 2
+                           && history.first().traceTimeUs < targetTimeUs
+                           && history.at(1).traceTimeUs > targetTimeUs) {
+                    const TraceCommandHistorySample &left = history.at(0);
+                    const TraceCommandHistorySample &right = history.at(1);
+                    const double ratio =
+                        (targetTimeUs - left.traceTimeUs)
+                        / static_cast<double>(right.traceTimeUs - left.traceTimeUs);
+                    feedback.delayAlignedCommandPositionUnit =
+                        left.commandPositionDegree
+                        + ratio * (right.commandPositionDegree
+                                   - left.commandPositionDegree);
+                    feedback.delayCompensationValid = true;
+                }
+            }
+            if (feedback.delayCompensationValid) {
+                feedback.delayCompensatedFollowingErrorUnit =
+                    feedback.delayAlignedCommandPositionUnit - actualDegree;
+            }
+        }
+    }
+}
+
+QString ContiWorker::traceDelayCalibrationFilePath() const
+{
+    const QString directory =
+        QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    return QDir(directory).filePath(QStringLiteral("trace_delay_calibration.json"));
+}
+
+void ContiWorker::loadTraceDelayCalibrationResults()
+{
+    traceDelayAxisResults_.clear();
+    traceDelayAxisResults_.reserve(8);
+    for (quint16 axis = 0; axis < 8; ++axis) {
+        TraceDelayAxisResult result;
+        result.axis = axis;
+        result.appliedDelayMs = kDefaultTracePositionDelayMs;
+        result.source = QStringLiteral("默认");
+        result.detail = QStringLiteral("尚未标定");
+        traceDelayAxisResults_.push_back(result);
+    }
+    QFile file(traceDelayCalibrationFilePath());
+    if (!file.open(QIODevice::ReadOnly)) {
+        traceDelayStatus_.axisResults = traceDelayAxisResults_;
+        return;
+    }
+    const QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    if (!document.isObject()) {
+        traceDelayStatus_.axisResults = traceDelayAxisResults_;
+        return;
+    }
+    const QJsonObject root = document.object();
+    savedCalibrationBusCycleUs_ = root.value(QStringLiteral("busCycleUs")).toInt();
+    savedCalibrationTracePeriodUs_ =
+        root.value(QStringLiteral("tracePeriodUs")).toInt();
+    const QJsonArray axes = root.value(QStringLiteral("axes")).toArray();
+    for (const QJsonValue &value : axes) {
+        const QJsonObject object = value.toObject();
+        const int axis = object.value(QStringLiteral("axis")).toInt(-1);
+        if (axis < 0 || axis >= traceDelayAxisResults_.size()) {
+            continue;
+        }
+        TraceDelayAxisResult result;
+        result.axis = static_cast<quint16>(axis);
+        result.calibrated = object.value(QStringLiteral("calibrated")).toBool();
+        result.valid = object.value(QStringLiteral("valid")).toBool();
+        result.appliedDelayMs =
+            object.value(QStringLiteral("appliedDelayMs"))
+                .toDouble(kDefaultTracePositionDelayMs);
+        result.measuredDelayMs =
+            object.value(QStringLiteral("measuredDelayMs")).toDouble();
+        result.staticOffsetDegree =
+            object.value(QStringLiteral("staticOffsetDegree")).toDouble();
+        result.rSquared = object.value(QStringLiteral("rSquared")).toDouble();
+        result.rmseDegree = object.value(QStringLiteral("rmseDegree")).toDouble();
+        result.pairSpreadMs =
+            object.value(QStringLiteral("pairSpreadMs")).toDouble();
+        result.lostFrameCount =
+            object.value(QStringLiteral("lostFrameCount")).toInt();
+        result.source = object.value(QStringLiteral("source"))
+                            .toString(QStringLiteral("默认"));
+        result.timestamp = object.value(QStringLiteral("timestamp")).toString();
+        result.detail = object.value(QStringLiteral("detail")).toString();
+        traceDelayAxisResults_[axis] = result;
+    }
+    traceDelayStatus_.axisResults = traceDelayAxisResults_;
+}
+
+void ContiWorker::saveTraceDelayCalibrationResults()
+{
+    const QString path = traceDelayCalibrationFilePath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QJsonObject root;
+    root.insert(QStringLiteral("version"), 1);
+    root.insert(QStringLiteral("busCycleUs"), actualBusCycleUs_);
+    root.insert(QStringLiteral("tracePeriodUs"), card_.traceSamplePeriodUs());
+    QJsonArray axes;
+    for (const TraceDelayAxisResult &result : traceDelayAxisResults_) {
+        QJsonObject object;
+        object.insert(QStringLiteral("axis"), result.axis);
+        object.insert(QStringLiteral("calibrated"), result.calibrated);
+        object.insert(QStringLiteral("valid"), result.valid);
+        object.insert(QStringLiteral("appliedDelayMs"), result.appliedDelayMs);
+        object.insert(QStringLiteral("measuredDelayMs"), result.measuredDelayMs);
+        object.insert(QStringLiteral("staticOffsetDegree"),
+                      result.staticOffsetDegree);
+        object.insert(QStringLiteral("rSquared"), result.rSquared);
+        object.insert(QStringLiteral("rmseDegree"), result.rmseDegree);
+        object.insert(QStringLiteral("pairSpreadMs"), result.pairSpreadMs);
+        object.insert(QStringLiteral("lostFrameCount"), result.lostFrameCount);
+        object.insert(QStringLiteral("source"), result.source);
+        object.insert(QStringLiteral("timestamp"), result.timestamp);
+        object.insert(QStringLiteral("detail"), result.detail);
+        axes.append(object);
+    }
+    root.insert(QStringLiteral("axes"), axes);
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+        emit logMessage(QStringLiteral("警告：无法保存 Trace 延迟标定结果：%1")
+                            .arg(file.errorString()));
+        return;
+    }
+    file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
+    savedCalibrationBusCycleUs_ = actualBusCycleUs_;
+    savedCalibrationTracePeriodUs_ = card_.traceSamplePeriodUs();
+}
+
+void ContiWorker::validateLoadedTraceDelayTiming()
+{
+    if (savedCalibrationBusCycleUs_ <= 0
+        || savedCalibrationTracePeriodUs_ <= 0) {
+        return;
+    }
+    const int currentTracePeriodUs = config_.busCycleUs * config_.traceCycle;
+    if (savedCalibrationBusCycleUs_ == actualBusCycleUs_
+        && savedCalibrationTracePeriodUs_ == currentTracePeriodUs) {
+        return;
+    }
+    for (TraceDelayAxisResult &result : traceDelayAxisResults_) {
+        if (!result.calibrated) {
+            continue;
+        }
+        result.calibrated = false;
+        result.valid = false;
+        result.appliedDelayMs = kDefaultTracePositionDelayMs;
+        result.source = QStringLiteral("默认");
+        result.detail = QStringLiteral("总线或 Trace 周期已改变，原标定失效");
+    }
+    traceDelayStatus_.axisResults = traceDelayAxisResults_;
+    emit logMessage(QStringLiteral(
+        "提示：已保存的 Trace 延迟标定基于总线/Trace=%1/%2 us，"
+        "当前为 %3/%4 us；原结果已失效并回退为默认 %5 ms。")
+                        .arg(savedCalibrationBusCycleUs_)
+                        .arg(savedCalibrationTracePeriodUs_)
+                        .arg(actualBusCycleUs_)
+                        .arg(currentTracePeriodUs)
+                        .arg(kDefaultTracePositionDelayMs, 0, 'f', 1));
+}
+
 bool ContiWorker::waitForAxisStop(quint16 axis, int timeoutMs) const
 {
     const int attempts = std::max(1, timeoutMs / kStopPollIntervalMs);
@@ -1654,6 +2405,7 @@ void ContiWorker::safelyStopAllMotionForShutdown()
     producerTimer_->stop();
     monitorTimer_->stop();
     velocityControlTimer_->stop();
+    traceDelayCalibrationTimer_->stop();
 
     if (listOpen_) {
         QString error;
@@ -1687,6 +2439,16 @@ void ContiWorker::safelyStopAllMotionForShutdown()
             card_.stopAxis(initializedCardNo_, velocityConfig_.axis, true, error);
         }
     }
+    if (traceDelayCalibrationActive_) {
+        QString error;
+        if (!card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, false, error)
+            || !waitForAxisStop(traceDelayConfig_.axis, kGracefulStopTimeoutMs)) {
+            emit logMessage(QStringLiteral(
+                "Trace 延迟标定安全停机：减速停止未确认，改为立即停止。"));
+            error.clear();
+            card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, true, error);
+        }
+    }
 
     listOpen_ = false;
     preparing_ = false;
@@ -1697,6 +2459,10 @@ void ContiWorker::safelyStopAllMotionForShutdown()
     velocityReferenceInitialized_ = false;
     velocityStatus_.active = false;
     velocityStatus_.motionStarted = false;
+    traceDelayCalibrationActive_ = false;
+    traceDelayMotionStarted_ = false;
+    traceDelayStatus_.active = false;
+    traceDelayStatus_.phaseText = QStringLiteral("已安全停止");
     hostQueue_.clear();
     lastFeedStatus_ = {};
 }
@@ -2243,6 +3009,7 @@ void ContiWorker::enterError(const QString &message)
     producerTimer_->stop();
     monitorTimer_->stop();
     velocityControlTimer_->stop();
+    traceDelayCalibrationTimer_->stop();
     if (listOpen_) {
         QString ignored;
         card_.stop(config_, true, ignored);
@@ -2258,6 +3025,11 @@ void ContiWorker::enterError(const QString &message)
         QString ignored;
         card_.stopAxis(initializedCardNo_, velocityConfig_.axis, true, ignored);
     }
+    if (traceDelayCalibrationActive_ && boardInitialized_) {
+        flushTraceDelayPlotSamples();
+        QString ignored;
+        card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, true, ignored);
+    }
     listOpen_ = false;
     preparing_ = false;
     running_ = false;
@@ -2267,9 +3039,17 @@ void ContiWorker::enterError(const QString &message)
     velocityStatus_.active = false;
     velocityStatus_.motionStarted = false;
     velocityStatus_.stateText = QStringLiteral("错误");
+    traceDelayCalibrationActive_ = false;
+    traceDelayMotionStarted_ = false;
+    traceDelayStatus_.active = false;
+    traceDelayStatus_.phaseText = QStringLiteral("错误");
     if (velocityAutoRecording_) {
         telemetryRecorder_.stop();
         velocityAutoRecording_ = false;
+    }
+    if (traceDelayAutoRecording_) {
+        telemetryRecorder_.stop();
+        traceDelayAutoRecording_ = false;
     }
     trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
@@ -2347,6 +3127,12 @@ void ContiWorker::publishStatus()
     status.telemetryPlotActive = manualTelemetryRecording_;
     status.recorder = telemetryRecorder_.status();
     status.velocityControl = velocityStatus_;
+    traceDelayStatus_.axisResults =
+        traceDelayStatus_.active ? traceDelayStatus_.axisResults
+                                 : (traceDelayStatus_.axisResults.isEmpty()
+                                        ? traceDelayAxisResults_
+                                        : traceDelayStatus_.axisResults);
+    status.traceDelayCalibration = traceDelayStatus_;
     status.softwareZeroUnit = softwareZeroUnit_;
     status.softwareZeroValid = softwareZeroValid_;
     if (boardInitialized_) {
@@ -2524,6 +3310,7 @@ bool ContiWorker::configureFeedbackTrace(const QVector<quint16> &axes,
                               degreesPerCardUnit, errorMessage)) {
         return false;
     }
+    resetTraceDelayHistory();
     traceAxes_ = card_.traceAxes();
     latestAxisFeedback_ = card_.axisFeedback();
     traceFramesRead_ = card_.traceFramesRead();
@@ -2537,6 +3324,7 @@ bool ContiWorker::configureFeedbackTrace(const QVector<quint16> &axes,
         }
         latestTraceSequence_ = frames.constLast().traceSequence;
         latestTraceTimeUs_ = frames.constLast().traceTimeUs;
+        applyTraceDelayCompensation(frames);
         telemetryRecorder_.pushFrames(frames);
     }
     return true;
@@ -2566,6 +3354,8 @@ bool ContiWorker::pollTraceFeedback()
         }
         latestTraceSequence_ = frames.constLast().traceSequence;
         latestTraceTimeUs_ = frames.constLast().traceTimeUs;
+        applyTraceDelayCompensation(frames);
+        appendTraceDelayCalibrationFrames(frames);
         updateTraceVelocityDiagnostics(frames);
         appendVelocityPlotFrames(frames);
         telemetryRecorder_.pushFrames(frames);

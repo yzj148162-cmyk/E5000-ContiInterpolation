@@ -234,6 +234,63 @@ struct VelocityControlStatus
     QString stateText = QStringLiteral("未运行");
 };
 
+// 单轴 Trace 位置延迟标定参数。标定运动按 +V1/-V1、+V2/-V2、
+// +V3/-V3 顺序执行；所有时间判定只用于组织运动，延迟拟合使用卡侧 Trace 帧序号。
+struct TraceDelayCalibrationConfig
+{
+    quint16 cardNo = 0;
+    quint16 axis = 0;
+    double degreesPerCardUnit = 1.0;
+    std::array<double, 3> speedDegreePerSecond {30.0, 60.0, 100.0};
+    int holdMs = 1500;
+    int sampleWindowMs = 500;
+    int restMs = 500;
+    double onlineChangeTimeS = 0.001;
+    double maximumSegmentTravelDegree = 180.0;
+};
+
+struct TraceDelayAxisResult
+{
+    quint16 axis = 0;
+    bool calibrated = false;
+    bool valid = true;
+    double appliedDelayMs = 8.0;
+    double measuredDelayMs = 0.0;
+    double staticOffsetDegree = 0.0;
+    double rSquared = 0.0;
+    double rmseDegree = 0.0;
+    double pairSpreadMs = 0.0;
+    int lostFrameCount = 0;
+    QString source = QStringLiteral("默认");
+    QString timestamp;
+    QString detail;
+};
+
+struct TraceDelayCalibrationStatus
+{
+    bool active = false;
+    quint16 axis = 0;
+    int currentSegment = 0;
+    int totalSegments = 6;
+    int progressPercent = 0;
+    double targetSpeedDegreePerSecond = 0.0;
+    QString phaseText = QStringLiteral("未运行");
+    QVector<TraceDelayAxisResult> axisResults;
+    QVector<double> fittedSpeedDegreePerSecond;
+    QVector<double> fittedPositionGapDegree;
+    double fittedSlopeSecond = 0.0;
+    double fittedInterceptDegree = 0.0;
+};
+
+struct TraceDelayPlotSample
+{
+    quint64 runId = 0;
+    double elapsedS = 0.0;
+    double commandVelocityDegreePerSecond = 0.0;
+    double actualVelocityDegreePerSecond = 0.0;
+    double rawPositionGapDegree = 0.0;
+};
+
 // 速度闭环曲线使用的轻量样本。控制线程按每个 Trace 帧生成，UI 低频批量追加，
 // 避免把图表重绘开销带入控制周期，同时保留 1 ms 反馈细节。
 struct VelocityPlotSample
@@ -261,6 +318,12 @@ struct AxisFeedback
     quint16 axisErrorCode = 0;
     double commandPositionUnit = 0.0;
     double encoderPositionUnit = 0.0;
+    double rawFollowingErrorUnit = 0.0;
+    double delayAlignedCommandPositionUnit = 0.0;
+    double delayCompensatedFollowingErrorUnit = 0.0;
+    double delayCompensationMs = 8.0;
+    bool delayCompensationValid = false;
+    QString delayCompensationSource = QStringLiteral("默认");
     double commandVelocityUnitPerSecond = 0.0;
     double actualVelocityUnitPerSecond = 0.0;
     bool traceSampleValid = false;
@@ -343,6 +406,7 @@ struct ContiStatus
     bool telemetryPlotActive = false;
     TelemetryRecorderStatus recorder;
     VelocityControlStatus velocityControl;
+    TraceDelayCalibrationStatus traceDelayCalibration;
     QString stateText = QStringLiteral("未初始化");
 };
 
@@ -353,5 +417,8 @@ Q_DECLARE_METATYPE(SingleAxisJogConfig)
 Q_DECLARE_METATYPE(VelocityControlConfig)
 Q_DECLARE_METATYPE(VelocityPlotSample)
 Q_DECLARE_METATYPE(QVector<VelocityPlotSample>)
+Q_DECLARE_METATYPE(TraceDelayCalibrationConfig)
+Q_DECLARE_METATYPE(TraceDelayPlotSample)
+Q_DECLARE_METATYPE(QVector<TraceDelayPlotSample>)
 
 #endif // CONTITYPES_H

@@ -1888,7 +1888,7 @@
            </column>
            <column>
             <property name="text">
-             <string>跟随误差 (°)</string>
+             <string>补偿误差 (°)</string>
             </property>
            </column>
            <column>
@@ -2993,6 +2993,298 @@
                <property name="wordWrap">
                 <bool>true</bool>
                </property>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="traceDelayCalibrationTab">
+        <attribute name="title">
+         <string>Trace延迟标定</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="traceDelayCalibrationTabLayout">
+         <item>
+          <widget class="QScrollArea" name="traceDelayCalibrationScrollArea">
+           <property name="widgetResizable">
+            <bool>true</bool>
+           </property>
+           <widget class="QWidget" name="traceDelayCalibrationScrollContent">
+            <property name="geometry">
+             <rect>
+              <x>0</x>
+              <y>0</y>
+              <width>940</width>
+              <height>1050</height>
+             </rect>
+            </property>
+            <layout class="QVBoxLayout" name="traceDelayCalibrationContentLayout">
+             <item>
+              <widget class="QGroupBox" name="traceDelayCalibrationParameterGroup">
+               <property name="title">
+                <string>单轴标定参数</string>
+               </property>
+               <layout class="QGridLayout" name="traceDelayCalibrationParameterLayout">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="traceDelayAxisLabel">
+                  <property name="text">
+                   <string>标定轴</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QComboBox" name="traceDelayAxisCombo">
+                  <item><property name="text"><string>0</string></property></item>
+                  <item><property name="text"><string>1</string></property></item>
+                  <item><property name="text"><string>2</string></property></item>
+                  <item><property name="text"><string>3</string></property></item>
+                  <item><property name="text"><string>4</string></property></item>
+                  <item><property name="text"><string>5</string></property></item>
+                  <item><property name="text"><string>6</string></property></item>
+                  <item><property name="text"><string>7</string></property></item>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QLabel" name="traceDelayUnitLabel">
+                  <property name="text">
+                   <string>板卡 unit</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QComboBox" name="traceDelayUnitCombo">
+                  <item><property name="text"><string>500.622 pulse/unit（1 unit=1°）</string></property></item>
+                  <item><property name="text"><string>50.0622 pulse/unit（1 unit=0.1°）</string></property></item>
+                  <item><property name="text"><string>5.00622 pulse/unit（1 unit=0.01°）</string></property></item>
+                  <item><property name="text"><string>自定义 pulse/unit</string></property></item>
+                 </widget>
+                </item>
+                <item row="0" column="4">
+                 <widget class="QLabel" name="traceDelayCustomEquivalentLabel">
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="text"><string>自定义当量</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="5">
+                 <widget class="QDoubleSpinBox" name="traceDelayCustomEquivalentSpin">
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="decimals"><number>6</number></property>
+                  <property name="minimum"><double>0.000001000000000</double></property>
+                  <property name="maximum"><double>1000000.000000000000000</double></property>
+                  <property name="value"><double>500.622000000000014</double></property>
+                  <property name="suffix"><string> pulse/unit</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="traceDelaySpeed1Label">
+                  <property name="text"><string>速度 V1</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QDoubleSpinBox" name="traceDelaySpeed1Spin">
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.001000000000000</double></property>
+                  <property name="maximum"><double>720.000000000000000</double></property>
+                  <property name="value"><double>30.000000000000000</double></property>
+                  <property name="suffix"><string> °/s</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="2">
+                 <widget class="QLabel" name="traceDelaySpeed2Label">
+                  <property name="text"><string>速度 V2</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="3">
+                 <widget class="QDoubleSpinBox" name="traceDelaySpeed2Spin">
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.001000000000000</double></property>
+                  <property name="maximum"><double>720.000000000000000</double></property>
+                  <property name="value"><double>60.000000000000000</double></property>
+                  <property name="suffix"><string> °/s</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="4">
+                 <widget class="QLabel" name="traceDelaySpeed3Label">
+                  <property name="text"><string>速度 V3</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="5">
+                 <widget class="QDoubleSpinBox" name="traceDelaySpeed3Spin">
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.001000000000000</double></property>
+                  <property name="maximum"><double>720.000000000000000</double></property>
+                  <property name="value"><double>100.000000000000000</double></property>
+                  <property name="suffix"><string> °/s</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="traceDelayHoldLabel">
+                  <property name="toolTip"><string>每个正向或反向速度段的总保持时间。</string></property>
+                  <property name="text"><string>保持时间</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QSpinBox" name="traceDelayHoldSpin">
+                  <property name="minimum"><number>200</number></property>
+                  <property name="maximum"><number>10000</number></property>
+                  <property name="value"><number>1500</number></property>
+                  <property name="suffix"><string> ms</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="2">
+                 <widget class="QLabel" name="traceDelaySampleWindowLabel">
+                  <property name="toolTip"><string>只从稳定速度帧中截取该长度的中央窗口参与拟合。</string></property>
+                  <property name="text"><string>采样窗口</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="3">
+                 <widget class="QSpinBox" name="traceDelaySampleWindowSpin">
+                  <property name="minimum"><number>100</number></property>
+                  <property name="maximum"><number>5000</number></property>
+                  <property name="value"><number>500</number></property>
+                  <property name="suffix"><string> ms</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="4">
+                 <widget class="QLabel" name="traceDelayRestLabel">
+                  <property name="text"><string>段间静止</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="5">
+                 <widget class="QSpinBox" name="traceDelayRestSpin">
+                  <property name="minimum"><number>100</number></property>
+                  <property name="maximum"><number>10000</number></property>
+                  <property name="value"><number>500</number></property>
+                  <property name="suffix"><string> ms</string></property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="traceDelayChangeTimeLabel">
+                  <property name="text"><string>在线变速时间</string></property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QDoubleSpinBox" name="traceDelayChangeTimeSpin">
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.001000000000000</double></property>
+                  <property name="maximum"><double>1.000000000000000</double></property>
+                  <property name="singleStep"><double>0.001000000000000</double></property>
+                  <property name="value"><double>0.001000000000000</double></property>
+                  <property name="suffix"><string> s</string></property>
+                 </widget>
+                </item>
+                <item row="3" column="2">
+                 <widget class="QLabel" name="traceDelayTravelLimitLabel">
+                  <property name="toolTip"><string>启动前估算每段位移，超过该值拒绝运行。</string></property>
+                  <property name="text"><string>单段行程上限</string></property>
+                 </widget>
+                </item>
+                <item row="3" column="3">
+                 <widget class="QDoubleSpinBox" name="traceDelayTravelLimitSpin">
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>1.000000000000000</double></property>
+                  <property name="maximum"><double>100000.000000000000000</double></property>
+                  <property name="value"><double>180.000000000000000</double></property>
+                  <property name="suffix"><string> °</string></property>
+                 </widget>
+                </item>
+                <item row="3" column="4" colspan="2">
+                 <widget class="QLabel" name="traceDelayAcceptanceHintLabel">
+                  <property name="text"><string>通过条件：无丢帧、0～20 ms、R²≥0.98、正反向离散≤1.5 ms</string></property>
+                  <property name="wordWrap"><bool>true</bool></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="traceDelayCalibrationControlGroup">
+               <property name="title"><string>标定控制</string></property>
+               <layout class="QGridLayout" name="traceDelayCalibrationControlLayout">
+                <item row="0" column="0">
+                 <widget class="QPushButton" name="traceDelayStartButton">
+                  <property name="text"><string>开始单轴标定</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QPushButton" name="traceDelayStopButton">
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="text"><string>减速停止</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QPushButton" name="traceDelayEmergencyStopButton">
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="text"><string>立即停止</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QPushButton" name="traceDelayResetAxisButton">
+                  <property name="text"><string>重置所选轴结果</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="traceDelayPhaseLabel">
+                  <property name="text"><string>当前状态</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="1" colspan="2">
+                 <widget class="QLabel" name="traceDelayPhaseValueLabel">
+                  <property name="text"><string>未运行</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="3">
+                 <widget class="QProgressBar" name="traceDelayProgressBar">
+                  <property name="value"><number>0</number></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="traceDelayResultGroup">
+               <property name="title"><string>各轴延迟结果</string></property>
+               <layout class="QVBoxLayout" name="traceDelayResultLayout">
+                <item>
+                 <widget class="QTableWidget" name="traceDelayResultTable">
+                  <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
+                  <property name="alternatingRowColors"><bool>true</bool></property>
+                  <property name="selectionBehavior"><enum>QAbstractItemView::SelectionBehavior::SelectRows</enum></property>
+                  <property name="rowCount"><number>8</number></property>
+                  <property name="columnCount"><number>7</number></property>
+                  <row/><row/><row/><row/><row/><row/><row/><row/>
+                  <column><property name="text"><string>轴号</string></property></column>
+                  <column><property name="text"><string>应用延迟(ms)</string></property></column>
+                  <column><property name="text"><string>实测延迟(ms)</string></property></column>
+                  <column><property name="text"><string>静态偏置(°)</string></property></column>
+                  <column><property name="text"><string>R²</string></property></column>
+                  <column><property name="text"><string>来源</string></property></column>
+                  <column><property name="text"><string>状态</string></property></column>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QSplitter" name="traceDelayChartSplitter">
+               <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
+               <property name="childrenCollapsible"><bool>false</bool></property>
+               <widget class="ZoomableChartView" name="traceDelayVelocityChartView">
+                <property name="minimumSize"><size><width>0</width><height>260</height></size></property>
+                <property name="toolTip"><string>滚轮缩放，按住左键拖动，双击恢复自动量程。</string></property>
+               </widget>
+               <widget class="ZoomableChartView" name="traceDelayFitChartView">
+                <property name="minimumSize"><size><width>0</width><height>260</height></size></property>
+                <property name="toolTip"><string>横轴为稳定段指令速度，纵轴为同帧 type05-type06；直线斜率即延迟。</string></property>
+               </widget>
+              </widget>
+             </item>
+             <item>
+              <widget class="QLabel" name="traceDelayCalibrationHintLabel">
+               <property name="text"><string>标定按 +V1/-V1、+V2/-V2、+V3/-V3 自动执行。只修正 Trace 诊断跟随误差，不改变 PID 的“规划位置－实际位置”控制误差；原始 type03/04/05/06 帧自动保存。</string></property>
+               <property name="wordWrap"><bool>true</bool></property>
               </widget>
              </item>
             </layout>

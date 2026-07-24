@@ -12,6 +12,7 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     control/PositionVelocityPid.cpp \
+    control/TraceDelayCalibration.cpp \
     hardware/E5000ContiInterface.cpp \
     hardware/E5000HardwareInterface.cpp \
     hardware/RuntimeTraceSlaveReader.cpp \
@@ -23,6 +24,7 @@ SOURCES += \
 HEADERS += \
     common/ContiTypes.h \
     control/PositionVelocityPid.h \
+    control/TraceDelayCalibration.h \
     hardware/E5000ContiInterface.h \
     hardware/E5000HardwareInterface.h \
     hardware/RuntimeTraceSlaveReader.h \

@@ -15,6 +15,7 @@ class QTimer;
 class ContiWorker;
 class QChart;
 class QLineSeries;
+class QScatterSeries;
 class QValueAxis;
 class ZoomableChartView;
 
@@ -44,6 +45,9 @@ signals:
     void startVelocityControlRequested(const VelocityControlConfig &config);
     void stopVelocityControlRequested(bool emergency);
     void resetVelocityControllerRequested();
+    void startTraceDelayCalibrationRequested(const TraceDelayCalibrationConfig &config);
+    void stopTraceDelayCalibrationRequested(bool emergency);
+    void resetTraceDelayCalibrationAxisRequested(quint16 axis);
     void startTelemetryRecordingRequested();
     void stopTelemetryRecordingRequested();
     void refreshBusCycleRequested();
@@ -79,6 +83,10 @@ private slots:
     void onVelocityEmergencyStopClicked();
     void onVelocityResetClicked();
     void onVelocityClearCurvesClicked();
+    void onTraceDelayStartClicked();
+    void onTraceDelayStopClicked();
+    void onTraceDelayEmergencyStopClicked();
+    void onTraceDelayResetAxisClicked();
     void onBusCycleSelectionChanged(int index);
     void onProducerPeriodChanged(int periodMs);
     void appendLog(const QString &message);
@@ -88,6 +96,7 @@ private:
     ContiTestConfig collectConfig() const;
     SingleAxisJogConfig collectJogConfig() const;
     VelocityControlConfig collectVelocityConfig() const;
+    TraceDelayCalibrationConfig collectTraceDelayCalibrationConfig() const;
     void connectWorker();
     void initializeTelemetryCharts();
     void updateTelemetryCharts();
@@ -95,6 +104,9 @@ private:
     void initializeVelocityControlCharts();
     void updateVelocityControlCharts();
     void clearVelocityControlCharts();
+    void initializeTraceDelayCalibrationCharts();
+    void updateTraceDelayCalibrationCharts();
+    void clearTraceDelayCalibrationCharts();
     void updateChartRanges(ZoomableChartView *view,
                            const QList<QLineSeries *> &series, double timeSeconds,
                            double minimumSpan) const;
@@ -152,6 +164,20 @@ private:
     qint64 velocityPlotBucketIndex_ = -1;
     quint64 lastVelocityRunId_ = 0;
     double lastVelocityPlotTimeS_ = -1.0;
+    QChart *traceDelayVelocityChart_ = nullptr;
+    QChart *traceDelayFitChart_ = nullptr;
+    QLineSeries *traceDelayVelocitySeries_[2] {nullptr, nullptr};
+    QScatterSeries *traceDelayFitPointSeries_ = nullptr;
+    QLineSeries *traceDelayFitLineSeries_ = nullptr;
+    QValueAxis *traceDelayVelocityTimeAxis_ = nullptr;
+    QValueAxis *traceDelayVelocityValueAxis_ = nullptr;
+    QValueAxis *traceDelayFitSpeedAxis_ = nullptr;
+    QValueAxis *traceDelayFitGapAxis_ = nullptr;
+    QVector<TraceDelayPlotSample> pendingTraceDelayPlotSamples_;
+    QList<QPointF> traceDelayVelocityDisplayPoints_[2];
+    quint64 lastTraceDelayRunId_ = 0;
+    double lastTraceDelayPlotTimeS_ = -1.0;
+    QString lastTraceDelayFitSignature_;
 };
 
 #endif // MAINWINDOW_H
