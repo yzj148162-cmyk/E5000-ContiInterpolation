@@ -1969,6 +1969,14 @@ void ContiWorker::analyzeTraceDelayCalibration()
                             .arg(diagnostic.selectedFrames)
                             .arg(diagnostic.lostFrames)
                             .arg(diagnostic.detail));
+        emit logMessage(QStringLiteral(
+            "Trace 标定段 %1筛选：type03速度量化步长=%2°/s，"
+            "指令稳定容差=±%3°/s。")
+                            .arg(diagnostic.segmentNumber)
+                            .arg(diagnostic.commandVelocityQuantumDegreePerSecond,
+                                 0, 'f', 5)
+                            .arg(diagnostic.commandVelocityToleranceDegreePerSecond,
+                                 0, 'f', 5));
         if (diagnostic.selectedFrames > 0) {
             emit logMessage(QStringLiteral(
                 "Trace 标定段 %1统计：选用序号=%2～%3，指令速度均值=%4°/s，"

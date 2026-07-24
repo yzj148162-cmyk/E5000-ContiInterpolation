@@ -60,8 +60,17 @@ TraceDelayFitResult TraceDelayCalibrationAnalyzer::analyze(
 
         QVector<const TraceTelemetryFrame *> stableFrames;
         QVector<const TraceTelemetryFrame *> currentStableRun;
+        // Trace type03 是整数 card unit/s。card unit 定义越大，其物理速度
+        // 量化步长越大；稳定判定必须覆盖至少一个量化台阶，不能只按目标速度
+        // 百分比设置容差。
+        diagnostic.commandVelocityQuantumDegreePerSecond =
+            config.degreesPerCardUnit;
         const double speedTolerance =
-            std::max(0.2, std::abs(segment.targetSpeedDegreePerSecond) * 0.02);
+            std::max(std::max(
+                         0.2,
+                         std::abs(segment.targetSpeedDegreePerSecond) * 0.02),
+                     diagnostic.commandVelocityQuantumDegreePerSecond * 1.1);
+        diagnostic.commandVelocityToleranceDegreePerSecond = speedTolerance;
         quint64 previousSequence = 0;
         for (const TraceTelemetryFrame &frame : segment.frames) {
             bool sequenceContinuous = true;

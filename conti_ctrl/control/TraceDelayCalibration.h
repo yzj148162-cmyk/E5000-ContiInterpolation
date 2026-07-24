@@ -25,6 +25,8 @@ struct TraceDelaySegmentDiagnostic
     quint64 lastSequence = 0;
     quint64 selectedFirstSequence = 0;
     quint64 selectedLastSequence = 0;
+    double commandVelocityQuantumDegreePerSecond = 0.0;
+    double commandVelocityToleranceDegreePerSecond = 0.0;
     double commandVelocityMeanDegreePerSecond = 0.0;
     double actualVelocityMeanDegreePerSecond = 0.0;
     double actualVelocityStdDegreePerSecond = 0.0;
