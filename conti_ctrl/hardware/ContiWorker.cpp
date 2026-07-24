@@ -1140,7 +1140,7 @@ bool ContiWorker::validateVelocityControlConfig(
         || config.speedToleranceDegreePerSecond <= 0.0
         || config.stableDwellMs < config.controlPeriodMs
         || config.finishTimeoutMs < config.controlPeriodMs
-        || config.maxFollowingErrorDegree <= config.positionToleranceDegree
+        || config.maxFollowingErrorDegree <= 0.0
         || config.traceTimeoutMs < config.controlPeriodMs) {
         errorMessage = QStringLiteral(
             "速度闭环参数无效：请检查周期、轨迹参数（频率须低于控制周期奈奎斯特频率）、"
@@ -1208,11 +1208,14 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
     velocityPlotTraceStartValid_ = false;
     velocityPlotCommandHistory_.clear();
     velocityPlotLastTraceSequence_ = 0;
+    velocityBatchAlignedErrorValid_ = false;
+    velocityBatchPeakAlignedErrorDegree_ = 0.0;
     velocityPid_.reset();
     velocityRunClock_.invalidate();
     velocityCycleClock_.invalidate();
     velocityCompletionClock_.invalidate();
     velocityTraceFreshClock_.start();
+    velocityAlignedErrorFreshClock_.start();
 
     TelemetryRunMetadata metadata;
     metadata.cardNo = initializedCardNo_;
@@ -1273,6 +1276,11 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
                         .arg(config.maxVelocityDegreePerSecond, 0, 'f', 3)
                         .arg(config.maxAccelerationDegreePerSecond2, 0, 'f', 3)
                         .arg(config.onlineChangeTimeS * 1000.0, 0, 'f', 1));
+    emit logMessage(QStringLiteral(
+                        "跟随误差保护：使用延迟对齐误差 "
+                        "type05(t-τ)-type06(t)，上限=%1°；"
+                        "PID与终点判定仍使用轨迹时间误差。")
+                        .arg(config.maxFollowingErrorDegree, 0, 'f', 4));
     publishStatus();
 }
 
@@ -1374,6 +1382,18 @@ void ContiWorker::runVelocityControlCycle()
                                   .arg(feedback.axisErrorCode), true);
         return;
     }
+    if (feedback.delayCompensationValid) {
+        velocityAlignedErrorFreshClock_.restart();
+    } else if (velocityMotionStarted_
+               && velocityAlignedErrorFreshClock_.isValid()
+               && velocityAlignedErrorFreshClock_.elapsed()
+                      > velocityConfig_.traceTimeoutMs) {
+        finishVelocityControl(
+            QStringLiteral("延迟对齐跟随误差无效超时：%1 ms 内无法取得连续历史帧")
+                .arg(velocityConfig_.traceTimeoutMs),
+            true);
+        return;
+    }
 
     if (!velocityReferenceInitialized_) {
         velocityReferenceInitialized_ = true;
@@ -1428,16 +1448,31 @@ void ContiWorker::runVelocityControlCycle()
     double referencePosition = 0.0;
     double referenceVelocity = 0.0;
     evaluateVelocityReference(elapsedS, referencePosition, referenceVelocity);
-    const double positionError = referencePosition - feedback.encoderPositionUnit;
-    if (std::abs(positionError) > velocityConfig_.maxFollowingErrorDegree) {
-        finishVelocityControl(QStringLiteral("跟随误差超限：当前=%1°，上限=%2°")
-                                  .arg(positionError, 0, 'f', 6)
-                                  .arg(velocityConfig_.maxFollowingErrorDegree, 0, 'f', 6), true);
+    const double trajectoryTimeError =
+        referencePosition - feedback.encoderPositionUnit;
+    const bool followingErrorProtectionValid =
+        velocityBatchAlignedErrorValid_ || feedback.delayCompensationValid;
+    const double followingErrorForProtection =
+        velocityBatchAlignedErrorValid_
+        ? velocityBatchPeakAlignedErrorDegree_
+        : feedback.delayCompensatedFollowingErrorUnit;
+    if (followingErrorProtectionValid
+        && std::abs(followingErrorForProtection)
+               > velocityConfig_.maxFollowingErrorDegree) {
+        finishVelocityControl(
+            QStringLiteral(
+                "延迟对齐跟随误差超限：当前=%1°，上限=%2°，τ=%3 ms；"
+                "同时轨迹时间误差=%4°")
+                .arg(followingErrorForProtection, 0, 'f', 6)
+                .arg(velocityConfig_.maxFollowingErrorDegree, 0, 'f', 6)
+                .arg(feedback.delayCompensationMs, 0, 'f', 4)
+                .arg(trajectoryTimeError, 0, 'f', 6),
+            true);
         return;
     }
 
     const PositionVelocityPidOutput output = velocityPid_.update(
-        velocityConfig_, positionError, referenceVelocity,
+        velocityConfig_, trajectoryTimeError, referenceVelocity,
         feedback.actualVelocityUnitPerSecond, dtSeconds);
     QElapsedTimer apiClock;
     apiClock.start();
@@ -1479,7 +1514,7 @@ void ContiWorker::runVelocityControlCycle()
     velocityStatus_.referencePositionDegree = referencePosition;
     velocityStatus_.cardCommandPositionDegree = feedback.commandPositionUnit;
     velocityStatus_.actualPositionDegree = feedback.encoderPositionUnit;
-    velocityStatus_.positionErrorDegree = positionError;
+    velocityStatus_.positionErrorDegree = trajectoryTimeError;
     velocityStatus_.delayAlignedFollowingErrorDegree =
         feedback.delayCompensatedFollowingErrorUnit;
     velocityStatus_.delayCompensationMs = feedback.delayCompensationMs;
@@ -1502,7 +1537,7 @@ void ContiWorker::runVelocityControlCycle()
         ? QStringLiteral("闭环运行中") : QStringLiteral("终点稳态确认中");
 
     const bool terminalStable = elapsedS >= velocityConfig_.durationS
-        && std::abs(positionError) <= velocityConfig_.positionToleranceDegree
+        && std::abs(trajectoryTimeError) <= velocityConfig_.positionToleranceDegree
         && std::abs(feedback.actualVelocityUnitPerSecond)
                <= velocityConfig_.speedToleranceDegreePerSecond;
     if (terminalStable) {
@@ -1511,7 +1546,7 @@ void ContiWorker::runVelocityControlCycle()
         }
         if (velocityCompletionClock_.elapsed() >= velocityConfig_.stableDwellMs) {
             finishVelocityControl(QStringLiteral("速度闭环轨迹完成：终点误差=%1°，实际速度=%2°/s。")
-                                      .arg(positionError, 0, 'f', 6)
+                                      .arg(trajectoryTimeError, 0, 'f', 6)
                                       .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 6));
             return;
         }
@@ -1521,7 +1556,7 @@ void ContiWorker::runVelocityControlCycle()
     if (elapsedS * 1000.0 > velocityConfig_.durationS * 1000.0
         + velocityConfig_.finishTimeoutMs) {
         finishVelocityControl(QStringLiteral("速度闭环终点确认超时：误差=%1°，实际速度=%2°/s。")
-                                  .arg(positionError, 0, 'f', 6)
+                                  .arg(trajectoryTimeError, 0, 'f', 6)
                                   .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 6), true);
         return;
     }
@@ -1529,12 +1564,20 @@ void ContiWorker::runVelocityControlCycle()
     const qint64 elapsedMs = velocityRunClock_.elapsed();
     if (velocityLastDiagnosticMs_ < 0 || elapsedMs - velocityLastDiagnosticMs_ >= 250) {
         velocityLastDiagnosticMs_ = elapsedMs;
-        emit logMessage(QStringLiteral("速度闭环：t=%1 s，位置 ref/act/err=%2/%3/%4°，"
-                                       "速度 ref/cmd/card/act=%5/%6/%7/%8°/s，API=%9 us。")
+        const QString alignedErrorText = feedback.delayCompensationValid
+            ? QStringLiteral("%1°（τ=%2 ms）")
+                  .arg(feedback.delayCompensatedFollowingErrorUnit, 0, 'f', 4)
+                  .arg(feedback.delayCompensationMs, 0, 'f', 3)
+            : QStringLiteral("无效");
+        emit logMessage(QStringLiteral(
+                            "速度闭环：t=%1 s，位置 ref/act/轨迹误差=%2/%3/%4°，"
+                            "延迟对齐跟随误差=%5；"
+                            "速度 ref/cmd/card/act=%6/%7/%8/%9°/s，API=%10 us。")
                             .arg(elapsedS, 0, 'f', 3)
                             .arg(referencePosition, 0, 'f', 4)
                             .arg(feedback.encoderPositionUnit, 0, 'f', 4)
-                            .arg(positionError, 0, 'f', 4)
+                            .arg(trajectoryTimeError, 0, 'f', 4)
+                            .arg(alignedErrorText)
                             .arg(referenceVelocity, 0, 'f', 4)
                             .arg(output.commandVelocity, 0, 'f', 4)
                             .arg(feedback.commandVelocityUnitPerSecond, 0, 'f', 4)
@@ -1559,8 +1602,11 @@ void ContiWorker::finishVelocityControl(const QString &message, bool emergency)
     velocityReferenceInitialized_ = false;
     velocityStatus_.active = false;
     velocityStatus_.motionStarted = false;
+    velocityAlignedErrorFreshClock_.invalidate();
     velocityPlotCommandHistory_.clear();
     velocityPlotLastTraceSequence_ = 0;
+    velocityBatchAlignedErrorValid_ = false;
+    velocityBatchPeakAlignedErrorDegree_ = 0.0;
     velocityStatus_.stateText = emergency ? QStringLiteral("异常停止") : QStringLiteral("已完成");
     stateText_ = velocityStatus_.stateText;
     telemetryRecorder_.appendEvent(emergency
@@ -1579,6 +1625,8 @@ void ContiWorker::finishVelocityControl(const QString &message, bool emergency)
 
 void ContiWorker::appendVelocityPlotFrames(const QVector<TraceTelemetryFrame> &frames)
 {
+    velocityBatchAlignedErrorValid_ = false;
+    velocityBatchPeakAlignedErrorDegree_ = 0.0;
     if (!velocityControlActive_ || !velocityReferenceInitialized_
         || !velocityPlotTraceStartValid_ || frames.isEmpty()) {
         return;
@@ -1660,6 +1708,14 @@ void ContiWorker::appendVelocityPlotFrames(const QVector<TraceTelemetryFrame> &f
         sample.delayAlignedFollowingErrorDegree =
             delayAlignedCommandPositionDegree - sample.actualPositionDegree;
         sample.delayAlignedFollowingErrorValid = delayAlignedErrorValid;
+        if (delayAlignedErrorValid
+            && (!velocityBatchAlignedErrorValid_
+                || std::abs(sample.delayAlignedFollowingErrorDegree)
+                       > std::abs(velocityBatchPeakAlignedErrorDegree_))) {
+            velocityBatchAlignedErrorValid_ = true;
+            velocityBatchPeakAlignedErrorDegree_ =
+                sample.delayAlignedFollowingErrorDegree;
+        }
         sample.positionToleranceDegree = velocityConfig_.positionToleranceDegree;
         sample.commandVelocityDegreePerSecond = velocityStatus_.commandVelocityDegreePerSecond;
         sample.cardCommandVelocityDegreePerSecond =

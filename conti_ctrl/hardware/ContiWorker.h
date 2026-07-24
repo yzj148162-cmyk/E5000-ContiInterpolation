@@ -171,6 +171,7 @@ private:
     QElapsedTimer velocityRunClock_;
     QElapsedTimer velocityCycleClock_;
     QElapsedTimer velocityTraceFreshClock_;
+    QElapsedTimer velocityAlignedErrorFreshClock_;
     QElapsedTimer velocityCompletionClock_;
     quint64 velocityLastTraceSequence_ = 0;
     qint64 velocityLastDiagnosticMs_ = -1;
@@ -180,6 +181,8 @@ private:
     bool velocityPlotTraceStartValid_ = false;
     QQueue<TraceCommandHistorySample> velocityPlotCommandHistory_;
     quint64 velocityPlotLastTraceSequence_ = 0;
+    bool velocityBatchAlignedErrorValid_ = false;
+    double velocityBatchPeakAlignedErrorDegree_ = 0.0;
     TraceDelayCalibrationConfig traceDelayConfig_;
     TraceDelayCalibrationStatus traceDelayStatus_;
     QVector<TraceDelayAxisResult> traceDelayAxisResults_;

@@ -1067,7 +1067,7 @@ void MainWindow::initializeVelocityControlCharts()
     createChart(QStringLiteral("位置跟踪：规划 / 板卡指令 / Trace实际"),
                 QStringLiteral("位置 (°)"), ui_->velocityPositionChartView,
                 velocityPositionChart_, velocityPositionTimeAxis_, velocityPositionValueAxis_);
-    createChart(QStringLiteral("位置误差：轨迹时间 / 延迟对齐 / 允许范围"),
+    createChart(QStringLiteral("位置误差：轨迹时间 / 延迟对齐 / 终点容差"),
                 QStringLiteral("误差 (°)"),
                  ui_->velocityErrorChartView, velocityErrorChart_,
                  velocityErrorTimeAxis_, velocityErrorValueAxis_);
@@ -1093,8 +1093,8 @@ void MainWindow::initializeVelocityControlCharts()
     }
     const QStringList errorNames {QStringLiteral("轨迹时间误差"),
                                   QStringLiteral("延迟对齐误差"),
-                                  QStringLiteral("正允许误差"),
-                                  QStringLiteral("负允许误差")};
+                                  QStringLiteral("正终点容差"),
+                                  QStringLiteral("负终点容差")};
     const QList<QColor> errorColors {red, green,
                                      QColor(140, 140, 140),
                                      QColor(140, 140, 140)};
