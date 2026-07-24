@@ -574,6 +574,50 @@ bool E5000HardwareInterface::changeVelocity(
                                                apiResult, error);
     });
 }
+bool E5000HardwareInterface::startTorqueMove(
+    const TorqueTestConfig &config, int torqueRaw,
+    double absolutePositionLimitDegree, short &apiResult, QString &error)
+{
+    return invokeHardware(backend_, [&] {
+        const WORD positionLimitValid =
+            config.hardwarePositionLimitEnabled ? 1U : 0U;
+        const double cardPositionLimit =
+            MotorUnit::degreesToCardUnits(absolutePositionLimitDegree,
+                                          config.degreesPerCardUnit);
+        return backend_->card_.startTorqueMove(
+            backend_->cardNo_, config.axis, torqueRaw, positionLimitValid,
+            cardPositionLimit, 1U, apiResult, error);
+    });
+}
+bool E5000HardwareInterface::changeTorque(
+    quint16 axis, int torqueRaw, short &apiResult, QString &error)
+{
+    return invokeHardware(backend_, [&] {
+        return backend_->card_.changeTorque(backend_->cardNo_, axis, torqueRaw,
+                                             apiResult, error);
+    });
+}
+bool E5000HardwareInterface::readTorque(
+    quint16 axis, int &torqueRaw, short &apiResult, QString &error) const
+{
+    return invokeHardware(backend_, [&] {
+        return backend_->card_.readTorque(backend_->cardNo_, axis, torqueRaw,
+                                           apiResult, error);
+    });
+}
+bool E5000HardwareInterface::writeTorqueVelocityLimit(
+    const TorqueTestConfig &config, long value, quint16 &nodeAddress,
+    long &readback, QString &error)
+{
+    return invokeHardware(backend_, [&] {
+        WORD node = 0;
+        const bool ok = backend_->card_.writeTorqueVelocityLimit(
+            backend_->cardNo_, config.axis, config.velocityLimitOd, value,
+            node, readback, error);
+        nodeAddress = node;
+        return ok;
+    });
+}
 bool E5000HardwareInterface::stopAxis(quint16 axis, bool emergency, QString &error) const
 { return invokeHardware(backend_, [&] { return backend_->card_.stopAxis(backend_->cardNo_, axis, emergency, error); }); }
 bool E5000HardwareInterface::stopAxis(quint16, quint16 axis, bool emergency, QString &error) const

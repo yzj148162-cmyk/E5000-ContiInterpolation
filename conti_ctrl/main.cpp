@@ -13,6 +13,8 @@ int main(int argc, char *argv[])
     qRegisterMetaType<SingleAxisJogConfig>("SingleAxisJogConfig");
     qRegisterMetaType<VelocityControlConfig>("VelocityControlConfig");
     qRegisterMetaType<QVector<VelocityPlotSample>>("QVector<VelocityPlotSample>");
+    qRegisterMetaType<TorqueTestConfig>("TorqueTestConfig");
+    qRegisterMetaType<QVector<TorquePlotSample>>("QVector<TorquePlotSample>");
     qRegisterMetaType<TraceDelayCalibrationConfig>("TraceDelayCalibrationConfig");
     qRegisterMetaType<QVector<TraceDelayPlotSample>>("QVector<TraceDelayPlotSample>");
 

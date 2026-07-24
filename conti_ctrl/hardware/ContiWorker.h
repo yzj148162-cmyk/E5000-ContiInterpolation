@@ -43,6 +43,10 @@ public slots:
     void startVelocityControl(const VelocityControlConfig &config);
     void stopVelocityControl(bool emergency);
     void resetVelocityController();
+    void writeTorqueVelocityLimit(const TorqueTestConfig &config);
+    void startTorqueTest(const TorqueTestConfig &config);
+    void updateTorqueCommand(const TorqueTestConfig &config);
+    void stopTorqueTest(bool emergency);
     void startTraceDelayCalibration(const TraceDelayCalibrationConfig &config);
     void stopTraceDelayCalibration(bool emergency);
     void resetTraceDelayCalibrationAxis(quint16 axis);
@@ -55,12 +59,14 @@ signals:
     void logMessage(const QString &message);
     void statusChanged(const ContiStatus &status);
     void velocityPlotSamplesReady(const QVector<VelocityPlotSample> &samples);
+    void torquePlotSamplesReady(const QVector<TorquePlotSample> &samples);
     void traceDelayPlotSamplesReady(const QVector<TraceDelayPlotSample> &samples);
 
 private slots:
     void produceNextPoint();
     void monitorContinuousRun();
     void runVelocityControlCycle();
+    void runTorqueTestCycle();
     void runTraceDelayCalibrationCycle();
 
 private:
@@ -98,6 +104,11 @@ private:
     void finishVelocityControl(const QString &message, bool emergency = false);
     void appendVelocityPlotFrames(const QVector<TraceTelemetryFrame> &frames);
     void flushVelocityPlotSamples();
+    bool validateTorqueTestConfig(const TorqueTestConfig &config,
+                                  QString &errorMessage) const;
+    int torqueNmToRaw(double torqueNm, double ratedTorqueNm) const;
+    void finishTorqueTest(const QString &message, bool emergency = false);
+    void flushTorquePlotSamples();
     bool validateTraceDelayCalibrationConfig(const TraceDelayCalibrationConfig &config,
                                              QString &errorMessage) const;
     bool startNextTraceDelaySegment(QString &errorMessage);
@@ -143,6 +154,7 @@ private:
     QTimer *monitorTimer_ = nullptr;
     QTimer *feedbackTimer_ = nullptr;
     QTimer *velocityControlTimer_ = nullptr;
+    QTimer *torqueTestTimer_ = nullptr;
     QTimer *traceDelayCalibrationTimer_ = nullptr;
     ContiTestConfig config_;
     ContiFeedStatus lastFeedStatus_;
@@ -155,6 +167,8 @@ private:
     bool running_ = false;
     bool pointMoveActive_ = false;
     bool velocityControlActive_ = false;
+    bool torqueTestActive_ = false;
+    bool torqueMotionStarted_ = false;
     bool velocityMotionStarted_ = false;
     bool velocityReferenceInitialized_ = false;
     bool velocityAutoRecording_ = false;
@@ -183,6 +197,15 @@ private:
     quint64 velocityPlotLastTraceSequence_ = 0;
     bool velocityBatchAlignedErrorValid_ = false;
     double velocityBatchPeakAlignedErrorDegree_ = 0.0;
+    quint64 torqueRunId_ = 0;
+    TorqueTestConfig torqueConfig_;
+    TorqueTestStatus torqueStatus_;
+    QElapsedTimer torqueRunClock_;
+    QElapsedTimer torqueTraceFreshClock_;
+    QElapsedTimer torquePlotPublishClock_;
+    quint64 torqueLastTraceSequence_ = 0;
+    qint64 torqueLastDiagnosticMs_ = -1;
+    QVector<TorquePlotSample> pendingTorquePlotSamples_;
     TraceDelayCalibrationConfig traceDelayConfig_;
     TraceDelayCalibrationStatus traceDelayStatus_;
     QVector<TraceDelayAxisResult> traceDelayAxisResults_;

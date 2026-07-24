@@ -38,6 +38,7 @@ MainWindow::MainWindow(QWidget *parent)
     updateBusPeriodUi();
     initializeTelemetryCharts();
     initializeVelocityControlCharts();
+    initializeTorqueTestCharts();
     initializeTraceDelayCalibrationCharts();
     onStageChanged(ui_->stageCombo->currentIndex());
 
@@ -133,6 +134,31 @@ void MainWindow::connectWorker()
             this, &MainWindow::onVelocityResetClicked);
     connect(ui_->velocityClearCurvesButton, &QPushButton::clicked,
             this, &MainWindow::onVelocityClearCurvesClicked);
+    connect(ui_->torqueUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+        ui_->torqueCustomEquivalentSpin->setEnabled(index == 3);
+    });
+    connect(ui_->torqueOdCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+        ui_->torqueOdRpmSpin->setEnabled(index == 0);
+        ui_->torqueOd6080RawSpin->setEnabled(index == 1);
+    });
+    connect(ui_->torqueEnableAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueEnableAxisClicked);
+    connect(ui_->torqueDisableAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueDisableAxisClicked);
+    connect(ui_->torqueWriteOdButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueWriteOdClicked);
+    connect(ui_->torqueStartButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueStartClicked);
+    connect(ui_->torqueUpdateButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueUpdateClicked);
+    connect(ui_->torqueStopButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueStopClicked);
+    connect(ui_->torqueEmergencyStopButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueEmergencyStopClicked);
+    connect(ui_->torqueClearCurvesButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueClearCurvesClicked);
     connect(ui_->traceDelayUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int index) {
         const bool custom = index == 3;
@@ -168,6 +194,14 @@ void MainWindow::connectWorker()
             worker_, &ContiWorker::stopVelocityControl);
     connect(this, &MainWindow::resetVelocityControllerRequested,
             worker_, &ContiWorker::resetVelocityController);
+    connect(this, &MainWindow::writeTorqueVelocityLimitRequested,
+            worker_, &ContiWorker::writeTorqueVelocityLimit);
+    connect(this, &MainWindow::startTorqueTestRequested,
+            worker_, &ContiWorker::startTorqueTest);
+    connect(this, &MainWindow::updateTorqueCommandRequested,
+            worker_, &ContiWorker::updateTorqueCommand);
+    connect(this, &MainWindow::stopTorqueTestRequested,
+            worker_, &ContiWorker::stopTorqueTest);
     connect(this, &MainWindow::startTraceDelayCalibrationRequested,
             worker_, &ContiWorker::startTraceDelayCalibration);
     connect(this, &MainWindow::stopTraceDelayCalibrationRequested,
@@ -195,6 +229,16 @@ void MainWindow::connectWorker()
         const qsizetype overflow = pendingVelocityPlotSamples_.size() - kMaximumPendingSamples;
         if (overflow > 0) {
             pendingVelocityPlotSamples_.remove(0, overflow);
+        }
+    });
+    connect(worker_, &ContiWorker::torquePlotSamplesReady,
+            this, [this](const QVector<TorquePlotSample> &samples) {
+        constexpr qsizetype kMaximumPendingSamples = 20000;
+        pendingTorquePlotSamples_ += samples;
+        const qsizetype overflow =
+            pendingTorquePlotSamples_.size() - kMaximumPendingSamples;
+        if (overflow > 0) {
+            pendingTorquePlotSamples_.remove(0, overflow);
         }
     });
     connect(worker_, &ContiWorker::traceDelayPlotSamplesReady,
@@ -323,6 +367,46 @@ VelocityControlConfig MainWindow::collectVelocityConfig() const
     config.finishTimeoutMs = ui_->velocityFinishTimeoutSpin->value();
     config.maxFollowingErrorDegree = ui_->velocityMaxFollowingErrorSpin->value();
     config.traceTimeoutMs = ui_->velocityTraceTimeoutSpin->value();
+    return config;
+}
+
+TorqueTestConfig MainWindow::collectTorqueConfig() const
+{
+    TorqueTestConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis =
+        static_cast<quint16>(ui_->torqueAxisCombo->currentText().toUInt());
+    switch (ui_->torqueUnitCombo->currentIndex()) {
+    case 1:
+        config.degreesPerCardUnit = 0.1;
+        break;
+    case 2:
+        config.degreesPerCardUnit = 0.01;
+        break;
+    case 3:
+        config.degreesPerCardUnit = ui_->torqueCustomEquivalentSpin->value()
+            / MotorUnit::kPhysicalPulsesPerDegree;
+        break;
+    default:
+        config.degreesPerCardUnit = 1.0;
+        break;
+    }
+    config.ratedTorqueNm = ui_->torqueRatedSpin->value();
+    config.targetTorqueNm = ui_->torqueTargetSpin->value();
+    config.maximumCommandTorqueNm = ui_->torqueCommandLimitSpin->value();
+    config.maximumActualTorqueNm = ui_->torqueActualLimitSpin->value();
+    config.maximumTravelDegree = ui_->torqueTravelLimitSpin->value();
+    config.maximumSpeedDegreePerSecond = ui_->torqueSpeedLimitSpin->value();
+    config.monitorPeriodMs = ui_->torqueMonitorPeriodSpin->value();
+    config.traceTimeoutMs = ui_->torqueTraceTimeoutSpin->value();
+    config.maximumRunTimeMs = ui_->torqueRunTimeoutSpin->value();
+    config.hardwarePositionLimitEnabled =
+        ui_->torqueHardwareLimitCheck->isChecked();
+    config.velocityLimitOd = ui_->torqueOdCombo->currentIndex() == 0
+        ? TorqueVelocityLimitOd::Vendor220B
+        : TorqueVelocityLimitOd::CiA4026080;
+    config.velocityLimitRpm = ui_->torqueOdRpmSpin->value();
+    config.cia402VelocityLimitRaw = ui_->torqueOd6080RawSpin->value();
     return config;
 }
 
@@ -599,6 +683,54 @@ void MainWindow::onVelocityClearCurvesClicked()
     clearVelocityControlCharts();
 }
 
+void MainWindow::onTorqueEnableAxisClicked()
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis =
+        static_cast<quint16>(ui_->torqueAxisCombo->currentText().toUInt());
+    emit enableJogAxisRequested(config);
+}
+
+void MainWindow::onTorqueDisableAxisClicked()
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis =
+        static_cast<quint16>(ui_->torqueAxisCombo->currentText().toUInt());
+    emit disableJogAxisRequested(config);
+}
+
+void MainWindow::onTorqueWriteOdClicked()
+{
+    emit writeTorqueVelocityLimitRequested(collectTorqueConfig());
+}
+
+void MainWindow::onTorqueStartClicked()
+{
+    emit startTorqueTestRequested(collectTorqueConfig());
+}
+
+void MainWindow::onTorqueUpdateClicked()
+{
+    emit updateTorqueCommandRequested(collectTorqueConfig());
+}
+
+void MainWindow::onTorqueStopClicked()
+{
+    emit stopTorqueTestRequested(false);
+}
+
+void MainWindow::onTorqueEmergencyStopClicked()
+{
+    emit stopTorqueTestRequested(true);
+}
+
+void MainWindow::onTorqueClearCurvesClicked()
+{
+    clearTorqueTestCharts();
+}
+
 void MainWindow::onTraceDelayStartClicked()
 {
     clearTraceDelayCalibrationCharts();
@@ -769,6 +901,49 @@ void MainWindow::updateStatus(const ContiStatus &status)
     ui_->velocityResetButton->setEnabled(!velocity.active);
     ui_->velocityStopButton->setEnabled(velocity.active);
     ui_->velocityEmergencyStopButton->setEnabled(velocity.active);
+    const TorqueTestStatus &torque = status.torqueTest;
+    ui_->torqueStateValueLabel->setText(
+        QStringLiteral("%1；API=%2")
+            .arg(torque.stateText).arg(torque.lastApiResult));
+    ui_->torqueTimeValueLabel->setText(
+        QStringLiteral("%1 s / %2 us")
+            .arg(torque.elapsedS, 0, 'f', 3)
+            .arg(torque.lastApiDurationUs));
+    ui_->torqueValueValueLabel->setText(
+        QStringLiteral("%1 / %2 N·m；raw=%3 / %4")
+            .arg(torque.commandTorqueNm, 0, 'f', 4)
+            .arg(torque.actualTorqueNm, 0, 'f', 4)
+            .arg(torque.commandTorqueRaw)
+            .arg(torque.actualTorqueRaw));
+    ui_->torqueMotionValueLabel->setText(
+        QStringLiteral("%1 / %2 / %3 °；%4 °/s")
+            .arg(torque.startPositionDegree, 0, 'f', 4)
+            .arg(torque.actualPositionDegree, 0, 'f', 4)
+            .arg(torque.positionLimitDegree, 0, 'f', 4)
+            .arg(torque.actualVelocityDegreePerSecond, 0, 'f', 4));
+    ui_->torqueOdStatusValueLabel->setText(
+        torque.nodeAddress == 0
+        ? QStringLiteral("-- / --")
+        : QStringLiteral("%1 / %2")
+              .arg(torque.nodeAddress).arg(torque.velocityLimitReadback));
+    ui_->torqueParameterGroup->setEnabled(true);
+    ui_->torqueAxisCombo->setEnabled(!torque.active);
+    ui_->torqueUnitCombo->setEnabled(!torque.active);
+    ui_->torqueCustomEquivalentSpin->setEnabled(
+        !torque.active && ui_->torqueUnitCombo->currentIndex() == 3);
+    ui_->torqueRatedSpin->setEnabled(!torque.active);
+    ui_->torqueCommandLimitSpin->setEnabled(!torque.active);
+    ui_->torqueMonitorPeriodSpin->setEnabled(!torque.active);
+    // 运行中只保留目标转矩可编辑，由“在线更新转矩”显式下发。
+    ui_->torqueTargetSpin->setEnabled(true);
+    ui_->torqueSafetyGroup->setEnabled(!torque.active);
+    ui_->torqueOdGroup->setEnabled(status.boardInitialized && !torque.active);
+    ui_->torqueEnableAxisButton->setEnabled(status.boardInitialized && !torque.active);
+    ui_->torqueDisableAxisButton->setEnabled(status.boardInitialized && !torque.active);
+    ui_->torqueStartButton->setEnabled(status.boardInitialized && !torque.active);
+    ui_->torqueUpdateButton->setEnabled(torque.active);
+    ui_->torqueStopButton->setEnabled(torque.active);
+    ui_->torqueEmergencyStopButton->setEnabled(torque.active);
     const TraceDelayCalibrationStatus &traceDelay = status.traceDelayCalibration;
     ui_->traceDelayCalibrationParameterGroup->setEnabled(!traceDelay.active);
     ui_->traceDelayStartButton->setEnabled(status.boardInitialized && !traceDelay.active);
@@ -963,6 +1138,7 @@ void MainWindow::updateTelemetryCharts()
         updateStatus(latestStatus_);
     }
     updateVelocityControlCharts();
+    updateTorqueTestCharts();
     updateTraceDelayCalibrationCharts();
     updateContiTrajectoryChart();
     if (!hasLatestStatus_ || !latestStatus_.telemetryPlotActive) {
@@ -1118,6 +1294,58 @@ void MainWindow::initializeVelocityControlCharts()
         velocitySpeedChart_->addSeries(velocitySpeedSeries_[index]);
         velocitySpeedSeries_[index]->attachAxis(velocitySpeedTimeAxis_);
         velocitySpeedSeries_[index]->attachAxis(velocitySpeedValueAxis_);
+    }
+}
+
+void MainWindow::initializeTorqueTestCharts()
+{
+    const auto createChart = [](const QString &title, const QString &valueTitle,
+                                ZoomableChartView *view, QChart *&chart,
+                                QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
+        chart = new QChart;
+        chart->setTitle(title);
+        chart->legend()->setVisible(true);
+        timeAxis = new QValueAxis(chart);
+        timeAxis->setTitleText(QStringLiteral("运行时间 (s)"));
+        timeAxis->setLabelFormat(QStringLiteral("%.2f"));
+        timeAxis->setTickCount(6);
+        timeAxis->setRange(0.0, 5.0);
+        valueAxis = new QValueAxis(chart);
+        valueAxis->setTitleText(valueTitle);
+        valueAxis->setRange(-1.0, 1.0);
+        chart->addAxis(timeAxis, Qt::AlignBottom);
+        chart->addAxis(valueAxis, Qt::AlignLeft);
+        view->setChart(chart);
+        view->setRenderHint(QPainter::Antialiasing, false);
+        view->setAutomaticRange(0.0, 5.0, -1.0, 1.0);
+    };
+    createChart(QStringLiteral("转矩：目标 / nmc_get_torque 实际"),
+                QStringLiteral("转矩 (N·m)"), ui_->torqueValueChartView,
+                torqueValueChart_, torqueValueTimeAxis_, torqueValueAxis_);
+    createChart(QStringLiteral("安全监测：相对位置 / Trace实际速度"),
+                QStringLiteral("位置 (°) / 速度 (°/s)"),
+                ui_->torqueMotionChartView, torqueMotionChart_,
+                torqueMotionTimeAxis_, torqueMotionValueAxis_);
+
+    const QStringList torqueNames {QStringLiteral("目标转矩"),
+                                   QStringLiteral("实际转矩")};
+    const QStringList motionNames {QStringLiteral("相对位置"),
+                                   QStringLiteral("实际速度")};
+    const QList<QColor> colors {QColor(0, 102, 204), QColor(204, 51, 51)};
+    for (int index = 0; index < 2; ++index) {
+        torqueValueSeries_[index] = new QLineSeries(torqueValueChart_);
+        torqueValueSeries_[index]->setName(torqueNames.at(index));
+        torqueValueSeries_[index]->setPen(QPen(colors.at(index), 1.5));
+        torqueValueChart_->addSeries(torqueValueSeries_[index]);
+        torqueValueSeries_[index]->attachAxis(torqueValueTimeAxis_);
+        torqueValueSeries_[index]->attachAxis(torqueValueAxis_);
+
+        torqueMotionSeries_[index] = new QLineSeries(torqueMotionChart_);
+        torqueMotionSeries_[index]->setName(motionNames.at(index));
+        torqueMotionSeries_[index]->setPen(QPen(colors.at(index), 1.5));
+        torqueMotionChart_->addSeries(torqueMotionSeries_[index]);
+        torqueMotionSeries_[index]->attachAxis(torqueMotionTimeAxis_);
+        torqueMotionSeries_[index]->attachAxis(torqueMotionValueAxis_);
     }
 }
 
@@ -1327,6 +1555,71 @@ void MainWindow::clearVelocityControlCharts()
     ui_->velocityPositionChartView->resetAutomaticRangeMode();
     ui_->velocityErrorChartView->resetAutomaticRangeMode();
     ui_->velocitySpeedChartView->resetAutomaticRangeMode();
+}
+
+void MainWindow::clearTorqueTestCharts()
+{
+    for (QLineSeries *series : torqueValueSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    for (QLineSeries *series : torqueMotionSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    pendingTorquePlotSamples_.clear();
+    for (QList<QPointF> &points : torqueValueDisplayPoints_) points.clear();
+    for (QList<QPointF> &points : torqueMotionDisplayPoints_) points.clear();
+    lastTorquePlotTimeS_ = -1.0;
+    ui_->torqueValueChartView->resetAutomaticRangeMode();
+    ui_->torqueMotionChartView->resetAutomaticRangeMode();
+}
+
+void MainWindow::updateTorqueTestCharts()
+{
+    QVector<TorquePlotSample> samples;
+    samples.swap(pendingTorquePlotSamples_);
+    if (samples.isEmpty()) {
+        return;
+    }
+    const quint64 newestRunId = samples.constLast().runId;
+    if (newestRunId != lastTorqueRunId_) {
+        clearTorqueTestCharts();
+        lastTorqueRunId_ = newestRunId;
+    }
+    constexpr qsizetype kMaximumDisplayPoints = 10000;
+    for (const TorquePlotSample &sample : samples) {
+        if (sample.runId != newestRunId || sample.elapsedS <= lastTorquePlotTimeS_) {
+            continue;
+        }
+        torqueValueDisplayPoints_[0].append(
+            QPointF(sample.elapsedS, sample.commandTorqueNm));
+        torqueValueDisplayPoints_[1].append(
+            QPointF(sample.elapsedS, sample.actualTorqueNm));
+        torqueMotionDisplayPoints_[0].append(
+            QPointF(sample.elapsedS, sample.relativePositionDegree));
+        torqueMotionDisplayPoints_[1].append(
+            QPointF(sample.elapsedS, sample.actualVelocityDegreePerSecond));
+        lastTorquePlotTimeS_ = sample.elapsedS;
+    }
+    for (QList<QPointF> &points : torqueValueDisplayPoints_) {
+        const qsizetype overflow = points.size() - kMaximumDisplayPoints;
+        if (overflow > 0) points.remove(0, overflow);
+    }
+    for (QList<QPointF> &points : torqueMotionDisplayPoints_) {
+        const qsizetype overflow = points.size() - kMaximumDisplayPoints;
+        if (overflow > 0) points.remove(0, overflow);
+    }
+    for (int index = 0; index < 2; ++index) {
+        torqueValueSeries_[index]->replace(torqueValueDisplayPoints_[index]);
+        torqueMotionSeries_[index]->replace(torqueMotionDisplayPoints_[index]);
+    }
+    updateChartRanges(ui_->torqueValueChartView,
+                      {torqueValueSeries_[0], torqueValueSeries_[1]},
+                      lastTorquePlotTimeS_, 0.01);
+    updateChartRanges(ui_->torqueMotionChartView,
+                      {torqueMotionSeries_[0], torqueMotionSeries_[1]},
+                      lastTorquePlotTimeS_, 0.01);
+    ui_->torqueValueChartView->update();
+    ui_->torqueMotionChartView->update();
 }
 
 void MainWindow::updateVelocityControlCharts()

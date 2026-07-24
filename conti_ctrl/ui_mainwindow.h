@@ -1,13 +1,13 @@
 /********************************************************************************
-** Form generated from reading UI file 'mainwindow.ui'
+** Form generated from reading UI file 'conti_staged_mainwindow.ui'
 **
 ** Created by: Qt User Interface Compiler version 6.8.3
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
 
-#ifndef UI_MAINWINDOW_H
-#define UI_MAINWINDOW_H
+#ifndef CONTI_STAGED_UI_MAINWINDOW_H
+#define CONTI_STAGED_UI_MAINWINDOW_H
 
 #include <QtCharts/QChartView>
 #include <QtCore/QVariant>
@@ -357,6 +357,69 @@ public:
     ZoomableChartView *velocityErrorChartView;
     ZoomableChartView *velocitySpeedChartView;
     QLabel *velocityControlHintLabel;
+    QWidget *torqueTestTab;
+    QVBoxLayout *torqueTestTabLayout;
+    QScrollArea *torqueTestScrollArea;
+    QWidget *torqueTestScrollContent;
+    QVBoxLayout *torqueTestContentLayout;
+    QGroupBox *torqueParameterGroup;
+    QGridLayout *torqueParameterLayout;
+    QLabel *torqueAxisLabel;
+    QComboBox *torqueAxisCombo;
+    QLabel *torqueUnitLabel;
+    QComboBox *torqueUnitCombo;
+    QDoubleSpinBox *torqueCustomEquivalentSpin;
+    QLabel *torqueRatedLabel;
+    QDoubleSpinBox *torqueRatedSpin;
+    QLabel *torqueTargetLabel;
+    QDoubleSpinBox *torqueTargetSpin;
+    QLabel *torqueZeroHintLabel;
+    QLabel *torqueCommandLimitLabel;
+    QDoubleSpinBox *torqueCommandLimitSpin;
+    QLabel *torqueMonitorPeriodLabel;
+    QSpinBox *torqueMonitorPeriodSpin;
+    QGroupBox *torqueSafetyGroup;
+    QGridLayout *torqueSafetyLayout;
+    QCheckBox *torqueHardwareLimitCheck;
+    QDoubleSpinBox *torqueTravelLimitSpin;
+    QLabel *torqueSpeedLimitLabel;
+    QDoubleSpinBox *torqueSpeedLimitSpin;
+    QLabel *torqueTraceTimeoutLabel;
+    QSpinBox *torqueTraceTimeoutSpin;
+    QLabel *torqueRunTimeoutLabel;
+    QSpinBox *torqueRunTimeoutSpin;
+    QLabel *torqueActualLimitLabel;
+    QDoubleSpinBox *torqueActualLimitSpin;
+    QGroupBox *torqueOdGroup;
+    QGridLayout *torqueOdLayout;
+    QComboBox *torqueOdCombo;
+    QDoubleSpinBox *torqueOdRpmSpin;
+    QSpinBox *torqueOd6080RawSpin;
+    QPushButton *torqueWriteOdButton;
+    QLabel *torqueOdHintLabel;
+    QGroupBox *torqueOperationGroup;
+    QGridLayout *torqueOperationLayout;
+    QPushButton *torqueEnableAxisButton;
+    QPushButton *torqueDisableAxisButton;
+    QPushButton *torqueStartButton;
+    QPushButton *torqueUpdateButton;
+    QPushButton *torqueStopButton;
+    QPushButton *torqueEmergencyStopButton;
+    QPushButton *torqueClearCurvesButton;
+    QLabel *torqueStateLabel;
+    QLabel *torqueStateValueLabel;
+    QLabel *torqueTimeLabel;
+    QLabel *torqueTimeValueLabel;
+    QLabel *torqueValueLabel;
+    QLabel *torqueValueValueLabel;
+    QLabel *torqueMotionLabel;
+    QLabel *torqueMotionValueLabel;
+    QLabel *torqueOdStatusLabel;
+    QLabel *torqueOdStatusValueLabel;
+    QSplitter *torqueChartSplitter;
+    ZoomableChartView *torqueValueChartView;
+    ZoomableChartView *torqueMotionChartView;
+    QLabel *torqueTestHintLabel;
     QWidget *traceDelayCalibrationTab;
     QVBoxLayout *traceDelayCalibrationTabLayout;
     QScrollArea *traceDelayCalibrationScrollArea;
@@ -2192,6 +2255,366 @@ public:
         velocityControlTabLayout->addWidget(velocityControlScrollArea);
 
         tabWidget->addTab(velocityControlTab, QString());
+        torqueTestTab = new QWidget();
+        torqueTestTab->setObjectName("torqueTestTab");
+        torqueTestTabLayout = new QVBoxLayout(torqueTestTab);
+        torqueTestTabLayout->setObjectName("torqueTestTabLayout");
+        torqueTestScrollArea = new QScrollArea(torqueTestTab);
+        torqueTestScrollArea->setObjectName("torqueTestScrollArea");
+        torqueTestScrollArea->setWidgetResizable(true);
+        torqueTestScrollContent = new QWidget();
+        torqueTestScrollContent->setObjectName("torqueTestScrollContent");
+        torqueTestScrollContent->setGeometry(QRect(0, 0, 900, 1050));
+        torqueTestContentLayout = new QVBoxLayout(torqueTestScrollContent);
+        torqueTestContentLayout->setObjectName("torqueTestContentLayout");
+        torqueParameterGroup = new QGroupBox(torqueTestScrollContent);
+        torqueParameterGroup->setObjectName("torqueParameterGroup");
+        torqueParameterLayout = new QGridLayout(torqueParameterGroup);
+        torqueParameterLayout->setObjectName("torqueParameterLayout");
+        torqueAxisLabel = new QLabel(torqueParameterGroup);
+        torqueAxisLabel->setObjectName("torqueAxisLabel");
+
+        torqueParameterLayout->addWidget(torqueAxisLabel, 0, 0, 1, 1);
+
+        torqueAxisCombo = new QComboBox(torqueParameterGroup);
+        torqueAxisCombo->addItem(QString());
+        torqueAxisCombo->addItem(QString());
+        torqueAxisCombo->addItem(QString());
+        torqueAxisCombo->addItem(QString());
+        torqueAxisCombo->addItem(QString());
+        torqueAxisCombo->addItem(QString());
+        torqueAxisCombo->addItem(QString());
+        torqueAxisCombo->addItem(QString());
+        torqueAxisCombo->setObjectName("torqueAxisCombo");
+
+        torqueParameterLayout->addWidget(torqueAxisCombo, 0, 1, 1, 1);
+
+        torqueUnitLabel = new QLabel(torqueParameterGroup);
+        torqueUnitLabel->setObjectName("torqueUnitLabel");
+
+        torqueParameterLayout->addWidget(torqueUnitLabel, 0, 2, 1, 1);
+
+        torqueUnitCombo = new QComboBox(torqueParameterGroup);
+        torqueUnitCombo->addItem(QString());
+        torqueUnitCombo->addItem(QString());
+        torqueUnitCombo->addItem(QString());
+        torqueUnitCombo->addItem(QString());
+        torqueUnitCombo->setObjectName("torqueUnitCombo");
+
+        torqueParameterLayout->addWidget(torqueUnitCombo, 0, 3, 1, 1);
+
+        torqueCustomEquivalentSpin = new QDoubleSpinBox(torqueParameterGroup);
+        torqueCustomEquivalentSpin->setObjectName("torqueCustomEquivalentSpin");
+        torqueCustomEquivalentSpin->setEnabled(false);
+        torqueCustomEquivalentSpin->setDecimals(6);
+        torqueCustomEquivalentSpin->setMinimum(0.000001000000000);
+        torqueCustomEquivalentSpin->setMaximum(1000000000.000000000000000);
+        torqueCustomEquivalentSpin->setValue(500.622000000000014);
+
+        torqueParameterLayout->addWidget(torqueCustomEquivalentSpin, 0, 4, 1, 1);
+
+        torqueRatedLabel = new QLabel(torqueParameterGroup);
+        torqueRatedLabel->setObjectName("torqueRatedLabel");
+
+        torqueParameterLayout->addWidget(torqueRatedLabel, 1, 0, 1, 1);
+
+        torqueRatedSpin = new QDoubleSpinBox(torqueParameterGroup);
+        torqueRatedSpin->setObjectName("torqueRatedSpin");
+        torqueRatedSpin->setDecimals(3);
+        torqueRatedSpin->setMinimum(0.001000000000000);
+        torqueRatedSpin->setMaximum(10000.000000000000000);
+        torqueRatedSpin->setValue(45.000000000000000);
+
+        torqueParameterLayout->addWidget(torqueRatedSpin, 1, 1, 1, 1);
+
+        torqueTargetLabel = new QLabel(torqueParameterGroup);
+        torqueTargetLabel->setObjectName("torqueTargetLabel");
+
+        torqueParameterLayout->addWidget(torqueTargetLabel, 1, 2, 1, 1);
+
+        torqueTargetSpin = new QDoubleSpinBox(torqueParameterGroup);
+        torqueTargetSpin->setObjectName("torqueTargetSpin");
+        torqueTargetSpin->setDecimals(4);
+        torqueTargetSpin->setMinimum(-10000.000000000000000);
+        torqueTargetSpin->setMaximum(10000.000000000000000);
+        torqueTargetSpin->setValue(0.000000000000000);
+
+        torqueParameterLayout->addWidget(torqueTargetSpin, 1, 3, 1, 1);
+
+        torqueZeroHintLabel = new QLabel(torqueParameterGroup);
+        torqueZeroHintLabel->setObjectName("torqueZeroHintLabel");
+
+        torqueParameterLayout->addWidget(torqueZeroHintLabel, 1, 4, 1, 1);
+
+        torqueCommandLimitLabel = new QLabel(torqueParameterGroup);
+        torqueCommandLimitLabel->setObjectName("torqueCommandLimitLabel");
+
+        torqueParameterLayout->addWidget(torqueCommandLimitLabel, 2, 0, 1, 1);
+
+        torqueCommandLimitSpin = new QDoubleSpinBox(torqueParameterGroup);
+        torqueCommandLimitSpin->setObjectName("torqueCommandLimitSpin");
+        torqueCommandLimitSpin->setDecimals(3);
+        torqueCommandLimitSpin->setMinimum(0.001000000000000);
+        torqueCommandLimitSpin->setMaximum(10000.000000000000000);
+        torqueCommandLimitSpin->setValue(5.000000000000000);
+
+        torqueParameterLayout->addWidget(torqueCommandLimitSpin, 2, 1, 1, 1);
+
+        torqueMonitorPeriodLabel = new QLabel(torqueParameterGroup);
+        torqueMonitorPeriodLabel->setObjectName("torqueMonitorPeriodLabel");
+
+        torqueParameterLayout->addWidget(torqueMonitorPeriodLabel, 2, 2, 1, 1);
+
+        torqueMonitorPeriodSpin = new QSpinBox(torqueParameterGroup);
+        torqueMonitorPeriodSpin->setObjectName("torqueMonitorPeriodSpin");
+        torqueMonitorPeriodSpin->setMinimum(5);
+        torqueMonitorPeriodSpin->setMaximum(1000);
+        torqueMonitorPeriodSpin->setValue(20);
+
+        torqueParameterLayout->addWidget(torqueMonitorPeriodSpin, 2, 3, 1, 1);
+
+
+        torqueTestContentLayout->addWidget(torqueParameterGroup);
+
+        torqueSafetyGroup = new QGroupBox(torqueTestScrollContent);
+        torqueSafetyGroup->setObjectName("torqueSafetyGroup");
+        torqueSafetyLayout = new QGridLayout(torqueSafetyGroup);
+        torqueSafetyLayout->setObjectName("torqueSafetyLayout");
+        torqueHardwareLimitCheck = new QCheckBox(torqueSafetyGroup);
+        torqueHardwareLimitCheck->setObjectName("torqueHardwareLimitCheck");
+        torqueHardwareLimitCheck->setChecked(true);
+
+        torqueSafetyLayout->addWidget(torqueHardwareLimitCheck, 0, 0, 1, 1);
+
+        torqueTravelLimitSpin = new QDoubleSpinBox(torqueSafetyGroup);
+        torqueTravelLimitSpin->setObjectName("torqueTravelLimitSpin");
+        torqueTravelLimitSpin->setDecimals(3);
+        torqueTravelLimitSpin->setMinimum(0.001000000000000);
+        torqueTravelLimitSpin->setMaximum(1000000.000000000000000);
+        torqueTravelLimitSpin->setValue(30.000000000000000);
+
+        torqueSafetyLayout->addWidget(torqueTravelLimitSpin, 0, 1, 1, 1);
+
+        torqueSpeedLimitLabel = new QLabel(torqueSafetyGroup);
+        torqueSpeedLimitLabel->setObjectName("torqueSpeedLimitLabel");
+
+        torqueSafetyLayout->addWidget(torqueSpeedLimitLabel, 0, 2, 1, 1);
+
+        torqueSpeedLimitSpin = new QDoubleSpinBox(torqueSafetyGroup);
+        torqueSpeedLimitSpin->setObjectName("torqueSpeedLimitSpin");
+        torqueSpeedLimitSpin->setDecimals(3);
+        torqueSpeedLimitSpin->setMinimum(0.001000000000000);
+        torqueSpeedLimitSpin->setMaximum(1000000.000000000000000);
+        torqueSpeedLimitSpin->setValue(90.000000000000000);
+
+        torqueSafetyLayout->addWidget(torqueSpeedLimitSpin, 0, 3, 1, 1);
+
+        torqueTraceTimeoutLabel = new QLabel(torqueSafetyGroup);
+        torqueTraceTimeoutLabel->setObjectName("torqueTraceTimeoutLabel");
+
+        torqueSafetyLayout->addWidget(torqueTraceTimeoutLabel, 1, 0, 1, 1);
+
+        torqueTraceTimeoutSpin = new QSpinBox(torqueSafetyGroup);
+        torqueTraceTimeoutSpin->setObjectName("torqueTraceTimeoutSpin");
+        torqueTraceTimeoutSpin->setMinimum(20);
+        torqueTraceTimeoutSpin->setMaximum(10000);
+        torqueTraceTimeoutSpin->setValue(100);
+
+        torqueSafetyLayout->addWidget(torqueTraceTimeoutSpin, 1, 1, 1, 1);
+
+        torqueRunTimeoutLabel = new QLabel(torqueSafetyGroup);
+        torqueRunTimeoutLabel->setObjectName("torqueRunTimeoutLabel");
+
+        torqueSafetyLayout->addWidget(torqueRunTimeoutLabel, 1, 2, 1, 1);
+
+        torqueRunTimeoutSpin = new QSpinBox(torqueSafetyGroup);
+        torqueRunTimeoutSpin->setObjectName("torqueRunTimeoutSpin");
+        torqueRunTimeoutSpin->setMinimum(100);
+        torqueRunTimeoutSpin->setMaximum(3600000);
+        torqueRunTimeoutSpin->setValue(10000);
+
+        torqueSafetyLayout->addWidget(torqueRunTimeoutSpin, 1, 3, 1, 1);
+
+        torqueActualLimitLabel = new QLabel(torqueSafetyGroup);
+        torqueActualLimitLabel->setObjectName("torqueActualLimitLabel");
+
+        torqueSafetyLayout->addWidget(torqueActualLimitLabel, 2, 0, 1, 1);
+
+        torqueActualLimitSpin = new QDoubleSpinBox(torqueSafetyGroup);
+        torqueActualLimitSpin->setObjectName("torqueActualLimitSpin");
+        torqueActualLimitSpin->setDecimals(3);
+        torqueActualLimitSpin->setMinimum(0.001000000000000);
+        torqueActualLimitSpin->setMaximum(10000.000000000000000);
+        torqueActualLimitSpin->setValue(7.500000000000000);
+
+        torqueSafetyLayout->addWidget(torqueActualLimitSpin, 2, 1, 1, 1);
+
+
+        torqueTestContentLayout->addWidget(torqueSafetyGroup);
+
+        torqueOdGroup = new QGroupBox(torqueTestScrollContent);
+        torqueOdGroup->setObjectName("torqueOdGroup");
+        torqueOdLayout = new QGridLayout(torqueOdGroup);
+        torqueOdLayout->setObjectName("torqueOdLayout");
+        torqueOdCombo = new QComboBox(torqueOdGroup);
+        torqueOdCombo->addItem(QString());
+        torqueOdCombo->addItem(QString());
+        torqueOdCombo->setObjectName("torqueOdCombo");
+
+        torqueOdLayout->addWidget(torqueOdCombo, 0, 0, 1, 1);
+
+        torqueOdRpmSpin = new QDoubleSpinBox(torqueOdGroup);
+        torqueOdRpmSpin->setObjectName("torqueOdRpmSpin");
+        torqueOdRpmSpin->setDecimals(3);
+        torqueOdRpmSpin->setMinimum(0.001000000000000);
+        torqueOdRpmSpin->setMaximum(100000.000000000000000);
+        torqueOdRpmSpin->setValue(60.000000000000000);
+
+        torqueOdLayout->addWidget(torqueOdRpmSpin, 0, 1, 1, 1);
+
+        torqueOd6080RawSpin = new QSpinBox(torqueOdGroup);
+        torqueOd6080RawSpin->setObjectName("torqueOd6080RawSpin");
+        torqueOd6080RawSpin->setEnabled(false);
+        torqueOd6080RawSpin->setMinimum(1);
+        torqueOd6080RawSpin->setMaximum(2147483647);
+        torqueOd6080RawSpin->setValue(180224);
+
+        torqueOdLayout->addWidget(torqueOd6080RawSpin, 0, 2, 1, 1);
+
+        torqueWriteOdButton = new QPushButton(torqueOdGroup);
+        torqueWriteOdButton->setObjectName("torqueWriteOdButton");
+
+        torqueOdLayout->addWidget(torqueWriteOdButton, 0, 3, 1, 1);
+
+        torqueOdHintLabel = new QLabel(torqueOdGroup);
+        torqueOdHintLabel->setObjectName("torqueOdHintLabel");
+        torqueOdHintLabel->setWordWrap(true);
+
+        torqueOdLayout->addWidget(torqueOdHintLabel, 1, 0, 1, 4);
+
+
+        torqueTestContentLayout->addWidget(torqueOdGroup);
+
+        torqueOperationGroup = new QGroupBox(torqueTestScrollContent);
+        torqueOperationGroup->setObjectName("torqueOperationGroup");
+        torqueOperationLayout = new QGridLayout(torqueOperationGroup);
+        torqueOperationLayout->setObjectName("torqueOperationLayout");
+        torqueEnableAxisButton = new QPushButton(torqueOperationGroup);
+        torqueEnableAxisButton->setObjectName("torqueEnableAxisButton");
+
+        torqueOperationLayout->addWidget(torqueEnableAxisButton, 0, 0, 1, 1);
+
+        torqueDisableAxisButton = new QPushButton(torqueOperationGroup);
+        torqueDisableAxisButton->setObjectName("torqueDisableAxisButton");
+
+        torqueOperationLayout->addWidget(torqueDisableAxisButton, 0, 1, 1, 1);
+
+        torqueStartButton = new QPushButton(torqueOperationGroup);
+        torqueStartButton->setObjectName("torqueStartButton");
+
+        torqueOperationLayout->addWidget(torqueStartButton, 0, 2, 1, 1);
+
+        torqueUpdateButton = new QPushButton(torqueOperationGroup);
+        torqueUpdateButton->setObjectName("torqueUpdateButton");
+
+        torqueOperationLayout->addWidget(torqueUpdateButton, 0, 3, 1, 1);
+
+        torqueStopButton = new QPushButton(torqueOperationGroup);
+        torqueStopButton->setObjectName("torqueStopButton");
+
+        torqueOperationLayout->addWidget(torqueStopButton, 0, 4, 1, 1);
+
+        torqueEmergencyStopButton = new QPushButton(torqueOperationGroup);
+        torqueEmergencyStopButton->setObjectName("torqueEmergencyStopButton");
+        torqueEmergencyStopButton->setStyleSheet(QString::fromUtf8("background-color:#b00020;color:white;font-weight:bold;"));
+
+        torqueOperationLayout->addWidget(torqueEmergencyStopButton, 0, 5, 1, 1);
+
+        torqueClearCurvesButton = new QPushButton(torqueOperationGroup);
+        torqueClearCurvesButton->setObjectName("torqueClearCurvesButton");
+
+        torqueOperationLayout->addWidget(torqueClearCurvesButton, 0, 6, 1, 1);
+
+        torqueStateLabel = new QLabel(torqueOperationGroup);
+        torqueStateLabel->setObjectName("torqueStateLabel");
+
+        torqueOperationLayout->addWidget(torqueStateLabel, 1, 0, 1, 1);
+
+        torqueStateValueLabel = new QLabel(torqueOperationGroup);
+        torqueStateValueLabel->setObjectName("torqueStateValueLabel");
+
+        torqueOperationLayout->addWidget(torqueStateValueLabel, 1, 1, 1, 2);
+
+        torqueTimeLabel = new QLabel(torqueOperationGroup);
+        torqueTimeLabel->setObjectName("torqueTimeLabel");
+
+        torqueOperationLayout->addWidget(torqueTimeLabel, 1, 3, 1, 1);
+
+        torqueTimeValueLabel = new QLabel(torqueOperationGroup);
+        torqueTimeValueLabel->setObjectName("torqueTimeValueLabel");
+
+        torqueOperationLayout->addWidget(torqueTimeValueLabel, 1, 4, 1, 3);
+
+        torqueValueLabel = new QLabel(torqueOperationGroup);
+        torqueValueLabel->setObjectName("torqueValueLabel");
+
+        torqueOperationLayout->addWidget(torqueValueLabel, 2, 0, 1, 1);
+
+        torqueValueValueLabel = new QLabel(torqueOperationGroup);
+        torqueValueValueLabel->setObjectName("torqueValueValueLabel");
+
+        torqueOperationLayout->addWidget(torqueValueValueLabel, 2, 1, 1, 6);
+
+        torqueMotionLabel = new QLabel(torqueOperationGroup);
+        torqueMotionLabel->setObjectName("torqueMotionLabel");
+
+        torqueOperationLayout->addWidget(torqueMotionLabel, 3, 0, 1, 1);
+
+        torqueMotionValueLabel = new QLabel(torqueOperationGroup);
+        torqueMotionValueLabel->setObjectName("torqueMotionValueLabel");
+
+        torqueOperationLayout->addWidget(torqueMotionValueLabel, 3, 1, 1, 6);
+
+        torqueOdStatusLabel = new QLabel(torqueOperationGroup);
+        torqueOdStatusLabel->setObjectName("torqueOdStatusLabel");
+
+        torqueOperationLayout->addWidget(torqueOdStatusLabel, 4, 0, 1, 1);
+
+        torqueOdStatusValueLabel = new QLabel(torqueOperationGroup);
+        torqueOdStatusValueLabel->setObjectName("torqueOdStatusValueLabel");
+
+        torqueOperationLayout->addWidget(torqueOdStatusValueLabel, 4, 1, 1, 6);
+
+
+        torqueTestContentLayout->addWidget(torqueOperationGroup);
+
+        torqueChartSplitter = new QSplitter(torqueTestScrollContent);
+        torqueChartSplitter->setObjectName("torqueChartSplitter");
+        torqueChartSplitter->setMinimumSize(QSize(0, 500));
+        torqueChartSplitter->setOrientation(Qt::Orientation::Vertical);
+        torqueChartSplitter->setChildrenCollapsible(false);
+        torqueValueChartView = new ZoomableChartView(torqueChartSplitter);
+        torqueValueChartView->setObjectName("torqueValueChartView");
+        torqueValueChartView->setMinimumSize(QSize(0, 240));
+        torqueChartSplitter->addWidget(torqueValueChartView);
+        torqueMotionChartView = new ZoomableChartView(torqueChartSplitter);
+        torqueMotionChartView->setObjectName("torqueMotionChartView");
+        torqueMotionChartView->setMinimumSize(QSize(0, 240));
+        torqueChartSplitter->addWidget(torqueMotionChartView);
+
+        torqueTestContentLayout->addWidget(torqueChartSplitter);
+
+        torqueTestHintLabel = new QLabel(torqueTestScrollContent);
+        torqueTestHintLabel->setObjectName("torqueTestHintLabel");
+        torqueTestHintLabel->setWordWrap(true);
+
+        torqueTestContentLayout->addWidget(torqueTestHintLabel);
+
+        torqueTestScrollArea->setWidget(torqueTestScrollContent);
+
+        torqueTestTabLayout->addWidget(torqueTestScrollArea);
+
+        tabWidget->addTab(torqueTestTab, QString());
         traceDelayCalibrationTab = new QWidget();
         traceDelayCalibrationTab->setObjectName("traceDelayCalibrationTab");
         traceDelayCalibrationTabLayout = new QVBoxLayout(traceDelayCalibrationTab);
@@ -2953,6 +3376,96 @@ public:
         velocityControlHintLabel->setText(QCoreApplication::translate("MainWindow", "1 ms Trace \345\216\237\345\247\213\345\270\247\345\256\214\346\225\264\345\274\202\346\255\245\350\256\260\345\275\225\357\274\233\345\256\236\346\227\266\346\233\262\347\272\277\346\214\211 10 ms \347\252\227\345\217\243\346\212\275\345\217\226\346\234\253\345\200\274\344\270\216\346\236\201\345\200\274\357\274\214UI \346\257\217 50 ms \344\275\277\347\224\250\346\234\211\351\231\220\346\230\276\347\244\272\347\274\223\345\255\230\346\225\264\344\275\223\345\210\267\346\226\260\357\274\214\351\201\277\345\205\215\351\253\230\351\242\221\347\273\230\345\233\276\351\230\273\345\241\236\343\200\202\350\277\220\350\241\214\347\273\223\346\235\237\346\210\226\345\201\234\346\255\242\345\220\216\346\233\262\347\272\277\347\253\213\345\215\263\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\347\273\230\345\233\276\345\214\272\345\206\205\346\273\232\345\212\250\346\273\232\350\275\256\345\217\257\347\274\251\346\224\276\357\274\214\346\214\211\344\275\217\345\267\246\351\224\256\345\217\257\346\213\226\345"
                         "\212\250\346\237\245\347\234\213\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(velocityControlTab), QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\351\227\255\347\216\257\346\265\213\350\257\225", nullptr));
+        torqueParameterGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\350\275\264\350\275\254\347\237\251\345\217\202\346\225\260", nullptr));
+        torqueAxisLabel->setText(QCoreApplication::translate("MainWindow", "\346\265\213\350\257\225\350\275\264", nullptr));
+        torqueAxisCombo->setItemText(0, QCoreApplication::translate("MainWindow", "0", nullptr));
+        torqueAxisCombo->setItemText(1, QCoreApplication::translate("MainWindow", "1", nullptr));
+        torqueAxisCombo->setItemText(2, QCoreApplication::translate("MainWindow", "2", nullptr));
+        torqueAxisCombo->setItemText(3, QCoreApplication::translate("MainWindow", "3", nullptr));
+        torqueAxisCombo->setItemText(4, QCoreApplication::translate("MainWindow", "4", nullptr));
+        torqueAxisCombo->setItemText(5, QCoreApplication::translate("MainWindow", "5", nullptr));
+        torqueAxisCombo->setItemText(6, QCoreApplication::translate("MainWindow", "6", nullptr));
+        torqueAxisCombo->setItemText(7, QCoreApplication::translate("MainWindow", "7", nullptr));
+
+        torqueUnitLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241 unit", nullptr));
+        torqueUnitCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622 pulse/unit\357\274\2101 unit=1\302\260\357\274\211", nullptr));
+        torqueUnitCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622 pulse/unit\357\274\2101 unit=0.1\302\260\357\274\211", nullptr));
+        torqueUnitCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622 pulse/unit\357\274\2101 unit=0.01\302\260\357\274\211", nullptr));
+        torqueUnitCombo->setItemText(3, QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\350\204\211\345\206\262\345\275\223\351\207\217", nullptr));
+
+        torqueCustomEquivalentSpin->setSuffix(QCoreApplication::translate("MainWindow", " pulse/unit", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueRatedLabel->setToolTip(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\347\237\251\357\274\214\347\224\250\344\272\216\345\234\250 N\302\267m \344\270\216 CiA402 \345\215\203\345\210\206\351\242\235\345\256\232\350\275\254\347\237\251\344\271\213\351\227\264\346\215\242\347\256\227\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueRatedLabel->setText(QCoreApplication::translate("MainWindow", "\351\242\235\345\256\232\350\275\254\347\237\251", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueRatedSpin->setToolTip(QCoreApplication::translate("MainWindow", "\345\216\237\345\267\245\347\250\213\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\347\237\251\344\270\27245 N\302\267m\357\274\233\346\233\264\346\215\242\347\224\265\346\234\272\345\220\216\345\277\205\351\241\273\346\214\211\351\223\255\347\211\214\344\277\256\346\224\271\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueRatedSpin->setSuffix(QCoreApplication::translate("MainWindow", " N\302\267m", nullptr));
+        torqueTargetLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\350\275\254\347\237\251", nullptr));
+        torqueTargetSpin->setSuffix(QCoreApplication::translate("MainWindow", " N\302\267m", nullptr));
+        torqueZeroHintLabel->setText(QCoreApplication::translate("MainWindow", "0 N\302\267m \346\227\266\346\213\222\347\273\235\345\220\257\345\212\250", nullptr));
+        torqueCommandLimitLabel->setText(QCoreApplication::translate("MainWindow", "\345\221\275\344\273\244\351\231\220\345\271\205", nullptr));
+        torqueCommandLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " N\302\267m", nullptr));
+        torqueMonitorPeriodLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\221\346\265\213\345\221\250\346\234\237", nullptr));
+        torqueMonitorPeriodSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        torqueSafetyGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\256\211\345\205\250\351\231\220\345\210\266", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueHardwareLimitCheck->setToolTip(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\346\227\266\346\214\211\350\275\254\347\237\251\346\226\271\345\220\221\350\256\241\347\256\227\347\273\235\345\257\271\344\275\215\347\275\256\351\231\220\344\275\215\345\271\266\344\272\244\347\273\231 nmc_torque_move\357\274\233\350\275\257\344\273\266\344\273\215\347\213\254\347\253\213\347\233\221\346\265\213\347\233\270\345\257\271\350\241\214\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueHardwareLimitCheck->setText(QCoreApplication::translate("MainWindow", "\345\220\257\347\224\250\347\241\254\344\273\266\344\275\215\347\275\256\351\231\220\344\275\215", nullptr));
+        torqueTravelLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
+        torqueSpeedLimitLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\257\344\273\266\351\200\237\345\272\246\344\270\212\351\231\220", nullptr));
+        torqueSpeedLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
+        torqueTraceTimeoutLabel->setText(QCoreApplication::translate("MainWindow", "Trace\350\266\205\346\227\266", nullptr));
+        torqueTraceTimeoutSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+        torqueRunTimeoutLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\200\351\225\277\350\277\220\350\241\214", nullptr));
+        torqueRunTimeoutSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueActualLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "nmc_get_torque \346\215\242\347\256\227\345\220\216\347\232\204\345\256\236\351\231\205\350\275\254\347\237\251\347\273\235\345\257\271\345\200\274\350\266\205\350\277\207\350\257\245\345\200\274\346\227\266\347\253\213\345\215\263\345\201\234\346\255\242\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueActualLimitLabel->setText(QCoreApplication::translate("MainWindow", "\345\256\236\351\231\205\350\275\254\347\237\251\344\270\212\351\231\220", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueActualLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\213\254\347\253\213\344\272\216\347\233\256\346\240\207\345\221\275\344\273\244\351\231\220\345\271\205\347\232\204\345\217\215\351\246\210\344\277\235\346\212\244\351\230\210\345\200\274\357\274\214\345\277\205\351\241\273\346\214\211\346\234\272\346\236\204\345\222\214\347\224\265\346\234\272\350\203\275\345\212\233\344\277\235\345\256\210\350\256\276\347\275\256\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueActualLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " N\302\267m", nullptr));
+        torqueOdGroup->setTitle(QCoreApplication::translate("MainWindow", "\344\274\272\346\234\215\351\200\237\345\272\246\351\231\220\345\210\266 OD\357\274\210\344\273\205\346\211\213\345\212\250\345\206\231\345\205\245\357\274\211", nullptr));
+        torqueOdCombo->setItemText(0, QCoreApplication::translate("MainWindow", "\345\216\237\345\267\245\347\250\213 220Bh\357\274\210rpm\342\206\222pulse/s\357\274\211", nullptr));
+        torqueOdCombo->setItemText(1, QCoreApplication::translate("MainWindow", "\346\211\213\345\206\214 6080h\357\274\210\351\251\261\345\212\250\345\231\250\345\216\237\347\224\237\345\200\274\357\274\211", nullptr));
+
+        torqueOdRpmSpin->setSuffix(QCoreApplication::translate("MainWindow", " rpm", nullptr));
+        torqueOd6080RawSpin->setPrefix(QCoreApplication::translate("MainWindow", "6080h raw=", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueWriteOdButton->setToolTip(QCoreApplication::translate("MainWindow", "\344\273\205\345\234\250\346\227\240\350\277\220\345\212\250\344\273\273\345\212\241\346\227\266\345\206\231\345\205\245\346\211\200\351\200\211\350\275\264\357\274\214\345\271\266\347\253\213\345\215\263\350\257\273\345\233\236\346\240\270\345\257\271\343\200\202\344\270\215\344\274\232\351\232\217\350\275\254\347\237\251\346\265\213\350\257\225\345\220\257\345\212\250\350\207\252\345\212\250\346\211\247\350\241\214\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueWriteOdButton->setText(QCoreApplication::translate("MainWindow", "\345\206\231\345\205\245\345\271\266\350\257\273\345\233\236", nullptr));
+        torqueOdHintLabel->setText(QCoreApplication::translate("MainWindow", "220Bh \346\214\211\345\275\223\345\211\215\347\274\226\347\240\201\345\231\250 180224 pulse/rev \346\215\242\347\256\227\357\274\2336080h \347\232\204\345\216\237\347\224\237\345\215\225\344\275\215\347\224\261\345\205\267\344\275\223\344\274\272\346\234\215\351\251\261\345\212\250\345\231\250\345\256\232\344\271\211\357\274\214\345\206\231\345\205\245\345\211\215\345\277\205\351\241\273\346\240\270\345\257\271\351\251\261\345\212\250\345\231\250\346\211\213\345\206\214\343\200\202", nullptr));
+        torqueOperationGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\223\215\344\275\234\344\270\216\347\212\266\346\200\201", nullptr));
+        torqueEnableAxisButton->setText(QCoreApplication::translate("MainWindow", "\344\275\277\350\203\275\346\265\213\350\257\225\350\275\264", nullptr));
+        torqueDisableAxisButton->setText(QCoreApplication::translate("MainWindow", "\345\244\261\350\203\275\346\265\213\350\257\225\350\275\264", nullptr));
+        torqueStartButton->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\275\254\347\237\251\346\265\213\350\257\225", nullptr));
+        torqueUpdateButton->setText(QCoreApplication::translate("MainWindow", "\345\234\250\347\272\277\346\233\264\346\226\260\350\275\254\347\237\251", nullptr));
+        torqueStopButton->setText(QCoreApplication::translate("MainWindow", "\345\207\217\351\200\237\345\201\234\346\255\242", nullptr));
+        torqueEmergencyStopButton->setText(QCoreApplication::translate("MainWindow", "\347\253\213\345\215\263\345\201\234\346\255\242", nullptr));
+        torqueClearCurvesButton->setText(QCoreApplication::translate("MainWindow", "\346\270\205\351\231\244\346\233\262\347\272\277", nullptr));
+        torqueStateLabel->setText(QCoreApplication::translate("MainWindow", "\347\212\266\346\200\201", nullptr));
+        torqueStateValueLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\252\350\277\220\350\241\214", nullptr));
+        torqueTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\227\266\351\227\264 / API", nullptr));
+        torqueTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0 s / 0 us", nullptr));
+        torqueValueLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\254\347\237\251 cmd / actual / raw", nullptr));
+        torqueValueValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 N\302\267m / 0", nullptr));
+        torqueMotionLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\215\347\275\256 start / actual / limit\357\274\233\351\200\237\345\272\246", nullptr));
+        torqueMotionValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 \302\260\357\274\2330 \302\260/s", nullptr));
+        torqueOdStatusLabel->setText(QCoreApplication::translate("MainWindow", "\344\273\216\347\253\231 / OD\350\257\273\345\233\236", nullptr));
+        torqueOdStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "-- / --", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueValueChartView->setToolTip(QCoreApplication::translate("MainWindow", "\346\273\232\350\275\256\347\274\251\346\224\276\357\274\214\346\214\211\344\275\217\345\267\246\351\224\256\346\213\226\345\212\250\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        torqueMotionChartView->setToolTip(QCoreApplication::translate("MainWindow", "\346\273\232\350\275\256\347\274\251\346\224\276\357\274\214\346\214\211\344\275\217\345\267\246\351\224\256\346\213\226\345\212\250\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueTestHintLabel->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\345\211\215\345\277\205\351\241\273\345\205\210\344\275\277\350\203\275\346\265\213\350\257\225\350\275\264\345\271\266\347\241\256\350\256\244\346\234\272\346\242\260\350\241\214\347\250\213\345\256\211\345\205\250\343\200\202nmc_torque_move \344\274\232\345\210\207\346\215\242\344\274\272\346\234\215\345\210\260\350\275\254\347\237\251\346\250\241\345\274\217\357\274\233\345\201\234\346\255\242\350\260\203\347\224\250 dmc_stop \345\220\216\350\277\224\345\233\236\344\275\215\347\275\256\346\250\241\345\274\217\343\200\202\350\277\220\350\241\214\344\270\255\347\246\201\346\255\242\345\234\250\347\272\277\345\217\215\345\220\221\357\274\214\345\217\215\345\220\221\345\211\215\350\257\267\345\205\210\345\201\234\346\255\242\343\200\202", nullptr));
+        tabWidget->setTabText(tabWidget->indexOf(torqueTestTab), QCoreApplication::translate("MainWindow", "\350\275\254\347\237\251\346\250\241\345\274\217\346\265\213\350\257\225", nullptr));
         traceDelayCalibrationParameterGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\350\275\264\346\240\207\345\256\232\345\217\202\346\225\260", nullptr));
         traceDelayAxisLabel->setText(QCoreApplication::translate("MainWindow", "\346\240\207\345\256\232\350\275\264", nullptr));
         traceDelayAxisCombo->setItemText(0, QCoreApplication::translate("MainWindow", "0", nullptr));
@@ -3043,4 +3556,4 @@ namespace Ui {
 
 QT_END_NAMESPACE
 
-#endif // UI_MAINWINDOW_H
+#endif // CONTI_STAGED_UI_MAINWINDOW_H

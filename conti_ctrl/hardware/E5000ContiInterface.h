@@ -29,6 +29,18 @@ public:
                         double velocityDegreePerSecond,
                         short &apiResult,
                         QString &errorMessage) const;
+    bool startTorqueMove(WORD cardNo, WORD axis, int torqueRaw,
+                         WORD positionLimitValid, double positionLimitCardUnit,
+                         WORD positionMode, short &apiResult,
+                         QString &errorMessage) const;
+    bool changeTorque(WORD cardNo, WORD axis, int torqueRaw,
+                      short &apiResult, QString &errorMessage) const;
+    bool readTorque(WORD cardNo, WORD axis, int &torqueRaw,
+                    short &apiResult, QString &errorMessage) const;
+    bool writeTorqueVelocityLimit(WORD cardNo, WORD axis,
+                                  TorqueVelocityLimitOd odMode, long value,
+                                  WORD &nodeAddress, long &readback,
+                                  QString &errorMessage) const;
     bool stopAxis(WORD cardNo, WORD axis, bool emergency, QString &errorMessage) const;
     bool isAxisMotionDone(WORD cardNo, WORD axis) const;
     bool axisMotionDone(WORD cardNo, WORD axis, bool &done, QString &errorMessage) const;

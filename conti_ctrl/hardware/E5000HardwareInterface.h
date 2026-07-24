@@ -37,6 +37,16 @@ public:
                         double velocityDegreePerSecond,
                         short &apiResult,
                         QString &errorMessage);
+    bool startTorqueMove(const TorqueTestConfig &config, int torqueRaw,
+                         double absolutePositionLimitDegree,
+                         short &apiResult, QString &errorMessage);
+    bool changeTorque(quint16 axis, int torqueRaw, short &apiResult,
+                      QString &errorMessage);
+    bool readTorque(quint16 axis, int &torqueRaw, short &apiResult,
+                    QString &errorMessage) const;
+    bool writeTorqueVelocityLimit(const TorqueTestConfig &config, long value,
+                                  quint16 &nodeAddress, long &readback,
+                                  QString &errorMessage);
     bool stopAxis(quint16 axis, bool emergency, QString &errorMessage) const;
     bool stopAxis(quint16 cardNo, quint16 axis, bool emergency, QString &errorMessage) const;
     bool axisMotionDone(quint16 axis, bool &done, QString &errorMessage) const;

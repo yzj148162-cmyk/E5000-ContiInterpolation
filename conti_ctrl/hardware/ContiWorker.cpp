@@ -25,6 +25,7 @@ constexpr int kFirstSegmentTimeoutMs = 2000;
 constexpr int kCompletionStableDwellMs = 150;
 constexpr int kVelocityPlotPublishIntervalMs = 50;
 constexpr int kTraceDelayPlotPublishIntervalMs = 50;
+constexpr int kTorquePlotPublishIntervalMs = 50;
 constexpr int kTraceDelayStopTimeoutMs = 2000;
 constexpr double kDefaultTracePositionDelayMs = 8.0;
 constexpr double kCompletionPositionToleranceDeg = 0.02;
@@ -79,6 +80,7 @@ ContiWorker::ContiWorker(QObject *parent)
     , monitorTimer_(new QTimer(this))
     , feedbackTimer_(new QTimer(this))
     , velocityControlTimer_(new QTimer(this))
+    , torqueTestTimer_(new QTimer(this))
     , traceDelayCalibrationTimer_(new QTimer(this))
 {
     softwareZeroUnit_.fill(0.0, 8);
@@ -91,6 +93,8 @@ ContiWorker::ContiWorker(QObject *parent)
     feedbackTimer_->setInterval(10);
     velocityControlTimer_->setTimerType(Qt::PreciseTimer);
     velocityControlTimer_->setInterval(10);
+    torqueTestTimer_->setTimerType(Qt::PreciseTimer);
+    torqueTestTimer_->setInterval(20);
     traceDelayCalibrationTimer_->setTimerType(Qt::PreciseTimer);
     traceDelayCalibrationTimer_->setInterval(5);
 
@@ -99,6 +103,8 @@ ContiWorker::ContiWorker(QObject *parent)
     connect(feedbackTimer_, &QTimer::timeout, this, &ContiWorker::refreshFeedback);
     connect(velocityControlTimer_, &QTimer::timeout,
             this, &ContiWorker::runVelocityControlCycle);
+    connect(torqueTestTimer_, &QTimer::timeout,
+            this, &ContiWorker::runTorqueTestCycle);
     connect(traceDelayCalibrationTimer_, &QTimer::timeout,
             this, &ContiWorker::runTraceDelayCalibrationCycle);
     loadTraceDelayCalibrationResults();
@@ -323,6 +329,7 @@ void ContiWorker::shutdownHardware()
     monitorTimer_->stop();
     feedbackTimer_->stop();
     velocityControlTimer_->stop();
+    torqueTestTimer_->stop();
     traceDelayCalibrationTimer_->stop();
     resetRunTimingState();
 
@@ -379,7 +386,7 @@ void ContiWorker::enableSelectedAxes(const ContiTestConfig &config)
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能切换轴使能。"));
         return;
     }
@@ -446,7 +453,7 @@ void ContiWorker::disableSelectedAxes(const ContiTestConfig &config)
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         stopTest(false);
     }
     if (config.cardNo != initializedCardNo_) {
@@ -482,7 +489,7 @@ void ContiWorker::enableAllDetectedAxes()
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能执行全局轴使能。"));
         return;
     }
@@ -537,6 +544,10 @@ void ContiWorker::disableAllDetectedAxes()
         finishTraceDelayCalibration(QStringLiteral("Trace 延迟标定已因全局失能而停止"),
                                     true, false);
     }
+    if (torqueTestActive_) {
+        emit logMessage(QStringLiteral("全局失能前正在停止转矩测试。"));
+        finishTorqueTest(QStringLiteral("转矩测试已因全局失能而减速停止"), false);
+    }
     if (running_ || preparing_ || pointMoveActive_) {
         emit logMessage(QStringLiteral("全局失能前正在执行安全停止。"));
         safelyStopAllMotionForShutdown();
@@ -571,7 +582,8 @@ void ContiWorker::startTest(const ContiTestConfig &config)
         emit logMessage(QStringLiteral("启动前请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || velocityControlActive_ || traceDelayCalibrationActive_) {
+    if (running_ || preparing_ || velocityControlActive_
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("已有测试正在准备或运行。"));
         return;
     }
@@ -744,6 +756,10 @@ void ContiWorker::startTest(const ContiTestConfig &config)
 
 void ContiWorker::stopTest(bool emergency)
 {
+    if (torqueTestActive_) {
+        stopTorqueTest(emergency);
+        return;
+    }
     if (traceDelayCalibrationActive_) {
         stopTraceDelayCalibration(emergency);
         return;
@@ -855,7 +871,7 @@ void ContiWorker::enableJogAxis(const SingleAxisJogConfig &config)
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("连续插补准备、运行或单轴点位运动期间不能切换点动测试轴。"));
         return;
     }
@@ -920,7 +936,8 @@ void ContiWorker::disableJogAxis(const SingleAxisJogConfig &config)
                             .arg(initializedCardNo_));
         return;
     }
-    if (running_ || preparing_ || velocityControlActive_ || traceDelayCalibrationActive_) {
+    if (running_ || preparing_ || velocityControlActive_
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间不能失能点动测试轴。"));
         return;
     }
@@ -958,7 +975,7 @@ void ContiWorker::setJogAxisZero(const SingleAxisJogConfig &config)
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能修改点动软件零位。"));
         return;
     }
@@ -997,7 +1014,8 @@ void ContiWorker::startPointMove(const SingleAxisJogConfig &config)
         emit logMessage(QStringLiteral("请先初始化控制卡。"));
         return;
     }
-    if (running_ || preparing_ || velocityControlActive_ || traceDelayCalibrationActive_) {
+    if (running_ || preparing_ || velocityControlActive_
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间禁止单轴点动。"));
         return;
     }
@@ -1157,7 +1175,7 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动速度闭环。"));
         return;
     }
@@ -1767,6 +1785,433 @@ void ContiWorker::resetVelocityController()
     publishStatus();
 }
 
+bool ContiWorker::validateTorqueTestConfig(
+    const TorqueTestConfig &config, QString &errorMessage) const
+{
+    const bool finite = std::isfinite(config.degreesPerCardUnit)
+        && std::isfinite(config.ratedTorqueNm)
+        && std::isfinite(config.targetTorqueNm)
+        && std::isfinite(config.maximumCommandTorqueNm)
+        && std::isfinite(config.maximumActualTorqueNm)
+        && std::isfinite(config.maximumTravelDegree)
+        && std::isfinite(config.maximumSpeedDegreePerSecond)
+        && std::isfinite(config.velocityLimitRpm);
+    if (!finite || config.axis >= 8U || config.degreesPerCardUnit <= 0.0
+        || config.ratedTorqueNm <= 0.0
+        || config.maximumCommandTorqueNm <= 0.0
+        || config.maximumActualTorqueNm <= 0.0
+        || std::abs(config.targetTorqueNm) > config.maximumCommandTorqueNm
+        || config.maximumTravelDegree <= 0.0
+        || config.maximumSpeedDegreePerSecond <= 0.0
+        || config.monitorPeriodMs < 5
+        || actualBusCycleUs_ <= 0
+        || config.monitorPeriodMs * 1000 < actualBusCycleUs_
+        || (config.monitorPeriodMs * 1000) % actualBusCycleUs_ != 0
+        || config.traceTimeoutMs < config.monitorPeriodMs
+        || config.maximumRunTimeMs < config.monitorPeriodMs) {
+        errorMessage = QStringLiteral(
+            "转矩测试参数无效：请检查额定/目标/限幅转矩、行程、速度、"
+            "监测周期、Trace 超时和最长运行时间。");
+        return false;
+    }
+    return true;
+}
+
+int ContiWorker::torqueNmToRaw(double torqueNm, double ratedTorqueNm) const
+{
+    int raw = static_cast<int>(std::llround(torqueNm * 1000.0 / ratedTorqueNm));
+    if (raw == 0 && std::abs(torqueNm) > 0.0) {
+        raw = torqueNm > 0.0 ? 1 : -1;
+    }
+    return raw;
+}
+
+void ContiWorker::writeTorqueVelocityLimit(const TorqueTestConfig &config)
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("请先初始化控制卡。"));
+        return;
+    }
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        emit logMessage(QStringLiteral("存在运动任务时禁止写入转矩模式速度限制。"));
+        return;
+    }
+    if (!detectedAxes_.contains(config.axis)) {
+        emit logMessage(QStringLiteral("转矩测试轴 %1 不在线。").arg(config.axis));
+        return;
+    }
+    long value = 0;
+    QString description;
+    if (config.velocityLimitOd == TorqueVelocityLimitOd::Vendor220B) {
+        if (!std::isfinite(config.velocityLimitRpm) || config.velocityLimitRpm <= 0.0) {
+            emit logMessage(QStringLiteral("220Bh 速度限制必须为正数。"));
+            return;
+        }
+        value = static_cast<long>(std::llround(
+            config.velocityLimitRpm / 60.0 * MotorUnit::kPulsesPerRevolution));
+        description = QStringLiteral("220Bh=%1 rpm（%2 pulse/s）")
+                          .arg(config.velocityLimitRpm, 0, 'f', 3).arg(value);
+    } else {
+        value = config.cia402VelocityLimitRaw;
+        if (value <= 0) {
+            emit logMessage(QStringLiteral("6080h 驱动器原生值必须大于 0。"));
+            return;
+        }
+        description = QStringLiteral("6080h=%1（驱动器原生单位）").arg(value);
+    }
+
+    quint16 node = 0;
+    long readback = 0;
+    QString error;
+    if (!card_.writeTorqueVelocityLimit(config, value, node, readback, error)) {
+        emit logMessage(QStringLiteral("错误：转矩速度限制写入/读回失败：%1").arg(error));
+        return;
+    }
+    torqueStatus_.axis = config.axis;
+    torqueStatus_.nodeAddress = node;
+    torqueStatus_.velocityLimitReadback = readback;
+    emit logMessage(QStringLiteral(
+        "转矩速度限制已写入并读回：轴 %1，从站 %2，%3。")
+                        .arg(config.axis).arg(node).arg(description));
+    publishStatus();
+}
+
+void ContiWorker::startTorqueTest(const TorqueTestConfig &requestedConfig)
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("请先初始化控制卡。"));
+        return;
+    }
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动转矩测试。"));
+        return;
+    }
+    TorqueTestConfig config = requestedConfig;
+    if (config.cardNo != initializedCardNo_) {
+        emit logMessage(QStringLiteral("当前已初始化卡号为 %1，请勿切换卡号。")
+                            .arg(initializedCardNo_));
+        return;
+    }
+    QString error;
+    if (!validateTorqueTestConfig(config, error)) {
+        emit logMessage(error);
+        return;
+    }
+    if (!detectedAxes_.contains(config.axis)) {
+        emit logMessage(QStringLiteral("转矩测试轴 %1 不在线。").arg(config.axis));
+        return;
+    }
+    if (!enabledAxes_.contains(config.axis)) {
+        emit logMessage(QStringLiteral("请先使能转矩测试轴 %1。").arg(config.axis));
+        return;
+    }
+    if (std::abs(config.targetTorqueNm) < 1e-12) {
+        emit logMessage(QStringLiteral("目标转矩为 0 N·m，转矩模式不会启动。"));
+        return;
+    }
+    if (telemetryRecorder_.status().recording) {
+        telemetryRecorder_.appendEvent(
+            QStringLiteral("recording_stopped_for_torque_trace_reconfigure"));
+        stopTelemetryRecording();
+    }
+    if (!card_.setAxisEquivalent(config.cardNo, config.axis,
+                                 MotorUnit::pulsesPerCardUnit(
+                                     config.degreesPerCardUnit), error)) {
+        enterError(QStringLiteral("轴 %1 脉冲当量设置失败：%2")
+                       .arg(config.axis).arg(error));
+        return;
+    }
+    if (!configureFeedbackTrace({config.axis}, config.degreesPerCardUnit, error)) {
+        enterError(QStringLiteral("转矩测试 Trace 配置失败：%1").arg(error));
+        return;
+    }
+
+    torqueConfig_ = config;
+    ++torqueRunId_;
+    torqueStatus_ = {};
+    torqueStatus_.active = true;
+    torqueStatus_.runId = torqueRunId_;
+    torqueStatus_.axis = config.axis;
+    torqueStatus_.commandTorqueNm = config.targetTorqueNm;
+    torqueStatus_.commandTorqueRaw =
+        torqueNmToRaw(config.targetTorqueNm, config.ratedTorqueNm);
+    torqueStatus_.stateText = QStringLiteral("等待有效 Trace 后启动");
+    torqueTestActive_ = true;
+    torqueMotionStarted_ = false;
+    torqueLastTraceSequence_ = latestTraceSequence_;
+    torqueLastDiagnosticMs_ = -1;
+    pendingTorquePlotSamples_.clear();
+    torqueRunClock_.invalidate();
+    torqueTraceFreshClock_.start();
+    torquePlotPublishClock_.start();
+    feedbackTimer_->stop();
+    torqueTestTimer_->setInterval(config.monitorPeriodMs);
+    torqueTestTimer_->start();
+    stateText_ = QStringLiteral("转矩测试等待 Trace");
+    emit logMessage(QStringLiteral(
+        "单轴转矩测试已准备：轴 %1，目标=%2 N·m（raw=%3，额定=%4 N·m），"
+        "命令限幅=±%5 N·m，行程/速度限制=%6°/%7°/s，监测周期=%8 ms；"
+        "启动不会自动使能轴，也不会自动写入速度限制 OD。")
+                        .arg(config.axis)
+                        .arg(config.targetTorqueNm, 0, 'f', 4)
+                        .arg(torqueStatus_.commandTorqueRaw)
+                        .arg(config.ratedTorqueNm, 0, 'f', 3)
+                        .arg(config.maximumCommandTorqueNm, 0, 'f', 3)
+                        .arg(config.maximumTravelDegree, 0, 'f', 3)
+                        .arg(config.maximumSpeedDegreePerSecond, 0, 'f', 3)
+                        .arg(config.monitorPeriodMs));
+    publishStatus();
+}
+
+void ContiWorker::updateTorqueCommand(const TorqueTestConfig &config)
+{
+    if (!torqueTestActive_ || !torqueMotionStarted_) {
+        emit logMessage(QStringLiteral("当前没有正在运行的转矩模式，无法在线更新。"));
+        return;
+    }
+    if (config.axis != torqueConfig_.axis
+        || std::abs(config.ratedTorqueNm - torqueConfig_.ratedTorqueNm) > 1e-9) {
+        emit logMessage(QStringLiteral("运行中不能切换轴或额定转矩。"));
+        return;
+    }
+    if (!std::isfinite(config.targetTorqueNm)
+        || std::abs(config.targetTorqueNm) > torqueConfig_.maximumCommandTorqueNm) {
+        emit logMessage(QStringLiteral("在线目标转矩超出命令限幅 ±%1 N·m。")
+                            .arg(torqueConfig_.maximumCommandTorqueNm, 0, 'f', 3));
+        return;
+    }
+    if (std::abs(config.targetTorqueNm) < 1e-12) {
+        finishTorqueTest(QStringLiteral("在线目标转矩为零，转矩测试已减速停止。"));
+        return;
+    }
+    if ((config.targetTorqueNm > 0.0) != (torqueConfig_.targetTorqueNm > 0.0)) {
+        emit logMessage(QStringLiteral(
+            "硬件位置限位方向在启动时固定；在线反向转矩被拒绝，请先停止后重新启动。"));
+        return;
+    }
+    const int raw = torqueNmToRaw(config.targetTorqueNm,
+                                  torqueConfig_.ratedTorqueNm);
+    short apiResult = 0;
+    QString error;
+    QElapsedTimer apiClock;
+    apiClock.start();
+    if (!card_.changeTorque(torqueConfig_.axis, raw, apiResult, error)) {
+        finishTorqueTest(QStringLiteral("在线调整转矩失败：%1").arg(error), true);
+        return;
+    }
+    torqueConfig_.targetTorqueNm = config.targetTorqueNm;
+    torqueStatus_.commandTorqueNm = config.targetTorqueNm;
+    torqueStatus_.commandTorqueRaw = raw;
+    torqueStatus_.lastApiResult = apiResult;
+    torqueStatus_.lastApiDurationUs = apiClock.nsecsElapsed() / 1000;
+    emit logMessage(QStringLiteral(
+        "轴 %1 在线转矩已更新：%2 N·m（raw=%3），API=%4 us。")
+                        .arg(torqueConfig_.axis)
+                        .arg(config.targetTorqueNm, 0, 'f', 4)
+                        .arg(raw).arg(torqueStatus_.lastApiDurationUs));
+    publishStatus();
+}
+
+void ContiWorker::runTorqueTestCycle()
+{
+    if (!torqueTestActive_) {
+        return;
+    }
+    if (!pollTraceFeedback()) {
+        finishTorqueTest(QStringLiteral("转矩测试 Trace 读取失败：%1")
+                             .arg(traceStateText_), true);
+        return;
+    }
+    if (latestTraceSequence_ != torqueLastTraceSequence_) {
+        torqueLastTraceSequence_ = latestTraceSequence_;
+        torqueTraceFreshClock_.restart();
+    } else if (torqueTraceFreshClock_.isValid()
+               && torqueTraceFreshClock_.elapsed() > torqueConfig_.traceTimeoutMs) {
+        finishTorqueTest(QStringLiteral("转矩测试 Trace 超时：%1 ms 内无新帧")
+                             .arg(torqueConfig_.traceTimeoutMs), true);
+        return;
+    }
+    if (torqueConfig_.axis >= static_cast<quint16>(latestAxisFeedback_.size())) {
+        finishTorqueTest(QStringLiteral("转矩测试反馈轴索引越界"), true);
+        return;
+    }
+    const AxisFeedback &feedback = latestAxisFeedback_.at(torqueConfig_.axis);
+    if (!feedback.valid || !feedback.traceSampleValid) {
+        torqueStatus_.stateText = QStringLiteral("等待有效 Trace 反馈");
+        publishStatus();
+        return;
+    }
+    if (feedback.stateMachine != 4U || feedback.axisErrorCode != 0U) {
+        finishTorqueTest(QStringLiteral("轴状态异常：状态机=%1，轴错误码=%2")
+                             .arg(feedback.stateMachine)
+                             .arg(feedback.axisErrorCode), true);
+        return;
+    }
+
+    if (!torqueMotionStarted_) {
+        torqueStatus_.startPositionDegree = feedback.encoderPositionUnit;
+        const double direction = torqueConfig_.targetTorqueNm > 0.0 ? 1.0 : -1.0;
+        torqueStatus_.positionLimitDegree = torqueStatus_.startPositionDegree
+            + direction * torqueConfig_.maximumTravelDegree;
+        short apiResult = 0;
+        QString error;
+        QElapsedTimer apiClock;
+        apiClock.start();
+        if (!card_.startTorqueMove(torqueConfig_, torqueStatus_.commandTorqueRaw,
+                                   torqueStatus_.positionLimitDegree,
+                                   apiResult, error)) {
+            torqueStatus_.lastApiResult = apiResult;
+            torqueStatus_.lastApiDurationUs = apiClock.nsecsElapsed() / 1000;
+            finishTorqueTest(QStringLiteral("转矩模式启动失败：%1").arg(error), true);
+            return;
+        }
+        torqueStatus_.lastApiResult = apiResult;
+        torqueStatus_.lastApiDurationUs = apiClock.nsecsElapsed() / 1000;
+        torqueMotionStarted_ = true;
+        torqueRunClock_.start();
+        torqueStatus_.stateText = QStringLiteral("转矩模式运行中");
+        stateText_ = QStringLiteral("单轴转矩模式运行中");
+        emit logMessage(QStringLiteral(
+            "轴 %1 已调用 nmc_torque_move：目标=%2 N·m（raw=%3），"
+            "起点=%4°，%5位置限位=%6°，API=%7 us。")
+                            .arg(torqueConfig_.axis)
+                            .arg(torqueConfig_.targetTorqueNm, 0, 'f', 4)
+                            .arg(torqueStatus_.commandTorqueRaw)
+                            .arg(torqueStatus_.startPositionDegree, 0, 'f', 4)
+                            .arg(torqueConfig_.hardwarePositionLimitEnabled
+                                     ? QStringLiteral("硬件绝对")
+                                     : QStringLiteral("仅软件"))
+                            .arg(torqueStatus_.positionLimitDegree, 0, 'f', 4)
+                            .arg(torqueStatus_.lastApiDurationUs));
+    }
+
+    int actualTorqueRaw = 0;
+    short torqueApiResult = 0;
+    QString torqueError;
+    if (!card_.readTorque(torqueConfig_.axis, actualTorqueRaw,
+                          torqueApiResult, torqueError)) {
+        finishTorqueTest(QStringLiteral("读取实际转矩失败：%1").arg(torqueError), true);
+        return;
+    }
+    const double elapsedS = torqueRunClock_.isValid()
+        ? torqueRunClock_.elapsed() / 1000.0 : 0.0;
+    const double relativePosition =
+        feedback.encoderPositionUnit - torqueStatus_.startPositionDegree;
+    torqueStatus_.active = true;
+    torqueStatus_.elapsedS = elapsedS;
+    torqueStatus_.actualTorqueRaw = actualTorqueRaw;
+    torqueStatus_.actualTorqueNm =
+        actualTorqueRaw * torqueConfig_.ratedTorqueNm / 1000.0;
+    torqueStatus_.actualPositionDegree = feedback.encoderPositionUnit;
+    torqueStatus_.actualVelocityDegreePerSecond =
+        feedback.actualVelocityUnitPerSecond;
+    torqueStatus_.lastApiResult = torqueApiResult;
+
+    TorquePlotSample sample;
+    sample.runId = torqueRunId_;
+    sample.elapsedS = elapsedS;
+    sample.commandTorqueNm = torqueStatus_.commandTorqueNm;
+    sample.actualTorqueNm = torqueStatus_.actualTorqueNm;
+    sample.relativePositionDegree = relativePosition;
+    sample.actualVelocityDegreePerSecond =
+        feedback.actualVelocityUnitPerSecond;
+    pendingTorquePlotSamples_.push_back(sample);
+    if (torquePlotPublishClock_.elapsed() >= kTorquePlotPublishIntervalMs) {
+        flushTorquePlotSamples();
+    }
+
+    if (std::abs(relativePosition) >= torqueConfig_.maximumTravelDegree) {
+        finishTorqueTest(QStringLiteral("转矩测试达到相对行程限制：%1°")
+                             .arg(relativePosition, 0, 'f', 4), true);
+        return;
+    }
+    if (std::abs(torqueStatus_.actualTorqueNm)
+        > torqueConfig_.maximumActualTorqueNm) {
+        finishTorqueTest(QStringLiteral("转矩测试实际转矩超限：%1 N·m > %2 N·m")
+                             .arg(torqueStatus_.actualTorqueNm, 0, 'f', 4)
+                             .arg(torqueConfig_.maximumActualTorqueNm,
+                                  0, 'f', 4), true);
+        return;
+    }
+    if (std::abs(feedback.actualVelocityUnitPerSecond)
+        > torqueConfig_.maximumSpeedDegreePerSecond) {
+        finishTorqueTest(QStringLiteral("转矩测试实际速度超限：%1°/s > %2°/s")
+                             .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 4)
+                             .arg(torqueConfig_.maximumSpeedDegreePerSecond,
+                                  0, 'f', 4), true);
+        return;
+    }
+    if (torqueRunClock_.elapsed() >= torqueConfig_.maximumRunTimeMs) {
+        finishTorqueTest(QStringLiteral("转矩测试达到最长运行时间 %1 ms，已减速停止。")
+                             .arg(torqueConfig_.maximumRunTimeMs));
+        return;
+    }
+    const qint64 elapsedMs = torqueRunClock_.elapsed();
+    if (torqueLastDiagnosticMs_ < 0
+        || elapsedMs - torqueLastDiagnosticMs_ >= 250) {
+        torqueLastDiagnosticMs_ = elapsedMs;
+        emit logMessage(QStringLiteral(
+            "转矩测试：t=%1 s，目标/实际=%2/%3 N·m（raw=%4/%5），"
+            "相对位置=%6°，实际速度=%7°/s。")
+                            .arg(elapsedS, 0, 'f', 3)
+                            .arg(torqueStatus_.commandTorqueNm, 0, 'f', 4)
+                            .arg(torqueStatus_.actualTorqueNm, 0, 'f', 4)
+                            .arg(torqueStatus_.commandTorqueRaw)
+                            .arg(torqueStatus_.actualTorqueRaw)
+                            .arg(relativePosition, 0, 'f', 4)
+                            .arg(torqueStatus_.actualVelocityDegreePerSecond,
+                                 0, 'f', 4));
+    }
+    publishStatus();
+}
+
+void ContiWorker::flushTorquePlotSamples()
+{
+    if (pendingTorquePlotSamples_.isEmpty()) {
+        return;
+    }
+    QVector<TorquePlotSample> batch;
+    batch.swap(pendingTorquePlotSamples_);
+    emit torquePlotSamplesReady(batch);
+    torquePlotPublishClock_.restart();
+}
+
+void ContiWorker::finishTorqueTest(const QString &message, bool emergency)
+{
+    torqueTestTimer_->stop();
+    flushTorquePlotSamples();
+    if (torqueMotionStarted_ && boardInitialized_) {
+        QString error;
+        if (!card_.stopAxis(initializedCardNo_, torqueConfig_.axis,
+                            emergency, error)) {
+            emit logMessage(QStringLiteral("转矩测试停止轴失败：%1").arg(error));
+        }
+    }
+    torqueTestActive_ = false;
+    torqueMotionStarted_ = false;
+    torqueStatus_.active = false;
+    torqueStatus_.stateText =
+        emergency ? QStringLiteral("异常停止") : QStringLiteral("已停止");
+    stateText_ = torqueStatus_.stateText;
+    emit logMessage(emergency ? QStringLiteral("错误：%1").arg(message) : message);
+    if (boardInitialized_) {
+        feedbackTimer_->start();
+    }
+    publishStatus();
+}
+
+void ContiWorker::stopTorqueTest(bool emergency)
+{
+    if (!torqueTestActive_) {
+        emit logMessage(QStringLiteral("当前没有正在运行的转矩测试。"));
+        return;
+    }
+    finishTorqueTest(emergency ? QStringLiteral("转矩测试已立即停止")
+                               : QStringLiteral("转矩测试已减速停止"), emergency);
+}
+
 bool ContiWorker::validateTraceDelayCalibrationConfig(
     const TraceDelayCalibrationConfig &config,
     QString &errorMessage) const
@@ -1814,7 +2259,7 @@ void ContiWorker::startTraceDelayCalibration(
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动 Trace 延迟标定。"));
         return;
     }
@@ -2610,6 +3055,7 @@ void ContiWorker::safelyStopAllMotionForShutdown()
     producerTimer_->stop();
     monitorTimer_->stop();
     velocityControlTimer_->stop();
+    torqueTestTimer_->stop();
     traceDelayCalibrationTimer_->stop();
 
     if (listOpen_) {
@@ -2644,6 +3090,16 @@ void ContiWorker::safelyStopAllMotionForShutdown()
             card_.stopAxis(initializedCardNo_, velocityConfig_.axis, true, error);
         }
     }
+    if (torqueTestActive_) {
+        QString error;
+        if (!card_.stopAxis(initializedCardNo_, torqueConfig_.axis, false, error)
+            || !waitForAxisStop(torqueConfig_.axis, kGracefulStopTimeoutMs)) {
+            emit logMessage(QStringLiteral(
+                "转矩测试安全停机：减速停止未确认，改为立即停止。"));
+            error.clear();
+            card_.stopAxis(initializedCardNo_, torqueConfig_.axis, true, error);
+        }
+    }
     if (traceDelayCalibrationActive_) {
         QString error;
         if (!card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, false, error)
@@ -2664,6 +3120,10 @@ void ContiWorker::safelyStopAllMotionForShutdown()
     velocityReferenceInitialized_ = false;
     velocityStatus_.active = false;
     velocityStatus_.motionStarted = false;
+    torqueTestActive_ = false;
+    torqueMotionStarted_ = false;
+    torqueStatus_.active = false;
+    torqueStatus_.stateText = QStringLiteral("已安全停止");
     traceDelayCalibrationActive_ = false;
     traceDelayMotionStarted_ = false;
     traceDelayStatus_.active = false;
@@ -3214,6 +3674,7 @@ void ContiWorker::enterError(const QString &message)
     producerTimer_->stop();
     monitorTimer_->stop();
     velocityControlTimer_->stop();
+    torqueTestTimer_->stop();
     traceDelayCalibrationTimer_->stop();
     if (listOpen_) {
         QString ignored;
@@ -3230,6 +3691,11 @@ void ContiWorker::enterError(const QString &message)
         QString ignored;
         card_.stopAxis(initializedCardNo_, velocityConfig_.axis, true, ignored);
     }
+    if (torqueTestActive_ && boardInitialized_) {
+        flushTorquePlotSamples();
+        QString ignored;
+        card_.stopAxis(initializedCardNo_, torqueConfig_.axis, true, ignored);
+    }
     if (traceDelayCalibrationActive_ && boardInitialized_) {
         flushTraceDelayPlotSamples();
         QString ignored;
@@ -3244,6 +3710,10 @@ void ContiWorker::enterError(const QString &message)
     velocityStatus_.active = false;
     velocityStatus_.motionStarted = false;
     velocityStatus_.stateText = QStringLiteral("错误");
+    torqueTestActive_ = false;
+    torqueMotionStarted_ = false;
+    torqueStatus_.active = false;
+    torqueStatus_.stateText = QStringLiteral("错误");
     traceDelayCalibrationActive_ = false;
     traceDelayMotionStarted_ = false;
     traceDelayStatus_.active = false;
@@ -3332,6 +3802,7 @@ void ContiWorker::publishStatus()
     status.telemetryPlotActive = manualTelemetryRecording_;
     status.recorder = telemetryRecorder_.status();
     status.velocityControl = velocityStatus_;
+    status.torqueTest = torqueStatus_;
     traceDelayStatus_.axisResults =
         traceDelayStatus_.active ? traceDelayStatus_.axisResults
                                  : (traceDelayStatus_.axisResults.isEmpty()

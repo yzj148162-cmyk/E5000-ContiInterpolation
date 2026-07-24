@@ -314,6 +314,65 @@ struct VelocityPlotSample
     double actualVelocityDegreePerSecond = 0.0;
 };
 
+enum class TorqueVelocityLimitOd : quint8
+{
+    Vendor220B = 0,
+    CiA4026080 = 1
+};
+
+// 单轴转矩模式测试参数。转矩按 CiA402 千分额定转矩换算；位置和速度仍使用
+// Trace 同帧反馈。速度限制 OD 只在用户明确点击写入按钮时修改。
+struct TorqueTestConfig
+{
+    quint16 cardNo = 0;
+    quint16 axis = 0;
+    double degreesPerCardUnit = 1.0;
+    double ratedTorqueNm = 45.0;
+    double targetTorqueNm = 0.0;
+    double maximumCommandTorqueNm = 5.0;
+    double maximumActualTorqueNm = 7.5;
+    double maximumTravelDegree = 30.0;
+    double maximumSpeedDegreePerSecond = 90.0;
+    int monitorPeriodMs = 20;
+    int traceTimeoutMs = 100;
+    int maximumRunTimeMs = 10000;
+    bool hardwarePositionLimitEnabled = true;
+    TorqueVelocityLimitOd velocityLimitOd = TorqueVelocityLimitOd::Vendor220B;
+    double velocityLimitRpm = 60.0;
+    long cia402VelocityLimitRaw = 0;
+};
+
+struct TorqueTestStatus
+{
+    bool active = false;
+    quint64 runId = 0;
+    quint16 axis = 0;
+    double elapsedS = 0.0;
+    double startPositionDegree = 0.0;
+    double positionLimitDegree = 0.0;
+    double commandTorqueNm = 0.0;
+    double actualTorqueNm = 0.0;
+    int commandTorqueRaw = 0;
+    int actualTorqueRaw = 0;
+    double actualPositionDegree = 0.0;
+    double actualVelocityDegreePerSecond = 0.0;
+    quint16 nodeAddress = 0;
+    long velocityLimitReadback = 0;
+    short lastApiResult = 0;
+    qint64 lastApiDurationUs = 0;
+    QString stateText = QStringLiteral("未运行");
+};
+
+struct TorquePlotSample
+{
+    quint64 runId = 0;
+    double elapsedS = 0.0;
+    double commandTorqueNm = 0.0;
+    double actualTorqueNm = 0.0;
+    double relativePositionDegree = 0.0;
+    double actualVelocityDegreePerSecond = 0.0;
+};
+
 // 一条轴反馈同时保留控制卡指令位置与编码器位置，二者的差值用于观察跟随情况。
 struct AxisFeedback
 {
@@ -411,6 +470,7 @@ struct ContiStatus
     bool telemetryPlotActive = false;
     TelemetryRecorderStatus recorder;
     VelocityControlStatus velocityControl;
+    TorqueTestStatus torqueTest;
     TraceDelayCalibrationStatus traceDelayCalibration;
     QString stateText = QStringLiteral("未初始化");
 };
@@ -422,6 +482,9 @@ Q_DECLARE_METATYPE(SingleAxisJogConfig)
 Q_DECLARE_METATYPE(VelocityControlConfig)
 Q_DECLARE_METATYPE(VelocityPlotSample)
 Q_DECLARE_METATYPE(QVector<VelocityPlotSample>)
+Q_DECLARE_METATYPE(TorqueTestConfig)
+Q_DECLARE_METATYPE(TorquePlotSample)
+Q_DECLARE_METATYPE(QVector<TorquePlotSample>)
 Q_DECLARE_METATYPE(TraceDelayCalibrationConfig)
 Q_DECLARE_METATYPE(TraceDelayPlotSample)
 Q_DECLARE_METATYPE(QVector<TraceDelayPlotSample>)

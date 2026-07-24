@@ -269,6 +269,95 @@ bool E5000ContiInterface::changeVelocity(
                        errorMessage);
 }
 
+bool E5000ContiInterface::startTorqueMove(
+    WORD cardNo, WORD axis, int torqueRaw, WORD positionLimitValid,
+    double positionLimitCardUnit, WORD positionMode, short &apiResult,
+    QString &errorMessage) const
+{
+    apiResult = nmc_torque_move(cardNo, axis, torqueRaw, positionLimitValid,
+                                positionLimitCardUnit, positionMode);
+    return checkResult(
+        apiResult,
+        QStringLiteral("nmc_torque_move(axis=%1, torque=%2, limitValid=%3, "
+                       "limit=%4 unit, posMode=%5)")
+            .arg(axis).arg(torqueRaw).arg(positionLimitValid)
+            .arg(positionLimitCardUnit, 0, 'f', 6).arg(positionMode),
+        errorMessage);
+}
+
+bool E5000ContiInterface::changeTorque(WORD cardNo, WORD axis, int torqueRaw,
+                                        short &apiResult,
+                                        QString &errorMessage) const
+{
+    apiResult = nmc_change_torque(cardNo, axis, torqueRaw);
+    return checkResult(apiResult,
+                       QStringLiteral("nmc_change_torque(axis=%1, torque=%2)")
+                           .arg(axis).arg(torqueRaw),
+                       errorMessage);
+}
+
+bool E5000ContiInterface::readTorque(WORD cardNo, WORD axis, int &torqueRaw,
+                                      short &apiResult,
+                                      QString &errorMessage) const
+{
+    torqueRaw = 0;
+    apiResult = nmc_get_torque(cardNo, axis, &torqueRaw);
+    return checkResult(apiResult,
+                       QStringLiteral("nmc_get_torque(axis=%1)").arg(axis),
+                       errorMessage);
+}
+
+bool E5000ContiInterface::writeTorqueVelocityLimit(
+    WORD cardNo, WORD axis, TorqueVelocityLimitOd odMode, long value,
+    WORD &nodeAddress, long &readback, QString &errorMessage) const
+{
+    WORD subAddress = 0;
+    const short addressResult =
+        nmc_get_axis_node_address(cardNo, axis, &nodeAddress, &subAddress);
+    if (!checkResult(addressResult,
+                     QStringLiteral("nmc_get_axis_node_address(axis=%1)").arg(axis),
+                     errorMessage)) {
+        return false;
+    }
+    if (nodeAddress == 0) {
+        errorMessage = QStringLiteral("轴 %1 未返回有效 EtherCAT 从站地址").arg(axis);
+        return false;
+    }
+
+    const WORD index = odMode == TorqueVelocityLimitOd::Vendor220B
+        ? static_cast<WORD>(0x220B) : static_cast<WORD>(0x6080);
+    constexpr WORD kEthercatPort = 2;
+    constexpr WORD kSubIndex = 0;
+    constexpr WORD kBitLength = 32;
+    const short writeResult =
+        nmc_set_node_od(cardNo, kEthercatPort, nodeAddress, index, kSubIndex,
+                        kBitLength, value);
+    if (!checkResult(writeResult,
+                     QStringLiteral("nmc_set_node_od(node=%1, index=0x%2, value=%3)")
+                         .arg(nodeAddress)
+                         .arg(index, 4, 16, QLatin1Char('0'))
+                         .arg(value),
+                     errorMessage)) {
+        return false;
+    }
+    const short readResult =
+        nmc_get_node_od(cardNo, kEthercatPort, nodeAddress, index, kSubIndex,
+                        kBitLength, &readback);
+    if (!checkResult(readResult,
+                     QStringLiteral("nmc_get_node_od(node=%1, index=0x%2)")
+                         .arg(nodeAddress)
+                         .arg(index, 4, 16, QLatin1Char('0')),
+                     errorMessage)) {
+        return false;
+    }
+    if (readback != value) {
+        errorMessage = QStringLiteral(
+            "转矩速度限制写入后读回不一致：写入=%1，读回=%2").arg(value).arg(readback);
+        return false;
+    }
+    return true;
+}
+
 bool E5000ContiInterface::stopAxis(WORD cardNo, WORD axis, bool emergency,
                                    QString &errorMessage) const
 {
