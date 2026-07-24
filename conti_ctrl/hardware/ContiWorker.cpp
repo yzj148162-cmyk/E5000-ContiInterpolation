@@ -1814,6 +1814,12 @@ bool ContiWorker::startNextTraceDelaySegment(QString &errorMessage)
                         .arg(traceDelayStatus_.currentSegment)
                         .arg(traceDelayStatus_.totalSegments)
                         .arg(target, 0, 'f', 3));
+    if (traceDelayAutoRecording_) {
+        telemetryRecorder_.appendEvent(
+            QStringLiteral("trace_delay_segment_start index=%1 target_deg_s=%2")
+                .arg(traceDelayStatus_.currentSegment)
+                .arg(target, 0, 'f', 6));
+    }
     return true;
 }
 
@@ -1868,6 +1874,28 @@ void ContiWorker::runTraceDelayCalibrationCycle()
             capture.targetSpeedDegreePerSecond =
                 traceDelaySegmentTargets_.at(traceDelayCurrentSegmentIndex_);
             capture.frames.swap(traceDelayCurrentSegmentFrames_);
+            const quint64 firstSequence = capture.frames.isEmpty()
+                ? 0 : capture.frames.constFirst().traceSequence;
+            const quint64 lastSequence = capture.frames.isEmpty()
+                ? 0 : capture.frames.constLast().traceSequence;
+            emit logMessage(QStringLiteral(
+                "Trace 延迟标定：第 %1/%2 段采集结束，捕获=%3帧，序号=%4～%5。")
+                                .arg(traceDelayCurrentSegmentIndex_ + 1)
+                                .arg(traceDelaySegmentTargets_.size())
+                                .arg(capture.frames.size())
+                                .arg(firstSequence)
+                                .arg(lastSequence));
+            if (traceDelayAutoRecording_) {
+                telemetryRecorder_.appendEvent(
+                    QStringLiteral(
+                        "trace_delay_segment_end index=%1 target_deg_s=%2 "
+                        "captured_frames=%3 first_sequence=%4 last_sequence=%5")
+                        .arg(traceDelayCurrentSegmentIndex_ + 1)
+                        .arg(capture.targetSpeedDegreePerSecond, 0, 'f', 6)
+                        .arg(capture.frames.size())
+                        .arg(firstSequence)
+                        .arg(lastSequence));
+            }
             traceDelaySegments_.push_back(capture);
             QString error;
             if (!card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, false, error)) {
@@ -1928,6 +1956,36 @@ void ContiWorker::analyzeTraceDelayCalibration()
         fit.measuredPositionGapDegree;
     traceDelayStatus_.fittedSlopeSecond = fit.axisResult.measuredDelayMs / 1000.0;
     traceDelayStatus_.fittedInterceptDegree = fit.axisResult.staticOffsetDegree;
+    for (const TraceDelaySegmentDiagnostic &diagnostic : fit.segmentDiagnostics) {
+        emit logMessage(QStringLiteral(
+            "Trace 标定段 %1：目标=%2°/s，捕获=%3帧，有效轴帧=%4，"
+            "指令稳定=%5帧（最长连续=%6），选用=%7帧，段内丢帧=%8，结果=%9。")
+                            .arg(diagnostic.segmentNumber)
+                            .arg(diagnostic.targetSpeedDegreePerSecond, 0, 'f', 3)
+                            .arg(diagnostic.capturedFrames)
+                            .arg(diagnostic.validAxisFrames)
+                            .arg(diagnostic.commandStableFrames)
+                            .arg(diagnostic.longestCommandStableRun)
+                            .arg(diagnostic.selectedFrames)
+                            .arg(diagnostic.lostFrames)
+                            .arg(diagnostic.detail));
+        if (diagnostic.selectedFrames > 0) {
+            emit logMessage(QStringLiteral(
+                "Trace 标定段 %1统计：选用序号=%2～%3，指令速度均值=%4°/s，"
+                "实际速度均值=%5°/s，实际速度σ=%6°/s，位置差均值=%7°。")
+                                .arg(diagnostic.segmentNumber)
+                                .arg(diagnostic.selectedFirstSequence)
+                                .arg(diagnostic.selectedLastSequence)
+                                .arg(diagnostic.commandVelocityMeanDegreePerSecond,
+                                     0, 'f', 5)
+                                .arg(diagnostic.actualVelocityMeanDegreePerSecond,
+                                     0, 'f', 5)
+                                .arg(diagnostic.actualVelocityStdDegreePerSecond,
+                                     0, 'f', 5)
+                                .arg(diagnostic.positionGapMeanDegree,
+                                     0, 'f', 6));
+        }
+    }
     QStringList fitPoints;
     for (int index = 0;
          index < fit.measuredSpeedDegreePerSecond.size()
@@ -1939,16 +1997,23 @@ void ContiWorker::analyzeTraceDelayCalibration()
                          .arg(fit.measuredPositionGapDegree.at(index),
                               0, 'f', 6);
     }
-    emit logMessage(QStringLiteral(
-        "Trace 延迟标定拟合数据：%1；τ=%2 ms，b=%3°，R²=%4，"
-        "RMSE=%5°，正反向最大离散=%6 ms，丢帧=%7。")
-                        .arg(fitPoints.join(QStringLiteral("、")))
-                        .arg(attempt.measuredDelayMs, 0, 'f', 4)
-                        .arg(attempt.staticOffsetDegree, 0, 'f', 6)
-                        .arg(attempt.rSquared, 0, 'f', 5)
-                        .arg(attempt.rmseDegree, 0, 'f', 6)
-                        .arg(attempt.pairSpreadMs, 0, 'f', 4)
-                        .arg(attempt.lostFrameCount));
+    if (fitPoints.size() == 6) {
+        emit logMessage(QStringLiteral(
+            "Trace 延迟标定拟合数据：%1；τ=%2 ms，b=%3°，R²=%4，"
+            "RMSE=%5°，正反向最大离散=%6 ms，丢帧=%7。")
+                            .arg(fitPoints.join(QStringLiteral("、")))
+                            .arg(attempt.measuredDelayMs, 0, 'f', 4)
+                            .arg(attempt.staticOffsetDegree, 0, 'f', 6)
+                            .arg(attempt.rSquared, 0, 'f', 5)
+                            .arg(attempt.rmseDegree, 0, 'f', 6)
+                            .arg(attempt.pairSpreadMs, 0, 'f', 4)
+                            .arg(attempt.lostFrameCount));
+    } else {
+        emit logMessage(QStringLiteral(
+            "Trace 延迟标定未执行最终拟合：有效段=%1/6；原因=%2。")
+                            .arg(fitPoints.size())
+                            .arg(attempt.detail));
+    }
 
     if (fit.axisResult.valid) {
         traceDelayAxisResults_[traceDelayConfig_.axis] = attempt;
@@ -1973,18 +2038,27 @@ void ContiWorker::analyzeTraceDelayCalibration()
                 .arg(attempt.rSquared, 0, 'f', 5)
                 .arg(attempt.rmseDegree, 0, 'f', 6));
     } else {
-        finishTraceDelayCalibration(
-            QStringLiteral(
+        const QString failureMessage = fitPoints.size() == 6
+            ? QStringLiteral(
                 "Trace 延迟标定未通过：轴 %1，拟合延迟=%2 ms，R²=%3，"
-                "丢帧=%4，正反向离散=%5 ms；诊断继续使用 %6 ms（%7）。")
-                .arg(traceDelayConfig_.axis)
-                .arg(attempt.measuredDelayMs, 0, 'f', 4)
-                .arg(attempt.rSquared, 0, 'f', 5)
-                .arg(attempt.lostFrameCount)
-                .arg(attempt.pairSpreadMs, 0, 'f', 4)
-                .arg(attempt.appliedDelayMs, 0, 'f', 4)
-                .arg(attempt.source),
-            true, false);
+                "丢帧=%4，正反向离散=%5 ms；原因=%6；"
+                "诊断继续使用 %7 ms（%8）。")
+                  .arg(traceDelayConfig_.axis)
+                  .arg(attempt.measuredDelayMs, 0, 'f', 4)
+                  .arg(attempt.rSquared, 0, 'f', 5)
+                  .arg(attempt.lostFrameCount)
+                  .arg(attempt.pairSpreadMs, 0, 'f', 4)
+                  .arg(attempt.detail)
+                  .arg(attempt.appliedDelayMs, 0, 'f', 4)
+                  .arg(attempt.source)
+            : QStringLiteral(
+                "Trace 延迟标定未通过：轴 %1；原因=%2；"
+                "诊断继续使用 %3 ms（%4）。")
+                  .arg(traceDelayConfig_.axis)
+                  .arg(attempt.detail)
+                  .arg(attempt.appliedDelayMs, 0, 'f', 4)
+                  .arg(attempt.source);
+        finishTraceDelayCalibration(failureMessage, true, false);
     }
 }
 
