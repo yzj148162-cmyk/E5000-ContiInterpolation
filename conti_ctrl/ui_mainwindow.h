@@ -1,13 +1,13 @@
 /********************************************************************************
-** Form generated from reading UI file 'conti_staged_mainwindow.ui'
+** Form generated from reading UI file 'mainwindow.ui'
 **
 ** Created by: Qt User Interface Compiler version 6.8.3
 **
 ** WARNING! All changes made in this file will be lost when recompiling UI file!
 ********************************************************************************/
 
-#ifndef CONTI_STAGED_UI_MAINWINDOW_H
-#define CONTI_STAGED_UI_MAINWINDOW_H
+#ifndef UI_MAINWINDOW_H
+#define UI_MAINWINDOW_H
 
 #include <QtCharts/QChartView>
 #include <QtCore/QVariant>
@@ -369,6 +369,7 @@ public:
     QLabel *torqueUnitLabel;
     QComboBox *torqueUnitCombo;
     QDoubleSpinBox *torqueCustomEquivalentSpin;
+    QLabel *torqueMotorParameterSummaryLabel;
     QLabel *torqueRatedLabel;
     QDoubleSpinBox *torqueRatedSpin;
     QLabel *torqueTargetLabel;
@@ -392,8 +393,9 @@ public:
     QDoubleSpinBox *torqueActualLimitSpin;
     QGroupBox *torqueOdGroup;
     QGridLayout *torqueOdLayout;
-    QComboBox *torqueOdCombo;
-    QDoubleSpinBox *torqueOdRpmSpin;
+    QLabel *torquePdoRequirementLabel;
+    QPushButton *torqueCheckPdoButton;
+    QLabel *torqueMaximumMotorSpeedLabel;
     QSpinBox *torqueOd6080RawSpin;
     QPushButton *torqueWriteOdButton;
     QLabel *torqueOdHintLabel;
@@ -2309,28 +2311,34 @@ public:
         torqueCustomEquivalentSpin->setDecimals(6);
         torqueCustomEquivalentSpin->setMinimum(0.000001000000000);
         torqueCustomEquivalentSpin->setMaximum(1000000000.000000000000000);
-        torqueCustomEquivalentSpin->setValue(500.622000000000014);
+        torqueCustomEquivalentSpin->setValue(500.622222000000022);
 
         torqueParameterLayout->addWidget(torqueCustomEquivalentSpin, 0, 4, 1, 1);
+
+        torqueMotorParameterSummaryLabel = new QLabel(torqueParameterGroup);
+        torqueMotorParameterSummaryLabel->setObjectName("torqueMotorParameterSummaryLabel");
+        torqueMotorParameterSummaryLabel->setWordWrap(true);
+
+        torqueParameterLayout->addWidget(torqueMotorParameterSummaryLabel, 1, 0, 1, 5);
 
         torqueRatedLabel = new QLabel(torqueParameterGroup);
         torqueRatedLabel->setObjectName("torqueRatedLabel");
 
-        torqueParameterLayout->addWidget(torqueRatedLabel, 1, 0, 1, 1);
+        torqueParameterLayout->addWidget(torqueRatedLabel, 2, 0, 1, 1);
 
         torqueRatedSpin = new QDoubleSpinBox(torqueParameterGroup);
         torqueRatedSpin->setObjectName("torqueRatedSpin");
         torqueRatedSpin->setDecimals(3);
         torqueRatedSpin->setMinimum(0.001000000000000);
         torqueRatedSpin->setMaximum(10000.000000000000000);
-        torqueRatedSpin->setValue(45.000000000000000);
+        torqueRatedSpin->setValue(0.222000000000000);
 
-        torqueParameterLayout->addWidget(torqueRatedSpin, 1, 1, 1, 1);
+        torqueParameterLayout->addWidget(torqueRatedSpin, 2, 1, 1, 1);
 
         torqueTargetLabel = new QLabel(torqueParameterGroup);
         torqueTargetLabel->setObjectName("torqueTargetLabel");
 
-        torqueParameterLayout->addWidget(torqueTargetLabel, 1, 2, 1, 1);
+        torqueParameterLayout->addWidget(torqueTargetLabel, 2, 2, 1, 1);
 
         torqueTargetSpin = new QDoubleSpinBox(torqueParameterGroup);
         torqueTargetSpin->setObjectName("torqueTargetSpin");
@@ -2339,31 +2347,31 @@ public:
         torqueTargetSpin->setMaximum(10000.000000000000000);
         torqueTargetSpin->setValue(0.000000000000000);
 
-        torqueParameterLayout->addWidget(torqueTargetSpin, 1, 3, 1, 1);
+        torqueParameterLayout->addWidget(torqueTargetSpin, 2, 3, 1, 1);
 
         torqueZeroHintLabel = new QLabel(torqueParameterGroup);
         torqueZeroHintLabel->setObjectName("torqueZeroHintLabel");
 
-        torqueParameterLayout->addWidget(torqueZeroHintLabel, 1, 4, 1, 1);
+        torqueParameterLayout->addWidget(torqueZeroHintLabel, 2, 4, 1, 1);
 
         torqueCommandLimitLabel = new QLabel(torqueParameterGroup);
         torqueCommandLimitLabel->setObjectName("torqueCommandLimitLabel");
 
-        torqueParameterLayout->addWidget(torqueCommandLimitLabel, 2, 0, 1, 1);
+        torqueParameterLayout->addWidget(torqueCommandLimitLabel, 3, 0, 1, 1);
 
         torqueCommandLimitSpin = new QDoubleSpinBox(torqueParameterGroup);
         torqueCommandLimitSpin->setObjectName("torqueCommandLimitSpin");
         torqueCommandLimitSpin->setDecimals(3);
         torqueCommandLimitSpin->setMinimum(0.001000000000000);
         torqueCommandLimitSpin->setMaximum(10000.000000000000000);
-        torqueCommandLimitSpin->setValue(5.000000000000000);
+        torqueCommandLimitSpin->setValue(0.222000000000000);
 
-        torqueParameterLayout->addWidget(torqueCommandLimitSpin, 2, 1, 1, 1);
+        torqueParameterLayout->addWidget(torqueCommandLimitSpin, 3, 1, 1, 1);
 
         torqueMonitorPeriodLabel = new QLabel(torqueParameterGroup);
         torqueMonitorPeriodLabel->setObjectName("torqueMonitorPeriodLabel");
 
-        torqueParameterLayout->addWidget(torqueMonitorPeriodLabel, 2, 2, 1, 1);
+        torqueParameterLayout->addWidget(torqueMonitorPeriodLabel, 3, 2, 1, 1);
 
         torqueMonitorPeriodSpin = new QSpinBox(torqueParameterGroup);
         torqueMonitorPeriodSpin->setObjectName("torqueMonitorPeriodSpin");
@@ -2371,7 +2379,7 @@ public:
         torqueMonitorPeriodSpin->setMaximum(1000);
         torqueMonitorPeriodSpin->setValue(20);
 
-        torqueParameterLayout->addWidget(torqueMonitorPeriodSpin, 2, 3, 1, 1);
+        torqueParameterLayout->addWidget(torqueMonitorPeriodSpin, 3, 3, 1, 1);
 
 
         torqueTestContentLayout->addWidget(torqueParameterGroup);
@@ -2445,7 +2453,7 @@ public:
         torqueActualLimitSpin->setDecimals(3);
         torqueActualLimitSpin->setMinimum(0.001000000000000);
         torqueActualLimitSpin->setMaximum(10000.000000000000000);
-        torqueActualLimitSpin->setValue(7.500000000000000);
+        torqueActualLimitSpin->setValue(2.910000000000000);
 
         torqueSafetyLayout->addWidget(torqueActualLimitSpin, 2, 1, 1, 1);
 
@@ -2456,41 +2464,39 @@ public:
         torqueOdGroup->setObjectName("torqueOdGroup");
         torqueOdLayout = new QGridLayout(torqueOdGroup);
         torqueOdLayout->setObjectName("torqueOdLayout");
-        torqueOdCombo = new QComboBox(torqueOdGroup);
-        torqueOdCombo->addItem(QString());
-        torqueOdCombo->addItem(QString());
-        torqueOdCombo->setObjectName("torqueOdCombo");
+        torquePdoRequirementLabel = new QLabel(torqueOdGroup);
+        torquePdoRequirementLabel->setObjectName("torquePdoRequirementLabel");
 
-        torqueOdLayout->addWidget(torqueOdCombo, 0, 0, 1, 1);
+        torqueOdLayout->addWidget(torquePdoRequirementLabel, 0, 0, 1, 2);
 
-        torqueOdRpmSpin = new QDoubleSpinBox(torqueOdGroup);
-        torqueOdRpmSpin->setObjectName("torqueOdRpmSpin");
-        torqueOdRpmSpin->setDecimals(3);
-        torqueOdRpmSpin->setMinimum(0.001000000000000);
-        torqueOdRpmSpin->setMaximum(100000.000000000000000);
-        torqueOdRpmSpin->setValue(60.000000000000000);
+        torqueCheckPdoButton = new QPushButton(torqueOdGroup);
+        torqueCheckPdoButton->setObjectName("torqueCheckPdoButton");
 
-        torqueOdLayout->addWidget(torqueOdRpmSpin, 0, 1, 1, 1);
+        torqueOdLayout->addWidget(torqueCheckPdoButton, 0, 2, 1, 1);
+
+        torqueMaximumMotorSpeedLabel = new QLabel(torqueOdGroup);
+        torqueMaximumMotorSpeedLabel->setObjectName("torqueMaximumMotorSpeedLabel");
+
+        torqueOdLayout->addWidget(torqueMaximumMotorSpeedLabel, 1, 0, 1, 1);
 
         torqueOd6080RawSpin = new QSpinBox(torqueOdGroup);
         torqueOd6080RawSpin->setObjectName("torqueOd6080RawSpin");
-        torqueOd6080RawSpin->setEnabled(false);
         torqueOd6080RawSpin->setMinimum(1);
         torqueOd6080RawSpin->setMaximum(2147483647);
-        torqueOd6080RawSpin->setValue(180224);
+        torqueOd6080RawSpin->setValue(5540);
 
-        torqueOdLayout->addWidget(torqueOd6080RawSpin, 0, 2, 1, 1);
+        torqueOdLayout->addWidget(torqueOd6080RawSpin, 1, 1, 1, 1);
 
         torqueWriteOdButton = new QPushButton(torqueOdGroup);
         torqueWriteOdButton->setObjectName("torqueWriteOdButton");
 
-        torqueOdLayout->addWidget(torqueWriteOdButton, 0, 3, 1, 1);
+        torqueOdLayout->addWidget(torqueWriteOdButton, 1, 2, 1, 1);
 
         torqueOdHintLabel = new QLabel(torqueOdGroup);
         torqueOdHintLabel->setObjectName("torqueOdHintLabel");
         torqueOdHintLabel->setWordWrap(true);
 
-        torqueOdLayout->addWidget(torqueOdHintLabel, 1, 0, 1, 4);
+        torqueOdLayout->addWidget(torqueOdHintLabel, 2, 0, 1, 3);
 
 
         torqueTestContentLayout->addWidget(torqueOdGroup);
@@ -3394,18 +3400,31 @@ public:
         torqueUnitCombo->setItemText(3, QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\350\204\211\345\206\262\345\275\223\351\207\217", nullptr));
 
         torqueCustomEquivalentSpin->setSuffix(QCoreApplication::translate("MainWindow", " pulse/unit", nullptr));
+        torqueMotorParameterSummaryLabel->setText(QCoreApplication::translate("MainWindow", "\344\274\240\345\212\250\345\217\202\346\225\260\357\274\232\347\274\226\347\240\201\345\231\250 1024 line \303\227 4 = 4096 pulse/\347\224\265\346\234\272\345\234\210\357\274\233\345\207\217\351\200\237\346\257\224 44:1\357\274\233\350\276\223\345\207\272\347\253\257 180224 pulse/\345\234\210 = 500.622222 pulse/\302\260", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueRatedLabel->setToolTip(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\347\237\251\357\274\214\347\224\250\344\272\216\345\234\250 N\302\267m \344\270\216 CiA402 \345\215\203\345\210\206\351\242\235\345\256\232\350\275\254\347\237\251\344\271\213\351\227\264\346\215\242\347\256\227\343\200\202", nullptr));
+        torqueRatedLabel->setToolTip(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\350\275\264\351\242\235\345\256\232\350\275\254\347\237\251\357\274\214\347\224\250\344\272\216\345\234\250\347\224\265\346\234\272\350\275\264 N\302\267m \344\270\216 CiA402 \345\215\203\345\210\206\351\242\235\345\256\232\350\275\254\347\237\251\344\271\213\351\227\264\346\215\242\347\256\227\357\274\233\344\270\215\345\214\205\345\220\253\345\207\217\351\200\237\345\231\250\346\224\276\345\244\247\345\222\214\346\225\210\347\216\207\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
-        torqueRatedLabel->setText(QCoreApplication::translate("MainWindow", "\351\242\235\345\256\232\350\275\254\347\237\251", nullptr));
+        torqueRatedLabel->setText(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\347\237\251", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueRatedSpin->setToolTip(QCoreApplication::translate("MainWindow", "\345\216\237\345\267\245\347\250\213\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\347\237\251\344\270\27245 N\302\267m\357\274\233\346\233\264\346\215\242\347\224\265\346\234\272\345\220\216\345\277\205\351\241\273\346\214\211\351\223\255\347\211\214\344\277\256\346\224\271\343\200\202", nullptr));
+        torqueRatedSpin->setToolTip(QCoreApplication::translate("MainWindow", "\345\275\223\345\211\215\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\347\237\251 222 mN\302\267m\357\274\214\345\215\263 0.222 N\302\267m\343\200\202\347\233\256\346\240\207\350\275\254\347\237\251\345\222\214\345\256\236\351\231\205\350\275\254\347\237\251\345\235\207\346\214\211\347\224\265\346\234\272\350\275\264\344\276\247\346\230\276\347\244\272\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueRatedSpin->setSuffix(QCoreApplication::translate("MainWindow", " N\302\267m", nullptr));
-        torqueTargetLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\350\275\254\347\237\251", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueTargetLabel->setToolTip(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\350\275\264\347\233\256\346\240\207\350\275\254\347\237\251\343\200\202\347\220\206\350\256\272\345\207\217\351\200\237\345\231\250\350\276\223\345\207\272\350\275\254\347\237\251\344\270\272\347\224\265\346\234\272\350\275\264\350\275\254\347\237\251\303\22744\303\227\345\207\217\351\200\237\345\231\250\346\225\210\347\216\207\357\274\233\345\233\240\346\225\210\347\216\207\346\234\252\347\237\245\357\274\214\347\250\213\345\272\217\344\270\215\350\207\252\345\212\250\346\215\242\347\256\227\350\276\223\345\207\272\347\253\257\350\275\254\347\237\251\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueTargetLabel->setText(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\347\233\256\346\240\207\350\275\254\347\237\251", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueTargetSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\350\275\264\347\233\256\346\240\207\350\275\254\347\237\251\357\274\2140.222 N\302\267m \345\257\271\345\272\224 CiA402 \345\216\237\345\247\213\345\200\274 1000\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
         torqueTargetSpin->setSuffix(QCoreApplication::translate("MainWindow", " N\302\267m", nullptr));
         torqueZeroHintLabel->setText(QCoreApplication::translate("MainWindow", "0 N\302\267m \346\227\266\346\213\222\347\273\235\345\220\257\345\212\250", nullptr));
-        torqueCommandLimitLabel->setText(QCoreApplication::translate("MainWindow", "\345\221\275\344\273\244\351\231\220\345\271\205", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueCommandLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\350\275\264\347\233\256\346\240\207\350\275\254\347\237\251\347\232\204\347\273\235\345\257\271\345\200\274\344\270\212\351\231\220\357\274\214\351\273\230\350\256\244\351\207\207\347\224\250\351\242\235\345\256\232\350\275\254\347\237\251 0.222 N\302\267m\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueCommandLimitLabel->setText(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\345\221\275\344\273\244\351\231\220\345\271\205", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueCommandLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\351\273\230\350\256\244\351\231\220\345\210\266\345\234\250\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\347\237\251 0.222 N\302\267m\357\274\233\351\246\226\346\254\241\346\265\213\350\257\225\344\273\215\345\272\224\344\273\216\346\233\264\345\260\217\347\233\256\346\240\207\345\200\274\345\274\200\345\247\213\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
         torqueCommandLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " N\302\267m", nullptr));
         torqueMonitorPeriodLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\221\346\265\213\345\221\250\346\234\237", nullptr));
         torqueMonitorPeriodSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
@@ -3422,24 +3441,32 @@ public:
         torqueRunTimeoutLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\200\351\225\277\350\277\220\350\241\214", nullptr));
         torqueRunTimeoutSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueActualLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "nmc_get_torque \346\215\242\347\256\227\345\220\216\347\232\204\345\256\236\351\231\205\350\275\254\347\237\251\347\273\235\345\257\271\345\200\274\350\266\205\350\277\207\350\257\245\345\200\274\346\227\266\347\253\213\345\215\263\345\201\234\346\255\242\343\200\202", nullptr));
+        torqueActualLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "nmc_get_torque \346\215\242\347\256\227\345\207\272\347\232\204\347\224\265\346\234\272\350\275\264\345\256\236\351\231\205\350\275\254\347\237\251\347\273\235\345\257\271\345\200\274\350\266\205\350\277\207\350\257\245\345\200\274\346\227\266\347\253\213\345\215\263\345\201\234\346\255\242\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
-        torqueActualLimitLabel->setText(QCoreApplication::translate("MainWindow", "\345\256\236\351\231\205\350\275\254\347\237\251\344\270\212\351\231\220", nullptr));
+        torqueActualLimitLabel->setText(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\345\256\236\351\231\205\350\275\254\347\237\251\344\270\212\351\231\220", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueActualLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\213\254\347\253\213\344\272\216\347\233\256\346\240\207\345\221\275\344\273\244\351\231\220\345\271\205\347\232\204\345\217\215\351\246\210\344\277\235\346\212\244\351\230\210\345\200\274\357\274\214\345\277\205\351\241\273\346\214\211\346\234\272\346\236\204\345\222\214\347\224\265\346\234\272\350\203\275\345\212\233\344\277\235\345\256\210\350\256\276\347\275\256\343\200\202", nullptr));
+        torqueActualLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\213\254\347\253\213\344\272\216\347\233\256\346\240\207\345\221\275\344\273\244\351\231\220\345\271\205\347\232\204\345\217\215\351\246\210\344\277\235\346\212\244\351\230\210\345\200\274\343\200\202\345\275\223\345\211\215\351\273\230\350\256\244\345\200\274 2.910 N\302\267m \346\235\245\350\207\252\347\224\265\346\234\272\345\240\265\350\275\254\350\275\254\347\237\251\357\274\214\344\273\205\350\241\250\347\244\272\347\224\265\346\234\272\346\236\201\351\231\220\345\217\202\346\225\260\357\274\233\345\270\246\350\275\275\346\265\213\350\257\225\346\227\266\345\272\224\346\214\211\346\234\272\346\236\204\350\203\275\345\212\233\350\277\233\344\270\200\346\255\245\351\231\215\344\275\216\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueActualLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " N\302\267m", nullptr));
-        torqueOdGroup->setTitle(QCoreApplication::translate("MainWindow", "\344\274\272\346\234\215\351\200\237\345\272\246\351\231\220\345\210\266 OD\357\274\210\344\273\205\346\211\213\345\212\250\345\206\231\345\205\245\357\274\211", nullptr));
-        torqueOdCombo->setItemText(0, QCoreApplication::translate("MainWindow", "\345\216\237\345\267\245\347\250\213 220Bh\357\274\210rpm\342\206\222pulse/s\357\274\211", nullptr));
-        torqueOdCombo->setItemText(1, QCoreApplication::translate("MainWindow", "\346\211\213\345\206\214 6080h\357\274\210\351\251\261\345\212\250\345\231\250\345\216\237\347\224\237\345\200\274\357\274\211", nullptr));
-
-        torqueOdRpmSpin->setSuffix(QCoreApplication::translate("MainWindow", " rpm", nullptr));
-        torqueOd6080RawSpin->setPrefix(QCoreApplication::translate("MainWindow", "6080h raw=", nullptr));
+        torqueOdGroup->setTitle(QCoreApplication::translate("MainWindow", "Diamond PDO \344\270\216\346\234\200\345\244\247\351\200\237\345\272\246 SDO", nullptr));
+        torquePdoRequirementLabel->setText(QCoreApplication::translate("MainWindow", "RxPDO 6071h:00h \347\233\256\346\240\207\350\275\254\347\237\251 / TxPDO 6077h:00h \345\256\236\351\231\205\350\275\254\347\237\251\357\274\210INT16\357\274\211", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueWriteOdButton->setToolTip(QCoreApplication::translate("MainWindow", "\344\273\205\345\234\250\346\227\240\350\277\220\345\212\250\344\273\273\345\212\241\346\227\266\345\206\231\345\205\245\346\211\200\351\200\211\350\275\264\357\274\214\345\271\266\347\253\213\345\215\263\350\257\273\345\233\236\346\240\270\345\257\271\343\200\202\344\270\215\344\274\232\351\232\217\350\275\254\347\237\251\346\265\213\350\257\225\345\220\257\345\212\250\350\207\252\345\212\250\346\211\247\350\241\214\343\200\202", nullptr));
+        torqueCheckPdoButton->setToolTip(QCoreApplication::translate("MainWindow", "\345\217\252\350\257\273\346\243\200\346\237\245\346\216\247\345\210\266\345\215\241\345\275\223\345\211\215\350\277\207\347\250\213\346\225\260\346\215\256\344\270\255\346\230\257\345\220\246\350\203\275\346\214\211\347\264\242\345\274\225\350\257\273\345\217\2266071h\345\222\2146077h\357\274\214\344\270\215\344\277\256\346\224\271PDO\351\205\215\347\275\256\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
-        torqueWriteOdButton->setText(QCoreApplication::translate("MainWindow", "\345\206\231\345\205\245\345\271\266\350\257\273\345\233\236", nullptr));
-        torqueOdHintLabel->setText(QCoreApplication::translate("MainWindow", "220Bh \346\214\211\345\275\223\345\211\215\347\274\226\347\240\201\345\231\250 180224 pulse/rev \346\215\242\347\256\227\357\274\2336080h \347\232\204\345\216\237\347\224\237\345\215\225\344\275\215\347\224\261\345\205\267\344\275\223\344\274\272\346\234\215\351\251\261\345\212\250\345\231\250\345\256\232\344\271\211\357\274\214\345\206\231\345\205\245\345\211\215\345\277\205\351\241\273\346\240\270\345\257\271\351\251\261\345\212\250\345\231\250\346\211\213\345\206\214\343\200\202", nullptr));
+        torqueCheckPdoButton->setText(QCoreApplication::translate("MainWindow", "\346\243\200\346\237\245\350\275\254\347\237\251PDO", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueMaximumMotorSpeedLabel->setToolTip(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\350\275\264\346\234\200\345\244\247\351\200\237\345\272\246\357\274\214\344\270\215\346\230\257\347\274\226\347\240\201\345\231\250\350\204\211\345\206\262\346\225\260\343\200\202\345\275\223\345\211\215\346\214\211\347\224\265\346\234\272\347\251\272\350\275\275\350\275\254\351\200\237 5540 rpm \350\256\276\347\275\256\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueMaximumMotorSpeedLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\200\345\244\247\347\224\265\346\234\272\351\200\237\345\272\246 SDO 6080h:00h", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueOd6080RawSpin->setToolTip(QCoreApplication::translate("MainWindow", "Diamond/CiA402 \345\257\271\350\261\241 6080h \347\232\204\346\234\200\345\244\247\347\224\265\346\234\272\351\200\237\345\272\246\357\274\214\345\275\223\345\211\215\351\273\230\350\256\244 5540 rpm\357\274\233\345\206\231\345\205\245\345\211\215\344\273\215\345\272\224\344\273\245\351\251\261\345\212\250\345\231\250\345\257\271\350\261\241\345\255\227\345\205\270\347\232\204\345\215\225\344\275\215\345\256\232\344\271\211\344\270\272\345\207\206\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueOd6080RawSpin->setSuffix(QCoreApplication::translate("MainWindow", " rpm", nullptr));
+#if QT_CONFIG(tooltip)
+        torqueWriteOdButton->setToolTip(QCoreApplication::translate("MainWindow", "\351\200\232\350\277\207SDO\345\206\231\345\205\2456080h\345\271\266\347\253\213\345\215\263\350\257\273\345\233\236\357\274\233\344\273\205\345\234\250\346\227\240\350\277\220\345\212\250\344\273\273\345\212\241\346\227\266\346\211\247\350\241\214\357\274\214\344\270\215\344\274\232\351\232\217\350\275\254\347\237\251\346\265\213\350\257\225\345\220\257\345\212\250\350\207\252\345\212\250\345\206\231\345\205\245\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        torqueWriteOdButton->setText(QCoreApplication::translate("MainWindow", "\345\206\231\345\205\245\345\271\266\350\257\273\345\233\2366080h", nullptr));
+        torqueOdHintLabel->setText(QCoreApplication::translate("MainWindow", "Diamond V21 \351\273\230\350\256\244PDO\345\267\262\347\273\217\345\214\205\345\220\2536071h\345\222\2146077h\357\274\233\350\213\245\346\243\200\346\237\245\345\244\261\350\264\245\357\274\214\351\234\200\345\234\250Motion\350\277\207\347\250\213\346\225\260\346\215\256\351\205\215\347\275\256\344\270\255\346\267\273\345\212\240\345\257\271\345\272\224RxPDO/TxPDO\345\271\266\351\207\215\346\226\260\344\270\213\350\275\275\343\200\2026080h\345\261\236\344\272\216\351\235\236\345\221\250\346\234\237SDO\345\217\202\346\225\260\357\274\214\345\275\223\345\211\215\346\214\211\347\224\265\346\234\272\350\275\264\346\234\200\345\244\247\350\275\254\351\200\237 5540 rpm \350\256\276\347\275\256\357\274\233180224\346\230\257\345\207\217\351\200\237\345\231\250\350\276\223\345\207\272\347\253\257\346\257\217\345\234\210\350\204\211\345\206\262\346\225\260\357\274\214\344\270\215\350\203\275\345\206\231\345\205\2456080h\343\200\202", nullptr));
         torqueOperationGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\223\215\344\275\234\344\270\216\347\212\266\346\200\201", nullptr));
         torqueEnableAxisButton->setText(QCoreApplication::translate("MainWindow", "\344\275\277\350\203\275\346\265\213\350\257\225\350\275\264", nullptr));
         torqueDisableAxisButton->setText(QCoreApplication::translate("MainWindow", "\345\244\261\350\203\275\346\265\213\350\257\225\350\275\264", nullptr));
@@ -3456,7 +3483,7 @@ public:
         torqueValueValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 N\302\267m / 0", nullptr));
         torqueMotionLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\215\347\275\256 start / actual / limit\357\274\233\351\200\237\345\272\246", nullptr));
         torqueMotionValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 \302\260\357\274\2330 \302\260/s", nullptr));
-        torqueOdStatusLabel->setText(QCoreApplication::translate("MainWindow", "\344\273\216\347\253\231 / OD\350\257\273\345\233\236", nullptr));
+        torqueOdStatusLabel->setText(QCoreApplication::translate("MainWindow", "\344\273\216\347\253\231 / PDO / SDO", nullptr));
         torqueOdStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "-- / --", nullptr));
 #if QT_CONFIG(tooltip)
         torqueValueChartView->setToolTip(QCoreApplication::translate("MainWindow", "\346\273\232\350\275\256\347\274\251\346\224\276\357\274\214\346\214\211\344\275\217\345\267\246\351\224\256\346\213\226\345\212\250\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
@@ -3556,4 +3583,4 @@ namespace Ui {
 
 QT_END_NAMESPACE
 
-#endif // CONTI_STAGED_UI_MAINWINDOW_H
+#endif // UI_MAINWINDOW_H

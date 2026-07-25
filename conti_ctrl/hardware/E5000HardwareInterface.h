@@ -44,6 +44,10 @@ public:
                       QString &errorMessage);
     bool readTorque(quint16 axis, int &torqueRaw, short &apiResult,
                     QString &errorMessage) const;
+    bool checkDiamondTorquePdo(quint16 axis, quint16 &nodeAddress,
+                               qint16 &targetTorqueRaw,
+                               qint16 &actualTorqueRaw,
+                               QString &errorMessage) const;
     bool writeTorqueVelocityLimit(const TorqueTestConfig &config, long value,
                                   quint16 &nodeAddress, long &readback,
                                   QString &errorMessage);

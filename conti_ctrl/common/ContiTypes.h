@@ -10,10 +10,18 @@
 
 namespace MotorUnit
 {
-// 编码器的物理分辨率固定为 500.622 pulse/deg。板卡 unit 的定义可在测试前选择，
-// 但 Trace 原始脉冲与物理角度之间始终使用该常量换算。
-constexpr double kPhysicalPulsesPerDegree = 500.622;
-constexpr int kPulsesPerRevolution = 180224;
+// 编码器 1024 line 经四倍频后为 4096 pulse/电机圈；44:1 减速器输出端
+// 每圈对应 180224 pulse。板卡 unit 的定义可在测试前选择，但 Trace 原始脉冲
+// 与减速器输出端角度之间始终使用这一物理比例。
+constexpr int kEncoderLinesPerMotorRevolution = 1024;
+constexpr int kEncoderQuadratureFactor = 4;
+constexpr int kGearReductionRatio = 44;
+constexpr int kPulsesPerMotorRevolution =
+    kEncoderLinesPerMotorRevolution * kEncoderQuadratureFactor;
+constexpr int kPulsesPerRevolution =
+    kPulsesPerMotorRevolution * kGearReductionRatio;
+constexpr double kPhysicalPulsesPerDegree =
+    static_cast<double>(kPulsesPerRevolution) / 360.0;
 
 inline double pulsesPerCardUnit(double degreesPerCardUnit)
 {
@@ -314,32 +322,25 @@ struct VelocityPlotSample
     double actualVelocityDegreePerSecond = 0.0;
 };
 
-enum class TorqueVelocityLimitOd : quint8
-{
-    Vendor220B = 0,
-    CiA4026080 = 1
-};
-
-// 单轴转矩模式测试参数。转矩按 CiA402 千分额定转矩换算；位置和速度仍使用
-// Trace 同帧反馈。速度限制 OD 只在用户明确点击写入按钮时修改。
+// 单轴转矩模式测试参数。Diamond 默认使用 RxPDO 6071h 发送目标转矩、
+// TxPDO 6077h 返回实际转矩，均为额定转矩千分比的有符号 16 位值。
+// 6080h 是可选的最大电机速度 SDO，只在用户明确点击写入按钮时修改。
 struct TorqueTestConfig
 {
     quint16 cardNo = 0;
     quint16 axis = 0;
     double degreesPerCardUnit = 1.0;
-    double ratedTorqueNm = 45.0;
+    double ratedTorqueNm = 0.222;
     double targetTorqueNm = 0.0;
-    double maximumCommandTorqueNm = 5.0;
-    double maximumActualTorqueNm = 7.5;
+    double maximumCommandTorqueNm = 0.222;
+    double maximumActualTorqueNm = 2.91;
     double maximumTravelDegree = 30.0;
     double maximumSpeedDegreePerSecond = 90.0;
     int monitorPeriodMs = 20;
     int traceTimeoutMs = 100;
     int maximumRunTimeMs = 10000;
     bool hardwarePositionLimitEnabled = true;
-    TorqueVelocityLimitOd velocityLimitOd = TorqueVelocityLimitOd::Vendor220B;
-    double velocityLimitRpm = 60.0;
-    long cia402VelocityLimitRaw = 0;
+    long maximumMotorSpeedRaw = 5540;
 };
 
 struct TorqueTestStatus
@@ -357,6 +358,9 @@ struct TorqueTestStatus
     double actualPositionDegree = 0.0;
     double actualVelocityDegreePerSecond = 0.0;
     quint16 nodeAddress = 0;
+    bool pdoCheckPassed = false;
+    qint16 pdoTargetTorqueRaw = 0;
+    qint16 pdoActualTorqueRaw = 0;
     long velocityLimitReadback = 0;
     short lastApiResult = 0;
     qint64 lastApiDurationUs = 0;

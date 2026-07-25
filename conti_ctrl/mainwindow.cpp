@@ -138,15 +138,12 @@ void MainWindow::connectWorker()
             this, [this](int index) {
         ui_->torqueCustomEquivalentSpin->setEnabled(index == 3);
     });
-    connect(ui_->torqueOdCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, [this](int index) {
-        ui_->torqueOdRpmSpin->setEnabled(index == 0);
-        ui_->torqueOd6080RawSpin->setEnabled(index == 1);
-    });
     connect(ui_->torqueEnableAxisButton, &QPushButton::clicked,
             this, &MainWindow::onTorqueEnableAxisClicked);
     connect(ui_->torqueDisableAxisButton, &QPushButton::clicked,
             this, &MainWindow::onTorqueDisableAxisClicked);
+    connect(ui_->torqueCheckPdoButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueCheckPdoClicked);
     connect(ui_->torqueWriteOdButton, &QPushButton::clicked,
             this, &MainWindow::onTorqueWriteOdClicked);
     connect(ui_->torqueStartButton, &QPushButton::clicked,
@@ -194,6 +191,8 @@ void MainWindow::connectWorker()
             worker_, &ContiWorker::stopVelocityControl);
     connect(this, &MainWindow::resetVelocityControllerRequested,
             worker_, &ContiWorker::resetVelocityController);
+    connect(this, &MainWindow::checkTorquePdoRequested,
+            worker_, &ContiWorker::checkTorquePdo);
     connect(this, &MainWindow::writeTorqueVelocityLimitRequested,
             worker_, &ContiWorker::writeTorqueVelocityLimit);
     connect(this, &MainWindow::startTorqueTestRequested,
@@ -402,11 +401,7 @@ TorqueTestConfig MainWindow::collectTorqueConfig() const
     config.maximumRunTimeMs = ui_->torqueRunTimeoutSpin->value();
     config.hardwarePositionLimitEnabled =
         ui_->torqueHardwareLimitCheck->isChecked();
-    config.velocityLimitOd = ui_->torqueOdCombo->currentIndex() == 0
-        ? TorqueVelocityLimitOd::Vendor220B
-        : TorqueVelocityLimitOd::CiA4026080;
-    config.velocityLimitRpm = ui_->torqueOdRpmSpin->value();
-    config.cia402VelocityLimitRaw = ui_->torqueOd6080RawSpin->value();
+    config.maximumMotorSpeedRaw = ui_->torqueOd6080RawSpin->value();
     return config;
 }
 
@@ -701,6 +696,11 @@ void MainWindow::onTorqueDisableAxisClicked()
     emit disableJogAxisRequested(config);
 }
 
+void MainWindow::onTorqueCheckPdoClicked()
+{
+    emit checkTorquePdoRequested(collectTorqueConfig());
+}
+
 void MainWindow::onTorqueWriteOdClicked()
 {
     emit writeTorqueVelocityLimitRequested(collectTorqueConfig());
@@ -923,9 +923,14 @@ void MainWindow::updateStatus(const ContiStatus &status)
             .arg(torque.actualVelocityDegreePerSecond, 0, 'f', 4));
     ui_->torqueOdStatusValueLabel->setText(
         torque.nodeAddress == 0
-        ? QStringLiteral("-- / --")
-        : QStringLiteral("%1 / %2")
-              .arg(torque.nodeAddress).arg(torque.velocityLimitReadback));
+        ? QStringLiteral("-- / -- / --")
+        : QStringLiteral("从站 %1；PDO %2（6071=%3，6077=%4）；6080=%5")
+              .arg(torque.nodeAddress)
+              .arg(torque.pdoCheckPassed ? QStringLiteral("正常")
+                                         : QStringLiteral("未检查/失败"))
+              .arg(torque.pdoTargetTorqueRaw)
+              .arg(torque.pdoActualTorqueRaw)
+              .arg(torque.velocityLimitReadback));
     ui_->torqueParameterGroup->setEnabled(true);
     ui_->torqueAxisCombo->setEnabled(!torque.active);
     ui_->torqueUnitCombo->setEnabled(!torque.active);

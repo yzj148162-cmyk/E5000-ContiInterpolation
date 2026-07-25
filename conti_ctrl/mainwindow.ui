@@ -3064,32 +3064,40 @@
                   <property name="decimals"><number>6</number></property>
                   <property name="minimum"><double>0.000001000000000</double></property>
                   <property name="maximum"><double>1000000000.000000000000000</double></property>
-                  <property name="value"><double>500.622000000000014</double></property>
+                  <property name="value"><double>500.622222000000024</double></property>
                  </widget>
                 </item>
-                <item row="1" column="0">
+                <item row="1" column="0" colspan="5">
+                 <widget class="QLabel" name="torqueMotorParameterSummaryLabel">
+                  <property name="text"><string>传动参数：编码器 1024 line × 4 = 4096 pulse/电机圈；减速比 44:1；输出端 180224 pulse/圈 = 500.622222 pulse/°</string></property>
+                  <property name="wordWrap"><bool>true</bool></property>
+                 </widget>
+                </item>
+                <item row="2" column="0">
                  <widget class="QLabel" name="torqueRatedLabel">
-                  <property name="toolTip"><string>电机额定转矩，用于在 N·m 与 CiA402 千分额定转矩之间换算。</string></property>
-                  <property name="text"><string>额定转矩</string></property>
+                  <property name="toolTip"><string>电机轴额定转矩，用于在电机轴 N·m 与 CiA402 千分额定转矩之间换算；不包含减速器放大和效率。</string></property>
+                  <property name="text"><string>电机额定转矩</string></property>
                  </widget>
                 </item>
-                <item row="1" column="1">
+                <item row="2" column="1">
                  <widget class="QDoubleSpinBox" name="torqueRatedSpin">
-                  <property name="toolTip"><string>原工程电机额定转矩为45 N·m；更换电机后必须按铭牌修改。</string></property>
+                  <property name="toolTip"><string>当前电机额定转矩 222 mN·m，即 0.222 N·m。目标转矩和实际转矩均按电机轴侧显示。</string></property>
                   <property name="suffix"><string> N·m</string></property>
                   <property name="decimals"><number>3</number></property>
                   <property name="minimum"><double>0.001000000000000</double></property>
                   <property name="maximum"><double>10000.000000000000000</double></property>
-                  <property name="value"><double>45.000000000000000</double></property>
+                  <property name="value"><double>0.222000000000000</double></property>
                  </widget>
                 </item>
-                <item row="1" column="2">
+                <item row="2" column="2">
                  <widget class="QLabel" name="torqueTargetLabel">
-                  <property name="text"><string>目标转矩</string></property>
+                  <property name="toolTip"><string>电机轴目标转矩。理论减速器输出转矩为电机轴转矩×44×减速器效率；因效率未知，程序不自动换算输出端转矩。</string></property>
+                  <property name="text"><string>电机目标转矩</string></property>
                  </widget>
                 </item>
-                <item row="1" column="3">
+                <item row="2" column="3">
                  <widget class="QDoubleSpinBox" name="torqueTargetSpin">
+                  <property name="toolTip"><string>电机轴目标转矩，0.222 N·m 对应 CiA402 原始值 1000。</string></property>
                   <property name="suffix"><string> N·m</string></property>
                   <property name="decimals"><number>4</number></property>
                   <property name="minimum"><double>-10000.000000000000000</double></property>
@@ -3097,31 +3105,33 @@
                   <property name="value"><double>0.000000000000000</double></property>
                  </widget>
                 </item>
-                <item row="1" column="4">
+                <item row="2" column="4">
                  <widget class="QLabel" name="torqueZeroHintLabel">
                   <property name="text"><string>0 N·m 时拒绝启动</string></property>
                  </widget>
                 </item>
-                <item row="2" column="0">
+                <item row="3" column="0">
                  <widget class="QLabel" name="torqueCommandLimitLabel">
-                  <property name="text"><string>命令限幅</string></property>
+                  <property name="toolTip"><string>电机轴目标转矩的绝对值上限，默认采用额定转矩 0.222 N·m。</string></property>
+                  <property name="text"><string>电机命令限幅</string></property>
                  </widget>
                 </item>
-                <item row="2" column="1">
+                <item row="3" column="1">
                  <widget class="QDoubleSpinBox" name="torqueCommandLimitSpin">
+                  <property name="toolTip"><string>默认限制在电机额定转矩 0.222 N·m；首次测试仍应从更小目标值开始。</string></property>
                   <property name="suffix"><string> N·m</string></property>
                   <property name="decimals"><number>3</number></property>
                   <property name="minimum"><double>0.001000000000000</double></property>
                   <property name="maximum"><double>10000.000000000000000</double></property>
-                  <property name="value"><double>5.000000000000000</double></property>
+                  <property name="value"><double>0.222000000000000</double></property>
                  </widget>
                 </item>
-                <item row="2" column="2">
+                <item row="3" column="2">
                  <widget class="QLabel" name="torqueMonitorPeriodLabel">
                   <property name="text"><string>监测周期</string></property>
                  </widget>
                 </item>
-                <item row="2" column="3">
+                <item row="3" column="3">
                  <widget class="QSpinBox" name="torqueMonitorPeriodSpin">
                   <property name="suffix"><string> ms</string></property>
                   <property name="minimum"><number>5</number></property>
@@ -3182,60 +3192,62 @@
                 </item>
                 <item row="2" column="0">
                  <widget class="QLabel" name="torqueActualLimitLabel">
-                  <property name="toolTip"><string>nmc_get_torque 换算后的实际转矩绝对值超过该值时立即停止。</string></property>
-                  <property name="text"><string>实际转矩上限</string></property>
+                  <property name="toolTip"><string>nmc_get_torque 换算出的电机轴实际转矩绝对值超过该值时立即停止。</string></property>
+                  <property name="text"><string>电机实际转矩上限</string></property>
                  </widget>
                 </item>
                 <item row="2" column="1">
                  <widget class="QDoubleSpinBox" name="torqueActualLimitSpin">
-                  <property name="toolTip"><string>独立于目标命令限幅的反馈保护阈值，必须按机构和电机能力保守设置。</string></property>
+                  <property name="toolTip"><string>独立于目标命令限幅的反馈保护阈值。当前默认值 2.910 N·m 来自电机堵转转矩，仅表示电机极限参数；带载测试时应按机构能力进一步降低。</string></property>
                   <property name="suffix"><string> N·m</string></property>
                   <property name="decimals"><number>3</number></property>
                   <property name="minimum"><double>0.001000000000000</double></property>
                   <property name="maximum"><double>10000.000000000000000</double></property>
-                  <property name="value"><double>7.500000000000000</double></property>
+                  <property name="value"><double>2.910000000000000</double></property>
                  </widget>
                 </item>
                </layout>
               </widget>
              </item>
              <item>
-              <widget class="QGroupBox" name="torqueOdGroup">
-               <property name="title"><string>伺服速度限制 OD（仅手动写入）</string></property>
+             <widget class="QGroupBox" name="torqueOdGroup">
+               <property name="title"><string>Diamond PDO 与最大速度 SDO</string></property>
                <layout class="QGridLayout" name="torqueOdLayout">
-                <item row="0" column="0">
-                 <widget class="QComboBox" name="torqueOdCombo">
-                  <item><property name="text"><string>原工程 220Bh（rpm→pulse/s）</string></property></item>
-                  <item><property name="text"><string>手册 6080h（驱动器原生值）</string></property></item>
-                 </widget>
-                </item>
-                <item row="0" column="1">
-                 <widget class="QDoubleSpinBox" name="torqueOdRpmSpin">
-                  <property name="suffix"><string> rpm</string></property>
-                  <property name="decimals"><number>3</number></property>
-                  <property name="minimum"><double>0.001000000000000</double></property>
-                  <property name="maximum"><double>100000.000000000000000</double></property>
-                  <property name="value"><double>60.000000000000000</double></property>
+                <item row="0" column="0" colspan="2">
+                 <widget class="QLabel" name="torquePdoRequirementLabel">
+                  <property name="text"><string>RxPDO 6071h:00h 目标转矩 / TxPDO 6077h:00h 实际转矩（INT16）</string></property>
                  </widget>
                 </item>
                 <item row="0" column="2">
+                 <widget class="QPushButton" name="torqueCheckPdoButton">
+                  <property name="toolTip"><string>只读检查控制卡当前过程数据中是否能按索引读取6071h和6077h，不修改PDO配置。</string></property>
+                  <property name="text"><string>检查转矩PDO</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="torqueMaximumMotorSpeedLabel">
+                  <property name="toolTip"><string>电机轴最大速度，不是编码器脉冲数。当前按电机空载转速 5540 rpm 设置。</string></property>
+                  <property name="text"><string>最大电机速度 SDO 6080h:00h</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
                  <widget class="QSpinBox" name="torqueOd6080RawSpin">
-                  <property name="enabled"><bool>false</bool></property>
-                  <property name="prefix"><string>6080h raw=</string></property>
+                  <property name="toolTip"><string>Diamond/CiA402 对象 6080h 的最大电机速度，当前默认 5540 rpm；写入前仍应以驱动器对象字典的单位定义为准。</string></property>
+                  <property name="suffix"><string> rpm</string></property>
                   <property name="minimum"><number>1</number></property>
                   <property name="maximum"><number>2147483647</number></property>
-                  <property name="value"><number>180224</number></property>
+                  <property name="value"><number>5540</number></property>
                  </widget>
                 </item>
-                <item row="0" column="3">
+                <item row="1" column="2">
                  <widget class="QPushButton" name="torqueWriteOdButton">
-                  <property name="toolTip"><string>仅在无运动任务时写入所选轴，并立即读回核对。不会随转矩测试启动自动执行。</string></property>
-                  <property name="text"><string>写入并读回</string></property>
+                  <property name="toolTip"><string>通过SDO写入6080h并立即读回；仅在无运动任务时执行，不会随转矩测试启动自动写入。</string></property>
+                  <property name="text"><string>写入并读回6080h</string></property>
                  </widget>
                 </item>
-                <item row="1" column="0" colspan="4">
+                <item row="2" column="0" colspan="3">
                  <widget class="QLabel" name="torqueOdHintLabel">
-                  <property name="text"><string>220Bh 按当前编码器 180224 pulse/rev 换算；6080h 的原生单位由具体伺服驱动器定义，写入前必须核对驱动器手册。</string></property>
+                  <property name="text"><string>Diamond V21 默认PDO已经包含6071h和6077h；若检查失败，需在Motion过程数据配置中添加对应RxPDO/TxPDO并重新下载。6080h属于非周期SDO参数，当前按电机轴最大转速 5540 rpm 设置；180224是减速器输出端每圈脉冲数，不能写入6080h。</string></property>
                   <property name="wordWrap"><bool>true</bool></property>
                  </widget>
                 </item>
@@ -3266,7 +3278,7 @@
                 <item row="2" column="1" colspan="6"><widget class="QLabel" name="torqueValueValueLabel"><property name="text"><string>0 / 0 N·m / 0</string></property></widget></item>
                 <item row="3" column="0"><widget class="QLabel" name="torqueMotionLabel"><property name="text"><string>位置 start / actual / limit；速度</string></property></widget></item>
                 <item row="3" column="1" colspan="6"><widget class="QLabel" name="torqueMotionValueLabel"><property name="text"><string>0 / 0 / 0 °；0 °/s</string></property></widget></item>
-                <item row="4" column="0"><widget class="QLabel" name="torqueOdStatusLabel"><property name="text"><string>从站 / OD读回</string></property></widget></item>
+                <item row="4" column="0"><widget class="QLabel" name="torqueOdStatusLabel"><property name="text"><string>从站 / PDO / SDO</string></property></widget></item>
                 <item row="4" column="1" colspan="6"><widget class="QLabel" name="torqueOdStatusValueLabel"><property name="text"><string>-- / --</string></property></widget></item>
                </layout>
               </widget>
