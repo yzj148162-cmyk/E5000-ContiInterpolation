@@ -605,20 +605,6 @@ bool E5000HardwareInterface::readTorque(
                                            apiResult, error);
     });
 }
-bool E5000HardwareInterface::checkDiamondTorquePdo(
-    quint16 axis, quint16 &nodeAddress,
-    qint16 &targetTorqueRaw, qint16 &actualTorqueRaw,
-    QString &error) const
-{
-    return invokeHardware(backend_, [&] {
-        WORD node = 0;
-        const bool ok = backend_->card_.checkDiamondTorquePdo(
-            backend_->cardNo_, axis, node,
-            targetTorqueRaw, actualTorqueRaw, error);
-        nodeAddress = node;
-        return ok;
-    });
-}
 bool E5000HardwareInterface::writeTorqueVelocityLimit(
     const TorqueTestConfig &config, long value, quint16 &nodeAddress,
     long &readback, QString &error)

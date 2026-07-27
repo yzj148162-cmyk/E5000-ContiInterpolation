@@ -45,7 +45,6 @@ signals:
     void startVelocityControlRequested(const VelocityControlConfig &config);
     void stopVelocityControlRequested(bool emergency);
     void resetVelocityControllerRequested();
-    void checkTorquePdoRequested(const TorqueTestConfig &config);
     void writeTorqueVelocityLimitRequested(const TorqueTestConfig &config);
     void startTorqueTestRequested(const TorqueTestConfig &config);
     void updateTorqueCommandRequested(const TorqueTestConfig &config);
@@ -90,7 +89,6 @@ private slots:
     void onVelocityClearCurvesClicked();
     void onTorqueEnableAxisClicked();
     void onTorqueDisableAxisClicked();
-    void onTorqueCheckPdoClicked();
     void onTorqueWriteOdClicked();
     void onTorqueStartClicked();
     void onTorqueUpdateClicked();
@@ -122,6 +120,7 @@ private:
     void initializeTorqueTestCharts();
     void updateTorqueTestCharts();
     void clearTorqueTestCharts();
+    void updateTorqueOutputSpeedEquivalent();
     void initializeTraceDelayCalibrationCharts();
     void updateTraceDelayCalibrationCharts();
     void clearTraceDelayCalibrationCharts();

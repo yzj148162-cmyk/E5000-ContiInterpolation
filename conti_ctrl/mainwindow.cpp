@@ -138,12 +138,15 @@ void MainWindow::connectWorker()
             this, [this](int index) {
         ui_->torqueCustomEquivalentSpin->setEnabled(index == 3);
     });
+    connect(ui_->torqueOd6080RawSpin, qOverload<int>(&QSpinBox::valueChanged),
+            this, [this](int) {
+        updateTorqueOutputSpeedEquivalent();
+    });
+    updateTorqueOutputSpeedEquivalent();
     connect(ui_->torqueEnableAxisButton, &QPushButton::clicked,
             this, &MainWindow::onTorqueEnableAxisClicked);
     connect(ui_->torqueDisableAxisButton, &QPushButton::clicked,
             this, &MainWindow::onTorqueDisableAxisClicked);
-    connect(ui_->torqueCheckPdoButton, &QPushButton::clicked,
-            this, &MainWindow::onTorqueCheckPdoClicked);
     connect(ui_->torqueWriteOdButton, &QPushButton::clicked,
             this, &MainWindow::onTorqueWriteOdClicked);
     connect(ui_->torqueStartButton, &QPushButton::clicked,
@@ -191,8 +194,6 @@ void MainWindow::connectWorker()
             worker_, &ContiWorker::stopVelocityControl);
     connect(this, &MainWindow::resetVelocityControllerRequested,
             worker_, &ContiWorker::resetVelocityController);
-    connect(this, &MainWindow::checkTorquePdoRequested,
-            worker_, &ContiWorker::checkTorquePdo);
     connect(this, &MainWindow::writeTorqueVelocityLimitRequested,
             worker_, &ContiWorker::writeTorqueVelocityLimit);
     connect(this, &MainWindow::startTorqueTestRequested,
@@ -390,10 +391,9 @@ TorqueTestConfig MainWindow::collectTorqueConfig() const
         config.degreesPerCardUnit = 1.0;
         break;
     }
-    config.ratedTorqueNm = ui_->torqueRatedSpin->value();
-    config.targetTorqueNm = ui_->torqueTargetSpin->value();
-    config.maximumCommandTorqueNm = ui_->torqueCommandLimitSpin->value();
-    config.maximumActualTorqueNm = ui_->torqueActualLimitSpin->value();
+    config.targetTorquePercent = ui_->torqueTargetSpin->value();
+    config.maximumCommandTorquePercent = ui_->torqueCommandLimitSpin->value();
+    config.maximumActualTorquePercent = ui_->torqueActualLimitSpin->value();
     config.maximumTravelDegree = ui_->torqueTravelLimitSpin->value();
     config.maximumSpeedDegreePerSecond = ui_->torqueSpeedLimitSpin->value();
     config.monitorPeriodMs = ui_->torqueMonitorPeriodSpin->value();
@@ -401,8 +401,21 @@ TorqueTestConfig MainWindow::collectTorqueConfig() const
     config.maximumRunTimeMs = ui_->torqueRunTimeoutSpin->value();
     config.hardwarePositionLimitEnabled =
         ui_->torqueHardwareLimitCheck->isChecked();
-    config.maximumMotorSpeedRaw = ui_->torqueOd6080RawSpin->value();
+    config.maximumMotorSpeedRpm = ui_->torqueOd6080RawSpin->value();
     return config;
+}
+
+void MainWindow::updateTorqueOutputSpeedEquivalent()
+{
+    const double motorRpm = ui_->torqueOd6080RawSpin->value();
+    const double outputRpm =
+        motorRpm / static_cast<double>(MotorUnit::kGearReductionRatio);
+    const double outputDegreePerSecond = outputRpm * 6.0;
+    ui_->torqueOutputSpeedEquivalentLabel->setText(
+        QStringLiteral("等效减速器输出轴上限：%1 rpm / %2 °/s（减速比 %3:1）")
+            .arg(outputRpm, 0, 'f', 3)
+            .arg(outputDegreePerSecond, 0, 'f', 3)
+            .arg(MotorUnit::kGearReductionRatio));
 }
 
 TraceDelayCalibrationConfig MainWindow::collectTraceDelayCalibrationConfig() const
@@ -696,11 +709,6 @@ void MainWindow::onTorqueDisableAxisClicked()
     emit disableJogAxisRequested(config);
 }
 
-void MainWindow::onTorqueCheckPdoClicked()
-{
-    emit checkTorquePdoRequested(collectTorqueConfig());
-}
-
 void MainWindow::onTorqueWriteOdClicked()
 {
     emit writeTorqueVelocityLimitRequested(collectTorqueConfig());
@@ -910,9 +918,9 @@ void MainWindow::updateStatus(const ContiStatus &status)
             .arg(torque.elapsedS, 0, 'f', 3)
             .arg(torque.lastApiDurationUs));
     ui_->torqueValueValueLabel->setText(
-        QStringLiteral("%1 / %2 N·m；raw=%3 / %4")
-            .arg(torque.commandTorqueNm, 0, 'f', 4)
-            .arg(torque.actualTorqueNm, 0, 'f', 4)
+        QStringLiteral("%1 / %2%；raw=%3 / %4")
+            .arg(torque.commandTorquePercent, 0, 'f', 2)
+            .arg(torque.actualTorquePercent, 0, 'f', 2)
             .arg(torque.commandTorqueRaw)
             .arg(torque.actualTorqueRaw));
     ui_->torqueMotionValueLabel->setText(
@@ -921,22 +929,23 @@ void MainWindow::updateStatus(const ContiStatus &status)
             .arg(torque.actualPositionDegree, 0, 'f', 4)
             .arg(torque.positionLimitDegree, 0, 'f', 4)
             .arg(torque.actualVelocityDegreePerSecond, 0, 'f', 4));
+    const double outputSpeedReadbackRpm =
+        torque.velocityLimitReadback
+        / static_cast<double>(MotorUnit::kGearReductionRatio);
     ui_->torqueOdStatusValueLabel->setText(
         torque.nodeAddress == 0
-        ? QStringLiteral("-- / -- / --")
-        : QStringLiteral("从站 %1；PDO %2（6071=%3，6077=%4）；6080=%5")
+        ? QStringLiteral("-- / --")
+        : QStringLiteral(
+              "从站 %1；6080=%2 motor rpm（输出轴=%3 rpm / %4 °/s）")
               .arg(torque.nodeAddress)
-              .arg(torque.pdoCheckPassed ? QStringLiteral("正常")
-                                         : QStringLiteral("未检查/失败"))
-              .arg(torque.pdoTargetTorqueRaw)
-              .arg(torque.pdoActualTorqueRaw)
-              .arg(torque.velocityLimitReadback));
+              .arg(torque.velocityLimitReadback)
+              .arg(outputSpeedReadbackRpm, 0, 'f', 3)
+              .arg(outputSpeedReadbackRpm * 6.0, 0, 'f', 3));
     ui_->torqueParameterGroup->setEnabled(true);
     ui_->torqueAxisCombo->setEnabled(!torque.active);
     ui_->torqueUnitCombo->setEnabled(!torque.active);
     ui_->torqueCustomEquivalentSpin->setEnabled(
         !torque.active && ui_->torqueUnitCombo->currentIndex() == 3);
-    ui_->torqueRatedSpin->setEnabled(!torque.active);
     ui_->torqueCommandLimitSpin->setEnabled(!torque.active);
     ui_->torqueMonitorPeriodSpin->setEnabled(!torque.active);
     // 运行中只保留目标转矩可编辑，由“在线更新转矩”显式下发。
@@ -1325,8 +1334,11 @@ void MainWindow::initializeTorqueTestCharts()
         view->setAutomaticRange(0.0, 5.0, -1.0, 1.0);
     };
     createChart(QStringLiteral("转矩：目标 / nmc_get_torque 实际"),
-                QStringLiteral("转矩 (N·m)"), ui_->torqueValueChartView,
+                QStringLiteral("额定转矩百分比 (%)"), ui_->torqueValueChartView,
                 torqueValueChart_, torqueValueTimeAxis_, torqueValueAxis_);
+    torqueValueAxis_->setRange(-100.0, 100.0);
+    ui_->torqueValueChartView->setAutomaticRange(
+        0.0, 5.0, -100.0, 100.0);
     createChart(QStringLiteral("安全监测：相对位置 / Trace实际速度"),
                 QStringLiteral("位置 (°) / 速度 (°/s)"),
                 ui_->torqueMotionChartView, torqueMotionChart_,
@@ -1596,9 +1608,9 @@ void MainWindow::updateTorqueTestCharts()
             continue;
         }
         torqueValueDisplayPoints_[0].append(
-            QPointF(sample.elapsedS, sample.commandTorqueNm));
+            QPointF(sample.elapsedS, sample.commandTorquePercent));
         torqueValueDisplayPoints_[1].append(
-            QPointF(sample.elapsedS, sample.actualTorqueNm));
+            QPointF(sample.elapsedS, sample.actualTorquePercent));
         torqueMotionDisplayPoints_[0].append(
             QPointF(sample.elapsedS, sample.relativePositionDegree));
         torqueMotionDisplayPoints_[1].append(

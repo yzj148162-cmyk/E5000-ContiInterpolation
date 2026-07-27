@@ -330,17 +330,16 @@ struct TorqueTestConfig
     quint16 cardNo = 0;
     quint16 axis = 0;
     double degreesPerCardUnit = 1.0;
-    double ratedTorqueNm = 0.222;
-    double targetTorqueNm = 0.0;
-    double maximumCommandTorqueNm = 0.222;
-    double maximumActualTorqueNm = 2.91;
+    double targetTorquePercent = 0.0;
+    double maximumCommandTorquePercent = 100.0;
+    double maximumActualTorquePercent = 100.0;
     double maximumTravelDegree = 30.0;
     double maximumSpeedDegreePerSecond = 90.0;
     int monitorPeriodMs = 20;
     int traceTimeoutMs = 100;
     int maximumRunTimeMs = 10000;
     bool hardwarePositionLimitEnabled = true;
-    long maximumMotorSpeedRaw = 5540;
+    long maximumMotorSpeedRpm = 5370;
 };
 
 struct TorqueTestStatus
@@ -351,16 +350,13 @@ struct TorqueTestStatus
     double elapsedS = 0.0;
     double startPositionDegree = 0.0;
     double positionLimitDegree = 0.0;
-    double commandTorqueNm = 0.0;
-    double actualTorqueNm = 0.0;
+    double commandTorquePercent = 0.0;
+    double actualTorquePercent = 0.0;
     int commandTorqueRaw = 0;
     int actualTorqueRaw = 0;
     double actualPositionDegree = 0.0;
     double actualVelocityDegreePerSecond = 0.0;
     quint16 nodeAddress = 0;
-    bool pdoCheckPassed = false;
-    qint16 pdoTargetTorqueRaw = 0;
-    qint16 pdoActualTorqueRaw = 0;
     long velocityLimitReadback = 0;
     short lastApiResult = 0;
     qint64 lastApiDurationUs = 0;
@@ -371,8 +367,8 @@ struct TorquePlotSample
 {
     quint64 runId = 0;
     double elapsedS = 0.0;
-    double commandTorqueNm = 0.0;
-    double actualTorqueNm = 0.0;
+    double commandTorquePercent = 0.0;
+    double actualTorquePercent = 0.0;
     double relativePositionDegree = 0.0;
     double actualVelocityDegreePerSecond = 0.0;
 };

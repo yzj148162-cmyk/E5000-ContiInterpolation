@@ -308,60 +308,6 @@ bool E5000ContiInterface::readTorque(WORD cardNo, WORD axis, int &torqueRaw,
                        errorMessage);
 }
 
-bool E5000ContiInterface::checkDiamondTorquePdo(
-    WORD cardNo, WORD axis, WORD &nodeAddress,
-    qint16 &targetTorqueRaw, qint16 &actualTorqueRaw,
-    QString &errorMessage) const
-{
-    WORD subAddress = 0;
-    const short addressResult =
-        nmc_get_axis_node_address(cardNo, axis, &nodeAddress, &subAddress);
-    if (!checkResult(addressResult,
-                     QStringLiteral("nmc_get_axis_node_address(axis=%1)").arg(axis),
-                     errorMessage)) {
-        return false;
-    }
-    if (nodeAddress == 0) {
-        errorMessage = QStringLiteral("轴 %1 未返回有效 EtherCAT 从站地址").arg(axis);
-        return false;
-    }
-
-    constexpr WORD kEthercatPort = 2;
-    constexpr WORD kSubIndex = 0;
-    constexpr WORD kBitLength = 16;
-    constexpr WORD kTargetTorqueIndex = 0x6071;
-    constexpr WORD kActualTorqueIndex = 0x6077;
-    BYTE targetBytes[sizeof(qint16)] {0, 0};
-    BYTE actualBytes[sizeof(qint16)] {0, 0};
-    const short targetResult =
-        nmc_read_rxpdo(cardNo, kEthercatPort, nodeAddress,
-                       kTargetTorqueIndex, kSubIndex, kBitLength, targetBytes);
-    if (!checkResult(
-            targetResult,
-            QStringLiteral("nmc_read_rxpdo(node=%1, index=0x6071:00, bits=16)")
-                .arg(nodeAddress),
-            errorMessage)) {
-        errorMessage += QStringLiteral(
-            "；请在控制卡过程数据中将 6071h:00h 配置到 RxPDO 并重新下载配置");
-        return false;
-    }
-    const short actualResult =
-        nmc_read_txpdo(cardNo, kEthercatPort, nodeAddress,
-                       kActualTorqueIndex, kSubIndex, kBitLength, actualBytes);
-    if (!checkResult(
-            actualResult,
-            QStringLiteral("nmc_read_txpdo(node=%1, index=0x6077:00, bits=16)")
-                .arg(nodeAddress),
-            errorMessage)) {
-        errorMessage += QStringLiteral(
-            "；请在控制卡过程数据中将 6077h:00h 配置到 TxPDO 并重新下载配置");
-        return false;
-    }
-    std::memcpy(&targetTorqueRaw, targetBytes, sizeof(targetTorqueRaw));
-    std::memcpy(&actualTorqueRaw, actualBytes, sizeof(actualTorqueRaw));
-    return true;
-}
-
 bool E5000ContiInterface::writeTorqueVelocityLimit(
     WORD cardNo, WORD axis, long value,
     WORD &nodeAddress, long &readback, QString &errorMessage) const

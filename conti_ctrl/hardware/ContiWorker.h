@@ -43,7 +43,6 @@ public slots:
     void startVelocityControl(const VelocityControlConfig &config);
     void stopVelocityControl(bool emergency);
     void resetVelocityController();
-    void checkTorquePdo(const TorqueTestConfig &config);
     void writeTorqueVelocityLimit(const TorqueTestConfig &config);
     void startTorqueTest(const TorqueTestConfig &config);
     void updateTorqueCommand(const TorqueTestConfig &config);
@@ -107,10 +106,7 @@ private:
     void flushVelocityPlotSamples();
     bool validateTorqueTestConfig(const TorqueTestConfig &config,
                                   QString &errorMessage) const;
-    bool performTorquePdoCheck(const TorqueTestConfig &config,
-                               bool writeLog,
-                               QString &errorMessage);
-    int torqueNmToRaw(double torqueNm, double ratedTorqueNm) const;
+    int torquePercentToRaw(double torquePercent) const;
     void finishTorqueTest(const QString &message, bool emergency = false);
     void flushTorquePlotSamples();
     bool validateTraceDelayCalibrationConfig(const TraceDelayCalibrationConfig &config,

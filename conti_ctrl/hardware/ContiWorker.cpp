@@ -1789,22 +1789,19 @@ bool ContiWorker::validateTorqueTestConfig(
     const TorqueTestConfig &config, QString &errorMessage) const
 {
     const bool finite = std::isfinite(config.degreesPerCardUnit)
-        && std::isfinite(config.ratedTorqueNm)
-        && std::isfinite(config.targetTorqueNm)
-        && std::isfinite(config.maximumCommandTorqueNm)
-        && std::isfinite(config.maximumActualTorqueNm)
+        && std::isfinite(config.targetTorquePercent)
+        && std::isfinite(config.maximumCommandTorquePercent)
+        && std::isfinite(config.maximumActualTorquePercent)
         && std::isfinite(config.maximumTravelDegree)
         && std::isfinite(config.maximumSpeedDegreePerSecond);
-    const double maximumPdoTorqueNm = finite && config.ratedTorqueNm > 0.0
-        ? config.ratedTorqueNm * 32767.0 / 1000.0
-        : 0.0;
     if (!finite || config.axis >= 8U || config.degreesPerCardUnit <= 0.0
-        || config.ratedTorqueNm <= 0.0
-        || config.maximumCommandTorqueNm <= 0.0
-        || config.maximumActualTorqueNm <= 0.0
-        || std::abs(config.targetTorqueNm) > config.maximumCommandTorqueNm
-        || std::abs(config.targetTorqueNm) > maximumPdoTorqueNm
-        || config.maximumCommandTorqueNm > maximumPdoTorqueNm
+        || config.maximumCommandTorquePercent <= 0.0
+        || config.maximumCommandTorquePercent > 100.0
+        || config.maximumActualTorquePercent <= 0.0
+        || config.maximumActualTorquePercent > 100.0
+        || std::abs(config.targetTorquePercent)
+               > config.maximumCommandTorquePercent
+        || std::abs(config.targetTorquePercent) > 100.0
         || config.maximumTravelDegree <= 0.0
         || config.maximumSpeedDegreePerSecond <= 0.0
         || config.monitorPeriodMs < 5
@@ -1814,74 +1811,21 @@ bool ContiWorker::validateTorqueTestConfig(
         || config.traceTimeoutMs < config.monitorPeriodMs
         || config.maximumRunTimeMs < config.monitorPeriodMs) {
         errorMessage = QStringLiteral(
-            "转矩测试参数无效：请检查额定/目标/限幅转矩、行程、速度、"
-            "监测周期、Trace 超时和最长运行时间；目标及命令限幅换算后"
-            "不得超过 6071h 有符号 16 位范围。");
+            "转矩测试参数无效：目标转矩、命令限幅和实际转矩保护必须在"
+            "额定转矩的 0～100% 范围内；同时请检查行程、速度、监测周期、"
+            "Trace 超时和最长运行时间。");
         return false;
     }
     return true;
 }
 
-int ContiWorker::torqueNmToRaw(double torqueNm, double ratedTorqueNm) const
+int ContiWorker::torquePercentToRaw(double torquePercent) const
 {
-    int raw = static_cast<int>(std::llround(torqueNm * 1000.0 / ratedTorqueNm));
-    if (raw == 0 && std::abs(torqueNm) > 0.0) {
-        raw = torqueNm > 0.0 ? 1 : -1;
+    int raw = static_cast<int>(std::llround(torquePercent * 10.0));
+    if (raw == 0 && std::abs(torquePercent) > 0.0) {
+        raw = torquePercent > 0.0 ? 1 : -1;
     }
-    return raw;
-}
-
-bool ContiWorker::performTorquePdoCheck(
-    const TorqueTestConfig &config, bool writeLog, QString &errorMessage)
-{
-    quint16 node = 0;
-    qint16 targetRaw = 0;
-    qint16 actualRaw = 0;
-    if (!card_.checkDiamondTorquePdo(
-            config.axis, node, targetRaw, actualRaw, errorMessage)) {
-        torqueStatus_.axis = config.axis;
-        torqueStatus_.nodeAddress = node;
-        torqueStatus_.pdoCheckPassed = false;
-        return false;
-    }
-    torqueStatus_.axis = config.axis;
-    torqueStatus_.nodeAddress = node;
-    torqueStatus_.pdoCheckPassed = true;
-    torqueStatus_.pdoTargetTorqueRaw = targetRaw;
-    torqueStatus_.pdoActualTorqueRaw = actualRaw;
-    if (writeLog) {
-        emit logMessage(QStringLiteral(
-            "Diamond 转矩 PDO 检查通过：轴 %1，从站 %2；"
-            "RxPDO 6071h:00h(INT16)=%3，TxPDO 6077h:00h(INT16)=%4。")
-                            .arg(config.axis)
-                            .arg(node)
-                            .arg(targetRaw)
-                            .arg(actualRaw));
-    }
-    return true;
-}
-
-void ContiWorker::checkTorquePdo(const TorqueTestConfig &config)
-{
-    if (!boardInitialized_) {
-        emit logMessage(QStringLiteral("请先初始化控制卡。"));
-        return;
-    }
-    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
-        emit logMessage(QStringLiteral("存在运动任务时禁止执行转矩 PDO 检查。"));
-        return;
-    }
-    if (!detectedAxes_.contains(config.axis)) {
-        emit logMessage(QStringLiteral("转矩测试轴 %1 不在线。").arg(config.axis));
-        return;
-    }
-    QString error;
-    if (!performTorquePdoCheck(config, true, error)) {
-        emit logMessage(QStringLiteral("错误：Diamond 转矩 PDO 检查失败：%1")
-                            .arg(error));
-    }
-    publishStatus();
+    return qBound(-1000, raw, 1000);
 }
 
 void ContiWorker::writeTorqueVelocityLimit(const TorqueTestConfig &config)
@@ -1899,7 +1843,7 @@ void ContiWorker::writeTorqueVelocityLimit(const TorqueTestConfig &config)
         emit logMessage(QStringLiteral("转矩测试轴 %1 不在线。").arg(config.axis));
         return;
     }
-    const long value = config.maximumMotorSpeedRaw;
+    const long value = config.maximumMotorSpeedRpm;
     if (value <= 0) {
         emit logMessage(QStringLiteral("6080h 最大电机速度原生值必须大于 0。"));
         return;
@@ -1952,17 +1896,10 @@ void ContiWorker::startTorqueTest(const TorqueTestConfig &requestedConfig)
         emit logMessage(QStringLiteral("请先使能转矩测试轴 %1。").arg(config.axis));
         return;
     }
-    if (std::abs(config.targetTorqueNm) < 1e-12) {
-        emit logMessage(QStringLiteral("目标转矩为 0 N·m，转矩模式不会启动。"));
+    if (std::abs(config.targetTorquePercent) < 1e-12) {
+        emit logMessage(QStringLiteral("目标转矩为 0%，转矩模式不会启动。"));
         return;
     }
-    if (!performTorquePdoCheck(config, true, error)) {
-        emit logMessage(QStringLiteral(
-            "错误：转矩测试启动前 PDO 检查失败：%1").arg(error));
-        publishStatus();
-        return;
-    }
-    const TorqueTestStatus pdoCheckStatus = torqueStatus_;
     if (telemetryRecorder_.status().recording) {
         telemetryRecorder_.appendEvent(
             QStringLiteral("recording_stopped_for_torque_trace_reconfigure"));
@@ -1983,16 +1920,12 @@ void ContiWorker::startTorqueTest(const TorqueTestConfig &requestedConfig)
     torqueConfig_ = config;
     ++torqueRunId_;
     torqueStatus_ = {};
-    torqueStatus_.nodeAddress = pdoCheckStatus.nodeAddress;
-    torqueStatus_.pdoCheckPassed = pdoCheckStatus.pdoCheckPassed;
-    torqueStatus_.pdoTargetTorqueRaw = pdoCheckStatus.pdoTargetTorqueRaw;
-    torqueStatus_.pdoActualTorqueRaw = pdoCheckStatus.pdoActualTorqueRaw;
     torqueStatus_.active = true;
     torqueStatus_.runId = torqueRunId_;
     torqueStatus_.axis = config.axis;
-    torqueStatus_.commandTorqueNm = config.targetTorqueNm;
+    torqueStatus_.commandTorquePercent = config.targetTorquePercent;
     torqueStatus_.commandTorqueRaw =
-        torqueNmToRaw(config.targetTorqueNm, config.ratedTorqueNm);
+        torquePercentToRaw(config.targetTorquePercent);
     torqueStatus_.stateText = QStringLiteral("等待有效 Trace 后启动");
     torqueTestActive_ = true;
     torqueMotionStarted_ = false;
@@ -2007,15 +1940,15 @@ void ContiWorker::startTorqueTest(const TorqueTestConfig &requestedConfig)
     torqueTestTimer_->start();
     stateText_ = QStringLiteral("转矩测试等待 Trace");
     emit logMessage(QStringLiteral(
-        "单轴转矩测试已准备：轴 %1，目标=%2 N·m（raw=%3，额定=%4 N·m），"
-        "命令限幅=±%5 N·m，行程/速度限制=%6°/%7°/s，监测周期=%8 ms；"
-        "Diamond PDO=Rx 6071h / Tx 6077h；"
+        "单轴转矩测试已准备：轴 %1，目标=%2%（raw=%3），"
+        "命令限幅=±%4%，输出轴行程/速度限制=%5°/%6°/s，"
+        "监测周期=%7 ms；"
+        "转矩对象有效性由 nmc_torque_move / nmc_get_torque 返回码判定；"
         "启动不会自动使能轴，也不会自动写入 6080h SDO。")
                         .arg(config.axis)
-                        .arg(config.targetTorqueNm, 0, 'f', 4)
+                        .arg(config.targetTorquePercent, 0, 'f', 2)
                         .arg(torqueStatus_.commandTorqueRaw)
-                        .arg(config.ratedTorqueNm, 0, 'f', 3)
-                        .arg(config.maximumCommandTorqueNm, 0, 'f', 3)
+                        .arg(config.maximumCommandTorquePercent, 0, 'f', 2)
                         .arg(config.maximumTravelDegree, 0, 'f', 3)
                         .arg(config.maximumSpeedDegreePerSecond, 0, 'f', 3)
                         .arg(config.monitorPeriodMs));
@@ -2028,28 +1961,30 @@ void ContiWorker::updateTorqueCommand(const TorqueTestConfig &config)
         emit logMessage(QStringLiteral("当前没有正在运行的转矩模式，无法在线更新。"));
         return;
     }
-    if (config.axis != torqueConfig_.axis
-        || std::abs(config.ratedTorqueNm - torqueConfig_.ratedTorqueNm) > 1e-9) {
-        emit logMessage(QStringLiteral("运行中不能切换轴或额定转矩。"));
+    if (config.axis != torqueConfig_.axis) {
+        emit logMessage(QStringLiteral("运行中不能切换转矩测试轴。"));
         return;
     }
-    if (!std::isfinite(config.targetTorqueNm)
-        || std::abs(config.targetTorqueNm) > torqueConfig_.maximumCommandTorqueNm) {
-        emit logMessage(QStringLiteral("在线目标转矩超出命令限幅 ±%1 N·m。")
-                            .arg(torqueConfig_.maximumCommandTorqueNm, 0, 'f', 3));
+    if (!std::isfinite(config.targetTorquePercent)
+        || std::abs(config.targetTorquePercent)
+               > torqueConfig_.maximumCommandTorquePercent
+        || std::abs(config.targetTorquePercent) > 100.0) {
+        emit logMessage(QStringLiteral("在线目标转矩超出命令限幅 ±%1%。")
+                            .arg(torqueConfig_.maximumCommandTorquePercent,
+                                 0, 'f', 2));
         return;
     }
-    if (std::abs(config.targetTorqueNm) < 1e-12) {
+    if (std::abs(config.targetTorquePercent) < 1e-12) {
         finishTorqueTest(QStringLiteral("在线目标转矩为零，转矩测试已减速停止。"));
         return;
     }
-    if ((config.targetTorqueNm > 0.0) != (torqueConfig_.targetTorqueNm > 0.0)) {
+    if ((config.targetTorquePercent > 0.0)
+        != (torqueConfig_.targetTorquePercent > 0.0)) {
         emit logMessage(QStringLiteral(
             "硬件位置限位方向在启动时固定；在线反向转矩被拒绝，请先停止后重新启动。"));
         return;
     }
-    const int raw = torqueNmToRaw(config.targetTorqueNm,
-                                  torqueConfig_.ratedTorqueNm);
+    const int raw = torquePercentToRaw(config.targetTorquePercent);
     short apiResult = 0;
     QString error;
     QElapsedTimer apiClock;
@@ -2058,15 +1993,15 @@ void ContiWorker::updateTorqueCommand(const TorqueTestConfig &config)
         finishTorqueTest(QStringLiteral("在线调整转矩失败：%1").arg(error), true);
         return;
     }
-    torqueConfig_.targetTorqueNm = config.targetTorqueNm;
-    torqueStatus_.commandTorqueNm = config.targetTorqueNm;
+    torqueConfig_.targetTorquePercent = config.targetTorquePercent;
+    torqueStatus_.commandTorquePercent = config.targetTorquePercent;
     torqueStatus_.commandTorqueRaw = raw;
     torqueStatus_.lastApiResult = apiResult;
     torqueStatus_.lastApiDurationUs = apiClock.nsecsElapsed() / 1000;
     emit logMessage(QStringLiteral(
-        "轴 %1 在线转矩已更新：%2 N·m（raw=%3），API=%4 us。")
+        "轴 %1 在线转矩已更新：%2%（raw=%3），API=%4 us。")
                         .arg(torqueConfig_.axis)
-                        .arg(config.targetTorqueNm, 0, 'f', 4)
+                        .arg(config.targetTorquePercent, 0, 'f', 2)
                         .arg(raw).arg(torqueStatus_.lastApiDurationUs));
     publishStatus();
 }
@@ -2109,7 +2044,8 @@ void ContiWorker::runTorqueTestCycle()
 
     if (!torqueMotionStarted_) {
         torqueStatus_.startPositionDegree = feedback.encoderPositionUnit;
-        const double direction = torqueConfig_.targetTorqueNm > 0.0 ? 1.0 : -1.0;
+        const double direction =
+            torqueConfig_.targetTorquePercent > 0.0 ? 1.0 : -1.0;
         torqueStatus_.positionLimitDegree = torqueStatus_.startPositionDegree
             + direction * torqueConfig_.maximumTravelDegree;
         short apiResult = 0;
@@ -2131,10 +2067,10 @@ void ContiWorker::runTorqueTestCycle()
         torqueStatus_.stateText = QStringLiteral("转矩模式运行中");
         stateText_ = QStringLiteral("单轴转矩模式运行中");
         emit logMessage(QStringLiteral(
-            "轴 %1 已调用 nmc_torque_move：目标=%2 N·m（raw=%3），"
-            "起点=%4°，%5位置限位=%6°，API=%7 us。")
+            "轴 %1 已调用 nmc_torque_move：目标=%2%（raw=%3），"
+            "输出轴起点=%4°，%5位置限位=%6°，API=%7 us。")
                             .arg(torqueConfig_.axis)
-                            .arg(torqueConfig_.targetTorqueNm, 0, 'f', 4)
+                            .arg(torqueConfig_.targetTorquePercent, 0, 'f', 2)
                             .arg(torqueStatus_.commandTorqueRaw)
                             .arg(torqueStatus_.startPositionDegree, 0, 'f', 4)
                             .arg(torqueConfig_.hardwarePositionLimitEnabled
@@ -2159,8 +2095,7 @@ void ContiWorker::runTorqueTestCycle()
     torqueStatus_.active = true;
     torqueStatus_.elapsedS = elapsedS;
     torqueStatus_.actualTorqueRaw = actualTorqueRaw;
-    torqueStatus_.actualTorqueNm =
-        actualTorqueRaw * torqueConfig_.ratedTorqueNm / 1000.0;
+    torqueStatus_.actualTorquePercent = actualTorqueRaw / 10.0;
     torqueStatus_.actualPositionDegree = feedback.encoderPositionUnit;
     torqueStatus_.actualVelocityDegreePerSecond =
         feedback.actualVelocityUnitPerSecond;
@@ -2169,8 +2104,8 @@ void ContiWorker::runTorqueTestCycle()
     TorquePlotSample sample;
     sample.runId = torqueRunId_;
     sample.elapsedS = elapsedS;
-    sample.commandTorqueNm = torqueStatus_.commandTorqueNm;
-    sample.actualTorqueNm = torqueStatus_.actualTorqueNm;
+    sample.commandTorquePercent = torqueStatus_.commandTorquePercent;
+    sample.actualTorquePercent = torqueStatus_.actualTorquePercent;
     sample.relativePositionDegree = relativePosition;
     sample.actualVelocityDegreePerSecond =
         feedback.actualVelocityUnitPerSecond;
@@ -2184,12 +2119,12 @@ void ContiWorker::runTorqueTestCycle()
                              .arg(relativePosition, 0, 'f', 4), true);
         return;
     }
-    if (std::abs(torqueStatus_.actualTorqueNm)
-        > torqueConfig_.maximumActualTorqueNm) {
-        finishTorqueTest(QStringLiteral("转矩测试实际转矩超限：%1 N·m > %2 N·m")
-                             .arg(torqueStatus_.actualTorqueNm, 0, 'f', 4)
-                             .arg(torqueConfig_.maximumActualTorqueNm,
-                                  0, 'f', 4), true);
+    if (std::abs(torqueStatus_.actualTorquePercent)
+        > torqueConfig_.maximumActualTorquePercent) {
+        finishTorqueTest(QStringLiteral("转矩测试实际转矩超限：%1% > %2%")
+                             .arg(torqueStatus_.actualTorquePercent, 0, 'f', 2)
+                             .arg(torqueConfig_.maximumActualTorquePercent,
+                                  0, 'f', 2), true);
         return;
     }
     if (std::abs(feedback.actualVelocityUnitPerSecond)
@@ -2210,11 +2145,11 @@ void ContiWorker::runTorqueTestCycle()
         || elapsedMs - torqueLastDiagnosticMs_ >= 250) {
         torqueLastDiagnosticMs_ = elapsedMs;
         emit logMessage(QStringLiteral(
-            "转矩测试：t=%1 s，目标/实际=%2/%3 N·m（raw=%4/%5），"
-            "相对位置=%6°，实际速度=%7°/s。")
+            "转矩测试：t=%1 s，目标/实际=%2/%3%（raw=%4/%5），"
+            "输出轴相对位置=%6°，实际速度=%7°/s。")
                             .arg(elapsedS, 0, 'f', 3)
-                            .arg(torqueStatus_.commandTorqueNm, 0, 'f', 4)
-                            .arg(torqueStatus_.actualTorqueNm, 0, 'f', 4)
+                            .arg(torqueStatus_.commandTorquePercent, 0, 'f', 2)
+                            .arg(torqueStatus_.actualTorquePercent, 0, 'f', 2)
                             .arg(torqueStatus_.commandTorqueRaw)
                             .arg(torqueStatus_.actualTorqueRaw)
                             .arg(relativePosition, 0, 'f', 4)

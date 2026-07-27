@@ -37,11 +37,6 @@ public:
                       short &apiResult, QString &errorMessage) const;
     bool readTorque(WORD cardNo, WORD axis, int &torqueRaw,
                     short &apiResult, QString &errorMessage) const;
-    bool checkDiamondTorquePdo(WORD cardNo, WORD axis,
-                               WORD &nodeAddress,
-                               qint16 &targetTorqueRaw,
-                               qint16 &actualTorqueRaw,
-                               QString &errorMessage) const;
     bool writeTorqueVelocityLimit(WORD cardNo, WORD axis, long value,
                                   WORD &nodeAddress, long &readback,
                                   QString &errorMessage) const;
