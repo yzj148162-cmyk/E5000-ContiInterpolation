@@ -624,6 +624,14 @@ bool E5000HardwareInterface::writeTorqueVelocityLimit(
         return ok;
     });
 }
+bool E5000HardwareInterface::readTorqueDriveDiagnostic(
+    quint16 axis, TorqueDriveDiagnostic &diagnostic, QString &error) const
+{
+    return invokeHardware(backend_, [&] {
+        return backend_->card_.readTorqueDriveDiagnostic(
+            backend_->cardNo_, axis, diagnostic, error);
+    });
+}
 bool E5000HardwareInterface::stopAxis(quint16 axis, bool emergency, QString &error) const
 { return invokeHardware(backend_, [&] { return backend_->card_.stopAxis(backend_->cardNo_, axis, emergency, error); }); }
 bool E5000HardwareInterface::stopAxis(quint16, quint16 axis, bool emergency, QString &error) const

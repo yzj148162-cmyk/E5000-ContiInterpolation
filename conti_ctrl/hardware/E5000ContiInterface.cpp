@@ -358,6 +358,79 @@ bool E5000ContiInterface::writeTorqueVelocityLimit(
     return true;
 }
 
+bool E5000ContiInterface::readTorqueDriveDiagnostic(
+    WORD cardNo, WORD axis, TorqueDriveDiagnostic &diagnostic,
+    QString &errorMessage) const
+{
+    diagnostic = {};
+
+    WORD stopped = 0;
+    if (!checkResult(dmc_check_done_ex(cardNo, axis, &stopped),
+                     QStringLiteral("dmc_check_done_ex(axis=%1)").arg(axis),
+                     errorMessage)) {
+        return false;
+    }
+    diagnostic.axisStopped = stopped != 0;
+
+    WORD runMode = 0;
+    if (!checkResult(dmc_get_axis_run_mode(cardNo, axis, &runMode),
+                     QStringLiteral("dmc_get_axis_run_mode(axis=%1)").arg(axis),
+                     errorMessage)) {
+        return false;
+    }
+    diagnostic.controllerRunMode = runMode;
+
+    WORD subAddress = 0;
+    if (!checkResult(
+            nmc_get_axis_node_address(cardNo, axis, &diagnostic.nodeAddress,
+                                      &subAddress),
+            QStringLiteral("nmc_get_axis_node_address(axis=%1)").arg(axis),
+            errorMessage)) {
+        return false;
+    }
+    if (diagnostic.nodeAddress == 0) {
+        errorMessage = QStringLiteral("轴 %1 未返回有效 EtherCAT 从站地址").arg(axis);
+        return false;
+    }
+
+    constexpr WORD kEthercatPort = 2;
+    auto readOd = [&](WORD index, WORD bitLength, long &value) {
+        value = 0;
+        return checkResult(
+            nmc_get_node_od(cardNo, kEthercatPort, diagnostic.nodeAddress,
+                            index, 0, bitLength, &value),
+            QStringLiteral("nmc_get_node_od(node=%1, index=0x%2, bits=%3)")
+                .arg(diagnostic.nodeAddress)
+                .arg(index, 4, 16, QLatin1Char('0'))
+                .arg(bitLength),
+            errorMessage);
+    };
+
+    long statusWord = 0;
+    long requestedMode = 0;
+    long displayedMode = 0;
+    long targetTorque = 0;
+    long actualTorque = 0;
+    if (!readOd(0x6041, 16, statusWord)
+        || !readOd(0x6060, 8, requestedMode)
+        || !readOd(0x6061, 8, displayedMode)
+        || !readOd(0x6071, 16, targetTorque)
+        || !readOd(0x6077, 16, actualTorque)) {
+        return false;
+    }
+
+    diagnostic.statusWord = static_cast<quint16>(statusWord & 0xffff);
+    diagnostic.requestedMode =
+        static_cast<qint8>(static_cast<quint8>(requestedMode & 0xff));
+    diagnostic.displayedMode =
+        static_cast<qint8>(static_cast<quint8>(displayedMode & 0xff));
+    diagnostic.targetTorqueRaw =
+        static_cast<qint16>(static_cast<quint16>(targetTorque & 0xffff));
+    diagnostic.actualTorqueRaw =
+        static_cast<qint16>(static_cast<quint16>(actualTorque & 0xffff));
+    return true;
+}
+
 bool E5000ContiInterface::stopAxis(WORD cardNo, WORD axis, bool emergency,
                                    QString &errorMessage) const
 {

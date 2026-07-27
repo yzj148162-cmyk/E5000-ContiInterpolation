@@ -26,6 +26,7 @@ constexpr int kCompletionStableDwellMs = 150;
 constexpr int kVelocityPlotPublishIntervalMs = 50;
 constexpr int kTraceDelayPlotPublishIntervalMs = 50;
 constexpr int kTorquePlotPublishIntervalMs = 50;
+constexpr int kTorquePostStartDiagnosticDelayMs = 100;
 constexpr int kTraceDelayStopTimeoutMs = 2000;
 constexpr double kDefaultTracePositionDelayMs = 8.0;
 constexpr double kCompletionPositionToleranceDeg = 0.02;
@@ -48,6 +49,25 @@ bool supportedCardUnitDefinition(double degreesPerCardUnit)
     return sameCardUnitDefinition(degreesPerCardUnit, 1.0)
         || sameCardUnitDefinition(degreesPerCardUnit, 0.1)
         || sameCardUnitDefinition(degreesPerCardUnit, 0.01);
+}
+
+QString torqueDriveDiagnosticText(const QString &phase,
+                                  const TorqueDriveDiagnostic &diagnostic)
+{
+    return QStringLiteral(
+        "转矩驱动一次性诊断（%1）：轴停止=%2，控制卡运行模式=%3，从站=%4，"
+        "6041h=0x%5，6060h请求模式=%6，6061h显示模式=%7，"
+        "6071h目标转矩=%8，6077h实际转矩=%9。")
+        .arg(phase)
+        .arg(diagnostic.axisStopped ? QStringLiteral("是")
+                                    : QStringLiteral("否"))
+        .arg(diagnostic.controllerRunMode)
+        .arg(diagnostic.nodeAddress)
+        .arg(diagnostic.statusWord, 4, 16, QLatin1Char('0'))
+        .arg(diagnostic.requestedMode)
+        .arg(diagnostic.displayedMode)
+        .arg(diagnostic.targetTorqueRaw)
+        .arg(diagnostic.actualTorqueRaw);
 }
 
 QString velocityTrajectoryName(VelocityTrajectoryType type)
@@ -1931,6 +1951,7 @@ void ContiWorker::startTorqueTest(const TorqueTestConfig &requestedConfig)
     torqueMotionStarted_ = false;
     torqueLastTraceSequence_ = latestTraceSequence_;
     torqueLastDiagnosticMs_ = -1;
+    torquePostStartDiagnosticPending_ = false;
     pendingTorquePlotSamples_.clear();
     torqueRunClock_.invalidate();
     torqueTraceFreshClock_.start();
@@ -2050,6 +2071,33 @@ void ContiWorker::runTorqueTestCycle()
             + direction * torqueConfig_.maximumTravelDegree;
         short apiResult = 0;
         QString error;
+        bool axisStopped = false;
+        if (!card_.axisMotionDone(torqueConfig_.axis, axisStopped, error)) {
+            finishTorqueTest(
+                QStringLiteral("转矩启动前读取轴停止状态失败：%1").arg(error), true);
+            return;
+        }
+        if (!axisStopped) {
+            finishTorqueTest(
+                QStringLiteral("转矩模式启动被拒绝：dmc_check_done_ex 表明轴仍在运动。"),
+                true);
+            return;
+        }
+
+        TorqueDriveDiagnostic beforeStart;
+        QString diagnosticError;
+        if (card_.readTorqueDriveDiagnostic(torqueConfig_.axis, beforeStart,
+                                            diagnosticError)) {
+            emit logMessage(torqueDriveDiagnosticText(QStringLiteral("启动前"),
+                                                      beforeStart));
+        } else {
+            // 诊断 SDO 不参与控制。个别驱动不允许读取某个对象时只给出告警，
+            // 仍按官方例程执行 nmc_torque_move。
+            emit logMessage(QStringLiteral(
+                "警告：读取转矩启动前一次性驱动诊断失败：%1；"
+                "轴停止条件已满足，继续调用 nmc_torque_move。")
+                                .arg(diagnosticError));
+        }
         QElapsedTimer apiClock;
         apiClock.start();
         if (!card_.startTorqueMove(torqueConfig_, torqueStatus_.commandTorqueRaw,
@@ -2063,6 +2111,7 @@ void ContiWorker::runTorqueTestCycle()
         torqueStatus_.lastApiResult = apiResult;
         torqueStatus_.lastApiDurationUs = apiClock.nsecsElapsed() / 1000;
         torqueMotionStarted_ = true;
+        torquePostStartDiagnosticPending_ = true;
         torqueRunClock_.start();
         torqueStatus_.stateText = QStringLiteral("转矩模式运行中");
         stateText_ = QStringLiteral("单轴转矩模式运行中");
@@ -2098,6 +2147,22 @@ void ContiWorker::runTorqueTestCycle()
                             .arg(apiPositionLimitValue, 0, 'f', 6)
                             .arg(apiPositionMode)
                             .arg(apiResult));
+    }
+
+    if (torquePostStartDiagnosticPending_
+        && torqueRunClock_.elapsed() >= kTorquePostStartDiagnosticDelayMs) {
+        TorqueDriveDiagnostic afterStart;
+        QString diagnosticError;
+        torquePostStartDiagnosticPending_ = false;
+        if (card_.readTorqueDriveDiagnostic(torqueConfig_.axis, afterStart,
+                                            diagnosticError)) {
+            emit logMessage(torqueDriveDiagnosticText(QStringLiteral("启动后约100 ms"),
+                                                      afterStart));
+        } else {
+            emit logMessage(QStringLiteral(
+                "警告：读取转矩启动后一次性驱动诊断失败：%1")
+                                .arg(diagnosticError));
+        }
     }
 
     int actualTorqueRaw = 0;
@@ -2203,6 +2268,7 @@ void ContiWorker::finishTorqueTest(const QString &message, bool emergency)
     }
     torqueTestActive_ = false;
     torqueMotionStarted_ = false;
+    torquePostStartDiagnosticPending_ = false;
     torqueStatus_.active = false;
     torqueStatus_.stateText =
         emergency ? QStringLiteral("异常停止") : QStringLiteral("已停止");

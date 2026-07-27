@@ -47,6 +47,9 @@ public:
     bool writeTorqueVelocityLimit(const TorqueTestConfig &config, long value,
                                   quint16 &nodeAddress, long &readback,
                                   QString &errorMessage);
+    bool readTorqueDriveDiagnostic(quint16 axis,
+                                   TorqueDriveDiagnostic &diagnostic,
+                                   QString &errorMessage) const;
     bool stopAxis(quint16 axis, bool emergency, QString &errorMessage) const;
     bool stopAxis(quint16 cardNo, quint16 axis, bool emergency, QString &errorMessage) const;
     bool axisMotionDone(quint16 axis, bool &done, QString &errorMessage) const;

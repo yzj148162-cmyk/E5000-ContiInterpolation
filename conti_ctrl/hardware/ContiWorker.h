@@ -205,6 +205,7 @@ private:
     QElapsedTimer torquePlotPublishClock_;
     quint64 torqueLastTraceSequence_ = 0;
     qint64 torqueLastDiagnosticMs_ = -1;
+    bool torquePostStartDiagnosticPending_ = false;
     QVector<TorquePlotSample> pendingTorquePlotSamples_;
     TraceDelayCalibrationConfig traceDelayConfig_;
     TraceDelayCalibrationStatus traceDelayStatus_;

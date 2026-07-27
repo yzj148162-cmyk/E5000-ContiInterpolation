@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QClipboard>
 #include <QDateTime>
+#include <QDir>
 #include <QMetaObject>
 #include <QPainter>
 #include <QPen>
@@ -24,8 +25,63 @@
 #include <initializer_list>
 #include <limits>
 
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winver.h>
+#endif
+
 #include "hardware/ContiWorker.h"
 #include "widgets/ZoomableChartView.h"
+
+namespace {
+QString leadshineRuntimeDescription()
+{
+#ifdef Q_OS_WIN
+    const HMODULE module = GetModuleHandleW(L"LTDMC.dll");
+    if (module == nullptr) {
+        return QStringLiteral("雷赛运行库诊断：当前进程尚未加载 LTDMC.dll。");
+    }
+
+    wchar_t pathBuffer[32768] {};
+    const DWORD pathLength =
+        GetModuleFileNameW(module, pathBuffer,
+                           static_cast<DWORD>(std::size(pathBuffer)));
+    const QString path = pathLength > 0
+        ? QString::fromWCharArray(pathBuffer, static_cast<qsizetype>(pathLength))
+        : QStringLiteral("<路径读取失败>");
+
+    QString version = QStringLiteral("<版本资源读取失败>");
+    DWORD ignored = 0;
+    const DWORD versionBytes = GetFileVersionInfoSizeW(pathBuffer, &ignored);
+    if (versionBytes > 0) {
+        QByteArray versionData(static_cast<qsizetype>(versionBytes), '\0');
+        if (GetFileVersionInfoW(pathBuffer, 0, versionBytes,
+                                versionData.data()) != FALSE) {
+            VS_FIXEDFILEINFO *fixedInfo = nullptr;
+            UINT fixedInfoBytes = 0;
+            if (VerQueryValueW(versionData.data(), L"\\",
+                               reinterpret_cast<void **>(&fixedInfo),
+                               &fixedInfoBytes) != FALSE
+                && fixedInfo != nullptr
+                && fixedInfoBytes >= sizeof(VS_FIXEDFILEINFO)) {
+                version = QStringLiteral("%1.%2.%3.%4")
+                    .arg(HIWORD(fixedInfo->dwFileVersionMS))
+                    .arg(LOWORD(fixedInfo->dwFileVersionMS))
+                    .arg(HIWORD(fixedInfo->dwFileVersionLS))
+                    .arg(LOWORD(fixedInfo->dwFileVersionLS));
+            }
+        }
+    }
+    return QStringLiteral("雷赛运行库诊断：已加载 LTDMC.dll %1；路径=%2")
+        .arg(version, QDir::toNativeSeparators(path));
+#else
+    return QStringLiteral("雷赛运行库诊断：当前平台不支持读取 Windows DLL 版本。");
+#endif
+}
+}
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -46,6 +102,7 @@ MainWindow::MainWindow(QWidget *parent)
     connectWorker();
     workerThread_->start();
     appendLog(QStringLiteral("程序已启动：请先初始化控制卡，再使能所选测试轴。"));
+    appendLog(leadshineRuntimeDescription());
 }
 
 MainWindow::~MainWindow()

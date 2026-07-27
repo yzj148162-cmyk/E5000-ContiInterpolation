@@ -342,6 +342,20 @@ struct TorqueTestConfig
     long maximumMotorSpeedRpm = 5370;
 };
 
+// 转矩模式启动前后的一次性诊断快照。对象通过 SDO 单次读取，仅用于确认
+// 驱动器模式和目标转矩是否真正生效，不参与周期控制。
+struct TorqueDriveDiagnostic
+{
+    bool axisStopped = false;
+    quint16 controllerRunMode = 0;
+    quint16 nodeAddress = 0;
+    quint16 statusWord = 0;
+    qint8 requestedMode = 0;
+    qint8 displayedMode = 0;
+    qint16 targetTorqueRaw = 0;
+    qint16 actualTorqueRaw = 0;
+};
+
 struct TorqueTestStatus
 {
     bool active = false;

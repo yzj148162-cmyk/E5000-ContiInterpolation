@@ -5,8 +5,8 @@ CONFIG += c++17
 TARGET = conti_ctrl
 TEMPLATE = app
 
-# 独立工程；暂时引用工作区内已提供的雷赛 SDK 二进制文件，不会修改 pos_ctrl。
-LEADSHINE_DIR = $$PWD/../pos_ctrl/third_party/leadshine
+# 独立工程；头文件、导入库和运行时 DLL 统一使用本工程自带的雷赛 SDK。
+LEADSHINE_DIR = $$PWD/third_party/lt_dmc
 
 SOURCES += \
     main.cpp \
@@ -41,6 +41,7 @@ INCLUDEPATH += \
     $$LEADSHINE_DIR
 
 LIBS += -L$$LEADSHINE_DIR -lLTDMC
+win32:LIBS += Version.lib
 
 exists($$LEADSHINE_DIR/LTDMC.h) {
     message(Leadshine header found: $$LEADSHINE_DIR/LTDMC.h)

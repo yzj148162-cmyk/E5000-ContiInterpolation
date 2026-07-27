@@ -40,6 +40,9 @@ public:
     bool writeTorqueVelocityLimit(WORD cardNo, WORD axis, long value,
                                   WORD &nodeAddress, long &readback,
                                   QString &errorMessage) const;
+    bool readTorqueDriveDiagnostic(WORD cardNo, WORD axis,
+                                   TorqueDriveDiagnostic &diagnostic,
+                                   QString &errorMessage) const;
     bool stopAxis(WORD cardNo, WORD axis, bool emergency, QString &errorMessage) const;
     bool isAxisMotionDone(WORD cardNo, WORD axis) const;
     bool axisMotionDone(WORD cardNo, WORD axis, bool &done, QString &errorMessage) const;
