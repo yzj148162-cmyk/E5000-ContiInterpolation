@@ -579,14 +579,20 @@ bool E5000HardwareInterface::startTorqueMove(
     double absolutePositionLimitDegree, short &apiResult, QString &error)
 {
     return invokeHardware(backend_, [&] {
+        // 雷赛转矩功能说明和官方例程规定：不使用位置限位时，第五参数
+        // 必须传 0x80，才能强制从位置模式切换到转矩模式。
+        // 只有启用硬件位置限位时，第五参数才表示实际限位位置。
         const WORD positionLimitValid =
             config.hardwarePositionLimitEnabled ? 1U : 0U;
-        const double cardPositionLimit =
-            MotorUnit::degreesToCardUnits(absolutePositionLimitDegree,
-                                          config.degreesPerCardUnit);
+        const double cardPositionLimit = config.hardwarePositionLimitEnabled
+            ? MotorUnit::degreesToCardUnits(absolutePositionLimitDegree,
+                                            config.degreesPerCardUnit)
+            : 0x80;
+        const WORD positionMode =
+            config.hardwarePositionLimitEnabled ? 1U : 0U;
         return backend_->card_.startTorqueMove(
             backend_->cardNo_, config.axis, torqueRaw, positionLimitValid,
-            cardPositionLimit, 1U, apiResult, error);
+            cardPositionLimit, positionMode, apiResult, error);
     });
 }
 bool E5000HardwareInterface::changeTorque(

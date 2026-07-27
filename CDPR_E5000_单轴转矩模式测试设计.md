@@ -62,6 +62,25 @@ TorquePercent=\frac{TorqueRaw}{10}
 
 程序不会自动使能轴，也不会在启动转矩测试时自动改写伺服 OD。
 
+### 4.1 `nmc_torque_move` 的位置限位参数
+
+未启用板卡硬件位置限位时，必须严格采用雷赛转矩功能说明和官方例程的特殊调用：
+
+```cpp
+nmc_torque_move(card, axis, torqueRaw, 0, 0x80, 0);
+```
+
+其中第五参数 `0x80` 不是实际限位位置，而是强制由位置模式切换到转矩模式的特殊值。
+
+启用板卡硬件绝对位置限位时，才把实际限位位置传给第五参数：
+
+```cpp
+nmc_torque_move(card, axis, torqueRaw, 1, limitPositionCardUnit, 1);
+```
+
+正转矩要求限位位置大于当前位置，负转矩要求限位位置小于当前位置。程序运行日志必须输出
+上述六个实际调用参数和返回码，以便确认特殊值或真实限位位置没有混用。
+
 ## 5. Diamond PDO 与最大速度 SDO
 
 Diamond V21 手册给出的默认 EtherCAT 映射为：

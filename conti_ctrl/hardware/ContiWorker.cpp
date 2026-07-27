@@ -2078,6 +2078,26 @@ void ContiWorker::runTorqueTestCycle()
                                      : QStringLiteral("仅软件"))
                             .arg(torqueStatus_.positionLimitDegree, 0, 'f', 4)
                             .arg(torqueStatus_.lastApiDurationUs));
+        const quint16 apiPositionLimitValid =
+            torqueConfig_.hardwarePositionLimitEnabled ? 1U : 0U;
+        const double apiPositionLimitValue =
+            torqueConfig_.hardwarePositionLimitEnabled
+                ? MotorUnit::degreesToCardUnits(
+                      torqueStatus_.positionLimitDegree,
+                      torqueConfig_.degreesPerCardUnit)
+                : 0x80;
+        const quint16 apiPositionMode =
+            torqueConfig_.hardwarePositionLimitEnabled ? 1U : 0U;
+        emit logMessage(QStringLiteral(
+            "转矩启动API实参：nmc_torque_move(card=%1, axis=%2, Torque=%3, "
+            "PosLimitValid=%4, PosLimitValue=%5, PosMode=%6)，返回码=%7。")
+                            .arg(torqueConfig_.cardNo)
+                            .arg(torqueConfig_.axis)
+                            .arg(torqueStatus_.commandTorqueRaw)
+                            .arg(apiPositionLimitValid)
+                            .arg(apiPositionLimitValue, 0, 'f', 6)
+                            .arg(apiPositionMode)
+                            .arg(apiResult));
     }
 
     int actualTorqueRaw = 0;
