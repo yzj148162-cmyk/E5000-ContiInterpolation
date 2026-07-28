@@ -1869,9 +1869,9 @@
               </item>
              </layout>
             </item>
-           </layout>
-          </widget>
-         </item>
+          </layout>
+         </widget>
+        </item>
          <item>
           <widget class="QGroupBox" name="selectedAxisFeedbackGroup">
            <property name="title">
@@ -2004,9 +2004,9 @@
               </property>
              </widget>
             </item>
-          </layout>
-         </widget>
-        </item>
+           </layout>
+          </widget>
+         </item>
          <item>
           <widget class="QGroupBox" name="traceDelayCalibrationParameterGroup">
            <property name="title">
@@ -2403,9 +2403,9 @@
            </property>
           </widget>
          </item>
-       </layout>
-      </widget>
-      <widget class="QWidget" name="velocityControlTab">
+        </layout>
+       </widget>
+       <widget class="QWidget" name="velocityControlTab">
         <attribute name="title">
          <string>速度闭环测试</string>
         </attribute>
@@ -4128,16 +4128,13 @@
        </widget>
        <widget class="QWidget" name="extensionTab">
         <attribute name="title">
-         <string>扩展功能（预留）</string>
+         <string>CDPR力交互</string>
         </attribute>
         <layout class="QVBoxLayout" name="extensionLayout">
          <item>
           <widget class="QLabel" name="extensionHintLabel">
            <property name="text">
-            <string>此页面预留给后续的 8 轴 CDPR、动力学求解、力传感器和缓冲水位自动调速等功能。</string>
-           </property>
-           <property name="alignment">
-            <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+            <string>阶段0仅建立参数、状态与线程骨架，不会向电机下发运动命令。配置通过校验且8轴在线，只表示可以进入后续开发阶段。</string>
            </property>
            <property name="wordWrap">
             <bool>true</bool>
@@ -4145,17 +4142,225 @@
           </widget>
          </item>
          <item>
-          <spacer name="extensionVerticalSpacer">
+          <widget class="QGroupBox" name="cdprConfigurationGroup">
+           <property name="title">
+            <string>机器人配置</string>
+           </property>
+           <layout class="QGridLayout" name="cdprConfigurationLayout">
+            <item row="0" column="0">
+             <widget class="QPushButton" name="cdprLoadConfigButton">
+              <property name="text">
+               <string>加载配置</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QPushButton" name="cdprCreateTemplateButton">
+              <property name="text">
+               <string>生成模板</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="2">
+             <widget class="QPushButton" name="cdprValidateButton">
+              <property name="text">
+               <string>重新校验</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="3">
+             <widget class="QLineEdit" name="cdprConfigPathEdit">
+              <property name="placeholderText">
+               <string>尚未加载CDPR JSON配置</string>
+              </property>
+              <property name="readOnly">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QGroupBox" name="cdprStateGroup">
+           <property name="title">
+            <string>控制状态</string>
+           </property>
+           <layout class="QGridLayout" name="cdprStateLayout">
+            <item row="0" column="0">
+             <widget class="QLabel" name="cdprStateLabel">
+              <property name="text">
+               <string>状态</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="1">
+             <widget class="QLabel" name="cdprStateValueLabel">
+              <property name="text">
+               <string>未加载配置</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="2">
+             <widget class="QLabel" name="cdprConfigIdLabel">
+              <property name="text">
+               <string>配置ID</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="3">
+             <widget class="QLabel" name="cdprConfigIdValueLabel">
+              <property name="text">
+               <string>--</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="4">
+             <widget class="QLabel" name="cdprOnlineAxesLabel">
+              <property name="text">
+               <string>在线轴</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="5">
+             <widget class="QLabel" name="cdprOnlineAxesValueLabel">
+              <property name="text">
+               <string>0 / 8</string>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="6">
+             <widget class="QPushButton" name="cdprStartButton">
+              <property name="toolTip">
+               <string>阶段0尚未接入Newmark、运动学和8轴速度命令，因此始终禁用。</string>
+              </property>
+              <property name="text">
+               <string>开始控制（未接入）</string>
+              </property>
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+            <item row="0" column="7">
+             <widget class="QPushButton" name="cdprStopButton">
+              <property name="text">
+               <string>停止控制</string>
+              </property>
+              <property name="enabled">
+               <bool>false</bool>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </widget>
+         </item>
+         <item>
+          <widget class="QSplitter" name="cdprContentSplitter">
            <property name="orientation">
-            <enum>Qt::Orientation::Vertical</enum>
+            <enum>Qt::Orientation::Horizontal</enum>
            </property>
-           <property name="sizeHint" stdset="0">
-            <size>
-             <width>20</width>
-             <height>40</height>
-            </size>
+           <property name="childrenCollapsible">
+            <bool>false</bool>
            </property>
-          </spacer>
+           <widget class="QWidget" name="cdprDescriptionPanel">
+            <layout class="QVBoxLayout" name="cdprDescriptionLayout">
+             <item>
+              <widget class="QGroupBox" name="cdprSummaryGroup">
+               <property name="title">
+                <string>参数摘要</string>
+               </property>
+               <layout class="QVBoxLayout" name="cdprSummaryLayout">
+                <item>
+                 <widget class="QPlainTextEdit" name="cdprSummaryEdit">
+                  <property name="readOnly">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="cdprValidationGroup">
+               <property name="title">
+                <string>校验结果</string>
+               </property>
+               <layout class="QVBoxLayout" name="cdprValidationLayout">
+                <item>
+                 <widget class="QPlainTextEdit" name="cdprValidationEdit">
+                  <property name="plainText">
+                   <string>请加载配置文件。</string>
+                  </property>
+                  <property name="readOnly">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QGroupBox" name="cdprAxisMappingGroup">
+            <property name="title">
+             <string>8绳轴映射与硬件状态</string>
+            </property>
+            <layout class="QVBoxLayout" name="cdprAxisMappingLayout">
+             <item>
+              <widget class="QTableWidget" name="cdprAxisTable">
+               <property name="alternatingRowColors">
+                <bool>true</bool>
+               </property>
+               <property name="editTriggers">
+                <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
+               </property>
+               <property name="rowCount">
+                <number>8</number>
+               </property>
+               <property name="columnCount">
+                <number>7</number>
+               </property>
+               <column>
+                <property name="text">
+                 <string>绳索</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>轴号</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>方向</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>出绳点 W（m）</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>平台点 B（m）</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>在线</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>使能</string>
+                </property>
+               </column>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+          </widget>
          </item>
         </layout>
        </widget>

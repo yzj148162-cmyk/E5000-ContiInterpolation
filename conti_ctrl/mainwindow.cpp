@@ -6,6 +6,7 @@
 #include <QClipboard>
 #include <QDateTime>
 #include <QDir>
+#include <QFileDialog>
 #include <QMetaObject>
 #include <QPainter>
 #include <QPen>
@@ -33,6 +34,7 @@
 #endif
 
 #include "hardware/ContiWorker.h"
+#include "cdpr/CdprCoordinator.h"
 #include "widgets/ZoomableChartView.h"
 
 namespace {
@@ -87,6 +89,8 @@ MainWindow::MainWindow(QWidget *parent)
     , ui_(new Ui::MainWindow)
     , workerThread_(new QThread(this))
     , worker_(new ContiWorker)
+    , cdprThread_(new QThread(this))
+    , cdprCoordinator_(new CdprCoordinator)
 {
     ui_->setupUi(this);
     normalizeProducerPeriodForBusCycle();
@@ -98,14 +102,21 @@ MainWindow::MainWindow(QWidget *parent)
     onStageChanged(ui_->stageCombo->currentIndex());
 
     worker_->moveToThread(workerThread_);
+    cdprCoordinator_->moveToThread(cdprThread_);
     connectWorker();
     workerThread_->start();
+    cdprThread_->start();
     appendLog(QStringLiteral("程序已启动：请先初始化控制卡，再使能所选测试轴。"));
     appendLog(leadshineRuntimeDescription());
 }
 
 MainWindow::~MainWindow()
 {
+    if (cdprThread_->isRunning()) {
+        cdprThread_->quit();
+        cdprThread_->wait();
+    }
+    delete cdprCoordinator_;
     if (workerThread_->isRunning()) {
         QMetaObject::invokeMethod(worker_, "shutdownHardware", Qt::BlockingQueuedConnection);
         workerThread_->quit();
@@ -208,6 +219,12 @@ void MainWindow::connectWorker()
             this, &MainWindow::onTraceDelayEmergencyStopClicked);
     connect(ui_->traceDelayResetAxisButton, &QPushButton::clicked,
             this, &MainWindow::onTraceDelayResetAxisClicked);
+    connect(ui_->cdprLoadConfigButton, &QPushButton::clicked,
+            this, &MainWindow::onCdprLoadConfigurationClicked);
+    connect(ui_->cdprCreateTemplateButton, &QPushButton::clicked,
+            this, &MainWindow::onCdprCreateTemplateClicked);
+    connect(ui_->cdprValidateButton, &QPushButton::clicked,
+            this, [this] { emit validateCdprConfigurationRequested(); });
 
     connect(this, &MainWindow::initializeBoardRequested, worker_, &ContiWorker::initializeBoard);
     connect(this, &MainWindow::closeBoardRequested, worker_, &ContiWorker::closeBoard);
@@ -248,6 +265,12 @@ void MainWindow::connectWorker()
             worker_, &ContiWorker::stopTelemetryRecording);
     connect(this, &MainWindow::refreshBusCycleRequested,
             worker_, &ContiWorker::refreshBusCycle);
+    connect(this, &MainWindow::loadCdprConfigurationRequested,
+            cdprCoordinator_, &CdprCoordinator::loadConfiguration);
+    connect(this, &MainWindow::validateCdprConfigurationRequested,
+            cdprCoordinator_, &CdprCoordinator::validateConfiguration);
+    connect(this, &MainWindow::writeCdprConfigurationTemplateRequested,
+            cdprCoordinator_, &CdprCoordinator::writeConfigurationTemplate);
     connect(ui_->readBusCycleButton, &QPushButton::clicked,
             this, [this] { emit refreshBusCycleRequested(); });
     connect(worker_, &ContiWorker::logMessage, this, &MainWindow::appendLog);
@@ -256,6 +279,12 @@ void MainWindow::connectWorker()
         hasLatestStatus_ = true;
         statusUiDirty_ = true;
     });
+    connect(worker_, &ContiWorker::statusChanged,
+            cdprCoordinator_, &CdprCoordinator::updateHardwareStatus);
+    connect(cdprCoordinator_, &CdprCoordinator::statusChanged,
+            this, &MainWindow::updateCdprStatus);
+    connect(cdprCoordinator_, &CdprCoordinator::logMessage,
+            this, &MainWindow::appendLog);
     connect(worker_, &ContiWorker::velocityPlotSamplesReady,
             this, [this](const QVector<VelocityPlotSample> &samples) {
         constexpr qsizetype kMaximumPendingSamples = 20000;
@@ -275,6 +304,80 @@ void MainWindow::connectWorker()
             pendingTorquePlotSamples_.remove(0, overflow);
         }
     });
+}
+
+void MainWindow::onCdprLoadConfigurationClicked()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, QStringLiteral("加载CDPR配置"), QDir::currentPath(),
+        QStringLiteral("JSON配置 (*.json);;所有文件 (*)"));
+    if (!path.isEmpty()) {
+        emit loadCdprConfigurationRequested(path);
+    }
+}
+
+void MainWindow::onCdprCreateTemplateClicked()
+{
+    const QString path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("生成CDPR配置模板"),
+        QDir::current().filePath(QStringLiteral("cdpr_configuration.json")),
+        QStringLiteral("JSON配置 (*.json)"));
+    if (!path.isEmpty()) {
+        emit writeCdprConfigurationTemplateRequested(path);
+    }
+}
+
+void MainWindow::updateCdprStatus(const CdprUiStatus &status)
+{
+    ui_->cdprConfigPathEdit->setText(status.configurationPath);
+    ui_->cdprStateValueLabel->setText(status.stateText);
+    ui_->cdprConfigIdValueLabel->setText(
+        status.configurationId.isEmpty() ? QStringLiteral("--")
+                                         : status.configurationId);
+    ui_->cdprOnlineAxesValueLabel->setText(
+        QStringLiteral("%1 / 8").arg(status.onlineAxisCount));
+    ui_->cdprSummaryEdit->setPlainText(status.summary);
+    ui_->cdprValidationEdit->setPlainText(
+        status.validationMessages.isEmpty()
+            ? (status.configurationValid
+                   ? QStringLiteral("配置校验通过。")
+                   : QStringLiteral("请加载配置文件。"))
+            : status.validationMessages.join(QStringLiteral("\n")));
+    ui_->cdprStateValueLabel->setStyleSheet(
+        status.configurationValid
+            ? QStringLiteral("QLabel { color: #2e7d32; font-weight: bold; }")
+            : QStringLiteral("QLabel { color: #c62828; font-weight: bold; }"));
+    ui_->cdprStartButton->setEnabled(status.controlStartAvailable);
+    ui_->cdprStopButton->setEnabled(false);
+
+    for (int row = 0; row < ui_->cdprAxisTable->rowCount(); ++row) {
+        QStringList values {
+            QString::number(row), QStringLiteral("--"), QStringLiteral("--"),
+            QStringLiteral("--"), QStringLiteral("--"),
+            QStringLiteral("否"), QStringLiteral("否")
+        };
+        if (row < status.axes.size()) {
+            const CdprAxisView &axis = status.axes.at(row);
+            values = {
+                QString::number(axis.cable),
+                QString::number(axis.axis),
+                axis.direction > 0 ? QStringLiteral("+1") : QStringLiteral("-1"),
+                axis.frameAnchor,
+                axis.platformAnchor,
+                axis.online ? QStringLiteral("是") : QStringLiteral("否"),
+                axis.enabled ? QStringLiteral("是") : QStringLiteral("否")
+            };
+        }
+        for (int column = 0; column < values.size(); ++column) {
+            QTableWidgetItem *item = ui_->cdprAxisTable->item(row, column);
+            if (item == nullptr) {
+                item = new QTableWidgetItem;
+                ui_->cdprAxisTable->setItem(row, column, item);
+            }
+            item->setText(values.at(column));
+        }
+    }
+    ui_->cdprAxisTable->resizeColumnsToContents();
 }
 
 ContiTestConfig MainWindow::collectConfig() const

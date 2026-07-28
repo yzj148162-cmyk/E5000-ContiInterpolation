@@ -4,6 +4,7 @@
 #include <QMainWindow>
 #include <QList>
 
+#include "cdpr/CdprConfiguration.h"
 #include "common/ContiTypes.h"
 
 QT_BEGIN_NAMESPACE
@@ -13,6 +14,7 @@ QT_END_NAMESPACE
 class QThread;
 class QTimer;
 class ContiWorker;
+class CdprCoordinator;
 class QChart;
 class QLineSeries;
 class QValueAxis;
@@ -53,6 +55,9 @@ signals:
     void startTelemetryRecordingRequested();
     void stopTelemetryRecordingRequested();
     void refreshBusCycleRequested();
+    void loadCdprConfigurationRequested(const QString &path);
+    void validateCdprConfigurationRequested();
+    void writeCdprConfigurationTemplateRequested(const QString &path);
 
 private slots:
     void onStageChanged(int index);
@@ -98,6 +103,9 @@ private slots:
     void onTraceDelayResetAxisClicked();
     void onBusCycleSelectionChanged(int index);
     void onProducerPeriodChanged(int periodMs);
+    void onCdprLoadConfigurationClicked();
+    void onCdprCreateTemplateClicked();
+    void updateCdprStatus(const CdprUiStatus &status);
     void appendLog(const QString &message);
     void updateStatus(const ContiStatus &status);
 
@@ -132,6 +140,8 @@ private:
     Ui::MainWindow *ui_ = nullptr;
     QThread *workerThread_ = nullptr;
     ContiWorker *worker_ = nullptr;
+    QThread *cdprThread_ = nullptr;
+    CdprCoordinator *cdprCoordinator_ = nullptr;
     ContiStatus latestStatus_;
     bool hasLatestStatus_ = false;
     bool statusUiDirty_ = false;

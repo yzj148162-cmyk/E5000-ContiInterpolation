@@ -11,6 +11,8 @@ LEADSHINE_DIR = $$PWD/third_party/lt_dmc
 SOURCES += \
     main.cpp \
     mainwindow.cpp \
+    cdpr/CdprConfiguration.cpp \
+    cdpr/CdprCoordinator.cpp \
     control/PositionVelocityPid.cpp \
     control/TraceDelayCalibration.cpp \
     hardware/E5000ContiInterface.cpp \
@@ -22,6 +24,8 @@ SOURCES += \
     widgets/ZoomableChartView.cpp
 
 HEADERS += \
+    cdpr/CdprConfiguration.h \
+    cdpr/CdprCoordinator.h \
     common/ContiTypes.h \
     control/PositionVelocityPid.h \
     control/TraceDelayCalibration.h \

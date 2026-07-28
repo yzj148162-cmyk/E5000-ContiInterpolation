@@ -1,6 +1,7 @@
 #include <QApplication>
 
 #include "common/ContiTypes.h"
+#include "cdpr/CdprConfiguration.h"
 #include "mainwindow.h"
 
 int main(int argc, char *argv[])
@@ -16,6 +17,7 @@ int main(int argc, char *argv[])
     qRegisterMetaType<TorqueTestConfig>("TorqueTestConfig");
     qRegisterMetaType<QVector<TorquePlotSample>>("QVector<TorquePlotSample>");
     qRegisterMetaType<TraceDelayCalibrationConfig>("TraceDelayCalibrationConfig");
+    qRegisterMetaType<CdprUiStatus>("CdprUiStatus");
 
     MainWindow window;
     window.show();
