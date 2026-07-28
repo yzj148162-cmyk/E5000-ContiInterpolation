@@ -15,7 +15,6 @@ class QTimer;
 class ContiWorker;
 class QChart;
 class QLineSeries;
-class QScatterSeries;
 class QValueAxis;
 class ZoomableChartView;
 
@@ -36,7 +35,6 @@ signals:
     void disableAllAxesRequested();
     void startTestRequested(const ContiTestConfig &config);
     void stopTestRequested(bool emergency);
-    void refreshFeedbackRequested();
     void enableJogAxisRequested(const SingleAxisJogConfig &config);
     void disableJogAxisRequested(const SingleAxisJogConfig &config);
     void setJogAxisZeroRequested(const SingleAxisJogConfig &config);
@@ -67,7 +65,6 @@ private slots:
     void onStartClicked();
     void onStopClicked();
     void onEmergencyStopClicked();
-    void onRefreshFeedbackClicked();
     void onCopyLogClicked();
     void onClearLogClicked();
     void onEnableJogAxisClicked();
@@ -124,9 +121,6 @@ private:
     void updateTorqueOutputSpeedEquivalent();
     double selectedDegreesPerCardUnit() const;
     void updateGlobalCardUnitUi();
-    void initializeTraceDelayCalibrationCharts();
-    void updateTraceDelayCalibrationCharts();
-    void clearTraceDelayCalibrationCharts();
     void updateChartRanges(ZoomableChartView *view,
                            const QList<QLineSeries *> &series, double timeSeconds,
                            double minimumSpan) const;
@@ -186,20 +180,6 @@ private:
     QList<QPointF> torqueMotionDisplayPoints_[2];
     quint64 lastTorqueRunId_ = 0;
     double lastTorquePlotTimeS_ = -1.0;
-    QChart *traceDelayVelocityChart_ = nullptr;
-    QChart *traceDelayFitChart_ = nullptr;
-    QLineSeries *traceDelayVelocitySeries_[2] {nullptr, nullptr};
-    QScatterSeries *traceDelayFitPointSeries_ = nullptr;
-    QLineSeries *traceDelayFitLineSeries_ = nullptr;
-    QValueAxis *traceDelayVelocityTimeAxis_ = nullptr;
-    QValueAxis *traceDelayVelocityValueAxis_ = nullptr;
-    QValueAxis *traceDelayFitSpeedAxis_ = nullptr;
-    QValueAxis *traceDelayFitGapAxis_ = nullptr;
-    QVector<TraceDelayPlotSample> pendingTraceDelayPlotSamples_;
-    QList<QPointF> traceDelayVelocityDisplayPoints_[2];
-    quint64 lastTraceDelayRunId_ = 0;
-    double lastTraceDelayPlotTimeS_ = -1.0;
-    QString lastTraceDelayFitSignature_;
 };
 
 #endif // MAINWINDOW_H

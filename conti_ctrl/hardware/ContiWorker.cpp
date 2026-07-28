@@ -24,7 +24,6 @@ constexpr int kContiDiagnosticPeriodMs = 250;
 constexpr int kFirstSegmentTimeoutMs = 2000;
 constexpr int kCompletionStableDwellMs = 150;
 constexpr int kVelocityPlotPublishIntervalMs = 50;
-constexpr int kTraceDelayPlotPublishIntervalMs = 50;
 constexpr int kTorquePlotPublishIntervalMs = 50;
 constexpr int kTorquePostStartDiagnosticDelayMs = 100;
 constexpr int kTraceDelayStopTimeoutMs = 2000;
@@ -2402,9 +2401,7 @@ void ContiWorker::startTraceDelayCalibration(
     }
     traceDelaySegments_.clear();
     traceDelayCurrentSegmentFrames_.clear();
-    pendingTraceDelayPlotSamples_.clear();
     resetTraceDelayHistory();
-    ++traceDelayRunId_;
     traceDelayCurrentSegmentIndex_ = 0;
     traceDelayPhase_ = TraceDelayPhase::Resting;
     traceDelayCalibrationActive_ = true;
@@ -2416,8 +2413,6 @@ void ContiWorker::startTraceDelayCalibration(
     traceDelayStatus_.phaseText = QStringLiteral("启动前静止");
     traceDelayStatus_.axisResults = traceDelayAxisResults_;
     traceDelayPhaseClock_.start();
-    traceDelayPlotPublishClock_.start();
-    traceDelayPlotStartTimeUs_ = 0;
 
     TelemetryRunMetadata metadata;
     metadata.cardNo = initializedCardNo_;
@@ -2778,7 +2773,6 @@ void ContiWorker::finishTraceDelayCalibration(const QString &message,
         }
     }
     traceDelayMotionStarted_ = false;
-    flushTraceDelayPlotSamples();
     if (traceDelayAutoRecording_) {
         telemetryRecorder_.appendEvent(failed
             ? QStringLiteral("trace_delay_calibration_failed_or_stopped")
@@ -2839,43 +2833,10 @@ void ContiWorker::appendTraceDelayCalibrationFrames(
             || (frame.validAxisMask & static_cast<quint8>(1U << axisIndex)) == 0U) {
             continue;
         }
-        if (traceDelayPlotStartTimeUs_ == 0) {
-            traceDelayPlotStartTimeUs_ = frame.traceTimeUs;
-        }
-        TraceDelayPlotSample sample;
-        sample.runId = traceDelayRunId_;
-        sample.elapsedS =
-            (frame.traceTimeUs - traceDelayPlotStartTimeUs_) / 1000000.0;
-        sample.commandVelocityDegreePerSecond =
-            frame.commandVelocityPulsePerSecond[axisIndex]
-            / MotorUnit::kPhysicalPulsesPerDegree;
-        sample.actualVelocityDegreePerSecond =
-            frame.actualVelocityPulsePerSecond[axisIndex]
-            / MotorUnit::kPhysicalPulsesPerDegree;
-        sample.rawPositionGapDegree =
-            (frame.commandPulse[axisIndex] - frame.actualPulse[axisIndex])
-            / MotorUnit::kPhysicalPulsesPerDegree;
-        pendingTraceDelayPlotSamples_.push_back(sample);
         if (traceDelayPhase_ == TraceDelayPhase::Moving) {
             traceDelayCurrentSegmentFrames_.push_back(frame);
         }
     }
-    if (!pendingTraceDelayPlotSamples_.isEmpty()
-        && traceDelayPlotPublishClock_.elapsed()
-               >= kTraceDelayPlotPublishIntervalMs) {
-        flushTraceDelayPlotSamples();
-    }
-}
-
-void ContiWorker::flushTraceDelayPlotSamples()
-{
-    if (pendingTraceDelayPlotSamples_.isEmpty()) {
-        return;
-    }
-    QVector<TraceDelayPlotSample> batch;
-    batch.swap(pendingTraceDelayPlotSamples_);
-    emit traceDelayPlotSamplesReady(batch);
-    traceDelayPlotPublishClock_.restart();
 }
 
 void ContiWorker::resetTraceDelayHistory()
@@ -3798,7 +3759,6 @@ void ContiWorker::enterError(const QString &message)
         card_.stopAxis(initializedCardNo_, torqueConfig_.axis, true, ignored);
     }
     if (traceDelayCalibrationActive_ && boardInitialized_) {
-        flushTraceDelayPlotSamples();
         QString ignored;
         card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, true, ignored);
     }

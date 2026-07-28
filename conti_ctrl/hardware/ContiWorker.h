@@ -60,7 +60,6 @@ signals:
     void statusChanged(const ContiStatus &status);
     void velocityPlotSamplesReady(const QVector<VelocityPlotSample> &samples);
     void torquePlotSamplesReady(const QVector<TorquePlotSample> &samples);
-    void traceDelayPlotSamplesReady(const QVector<TraceDelayPlotSample> &samples);
 
 private slots:
     void produceNextPoint();
@@ -117,7 +116,6 @@ private:
                                      bool failed = false,
                                      bool emergency = false);
     void appendTraceDelayCalibrationFrames(const QVector<TraceTelemetryFrame> &frames);
-    void flushTraceDelayPlotSamples();
     void resetTraceDelayHistory();
     void applyTraceDelayCompensation(const QVector<TraceTelemetryFrame> &frames);
     void loadTraceDelayCalibrationResults();
@@ -218,11 +216,7 @@ private:
     QVector<TraceTelemetryFrame> traceDelayCurrentSegmentFrames_;
     TraceDelayPhase traceDelayPhase_ = TraceDelayPhase::Idle;
     int traceDelayCurrentSegmentIndex_ = 0;
-    quint64 traceDelayRunId_ = 0;
     QElapsedTimer traceDelayPhaseClock_;
-    QElapsedTimer traceDelayPlotPublishClock_;
-    quint64 traceDelayPlotStartTimeUs_ = 0;
-    QVector<TraceDelayPlotSample> pendingTraceDelayPlotSamples_;
     std::array<QQueue<TraceCommandHistorySample>, 8> traceCommandHistory_;
     quint64 lastTraceDelaySequence_ = 0;
     int savedCalibrationBusCycleUs_ = 0;

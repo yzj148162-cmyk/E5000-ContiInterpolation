@@ -18,7 +18,6 @@
 #include <QtCharts/QChart>
 #include <QtCharts/QChartView>
 #include <QtCharts/QLineSeries>
-#include <QtCharts/QScatterSeries>
 #include <QtCharts/QValueAxis>
 
 #include <cmath>
@@ -95,7 +94,6 @@ MainWindow::MainWindow(QWidget *parent)
     initializeContiTrajectoryChart();
     initializeVelocityControlCharts();
     initializeTorqueTestCharts();
-    initializeTraceDelayCalibrationCharts();
     initializeUiRefreshTimer();
     onStageChanged(ui_->stageCombo->currentIndex());
 
@@ -147,7 +145,6 @@ void MainWindow::connectWorker()
     connect(ui_->startButton, &QPushButton::clicked, this, &MainWindow::onStartClicked);
     connect(ui_->stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);
     connect(ui_->emergencyStopButton, &QPushButton::clicked, this, &MainWindow::onEmergencyStopClicked);
-    connect(ui_->refreshFeedbackButton, &QPushButton::clicked, this, &MainWindow::onRefreshFeedbackClicked);
     connect(ui_->copyLogButton, &QPushButton::clicked, this, &MainWindow::onCopyLogClicked);
     connect(ui_->clearLogButton, &QPushButton::clicked, this, &MainWindow::onClearLogClicked);
     connect(ui_->jogEnableButton, &QPushButton::clicked, this, &MainWindow::onEnableJogAxisClicked);
@@ -220,7 +217,6 @@ void MainWindow::connectWorker()
     connect(this, &MainWindow::disableAllAxesRequested, worker_, &ContiWorker::disableAllDetectedAxes);
     connect(this, &MainWindow::startTestRequested, worker_, &ContiWorker::startTest);
     connect(this, &MainWindow::stopTestRequested, worker_, &ContiWorker::stopTest);
-    connect(this, &MainWindow::refreshFeedbackRequested, worker_, &ContiWorker::refreshFeedback);
     connect(this, &MainWindow::enableJogAxisRequested, worker_, &ContiWorker::enableJogAxis);
     connect(this, &MainWindow::disableJogAxisRequested, worker_, &ContiWorker::disableJogAxis);
     connect(this, &MainWindow::setJogAxisZeroRequested, worker_, &ContiWorker::setJogAxisZero);
@@ -277,16 +273,6 @@ void MainWindow::connectWorker()
             pendingTorquePlotSamples_.size() - kMaximumPendingSamples;
         if (overflow > 0) {
             pendingTorquePlotSamples_.remove(0, overflow);
-        }
-    });
-    connect(worker_, &ContiWorker::traceDelayPlotSamplesReady,
-            this, [this](const QVector<TraceDelayPlotSample> &samples) {
-        constexpr qsizetype kMaximumPendingSamples = 30000;
-        pendingTraceDelayPlotSamples_ += samples;
-        const qsizetype overflow =
-            pendingTraceDelayPlotSamples_.size() - kMaximumPendingSamples;
-        if (overflow > 0) {
-            pendingTraceDelayPlotSamples_.remove(0, overflow);
         }
     });
 }
@@ -454,8 +440,7 @@ TraceDelayCalibrationConfig MainWindow::collectTraceDelayCalibrationConfig() con
 {
     TraceDelayCalibrationConfig config;
     config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
-    config.axis =
-        static_cast<quint16>(ui_->traceDelayAxisCombo->currentText().toUInt());
+    config.axis = static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt());
     config.degreesPerCardUnit = selectedDegreesPerCardUnit();
     config.speedDegreePerSecond = {
         ui_->traceDelaySpeed1Spin->value(),
@@ -588,11 +573,6 @@ void MainWindow::onStopClicked()
 void MainWindow::onEmergencyStopClicked()
 {
     emit stopTestRequested(true);
-}
-
-void MainWindow::onRefreshFeedbackClicked()
-{
-    emit refreshFeedbackRequested();
 }
 
 void MainWindow::onCopyLogClicked()
@@ -758,7 +738,6 @@ void MainWindow::onTorqueClearCurvesClicked()
 
 void MainWindow::onTraceDelayStartClicked()
 {
-    clearTraceDelayCalibrationCharts();
     emit startTraceDelayCalibrationRequested(collectTraceDelayCalibrationConfig());
 }
 
@@ -775,7 +754,7 @@ void MainWindow::onTraceDelayEmergencyStopClicked()
 void MainWindow::onTraceDelayResetAxisClicked()
 {
     emit resetTraceDelayCalibrationAxisRequested(
-        static_cast<quint16>(ui_->traceDelayAxisCombo->currentText().toUInt()));
+        static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt()));
 }
 
 void MainWindow::appendLog(const QString &message)
@@ -837,6 +816,29 @@ void MainWindow::updateStatus(const ContiStatus &status)
                                              ? QStringLiteral("-- ms")
                                               : QStringLiteral("%1 ms").arg(status.ratioLastApiAgoMs));
     const int detectedAxisCount = qBound(0, status.detectedAxisCount, 8);
+    const int selectableAxisCount =
+        status.boardInitialized ? detectedAxisCount : 8;
+    bool jogAxisItemsMatch =
+        ui_->jogAxisCombo->count() == selectableAxisCount;
+    for (int axis = 0; jogAxisItemsMatch && axis < selectableAxisCount; ++axis) {
+        jogAxisItemsMatch =
+            ui_->jogAxisCombo->itemText(axis) == QString::number(axis);
+    }
+    if (!jogAxisItemsMatch) {
+        const QString selectedAxisText = ui_->jogAxisCombo->currentText();
+        const QSignalBlocker blocker(ui_->jogAxisCombo);
+        ui_->jogAxisCombo->clear();
+        for (int axis = 0; axis < selectableAxisCount; ++axis) {
+            ui_->jogAxisCombo->addItem(QString::number(axis));
+        }
+        const int restoredIndex =
+            ui_->jogAxisCombo->findText(selectedAxisText);
+        if (restoredIndex >= 0) {
+            ui_->jogAxisCombo->setCurrentIndex(restoredIndex);
+        } else if (ui_->jogAxisCombo->count() > 0) {
+            ui_->jogAxisCombo->setCurrentIndex(0);
+        }
+    }
     if (!axisStatusRendered_
         || lastAxisStatusBoardInitialized_ != status.boardInitialized
         || lastAxisEnabledMask_ != status.enabledAxisMask
@@ -879,13 +881,6 @@ void MainWindow::updateStatus(const ContiStatus &status)
     }
     ui_->enableAllAxesButton->setEnabled(status.boardInitialized && detectedAxisCount > 0);
     ui_->disableAllAxesButton->setEnabled(status.boardInitialized && detectedAxisCount > 0);
-    ui_->feedbackSummaryValueLabel->setText(status.boardInitialized
-                                                ? QStringLiteral("总线错误码：%1；%2；本次 Trace 帧：%3；API=%4")
-                                                      .arg(status.busErrorCode)
-                                                      .arg(status.traceStateText)
-                                                      .arg(status.traceFramesRead)
-                                                      .arg(status.traceLastApiResult)
-                                                : QStringLiteral("控制卡未初始化"));
     const VelocityControlStatus &velocity = status.velocityControl;
     ui_->velocityStateValueLabel->setText(QStringLiteral("%1；API=%2，耗时=%3 us")
                                               .arg(velocity.stateText)
@@ -1006,6 +1001,13 @@ void MainWindow::updateStatus(const ContiStatus &status)
             result.rSquared == 0.0 && !result.calibrated
                 ? QStringLiteral("--")
                 : QString::number(result.rSquared, 'f', 5),
+            result.rmseDegree == 0.0 && !result.calibrated
+                ? QStringLiteral("--")
+                : QString::number(result.rmseDegree, 'f', 6),
+            result.pairSpreadMs == 0.0 && !result.calibrated
+                ? QStringLiteral("--")
+                : QString::number(result.pairSpreadMs, 'f', 4),
+            QString::number(result.lostFrameCount),
             result.source,
             statusText
         };
@@ -1044,11 +1046,35 @@ void MainWindow::updateStatus(const ContiStatus &status)
             .arg(status.recorder.writtenFrames)
             .arg(status.recorder.queuedFrames)
             .arg(status.recorder.droppedFrames));
+    const quint16 selectedAxis =
+        static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt());
+    const AxisFeedback *selectedFeedback = nullptr;
     for (const AxisFeedback &feedback : status.axisFeedback) {
-        const int row = static_cast<int>(feedback.axis);
-        if (row < 0 || row >= ui_->axisFeedbackTable->rowCount()) {
-            continue;
+        if (feedback.axis == selectedAxis) {
+            selectedFeedback = &feedback;
+            break;
         }
+    }
+    const bool selectedAxisOnline =
+        status.boardInitialized && selectedAxis < detectedAxisCount;
+    const bool selectedAxisEnabled =
+        selectedAxisOnline
+        && (status.enabledAxisMask
+            & static_cast<quint16>(1U << selectedAxis)) != 0U;
+    ui_->selectedAxisStateValueLabel->setText(
+        !selectedAxisOnline
+            ? QStringLiteral("未连接")
+            : (selectedAxisEnabled ? QStringLiteral("已使能")
+                                   : QStringLiteral("已失能")));
+    ui_->selectedAxisTraceStateValueLabel->setText(
+        !status.boardInitialized
+            ? QStringLiteral("控制卡未初始化")
+            : QStringLiteral("%1；帧=%2；API=%3")
+                  .arg(status.traceStateText)
+                  .arg(status.traceFramesRead)
+                  .arg(status.traceLastApiResult));
+    if (selectedFeedback != nullptr) {
+        const AxisFeedback &feedback = *selectedFeedback;
         const bool hasSoftwareZero = feedback.axis < static_cast<quint16>(status.softwareZeroValid.size())
             && status.softwareZeroValid.at(feedback.axis);
         const double softwareZero = hasSoftwareZero
@@ -1057,41 +1083,50 @@ void MainWindow::updateStatus(const ContiStatus &status)
             ? feedback.commandPositionUnit : feedback.commandPositionUnit - softwareZero;
         const double displayedActualPosition = showAbsolutePosition
             ? feedback.encoderPositionUnit : feedback.encoderPositionUnit - softwareZero;
-        const QString delayRemark = !feedback.valid
-            ? feedback.errorText
-            : (feedback.traceSampleValid
-            ? (feedback.delayCompensationValid
-                   ? QStringLiteral("延迟补偿 %1 ms（%2）")
-                         .arg(feedback.delayCompensationMs, 0, 'f', 3)
-                         .arg(feedback.delayCompensationSource)
-                   : QStringLiteral("等待 %1 ms 历史帧")
-                         .arg(feedback.delayCompensationMs, 0, 'f', 3))
-            : feedback.errorText);
-        const QStringList values {
-            QString::number(feedback.axis),
-            feedback.valid ? QStringLiteral("正常") : QStringLiteral("读取失败"),
-            QString::number(feedback.stateMachine),
-            QString::number(feedback.axisErrorCode),
-            QString::number(displayedCommandPosition, 'f', 4),
-            QString::number(displayedActualPosition, 'f', 4),
+        ui_->selectedAxisDriveStateValueLabel->setText(
+            QString::number(feedback.stateMachine));
+        ui_->selectedAxisErrorValueLabel->setText(
+            QString::number(feedback.axisErrorCode));
+        ui_->selectedAxisCommandVelocityValueLabel->setText(
+            feedback.traceSampleValid
+                ? QStringLiteral("%1 °/s")
+                      .arg(feedback.commandVelocityUnitPerSecond, 0, 'f', 4)
+                : QStringLiteral("--"));
+        ui_->selectedAxisActualVelocityValueLabel->setText(
+            feedback.traceSampleValid
+                ? QStringLiteral("%1 °/s")
+                      .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 4)
+                : QStringLiteral("--"));
+        ui_->selectedAxisCommandPositionValueLabel->setText(
+            feedback.traceSampleValid
+                ? QStringLiteral("%1 °")
+                      .arg(displayedCommandPosition, 0, 'f', 4)
+                : QStringLiteral("--"));
+        ui_->selectedAxisActualPositionValueLabel->setText(
+            feedback.traceSampleValid
+                ? QStringLiteral("%1 °")
+                      .arg(displayedActualPosition, 0, 'f', 4)
+                : QStringLiteral("--"));
+        ui_->selectedAxisDelayErrorValueLabel->setText(
             feedback.delayCompensationValid
-                ? QString::number(
-                      feedback.delayCompensatedFollowingErrorUnit, 'f', 4)
-                : QStringLiteral("--"),
-            delayRemark
-        };
-        for (int column = 0; column < values.size(); ++column) {
-            QTableWidgetItem *item = ui_->axisFeedbackTable->item(row, column);
-            if (item == nullptr) {
-                item = new QTableWidgetItem;
-                ui_->axisFeedbackTable->setItem(row, column, item);
-            }
-            item->setText(values.at(column));
-        }
-        if (feedback.axis == static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt())
-            && feedback.traceSampleValid) {
+                ? QStringLiteral("%1 °；τ=%2 ms（%3）")
+                      .arg(feedback.delayCompensatedFollowingErrorUnit, 0, 'f', 4)
+                      .arg(feedback.delayCompensationMs, 0, 'f', 3)
+                      .arg(feedback.delayCompensationSource)
+                : QStringLiteral("等待 %1 ms 历史帧")
+                      .arg(feedback.delayCompensationMs, 0, 'f', 3));
+        if (feedback.traceSampleValid) {
             ui_->jogActualPositionSpin->setValue(displayedActualPosition);
         }
+    } else {
+        ui_->selectedAxisDriveStateValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisErrorValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisCommandVelocityValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisActualVelocityValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisCommandPositionValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisActualPositionValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisDelayErrorValueLabel->setText(
+            QStringLiteral("等待所选轴 Trace"));
     }
 }
 
@@ -1147,7 +1182,6 @@ void MainWindow::refreshUiAndCharts()
     }
     updateVelocityControlCharts();
     updateTorqueTestCharts();
-    updateTraceDelayCalibrationCharts();
     updateContiTrajectoryChart();
 }
 
@@ -1285,191 +1319,6 @@ void MainWindow::initializeTorqueTestCharts()
         torqueMotionSeries_[index]->attachAxis(torqueMotionTimeAxis_);
         torqueMotionSeries_[index]->attachAxis(torqueMotionValueAxis_);
     }
-}
-
-void MainWindow::initializeTraceDelayCalibrationCharts()
-{
-    traceDelayVelocityChart_ = new QChart;
-    traceDelayVelocityChart_->setTitle(
-        QStringLiteral("标定速度：Trace type03 / type04"));
-    traceDelayVelocityTimeAxis_ = new QValueAxis(traceDelayVelocityChart_);
-    traceDelayVelocityTimeAxis_->setTitleText(QStringLiteral("Trace 时间 (s)"));
-    traceDelayVelocityTimeAxis_->setLabelFormat(QStringLiteral("%.1f"));
-    traceDelayVelocityTimeAxis_->setTickCount(6);
-    traceDelayVelocityValueAxis_ = new QValueAxis(traceDelayVelocityChart_);
-    traceDelayVelocityValueAxis_->setTitleText(QStringLiteral("速度 (°/s)"));
-    traceDelayVelocityChart_->addAxis(traceDelayVelocityTimeAxis_, Qt::AlignBottom);
-    traceDelayVelocityChart_->addAxis(traceDelayVelocityValueAxis_, Qt::AlignLeft);
-    const QStringList velocityNames {QStringLiteral("type03 指令速度"),
-                                     QStringLiteral("type04 实际速度")};
-    const QList<QColor> velocityColors {QColor(0, 102, 204), QColor(204, 51, 51)};
-    for (int index = 0; index < 2; ++index) {
-        traceDelayVelocitySeries_[index] =
-            new QLineSeries(traceDelayVelocityChart_);
-        traceDelayVelocitySeries_[index]->setName(velocityNames.at(index));
-        traceDelayVelocitySeries_[index]->setPen(
-            QPen(velocityColors.at(index), 1.4));
-        traceDelayVelocityChart_->addSeries(traceDelayVelocitySeries_[index]);
-        traceDelayVelocitySeries_[index]->attachAxis(traceDelayVelocityTimeAxis_);
-        traceDelayVelocitySeries_[index]->attachAxis(traceDelayVelocityValueAxis_);
-    }
-    ui_->traceDelayVelocityChartView->setChart(traceDelayVelocityChart_);
-    ui_->traceDelayVelocityChartView->setRenderHint(QPainter::Antialiasing, false);
-    ui_->traceDelayVelocityChartView->setAutomaticRange(
-        0.0, 15.0, -120.0, 120.0);
-
-    traceDelayFitChart_ = new QChart;
-    traceDelayFitChart_->setTitle(
-        QStringLiteral("位置差拟合：e = τv + b"));
-    traceDelayFitSpeedAxis_ = new QValueAxis(traceDelayFitChart_);
-    traceDelayFitSpeedAxis_->setTitleText(QStringLiteral("稳定段指令速度 (°/s)"));
-    traceDelayFitGapAxis_ = new QValueAxis(traceDelayFitChart_);
-    traceDelayFitGapAxis_->setTitleText(QStringLiteral("type05-type06 (°)"));
-    traceDelayFitChart_->addAxis(traceDelayFitSpeedAxis_, Qt::AlignBottom);
-    traceDelayFitChart_->addAxis(traceDelayFitGapAxis_, Qt::AlignLeft);
-    traceDelayFitPointSeries_ = new QScatterSeries(traceDelayFitChart_);
-    traceDelayFitPointSeries_->setName(QStringLiteral("六段均值"));
-    traceDelayFitPointSeries_->setMarkerSize(9.0);
-    traceDelayFitLineSeries_ = new QLineSeries(traceDelayFitChart_);
-    traceDelayFitLineSeries_->setName(QStringLiteral("线性拟合"));
-    traceDelayFitLineSeries_->setPen(QPen(QColor(0, 153, 102), 1.6));
-    traceDelayFitChart_->addSeries(traceDelayFitPointSeries_);
-    traceDelayFitChart_->addSeries(traceDelayFitLineSeries_);
-    traceDelayFitPointSeries_->attachAxis(traceDelayFitSpeedAxis_);
-    traceDelayFitPointSeries_->attachAxis(traceDelayFitGapAxis_);
-    traceDelayFitLineSeries_->attachAxis(traceDelayFitSpeedAxis_);
-    traceDelayFitLineSeries_->attachAxis(traceDelayFitGapAxis_);
-    ui_->traceDelayFitChartView->setChart(traceDelayFitChart_);
-    ui_->traceDelayFitChartView->setRenderHint(QPainter::Antialiasing, true);
-    ui_->traceDelayFitChartView->setAutomaticRange(
-        -120.0, 120.0, -1.0, 1.0);
-}
-
-void MainWindow::clearTraceDelayCalibrationCharts()
-{
-    for (QLineSeries *series : traceDelayVelocitySeries_) {
-        if (series != nullptr) {
-            series->clear();
-        }
-    }
-    if (traceDelayFitPointSeries_ != nullptr) {
-        traceDelayFitPointSeries_->clear();
-    }
-    if (traceDelayFitLineSeries_ != nullptr) {
-        traceDelayFitLineSeries_->clear();
-    }
-    pendingTraceDelayPlotSamples_.clear();
-    for (QList<QPointF> &points : traceDelayVelocityDisplayPoints_) {
-        points.clear();
-    }
-    lastTraceDelayPlotTimeS_ = -1.0;
-    lastTraceDelayFitSignature_.clear();
-    ui_->traceDelayVelocityChartView->resetAutomaticRangeMode();
-    ui_->traceDelayFitChartView->resetAutomaticRangeMode();
-}
-
-void MainWindow::updateTraceDelayCalibrationCharts()
-{
-    QVector<TraceDelayPlotSample> samples;
-    samples.swap(pendingTraceDelayPlotSamples_);
-    if (!samples.isEmpty()) {
-        const quint64 newestRunId = samples.constLast().runId;
-        if (newestRunId != lastTraceDelayRunId_) {
-            clearTraceDelayCalibrationCharts();
-            lastTraceDelayRunId_ = newestRunId;
-        }
-        constexpr double kDisplayIntervalS = 0.005;
-        constexpr qsizetype kMaximumPoints = 6000;
-        for (const TraceDelayPlotSample &sample : samples) {
-            if (sample.runId != newestRunId
-                || sample.elapsedS <= lastTraceDelayPlotTimeS_
-                || (lastTraceDelayPlotTimeS_ >= 0.0
-                    && sample.elapsedS - lastTraceDelayPlotTimeS_
-                           < kDisplayIntervalS)) {
-                continue;
-            }
-            traceDelayVelocityDisplayPoints_[0].append(
-                QPointF(sample.elapsedS,
-                        sample.commandVelocityDegreePerSecond));
-            traceDelayVelocityDisplayPoints_[1].append(
-                QPointF(sample.elapsedS,
-                        sample.actualVelocityDegreePerSecond));
-            lastTraceDelayPlotTimeS_ = sample.elapsedS;
-        }
-        for (QList<QPointF> &points : traceDelayVelocityDisplayPoints_) {
-            const qsizetype overflow = points.size() - kMaximumPoints;
-            if (overflow > 0) {
-                points.remove(0, overflow);
-            }
-        }
-        for (int index = 0; index < 2; ++index) {
-            traceDelayVelocitySeries_[index]->replace(
-                traceDelayVelocityDisplayPoints_[index]);
-        }
-        updateChartRanges(ui_->traceDelayVelocityChartView,
-                          {traceDelayVelocitySeries_[0],
-                           traceDelayVelocitySeries_[1]},
-                          lastTraceDelayPlotTimeS_, 1.0);
-        ui_->traceDelayVelocityChartView->update();
-    }
-
-    if (!hasLatestStatus_) {
-        return;
-    }
-    const TraceDelayCalibrationStatus &status =
-        latestStatus_.traceDelayCalibration;
-    if (status.fittedSpeedDegreePerSecond.size()
-            != status.fittedPositionGapDegree.size()
-        || status.fittedSpeedDegreePerSecond.isEmpty()) {
-        return;
-    }
-    QStringList signatureParts;
-    for (int index = 0; index < status.fittedSpeedDegreePerSecond.size(); ++index) {
-        signatureParts << QStringLiteral("%1:%2")
-                              .arg(status.fittedSpeedDegreePerSecond.at(index),
-                                   0, 'g', 12)
-                              .arg(status.fittedPositionGapDegree.at(index),
-                                   0, 'g', 12);
-    }
-    signatureParts << QString::number(status.fittedSlopeSecond, 'g', 12)
-                   << QString::number(status.fittedInterceptDegree, 'g', 12);
-    const QString signature = signatureParts.join(QLatin1Char('|'));
-    if (signature == lastTraceDelayFitSignature_) {
-        return;
-    }
-    lastTraceDelayFitSignature_ = signature;
-    QList<QPointF> points;
-    double minimumSpeed = std::numeric_limits<double>::max();
-    double maximumSpeed = std::numeric_limits<double>::lowest();
-    double minimumGap = std::numeric_limits<double>::max();
-    double maximumGap = std::numeric_limits<double>::lowest();
-    for (int index = 0; index < status.fittedSpeedDegreePerSecond.size(); ++index) {
-        const double speed = status.fittedSpeedDegreePerSecond.at(index);
-        const double gap = status.fittedPositionGapDegree.at(index);
-        points.append(QPointF(speed, gap));
-        minimumSpeed = qMin(minimumSpeed, speed);
-        maximumSpeed = qMax(maximumSpeed, speed);
-        minimumGap = qMin(minimumGap, gap);
-        maximumGap = qMax(maximumGap, gap);
-    }
-    traceDelayFitPointSeries_->replace(points);
-    const double fitMinimum =
-        status.fittedSlopeSecond * minimumSpeed
-        + status.fittedInterceptDegree;
-    const double fitMaximum =
-        status.fittedSlopeSecond * maximumSpeed
-        + status.fittedInterceptDegree;
-    traceDelayFitLineSeries_->replace(
-        QList<QPointF> {QPointF(minimumSpeed, fitMinimum),
-                        QPointF(maximumSpeed, fitMaximum)});
-    minimumGap = qMin(minimumGap, qMin(fitMinimum, fitMaximum));
-    maximumGap = qMax(maximumGap, qMax(fitMinimum, fitMaximum));
-    const double speedMargin = qMax(1.0, (maximumSpeed - minimumSpeed) * 0.1);
-    const double gapMargin = qMax(0.001, (maximumGap - minimumGap) * 0.15);
-    ui_->traceDelayFitChartView->setAutomaticRange(
-        minimumSpeed - speedMargin, maximumSpeed + speedMargin,
-        minimumGap - gapMargin, maximumGap + gapMargin);
-    ui_->traceDelayFitChartView->update();
 }
 
 void MainWindow::clearVelocityControlCharts()

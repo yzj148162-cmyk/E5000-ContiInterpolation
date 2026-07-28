@@ -16,7 +16,6 @@ int main(int argc, char *argv[])
     qRegisterMetaType<TorqueTestConfig>("TorqueTestConfig");
     qRegisterMetaType<QVector<TorquePlotSample>>("QVector<TorquePlotSample>");
     qRegisterMetaType<TraceDelayCalibrationConfig>("TraceDelayCalibrationConfig");
-    qRegisterMetaType<QVector<TraceDelayPlotSample>>("QVector<TraceDelayPlotSample>");
 
     MainWindow window;
     window.show();

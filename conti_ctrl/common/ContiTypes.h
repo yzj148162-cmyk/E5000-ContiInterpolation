@@ -293,15 +293,6 @@ struct TraceDelayCalibrationStatus
     double fittedInterceptDegree = 0.0;
 };
 
-struct TraceDelayPlotSample
-{
-    quint64 runId = 0;
-    double elapsedS = 0.0;
-    double commandVelocityDegreePerSecond = 0.0;
-    double actualVelocityDegreePerSecond = 0.0;
-    double rawPositionGapDegree = 0.0;
-};
-
 // 速度闭环曲线使用的轻量样本。控制线程按每个 Trace 帧生成，UI 低频批量追加，
 // 避免把图表重绘开销带入控制周期，同时保留 1 ms 反馈细节。
 struct VelocityPlotSample
@@ -500,7 +491,5 @@ Q_DECLARE_METATYPE(TorqueTestConfig)
 Q_DECLARE_METATYPE(TorquePlotSample)
 Q_DECLARE_METATYPE(QVector<TorquePlotSample>)
 Q_DECLARE_METATYPE(TraceDelayCalibrationConfig)
-Q_DECLARE_METATYPE(TraceDelayPlotSample)
-Q_DECLARE_METATYPE(QVector<TraceDelayPlotSample>)
 
 #endif // CONTITYPES_H
