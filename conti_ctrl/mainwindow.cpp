@@ -125,20 +125,10 @@ void MainWindow::connectWorker()
     connect(ui_->busCycleCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &MainWindow::onBusCycleSelectionChanged);
     connect(ui_->cardUnitDefinitionCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, [this](int index) {
-        const QStringList equivalents {
-            QStringLiteral("500.622 pulse/unit（1 unit = 1°；180224 pulse/rev）"),
-            QStringLiteral("50.0622 pulse/unit（1 unit = 0.1°；180224 pulse/rev）"),
-            QStringLiteral("5.00622 pulse/unit（1 unit = 0.01°；180224 pulse/rev）")
-        };
-        ui_->equivValueLabel->setText(equivalents.value(index, equivalents.first()));
-    });
-    connect(ui_->velocityUnitDefinitionCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, [this](int index) {
-        const bool custom = index == 3;
-        ui_->velocityCustomEquivalentLabel->setEnabled(custom);
-        ui_->velocityCustomEquivalentSpin->setEnabled(custom);
-    });
+            this, [this](int) { updateGlobalCardUnitUi(); });
+    connect(ui_->cardCustomEquivalentSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [this](double) { updateGlobalCardUnitUi(); });
+    updateGlobalCardUnitUi();
     connect(ui_->velocityTrajectoryTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             ui_->velocityTrajectoryParameterStack, &QStackedWidget::setCurrentIndex);
     ui_->velocityTrajectoryParameterStack->setCurrentIndex(
@@ -191,10 +181,6 @@ void MainWindow::connectWorker()
             this, &MainWindow::onVelocityResetClicked);
     connect(ui_->velocityClearCurvesButton, &QPushButton::clicked,
             this, &MainWindow::onVelocityClearCurvesClicked);
-    connect(ui_->torqueUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, [this](int index) {
-        ui_->torqueCustomEquivalentSpin->setEnabled(index == 3);
-    });
     connect(ui_->torqueOd6080RawSpin, qOverload<int>(&QSpinBox::valueChanged),
             this, [this](int) {
         updateTorqueOutputSpeedEquivalent();
@@ -216,12 +202,6 @@ void MainWindow::connectWorker()
             this, &MainWindow::onTorqueEmergencyStopClicked);
     connect(ui_->torqueClearCurvesButton, &QPushButton::clicked,
             this, &MainWindow::onTorqueClearCurvesClicked);
-    connect(ui_->traceDelayUnitCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, [this](int index) {
-        const bool custom = index == 3;
-        ui_->traceDelayCustomEquivalentLabel->setEnabled(custom);
-        ui_->traceDelayCustomEquivalentSpin->setEnabled(custom);
-    });
     connect(ui_->traceDelayStartButton, &QPushButton::clicked,
             this, &MainWindow::onTraceDelayStartClicked);
     connect(ui_->traceDelayStopButton, &QPushButton::clicked,
@@ -321,17 +301,7 @@ ContiTestConfig MainWindow::collectConfig() const
         ? TestStage::SingleActiveAxis : TestStage::DualAxis;
     config.trajectoryPointMode = ui_->trajectoryPointModeCombo->currentIndex() == 0
         ? TrajectoryPointMode::QuinticTimeLaw : TrajectoryPointMode::UniformDistance;
-    switch (ui_->cardUnitDefinitionCombo->currentIndex()) {
-    case 1:
-        config.degreesPerCardUnit = 0.1;
-        break;
-    case 2:
-        config.degreesPerCardUnit = 0.01;
-        break;
-    default:
-        config.degreesPerCardUnit = 1.0;
-        break;
-    }
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
     config.activeDeltaUnit = ui_->activeDeltaSpin->value();
     config.holdDeltaUnit = ui_->holdDeltaSpin->value();
     config.durationS = ui_->durationSpin->value();
@@ -383,21 +353,7 @@ VelocityControlConfig MainWindow::collectVelocityConfig() const
     config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
     config.trajectoryType = static_cast<VelocityTrajectoryType>(
         ui_->velocityTrajectoryTypeCombo->currentIndex());
-    switch (ui_->velocityUnitDefinitionCombo->currentIndex()) {
-    case 1:
-        config.degreesPerCardUnit = 0.1;
-        break;
-    case 2:
-        config.degreesPerCardUnit = 0.01;
-        break;
-    case 3:
-        config.degreesPerCardUnit = ui_->velocityCustomEquivalentSpin->value()
-            / MotorUnit::kPhysicalPulsesPerDegree;
-        break;
-    default:
-        config.degreesPerCardUnit = 1.0;
-        break;
-    }
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
     config.relativeDeltaDegree = ui_->velocityDeltaSpin->value();
     config.sineAmplitudeDegree = ui_->velocitySineAmplitudeSpin->value();
     config.sineFrequencyHz = ui_->velocitySineFrequencySpin->value();
@@ -433,21 +389,7 @@ TorqueTestConfig MainWindow::collectTorqueConfig() const
     config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
     config.axis =
         static_cast<quint16>(ui_->torqueAxisCombo->currentText().toUInt());
-    switch (ui_->torqueUnitCombo->currentIndex()) {
-    case 1:
-        config.degreesPerCardUnit = 0.1;
-        break;
-    case 2:
-        config.degreesPerCardUnit = 0.01;
-        break;
-    case 3:
-        config.degreesPerCardUnit = ui_->torqueCustomEquivalentSpin->value()
-            / MotorUnit::kPhysicalPulsesPerDegree;
-        break;
-    default:
-        config.degreesPerCardUnit = 1.0;
-        break;
-    }
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
     config.targetTorquePercent = ui_->torqueTargetSpin->value();
     config.maximumCommandTorquePercent = ui_->torqueCommandLimitSpin->value();
     config.maximumActualTorquePercent = ui_->torqueActualLimitSpin->value();
@@ -475,28 +417,45 @@ void MainWindow::updateTorqueOutputSpeedEquivalent()
             .arg(MotorUnit::kGearReductionRatio));
 }
 
+double MainWindow::selectedDegreesPerCardUnit() const
+{
+    switch (ui_->cardUnitDefinitionCombo->currentIndex()) {
+    case 1:
+        return 0.1;
+    case 2:
+        return 0.01;
+    case 3:
+        return ui_->cardCustomEquivalentSpin->value()
+            / MotorUnit::kPhysicalPulsesPerDegree;
+    default:
+        return 1.0;
+    }
+}
+
+void MainWindow::updateGlobalCardUnitUi()
+{
+    const bool custom = ui_->cardUnitDefinitionCombo->currentIndex() == 3;
+    const bool editable = ui_->cardUnitDefinitionCombo->isEnabled();
+    ui_->cardCustomEquivalentLabel->setEnabled(custom && editable);
+    ui_->cardCustomEquivalentSpin->setEnabled(custom && editable);
+
+    const double degreesPerCardUnit = selectedDegreesPerCardUnit();
+    const double pulsesPerCardUnit =
+        MotorUnit::pulsesPerCardUnit(degreesPerCardUnit);
+    ui_->equivValueLabel->setText(
+        QStringLiteral("%1 pulse/unit；1 unit=%2°；%3 pulse/rev")
+            .arg(pulsesPerCardUnit, 0, 'f', 6)
+            .arg(degreesPerCardUnit, 0, 'g', 8)
+            .arg(MotorUnit::kPulsesPerRevolution));
+}
+
 TraceDelayCalibrationConfig MainWindow::collectTraceDelayCalibrationConfig() const
 {
     TraceDelayCalibrationConfig config;
     config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
     config.axis =
         static_cast<quint16>(ui_->traceDelayAxisCombo->currentText().toUInt());
-    switch (ui_->traceDelayUnitCombo->currentIndex()) {
-    case 1:
-        config.degreesPerCardUnit = 0.1;
-        break;
-    case 2:
-        config.degreesPerCardUnit = 0.01;
-        break;
-    case 3:
-        config.degreesPerCardUnit =
-            ui_->traceDelayCustomEquivalentSpin->value()
-            / MotorUnit::kPhysicalPulsesPerDegree;
-        break;
-    default:
-        config.degreesPerCardUnit = 1.0;
-        break;
-    }
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
     config.speedDegreePerSecond = {
         ui_->traceDelaySpeed1Spin->value(),
         ui_->traceDelaySpeed2Spin->value(),
@@ -840,6 +799,11 @@ void MainWindow::updateStatus(const ContiStatus &status)
     ui_->contiHostQueueValueLabel->setText(QString::number(status.hostQueueSize));
     ui_->busCycleCombo->setEnabled(!status.boardInitialized);
     ui_->cardUnitDefinitionCombo->setEnabled(!status.boardInitialized);
+    const bool customCardUnit = ui_->cardUnitDefinitionCombo->currentIndex() == 3;
+    ui_->cardCustomEquivalentLabel->setEnabled(
+        !status.boardInitialized && customCardUnit);
+    ui_->cardCustomEquivalentSpin->setEnabled(
+        !status.boardInitialized && customCardUnit);
     ui_->readBusCycleButton->setEnabled(status.boardInitialized);
     ui_->busCycleReadValueLabel->setText(status.boardInitialized
         ? QStringLiteral("%1 us").arg(status.busCycleUs)
@@ -1000,9 +964,6 @@ void MainWindow::updateStatus(const ContiStatus &status)
               .arg(outputSpeedReadbackRpm * 6.0, 0, 'f', 3));
     ui_->torqueParameterGroup->setEnabled(true);
     ui_->torqueAxisCombo->setEnabled(!torque.active);
-    ui_->torqueUnitCombo->setEnabled(!torque.active);
-    ui_->torqueCustomEquivalentSpin->setEnabled(
-        !torque.active && ui_->torqueUnitCombo->currentIndex() == 3);
     ui_->torqueCommandLimitSpin->setEnabled(!torque.active);
     ui_->torqueMonitorPeriodSpin->setEnabled(!torque.active);
     // 运行中只保留目标转矩可编辑，由“在线更新转矩”显式下发。

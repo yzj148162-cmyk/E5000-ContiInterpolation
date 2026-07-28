@@ -121,6 +121,8 @@ private:
     void updateTorqueTestCharts();
     void clearTorqueTestCharts();
     void updateTorqueOutputSpeedEquivalent();
+    double selectedDegreesPerCardUnit() const;
+    void updateGlobalCardUnitUi();
     void initializeTraceDelayCalibrationCharts();
     void updateTraceDelayCalibrationCharts();
     void clearTraceDelayCalibrationCharts();

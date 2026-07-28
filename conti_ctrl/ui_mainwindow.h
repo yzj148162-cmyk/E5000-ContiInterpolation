@@ -58,6 +58,12 @@ public:
     QPushButton *readBusCycleButton;
     QLabel *traceSampleLabel;
     QLabel *traceSampleValueLabel;
+    QLabel *cardUnitDefinitionLabel;
+    QComboBox *cardUnitDefinitionCombo;
+    QLabel *cardCustomEquivalentLabel;
+    QDoubleSpinBox *cardCustomEquivalentSpin;
+    QLabel *equivLabel;
+    QLabel *equivValueLabel;
     QGroupBox *globalActionGroup;
     QVBoxLayout *globalActionLayout;
     QPushButton *initializeButton;
@@ -136,8 +142,6 @@ public:
     QDoubleSpinBox *durationSpin;
     QLabel *producerPeriodLabel;
     QSpinBox *producerPeriodSpin;
-    QLabel *cardUnitDefinitionLabel;
-    QComboBox *cardUnitDefinitionCombo;
     QLabel *trajectoryPointModeLabel;
     QComboBox *trajectoryPointModeCombo;
     QGroupBox *contiGroup;
@@ -203,8 +207,6 @@ public:
     QFormLayout *baseConfigForm;
     QLabel *axisRangeLabel;
     QLabel *axisRangeValueLabel;
-    QLabel *equivLabel;
-    QLabel *equivValueLabel;
     QLabel *feedbackSourceLabel;
     QLabel *feedbackSourceValueLabel;
     QGroupBox *singleAxisJogGroup;
@@ -254,7 +256,7 @@ public:
     QWidget *velocityControlScrollContent;
     QVBoxLayout *velocityControlContentLayout;
     QGroupBox *velocityControlParameterGroup;
-    QGridLayout *velocityControlParameterLayout;
+    QGridLayout *gridLayout;
     QGroupBox *velocityTrajectoryGroup;
     QGridLayout *gridLayout_2;
     QLabel *velocityTrajectoryTypeLabel;
@@ -287,10 +289,6 @@ public:
     QLabel *velocityChirpEndFrequencyLabel;
     QDoubleSpinBox *velocityChirpEndFrequencySpin;
     QSpacerItem *velocityChirpSpacer;
-    QLabel *velocityUnitDefinitionLabel;
-    QComboBox *velocityUnitDefinitionCombo;
-    QLabel *velocityCustomEquivalentLabel;
-    QDoubleSpinBox *velocityCustomEquivalentSpin;
     QGroupBox *velocityClosedLoopGroup;
     QGridLayout *velocityClosedLoopLayout;
     QCheckBox *velocityFeedforwardCheck;
@@ -309,15 +307,15 @@ public:
     QSpacerItem *velocityClosedLoopSpacer;
     QGroupBox *velocityLimitGroup;
     QGridLayout *velocityLimitLayout;
-    QLabel *velocityMaxSpeedLabel;
-    QDoubleSpinBox *velocityMaxSpeedSpin;
     QLabel *velocityMaxAccelerationLabel;
     QDoubleSpinBox *velocityMaxAccelerationSpin;
+    QDoubleSpinBox *velocityStartThresholdSpin;
+    QLabel *velocityStartThresholdLabel;
+    QLabel *velocityMaxSpeedLabel;
+    QDoubleSpinBox *velocityMaxSpeedSpin;
     QLabel *velocityChangeTimeLabel;
     QDoubleSpinBox *velocityChangeTimeSpin;
-    QLabel *velocityStartThresholdLabel;
-    QDoubleSpinBox *velocityStartThresholdSpin;
-    QSpacerItem *velocityLimitSpacer;
+    QSpacerItem *horizontalSpacer;
     QGroupBox *velocityCriterionGroup;
     QGridLayout *velocityCriterionLayout;
     QLabel *velocityPositionToleranceLabel;
@@ -349,9 +347,9 @@ public:
     QLabel *velocityPositionStatusLabel;
     QLabel *velocityPositionStatusValueLabel;
     QLabel *velocitySpeedStatusLabel;
-    QLabel *velocitySpeedStatusValueLabel;
     QLabel *velocityPidStatusLabel;
     QLabel *velocityPidStatusValueLabel;
+    QLabel *velocitySpeedStatusValueLabel;
     QSplitter *velocityControlChartSplitter;
     ZoomableChartView *velocityPositionChartView;
     ZoomableChartView *velocityErrorChartView;
@@ -366,9 +364,6 @@ public:
     QGridLayout *torqueParameterLayout;
     QLabel *torqueAxisLabel;
     QComboBox *torqueAxisCombo;
-    QLabel *torqueUnitLabel;
-    QComboBox *torqueUnitCombo;
-    QDoubleSpinBox *torqueCustomEquivalentSpin;
     QLabel *torqueMotorParameterSummaryLabel;
     QLabel *torqueTargetLabel;
     QDoubleSpinBox *torqueTargetSpin;
@@ -429,10 +424,6 @@ public:
     QGridLayout *traceDelayCalibrationParameterLayout;
     QLabel *traceDelayAxisLabel;
     QComboBox *traceDelayAxisCombo;
-    QLabel *traceDelayUnitLabel;
-    QComboBox *traceDelayUnitCombo;
-    QLabel *traceDelayCustomEquivalentLabel;
-    QDoubleSpinBox *traceDelayCustomEquivalentSpin;
     QLabel *traceDelaySpeed1Label;
     QDoubleSpinBox *traceDelaySpeed1Spin;
     QLabel *traceDelaySpeed2Label;
@@ -559,6 +550,50 @@ public:
         traceSampleValueLabel->setWordWrap(true);
 
         statusForm->setWidget(9, QFormLayout::FieldRole, traceSampleValueLabel);
+
+        cardUnitDefinitionLabel = new QLabel(globalStatusGroup);
+        cardUnitDefinitionLabel->setObjectName("cardUnitDefinitionLabel");
+        cardUnitDefinitionLabel->setWordWrap(true);
+
+        statusForm->setWidget(10, QFormLayout::LabelRole, cardUnitDefinitionLabel);
+
+        cardUnitDefinitionCombo = new QComboBox(globalStatusGroup);
+        cardUnitDefinitionCombo->addItem(QString());
+        cardUnitDefinitionCombo->addItem(QString());
+        cardUnitDefinitionCombo->addItem(QString());
+        cardUnitDefinitionCombo->addItem(QString());
+        cardUnitDefinitionCombo->setObjectName("cardUnitDefinitionCombo");
+
+        statusForm->setWidget(10, QFormLayout::FieldRole, cardUnitDefinitionCombo);
+
+        cardCustomEquivalentLabel = new QLabel(globalStatusGroup);
+        cardCustomEquivalentLabel->setObjectName("cardCustomEquivalentLabel");
+        cardCustomEquivalentLabel->setEnabled(false);
+        cardCustomEquivalentLabel->setWordWrap(true);
+
+        statusForm->setWidget(11, QFormLayout::LabelRole, cardCustomEquivalentLabel);
+
+        cardCustomEquivalentSpin = new QDoubleSpinBox(globalStatusGroup);
+        cardCustomEquivalentSpin->setObjectName("cardCustomEquivalentSpin");
+        cardCustomEquivalentSpin->setEnabled(false);
+        cardCustomEquivalentSpin->setDecimals(6);
+        cardCustomEquivalentSpin->setMinimum(0.000001000000000);
+        cardCustomEquivalentSpin->setMaximum(1000000000.000000000000000);
+        cardCustomEquivalentSpin->setValue(500.622222000000022);
+
+        statusForm->setWidget(11, QFormLayout::FieldRole, cardCustomEquivalentSpin);
+
+        equivLabel = new QLabel(globalStatusGroup);
+        equivLabel->setObjectName("equivLabel");
+        equivLabel->setWordWrap(true);
+
+        statusForm->setWidget(12, QFormLayout::LabelRole, equivLabel);
+
+        equivValueLabel = new QLabel(globalStatusGroup);
+        equivValueLabel->setObjectName("equivValueLabel");
+        equivValueLabel->setWordWrap(true);
+
+        statusForm->setWidget(12, QFormLayout::FieldRole, equivValueLabel);
 
 
         globalControlLayout->addWidget(globalStatusGroup);
@@ -965,19 +1000,6 @@ public:
 
         testForm->setWidget(9, QFormLayout::FieldRole, producerPeriodSpin);
 
-        cardUnitDefinitionLabel = new QLabel(testGroup);
-        cardUnitDefinitionLabel->setObjectName("cardUnitDefinitionLabel");
-
-        testForm->setWidget(10, QFormLayout::LabelRole, cardUnitDefinitionLabel);
-
-        cardUnitDefinitionCombo = new QComboBox(testGroup);
-        cardUnitDefinitionCombo->addItem(QString());
-        cardUnitDefinitionCombo->addItem(QString());
-        cardUnitDefinitionCombo->addItem(QString());
-        cardUnitDefinitionCombo->setObjectName("cardUnitDefinitionCombo");
-
-        testForm->setWidget(10, QFormLayout::FieldRole, cardUnitDefinitionCombo);
-
         trajectoryPointModeLabel = new QLabel(testGroup);
         trajectoryPointModeLabel->setObjectName("trajectoryPointModeLabel");
 
@@ -1373,16 +1395,6 @@ public:
 
         baseConfigForm->setWidget(0, QFormLayout::FieldRole, axisRangeValueLabel);
 
-        equivLabel = new QLabel(baseConfigGroup);
-        equivLabel->setObjectName("equivLabel");
-
-        baseConfigForm->setWidget(1, QFormLayout::LabelRole, equivLabel);
-
-        equivValueLabel = new QLabel(baseConfigGroup);
-        equivValueLabel->setObjectName("equivValueLabel");
-
-        baseConfigForm->setWidget(1, QFormLayout::FieldRole, equivValueLabel);
-
         feedbackSourceLabel = new QLabel(baseConfigGroup);
         feedbackSourceLabel->setObjectName("feedbackSourceLabel");
 
@@ -1648,13 +1660,13 @@ public:
         velocityControlScrollArea->setWidgetResizable(true);
         velocityControlScrollContent = new QWidget();
         velocityControlScrollContent->setObjectName("velocityControlScrollContent");
-        velocityControlScrollContent->setGeometry(QRect(0, 0, 781, 1136));
+        velocityControlScrollContent->setGeometry(QRect(0, 0, 935, 1256));
         velocityControlContentLayout = new QVBoxLayout(velocityControlScrollContent);
         velocityControlContentLayout->setObjectName("velocityControlContentLayout");
         velocityControlParameterGroup = new QGroupBox(velocityControlScrollContent);
         velocityControlParameterGroup->setObjectName("velocityControlParameterGroup");
-        velocityControlParameterLayout = new QGridLayout(velocityControlParameterGroup);
-        velocityControlParameterLayout->setObjectName("velocityControlParameterLayout");
+        gridLayout = new QGridLayout(velocityControlParameterGroup);
+        gridLayout->setObjectName("gridLayout");
         velocityTrajectoryGroup = new QGroupBox(velocityControlParameterGroup);
         velocityTrajectoryGroup->setObjectName("velocityTrajectoryGroup");
         QSizePolicy sizePolicy(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Preferred);
@@ -1841,38 +1853,8 @@ public:
 
         gridLayout_2->addWidget(velocityTrajectoryParameterStack, 2, 0, 1, 4);
 
-        velocityUnitDefinitionLabel = new QLabel(velocityTrajectoryGroup);
-        velocityUnitDefinitionLabel->setObjectName("velocityUnitDefinitionLabel");
 
-        gridLayout_2->addWidget(velocityUnitDefinitionLabel, 3, 0, 1, 1);
-
-        velocityUnitDefinitionCombo = new QComboBox(velocityTrajectoryGroup);
-        velocityUnitDefinitionCombo->addItem(QString());
-        velocityUnitDefinitionCombo->addItem(QString());
-        velocityUnitDefinitionCombo->addItem(QString());
-        velocityUnitDefinitionCombo->addItem(QString());
-        velocityUnitDefinitionCombo->setObjectName("velocityUnitDefinitionCombo");
-
-        gridLayout_2->addWidget(velocityUnitDefinitionCombo, 3, 1, 1, 1);
-
-        velocityCustomEquivalentLabel = new QLabel(velocityTrajectoryGroup);
-        velocityCustomEquivalentLabel->setObjectName("velocityCustomEquivalentLabel");
-        velocityCustomEquivalentLabel->setEnabled(false);
-
-        gridLayout_2->addWidget(velocityCustomEquivalentLabel, 3, 2, 1, 1);
-
-        velocityCustomEquivalentSpin = new QDoubleSpinBox(velocityTrajectoryGroup);
-        velocityCustomEquivalentSpin->setObjectName("velocityCustomEquivalentSpin");
-        velocityCustomEquivalentSpin->setEnabled(false);
-        velocityCustomEquivalentSpin->setDecimals(6);
-        velocityCustomEquivalentSpin->setMinimum(0.000001000000000);
-        velocityCustomEquivalentSpin->setMaximum(1000000000.000000000000000);
-        velocityCustomEquivalentSpin->setValue(500.622000000000014);
-
-        gridLayout_2->addWidget(velocityCustomEquivalentSpin, 3, 3, 1, 1);
-
-
-        velocityControlParameterLayout->addWidget(velocityTrajectoryGroup, 0, 0, 1, 1);
+        gridLayout->addWidget(velocityTrajectoryGroup, 0, 0, 1, 1);
 
         velocityClosedLoopGroup = new QGroupBox(velocityControlParameterGroup);
         velocityClosedLoopGroup->setObjectName("velocityClosedLoopGroup");
@@ -1966,26 +1948,14 @@ public:
         velocityClosedLoopLayout->addItem(velocityClosedLoopSpacer, 0, 4, 4, 1);
 
 
-        velocityControlParameterLayout->addWidget(velocityClosedLoopGroup, 0, 1, 1, 1);
+        gridLayout->addWidget(velocityClosedLoopGroup, 0, 1, 1, 1);
 
         velocityLimitGroup = new QGroupBox(velocityControlParameterGroup);
         velocityLimitGroup->setObjectName("velocityLimitGroup");
+        sizePolicy.setHeightForWidth(velocityLimitGroup->sizePolicy().hasHeightForWidth());
+        velocityLimitGroup->setSizePolicy(sizePolicy);
         velocityLimitLayout = new QGridLayout(velocityLimitGroup);
         velocityLimitLayout->setObjectName("velocityLimitLayout");
-        velocityMaxSpeedLabel = new QLabel(velocityLimitGroup);
-        velocityMaxSpeedLabel->setObjectName("velocityMaxSpeedLabel");
-
-        velocityLimitLayout->addWidget(velocityMaxSpeedLabel, 0, 0, 1, 1);
-
-        velocityMaxSpeedSpin = new QDoubleSpinBox(velocityLimitGroup);
-        velocityMaxSpeedSpin->setObjectName("velocityMaxSpeedSpin");
-        velocityMaxSpeedSpin->setDecimals(3);
-        velocityMaxSpeedSpin->setMinimum(0.001000000000000);
-        velocityMaxSpeedSpin->setMaximum(10000.000000000000000);
-        velocityMaxSpeedSpin->setValue(720.000000000000000);
-
-        velocityLimitLayout->addWidget(velocityMaxSpeedSpin, 0, 1, 1, 1);
-
         velocityMaxAccelerationLabel = new QLabel(velocityLimitGroup);
         velocityMaxAccelerationLabel->setObjectName("velocityMaxAccelerationLabel");
 
@@ -1999,6 +1969,34 @@ public:
         velocityMaxAccelerationSpin->setValue(2000.000000000000000);
 
         velocityLimitLayout->addWidget(velocityMaxAccelerationSpin, 0, 3, 1, 1);
+
+        velocityStartThresholdSpin = new QDoubleSpinBox(velocityLimitGroup);
+        velocityStartThresholdSpin->setObjectName("velocityStartThresholdSpin");
+        velocityStartThresholdSpin->setDecimals(4);
+        velocityStartThresholdSpin->setMinimum(0.000100000000000);
+        velocityStartThresholdSpin->setMaximum(1000.000000000000000);
+        velocityStartThresholdSpin->setValue(0.001000000000000);
+
+        velocityLimitLayout->addWidget(velocityStartThresholdSpin, 1, 3, 1, 1);
+
+        velocityStartThresholdLabel = new QLabel(velocityLimitGroup);
+        velocityStartThresholdLabel->setObjectName("velocityStartThresholdLabel");
+
+        velocityLimitLayout->addWidget(velocityStartThresholdLabel, 1, 2, 1, 1);
+
+        velocityMaxSpeedLabel = new QLabel(velocityLimitGroup);
+        velocityMaxSpeedLabel->setObjectName("velocityMaxSpeedLabel");
+
+        velocityLimitLayout->addWidget(velocityMaxSpeedLabel, 0, 0, 1, 1);
+
+        velocityMaxSpeedSpin = new QDoubleSpinBox(velocityLimitGroup);
+        velocityMaxSpeedSpin->setObjectName("velocityMaxSpeedSpin");
+        velocityMaxSpeedSpin->setDecimals(3);
+        velocityMaxSpeedSpin->setMinimum(0.001000000000000);
+        velocityMaxSpeedSpin->setMaximum(10000.000000000000000);
+        velocityMaxSpeedSpin->setValue(720.000000000000000);
+
+        velocityLimitLayout->addWidget(velocityMaxSpeedSpin, 0, 1, 1, 1);
 
         velocityChangeTimeLabel = new QLabel(velocityLimitGroup);
         velocityChangeTimeLabel->setObjectName("velocityChangeTimeLabel");
@@ -2015,26 +2013,12 @@ public:
 
         velocityLimitLayout->addWidget(velocityChangeTimeSpin, 1, 1, 1, 1);
 
-        velocityStartThresholdLabel = new QLabel(velocityLimitGroup);
-        velocityStartThresholdLabel->setObjectName("velocityStartThresholdLabel");
+        horizontalSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
 
-        velocityLimitLayout->addWidget(velocityStartThresholdLabel, 1, 2, 1, 1);
-
-        velocityStartThresholdSpin = new QDoubleSpinBox(velocityLimitGroup);
-        velocityStartThresholdSpin->setObjectName("velocityStartThresholdSpin");
-        velocityStartThresholdSpin->setDecimals(4);
-        velocityStartThresholdSpin->setMinimum(0.000100000000000);
-        velocityStartThresholdSpin->setMaximum(1000.000000000000000);
-        velocityStartThresholdSpin->setValue(0.001000000000000);
-
-        velocityLimitLayout->addWidget(velocityStartThresholdSpin, 1, 3, 1, 1);
-
-        velocityLimitSpacer = new QSpacerItem(40, 20, QSizePolicy::Policy::Expanding, QSizePolicy::Policy::Minimum);
-
-        velocityLimitLayout->addItem(velocityLimitSpacer, 0, 4, 2, 1);
+        velocityLimitLayout->addItem(horizontalSpacer, 0, 4, 1, 1);
 
 
-        velocityControlParameterLayout->addWidget(velocityLimitGroup, 1, 0, 1, 1);
+        gridLayout->addWidget(velocityLimitGroup, 1, 0, 1, 1);
 
         velocityCriterionGroup = new QGroupBox(velocityControlParameterGroup);
         velocityCriterionGroup->setObjectName("velocityCriterionGroup");
@@ -2126,7 +2110,7 @@ public:
         velocityCriterionLayout->addItem(velocityCriterionSpacer, 0, 4, 3, 1);
 
 
-        velocityControlParameterLayout->addWidget(velocityCriterionGroup, 1, 1, 1, 1);
+        gridLayout->addWidget(velocityCriterionGroup, 1, 1, 1, 1);
 
 
         velocityControlContentLayout->addWidget(velocityControlParameterGroup);
@@ -2137,6 +2121,11 @@ public:
         velocityControlOperationLayout->setObjectName("velocityControlOperationLayout");
         velocityEnableAxisButton = new QPushButton(velocityControlOperationGroup);
         velocityEnableAxisButton->setObjectName("velocityEnableAxisButton");
+        QSizePolicy sizePolicy1(QSizePolicy::Policy::Preferred, QSizePolicy::Policy::Fixed);
+        sizePolicy1.setHorizontalStretch(0);
+        sizePolicy1.setVerticalStretch(0);
+        sizePolicy1.setHeightForWidth(velocityEnableAxisButton->sizePolicy().hasHeightForWidth());
+        velocityEnableAxisButton->setSizePolicy(sizePolicy1);
 
         velocityControlOperationLayout->addWidget(velocityEnableAxisButton, 0, 0, 1, 1);
 
@@ -2206,11 +2195,6 @@ public:
 
         velocityControlOperationLayout->addWidget(velocitySpeedStatusLabel, 3, 0, 1, 1);
 
-        velocitySpeedStatusValueLabel = new QLabel(velocityControlOperationGroup);
-        velocitySpeedStatusValueLabel->setObjectName("velocitySpeedStatusValueLabel");
-
-        velocityControlOperationLayout->addWidget(velocitySpeedStatusValueLabel, 3, 1, 1, 6);
-
         velocityPidStatusLabel = new QLabel(velocityControlOperationGroup);
         velocityPidStatusLabel->setObjectName("velocityPidStatusLabel");
 
@@ -2220,6 +2204,11 @@ public:
         velocityPidStatusValueLabel->setObjectName("velocityPidStatusValueLabel");
 
         velocityControlOperationLayout->addWidget(velocityPidStatusValueLabel, 4, 1, 1, 6);
+
+        velocitySpeedStatusValueLabel = new QLabel(velocityControlOperationGroup);
+        velocitySpeedStatusValueLabel->setObjectName("velocitySpeedStatusValueLabel");
+
+        velocityControlOperationLayout->addWidget(velocitySpeedStatusValueLabel, 3, 1, 1, 5);
 
 
         velocityControlContentLayout->addWidget(velocityControlOperationGroup);
@@ -2264,7 +2253,7 @@ public:
         torqueTestScrollArea->setWidgetResizable(true);
         torqueTestScrollContent = new QWidget();
         torqueTestScrollContent->setObjectName("torqueTestScrollContent");
-        torqueTestScrollContent->setGeometry(QRect(0, 0, 900, 1050));
+        torqueTestScrollContent->setGeometry(QRect(0, 0, 781, 1105));
         torqueTestContentLayout = new QVBoxLayout(torqueTestScrollContent);
         torqueTestContentLayout->setObjectName("torqueTestContentLayout");
         torqueParameterGroup = new QGroupBox(torqueTestScrollContent);
@@ -2288,30 +2277,6 @@ public:
         torqueAxisCombo->setObjectName("torqueAxisCombo");
 
         torqueParameterLayout->addWidget(torqueAxisCombo, 0, 1, 1, 1);
-
-        torqueUnitLabel = new QLabel(torqueParameterGroup);
-        torqueUnitLabel->setObjectName("torqueUnitLabel");
-
-        torqueParameterLayout->addWidget(torqueUnitLabel, 0, 2, 1, 1);
-
-        torqueUnitCombo = new QComboBox(torqueParameterGroup);
-        torqueUnitCombo->addItem(QString());
-        torqueUnitCombo->addItem(QString());
-        torqueUnitCombo->addItem(QString());
-        torqueUnitCombo->addItem(QString());
-        torqueUnitCombo->setObjectName("torqueUnitCombo");
-
-        torqueParameterLayout->addWidget(torqueUnitCombo, 0, 3, 1, 1);
-
-        torqueCustomEquivalentSpin = new QDoubleSpinBox(torqueParameterGroup);
-        torqueCustomEquivalentSpin->setObjectName("torqueCustomEquivalentSpin");
-        torqueCustomEquivalentSpin->setEnabled(false);
-        torqueCustomEquivalentSpin->setDecimals(6);
-        torqueCustomEquivalentSpin->setMinimum(0.000001000000000);
-        torqueCustomEquivalentSpin->setMaximum(1000000000.000000000000000);
-        torqueCustomEquivalentSpin->setValue(500.622222000000022);
-
-        torqueParameterLayout->addWidget(torqueCustomEquivalentSpin, 0, 4, 1, 1);
 
         torqueMotorParameterSummaryLabel = new QLabel(torqueParameterGroup);
         torqueMotorParameterSummaryLabel->setObjectName("torqueMotorParameterSummaryLabel");
@@ -2614,7 +2579,7 @@ public:
         traceDelayCalibrationScrollArea->setWidgetResizable(true);
         traceDelayCalibrationScrollContent = new QWidget();
         traceDelayCalibrationScrollContent->setObjectName("traceDelayCalibrationScrollContent");
-        traceDelayCalibrationScrollContent->setGeometry(QRect(0, 0, 940, 1050));
+        traceDelayCalibrationScrollContent->setGeometry(QRect(0, 0, 781, 1057));
         traceDelayCalibrationContentLayout = new QVBoxLayout(traceDelayCalibrationScrollContent);
         traceDelayCalibrationContentLayout->setObjectName("traceDelayCalibrationContentLayout");
         traceDelayCalibrationParameterGroup = new QGroupBox(traceDelayCalibrationScrollContent);
@@ -2638,36 +2603,6 @@ public:
         traceDelayAxisCombo->setObjectName("traceDelayAxisCombo");
 
         traceDelayCalibrationParameterLayout->addWidget(traceDelayAxisCombo, 0, 1, 1, 1);
-
-        traceDelayUnitLabel = new QLabel(traceDelayCalibrationParameterGroup);
-        traceDelayUnitLabel->setObjectName("traceDelayUnitLabel");
-
-        traceDelayCalibrationParameterLayout->addWidget(traceDelayUnitLabel, 0, 2, 1, 1);
-
-        traceDelayUnitCombo = new QComboBox(traceDelayCalibrationParameterGroup);
-        traceDelayUnitCombo->addItem(QString());
-        traceDelayUnitCombo->addItem(QString());
-        traceDelayUnitCombo->addItem(QString());
-        traceDelayUnitCombo->addItem(QString());
-        traceDelayUnitCombo->setObjectName("traceDelayUnitCombo");
-
-        traceDelayCalibrationParameterLayout->addWidget(traceDelayUnitCombo, 0, 3, 1, 1);
-
-        traceDelayCustomEquivalentLabel = new QLabel(traceDelayCalibrationParameterGroup);
-        traceDelayCustomEquivalentLabel->setObjectName("traceDelayCustomEquivalentLabel");
-        traceDelayCustomEquivalentLabel->setEnabled(false);
-
-        traceDelayCalibrationParameterLayout->addWidget(traceDelayCustomEquivalentLabel, 0, 4, 1, 1);
-
-        traceDelayCustomEquivalentSpin = new QDoubleSpinBox(traceDelayCalibrationParameterGroup);
-        traceDelayCustomEquivalentSpin->setObjectName("traceDelayCustomEquivalentSpin");
-        traceDelayCustomEquivalentSpin->setEnabled(false);
-        traceDelayCustomEquivalentSpin->setDecimals(6);
-        traceDelayCustomEquivalentSpin->setMinimum(0.000001000000000);
-        traceDelayCustomEquivalentSpin->setMaximum(1000000.000000000000000);
-        traceDelayCustomEquivalentSpin->setValue(500.622000000000014);
-
-        traceDelayCalibrationParameterLayout->addWidget(traceDelayCustomEquivalentSpin, 0, 5, 1, 1);
 
         traceDelaySpeed1Label = new QLabel(traceDelayCalibrationParameterGroup);
         traceDelaySpeed1Label->setObjectName("traceDelaySpeed1Label");
@@ -2951,9 +2886,9 @@ public:
         retranslateUi(MainWindow);
 
         busCycleCombo->setCurrentIndex(2);
-        tabWidget->setCurrentIndex(3);
+        tabWidget->setCurrentIndex(4);
         holdAxisCombo->setCurrentIndex(1);
-        velocityTrajectoryParameterStack->setCurrentIndex(0);
+        velocityTrajectoryParameterStack->setCurrentIndex(1);
 
 
         QMetaObject::connectSlotsByName(MainWindow);
@@ -2983,6 +2918,28 @@ public:
         readBusCycleButton->setText(QCoreApplication::translate("MainWindow", "\345\210\267\346\226\260", nullptr));
         traceSampleLabel->setText(QCoreApplication::translate("MainWindow", "Trace \351\207\207\346\240\267\345\221\250\346\234\237", nullptr));
         traceSampleValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\276\205\345\210\235\345\247\213\345\214\226", nullptr));
+#if QT_CONFIG(tooltip)
+        cardUnitDefinitionLabel->setToolTip(QCoreApplication::translate("MainWindow", "\345\205\250\347\250\213\345\272\217\345\224\257\344\270\200\347\232\204\346\235\277\345\215\241\350\204\211\345\206\262\345\275\223\351\207\217\350\256\276\347\275\256\343\200\202\350\277\236\347\273\255\346\217\222\350\241\245\343\200\201\351\200\237\345\272\246\351\227\255\347\216\257\343\200\201\350\275\254\347\237\251\346\265\213\350\257\225\343\200\201Trace \345\273\266\350\277\237\346\240\207\345\256\232\345\217\212\345\220\216\347\273\255\346\211\251\345\261\225\351\241\265\347\255\276\345\235\207\344\275\277\347\224\250\346\255\244\345\200\274\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        cardUnitDefinitionLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241 unit", nullptr));
+        cardUnitDefinitionCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622\357\274\2101 unit=1\302\260\357\274\211", nullptr));
+        cardUnitDefinitionCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622\357\274\2101 unit=0.1\302\260\357\274\211", nullptr));
+        cardUnitDefinitionCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622\357\274\2101 unit=0.01\302\260\357\274\211", nullptr));
+        cardUnitDefinitionCombo->setItemText(3, QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211 pulse/unit", nullptr));
+
+#if QT_CONFIG(tooltip)
+        cardUnitDefinitionCombo->setToolTip(QCoreApplication::translate("MainWindow", "\345\205\250\345\261\200\346\235\277\345\215\241\350\204\211\345\206\262\345\275\223\351\207\217\343\200\202\344\277\256\346\224\271\345\220\216\351\234\200\345\205\263\351\227\255\345\271\266\351\207\215\346\226\260\345\210\235\345\247\213\345\214\226\346\216\247\345\210\266\345\215\241\357\274\214\346\211\200\346\234\211\346\265\213\350\257\225\351\241\265\347\255\276\347\273\237\344\270\200\344\275\277\347\224\250\350\257\245\350\256\276\347\275\256\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+#if QT_CONFIG(tooltip)
+        cardCustomEquivalentLabel->setToolTip(QCoreApplication::translate("MainWindow", "\351\200\211\346\213\251\342\200\234\350\207\252\345\256\232\344\271\211 pulse/unit\342\200\235\345\220\216\350\276\223\345\205\245\346\257\217\344\270\252\346\235\277\345\215\241 unit \345\257\271\345\272\224\347\232\204\347\211\251\347\220\206\350\204\211\345\206\262\346\225\260\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        cardCustomEquivalentLabel->setText(QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\345\275\223\351\207\217", nullptr));
+#if QT_CONFIG(tooltip)
+        cardCustomEquivalentSpin->setToolTip(QCoreApplication::translate("MainWindow", "\350\276\223\345\205\245\350\207\252\345\256\232\344\271\211\350\204\211\345\206\262\345\275\223\351\207\217\357\274\214\345\215\225\344\275\215\344\270\272 pulse/unit\357\274\214\345\277\205\351\241\273\345\244\247\344\272\216 0\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        cardCustomEquivalentSpin->setSuffix(QCoreApplication::translate("MainWindow", " pulse/unit", nullptr));
+        equivLabel->setText(QCoreApplication::translate("MainWindow", "\345\275\223\345\211\215\346\215\242\347\256\227", nullptr));
+        equivValueLabel->setText(QCoreApplication::translate("MainWindow", "500.622222 pulse/unit\357\274\2331 unit=1\302\260\357\274\233180224 pulse/rev", nullptr));
         globalActionGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\216\247\345\210\266\345\215\241\346\223\215\344\275\234\344\270\216\350\275\264\347\212\266\346\200\201", nullptr));
         initializeButton->setText(QCoreApplication::translate("MainWindow", "\345\210\235\345\247\213\345\214\226\346\216\247\345\210\266\345\215\241", nullptr));
         closeBoardButton->setText(QCoreApplication::translate("MainWindow", "\345\256\211\345\205\250\345\205\263\351\227\255\346\216\247\345\210\266\345\215\241", nullptr));
@@ -3066,11 +3023,6 @@ public:
         durationSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
         producerPeriodLabel->setText(QCoreApplication::translate("MainWindow", "\344\272\247\347\202\271\345\221\250\346\234\237", nullptr));
         producerPeriodSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
-        cardUnitDefinitionLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241 unit \345\256\232\344\271\211", nullptr));
-        cardUnitDefinitionCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622 pulse/unit\357\274\2101 unit = 1\302\260\357\274\211", nullptr));
-        cardUnitDefinitionCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622 pulse/unit\357\274\2101 unit = 0.1\302\260\357\274\211", nullptr));
-        cardUnitDefinitionCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622 pulse/unit\357\274\2101 unit = 0.01\302\260\357\274\211", nullptr));
-
         trajectoryPointModeLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\344\272\247\347\202\271\346\226\271\345\274\217", nullptr));
         trajectoryPointModeCombo->setItemText(0, QCoreApplication::translate("MainWindow", "\344\272\224\346\254\241\345\244\232\351\241\271\345\274\217\357\274\210\346\255\243\345\274\217\350\275\250\350\277\271\357\274\211", nullptr));
         trajectoryPointModeCombo->setItemText(1, QCoreApplication::translate("MainWindow", "\347\255\211\351\227\264\350\267\235\347\233\264\347\272\277\357\274\210\345\211\215\347\236\273\345\257\271\347\205\247\357\274\211", nullptr));
@@ -3129,8 +3081,6 @@ public:
         baseConfigGroup->setTitle(QCoreApplication::translate("MainWindow", "E5000 \345\237\272\347\241\200\351\205\215\347\275\256", nullptr));
         axisRangeLabel->setText(QCoreApplication::translate("MainWindow", "\345\237\272\347\241\200\351\205\215\347\275\256\350\275\264\350\214\203\345\233\264", nullptr));
         axisRangeValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\275\223\345\211\215\347\224\261\342\200\234\344\270\273\345\212\250\350\275\264\342\200\235\345\222\214\342\200\234\344\277\235\346\214\201/\347\254\254\344\272\214\350\275\264\342\200\235\351\200\211\346\213\251", nullptr));
-        equivLabel->setText(QCoreApplication::translate("MainWindow", "\350\204\211\345\206\262\345\275\223\351\207\217", nullptr));
-        equivValueLabel->setText(QCoreApplication::translate("MainWindow", "500.622 pulse/unit\357\274\2101 unit = 1\302\260\357\274\233180224 pulse/rev\357\274\211", nullptr));
         feedbackSourceLabel->setText(QCoreApplication::translate("MainWindow", "\345\217\215\351\246\210\346\235\245\346\272\220", nullptr));
         feedbackSourceValueLabel->setText(QCoreApplication::translate("MainWindow", "Trace \345\220\214\345\270\247\357\274\232\346\214\207\344\273\244\344\275\215\347\275\256(type 5) + \345\256\236\351\231\205\344\275\215\347\275\256(type 6)", nullptr));
         singleAxisJogGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\347\224\265\346\234\272\347\202\271\345\212\250\357\274\210\347\233\270\345\257\271\344\275\215\347\247\273\357\274\211", nullptr));
@@ -3236,102 +3186,82 @@ public:
         velocityChirpStartFrequencySpin->setSuffix(QCoreApplication::translate("MainWindow", " Hz", nullptr));
         velocityChirpEndFrequencyLabel->setText(QCoreApplication::translate("MainWindow", "\347\273\210\346\255\242\351\242\221\347\216\207", nullptr));
         velocityChirpEndFrequencySpin->setSuffix(QCoreApplication::translate("MainWindow", " Hz", nullptr));
-#if QT_CONFIG(tooltip)
-        velocityUnitDefinitionLabel->setToolTip(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\351\227\255\347\216\257\345\220\257\345\212\250\346\227\266\345\206\231\345\205\245\346\265\213\350\257\225\350\275\264\347\232\204 pulse/unit\343\200\202\350\257\245\350\256\276\347\275\256\345\220\214\346\227\266\345\206\263\345\256\232\346\235\277\345\215\241\351\200\237\345\272\246\345\215\225\344\275\215\344\270\216 Trace \351\200\237\345\272\246\346\215\242\347\256\227\343\200\202", nullptr));
-#endif // QT_CONFIG(tooltip)
-        velocityUnitDefinitionLabel->setText(QCoreApplication::translate("MainWindow", "\350\204\211\345\206\262\345\275\223\351\207\217", nullptr));
-        velocityUnitDefinitionCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622\357\274\2101 unit = 1\302\260\357\274\211", nullptr));
-        velocityUnitDefinitionCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622\357\274\2101 unit = 0.1\302\260\357\274\211", nullptr));
-        velocityUnitDefinitionCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622\357\274\2101 unit = 0.01\302\260\357\274\211", nullptr));
-        velocityUnitDefinitionCombo->setItemText(3, QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211", nullptr));
-
-#if QT_CONFIG(tooltip)
-        velocityUnitDefinitionCombo->setToolTip(QCoreApplication::translate("MainWindow", "\351\200\211\346\213\251\351\200\237\345\272\246\351\227\255\347\216\257\346\265\213\350\257\225\350\275\264\347\232\204\350\204\211\345\206\262\345\275\223\351\207\217\343\200\202\344\270\211\347\247\215\351\242\204\350\256\276\345\210\206\345\210\253\345\257\271\345\272\224 1\343\200\2010.1\343\200\2010.01 \302\260/unit\357\274\233\351\200\211\346\213\251\342\200\234\350\207\252\345\256\232\344\271\211\342\200\235\345\220\216\345\234\250\345\217\263\344\276\247\350\276\223\345\205\245 pulse/unit\343\200\202", nullptr));
-#endif // QT_CONFIG(tooltip)
-#if QT_CONFIG(tooltip)
-        velocityCustomEquivalentLabel->setToolTip(QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\346\257\217\344\270\252\346\235\277\345\215\241 unit \345\257\271\345\272\224\347\232\204\350\204\211\345\206\262\346\225\260\343\200\202\347\250\213\345\272\217\346\214\211 500.622 pulse/deg \350\256\241\347\256\227\345\205\266\345\257\271\345\272\224\347\232\204 \302\260/unit\343\200\202", nullptr));
-#endif // QT_CONFIG(tooltip)
-        velocityCustomEquivalentLabel->setText(QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\345\200\274", nullptr));
-#if QT_CONFIG(tooltip)
-        velocityCustomEquivalentSpin->setToolTip(QCoreApplication::translate("MainWindow", "\350\276\223\345\205\245\350\207\252\345\256\232\344\271\211\350\204\211\345\206\262\345\275\223\351\207\217\357\274\214\345\215\225\344\275\215\344\270\272 pulse/unit\357\274\214\345\277\205\351\241\273\345\244\247\344\272\2160\343\200\202", nullptr));
-#endif // QT_CONFIG(tooltip)
-        velocityCustomEquivalentSpin->setSuffix(QCoreApplication::translate("MainWindow", " pulse/unit", nullptr));
         velocityClosedLoopGroup->setTitle(QCoreApplication::translate("MainWindow", "\351\227\255\347\216\257\346\216\247\345\210\266", nullptr));
         velocityFeedforwardCheck->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\345\211\215\351\246\210", nullptr));
         velocityPidEnableCheck->setText(QCoreApplication::translate("MainWindow", "\345\220\257\347\224\250PID", nullptr));
         velocityKpLabel->setText(QCoreApplication::translate("MainWindow", "Kp (1/s)", nullptr));
         velocityKiLabel->setText(QCoreApplication::translate("MainWindow", "Ki (1/s\302\262)", nullptr));
         velocityKdLabel->setText(QCoreApplication::translate("MainWindow", "Kd", nullptr));
-        velocityIntegralLimitLabel->setText(QCoreApplication::translate("MainWindow", "\347\247\257\345\210\206\347\212\266\346\200\201\344\270\212\351\231\220", nullptr));
 #if QT_CONFIG(tooltip)
         velocityIntegralLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "\345\260\206\344\275\215\347\275\256\350\257\257\345\267\256\347\247\257\345\210\206 \342\210\253e\302\267dt \351\231\220\345\210\266\345\234\250\346\255\243\350\264\237\350\257\245\345\200\274\344\273\245\345\206\205\357\274\214\351\230\262\346\255\242\347\247\257\345\210\206\346\214\201\347\273\255\347\264\257\347\247\257\351\200\240\346\210\220\351\245\261\345\222\214\345\222\214\350\277\207\345\206\262\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityIntegralLimitLabel->setText(QCoreApplication::translate("MainWindow", "\347\247\257\345\210\206\347\212\266\346\200\201\344\270\212\351\231\220", nullptr));
 #if QT_CONFIG(tooltip)
         velocityIntegralLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\345\260\206\344\275\215\347\275\256\350\257\257\345\267\256\347\247\257\345\210\206 \342\210\253e\302\267dt \351\231\220\345\210\266\345\234\250\346\255\243\350\264\237\350\257\245\345\200\274\344\273\245\345\206\205\357\274\214\351\230\262\346\255\242\347\247\257\345\210\206\346\214\201\347\273\255\347\264\257\347\247\257\351\200\240\346\210\220\351\245\261\345\222\214\345\222\214\350\277\207\345\206\262\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         velocityIntegralLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260\302\267s", nullptr));
-        velocityMaxCorrectionLabel->setText(QCoreApplication::translate("MainWindow", "PID\344\277\256\346\255\243\344\270\212\351\231\220", nullptr));
 #if QT_CONFIG(tooltip)
         velocityMaxCorrectionLabel->setToolTip(QCoreApplication::translate("MainWindow", "\346\212\212 P\343\200\201I\343\200\201D \344\270\211\351\241\271\344\271\213\345\222\214\351\231\220\345\210\266\345\234\250\346\255\243\350\264\237\350\257\245\351\200\237\345\272\246\350\214\203\345\233\264\345\206\205\357\274\233\351\231\220\345\271\205\345\220\216\347\232\204PID\344\277\256\346\255\243\351\207\217\345\206\215\344\270\216\351\200\237\345\272\246\345\211\215\351\246\210\347\233\270\345\212\240\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityMaxCorrectionLabel->setText(QCoreApplication::translate("MainWindow", "PID\344\277\256\346\255\243\344\270\212\351\231\220", nullptr));
 #if QT_CONFIG(tooltip)
         velocityMaxCorrectionSpin->setToolTip(QCoreApplication::translate("MainWindow", "\346\212\212 P\343\200\201I\343\200\201D \344\270\211\351\241\271\344\271\213\345\222\214\351\231\220\345\210\266\345\234\250\346\255\243\350\264\237\350\257\245\351\200\237\345\272\246\350\214\203\345\233\264\345\206\205\357\274\233\351\231\220\345\271\205\345\220\216\347\232\204PID\344\277\256\346\255\243\351\207\217\345\206\215\344\270\216\351\200\237\345\272\246\345\211\215\351\246\210\347\233\270\345\212\240\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         velocityMaxCorrectionSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
         velocityLimitGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\277\220\345\212\250\351\231\220\345\210\266", nullptr));
-        velocityMaxSpeedLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\344\270\212\351\231\220", nullptr));
-        velocityMaxSpeedSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
         velocityMaxAccelerationLabel->setText(QCoreApplication::translate("MainWindow", "\345\212\240\351\200\237\345\272\246\344\270\212\351\231\220", nullptr));
         velocityMaxAccelerationSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s\302\262", nullptr));
+        velocityStartThresholdSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
+        velocityStartThresholdLabel->setText(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\351\200\237\345\272\246\351\230\210\345\200\274", nullptr));
+        velocityMaxSpeedLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\344\270\212\351\231\220", nullptr));
+        velocityMaxSpeedSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
         velocityChangeTimeLabel->setText(QCoreApplication::translate("MainWindow", "\345\234\250\347\272\277\345\217\230\351\200\237\346\227\266\351\227\264", nullptr));
         velocityChangeTimeSpin->setSuffix(QCoreApplication::translate("MainWindow", " s", nullptr));
-        velocityStartThresholdLabel->setText(QCoreApplication::translate("MainWindow", "\345\220\257\345\212\250\351\200\237\345\272\246\351\230\210\345\200\274", nullptr));
-        velocityStartThresholdSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
         velocityCriterionGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\210\244\345\256\232\344\277\235\346\212\244", nullptr));
-        velocityPositionToleranceLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\215\347\275\256\345\256\271\345\267\256", nullptr));
 #if QT_CONFIG(tooltip)
         velocityPositionToleranceLabel->setToolTip(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\346\227\266\351\227\264\347\273\223\346\235\237\345\220\216\357\274\214\345\217\252\346\234\211\347\273\235\345\257\271\344\275\215\347\275\256\350\257\257\345\267\256\344\270\215\345\244\247\344\272\216\350\257\245\345\200\274\357\274\214\346\211\215\346\273\241\350\266\263\347\273\210\347\202\271\344\275\215\347\275\256\346\235\241\344\273\266\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityPositionToleranceLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\215\347\275\256\345\256\271\345\267\256", nullptr));
 #if QT_CONFIG(tooltip)
         velocityPositionToleranceSpin->setToolTip(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\346\227\266\351\227\264\347\273\223\346\235\237\345\220\216\357\274\214\345\217\252\346\234\211\347\273\235\345\257\271\344\275\215\347\275\256\350\257\257\345\267\256\344\270\215\345\244\247\344\272\216\350\257\245\345\200\274\357\274\214\346\211\215\346\273\241\350\266\263\347\273\210\347\202\271\344\275\215\347\275\256\346\235\241\344\273\266\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         velocityPositionToleranceSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
-        velocitySpeedToleranceLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\345\256\271\345\267\256", nullptr));
 #if QT_CONFIG(tooltip)
         velocitySpeedToleranceLabel->setToolTip(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\346\227\266\351\227\264\347\273\223\346\235\237\345\220\216\357\274\214\345\217\252\346\234\211 Trace \345\256\236\351\231\205\351\200\237\345\272\246\347\273\235\345\257\271\345\200\274\344\270\215\345\244\247\344\272\216\350\257\245\345\200\274\357\274\214\346\211\215\346\273\241\350\266\263\347\273\210\347\202\271\351\200\237\345\272\246\346\235\241\344\273\266\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocitySpeedToleranceLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246\345\256\271\345\267\256", nullptr));
 #if QT_CONFIG(tooltip)
         velocitySpeedToleranceSpin->setToolTip(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\346\227\266\351\227\264\347\273\223\346\235\237\345\220\216\357\274\214\345\217\252\346\234\211 Trace \345\256\236\351\231\205\351\200\237\345\272\246\347\273\235\345\257\271\345\200\274\344\270\215\345\244\247\344\272\216\350\257\245\345\200\274\357\274\214\346\211\215\346\273\241\350\266\263\347\273\210\347\202\271\351\200\237\345\272\246\346\235\241\344\273\266\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         velocitySpeedToleranceSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
-        velocityStableDwellLabel->setText(QCoreApplication::translate("MainWindow", "\347\250\263\346\200\201\347\241\256\350\256\244", nullptr));
 #if QT_CONFIG(tooltip)
         velocityStableDwellLabel->setToolTip(QCoreApplication::translate("MainWindow", "\344\275\215\347\275\256\350\257\257\345\267\256\345\222\214\345\256\236\351\231\205\351\200\237\345\272\246\345\220\214\346\227\266\350\277\233\345\205\245\345\220\204\350\207\252\345\256\271\345\267\256\345\220\216\357\274\214\345\277\205\351\241\273\350\277\236\347\273\255\344\277\235\346\214\201\350\257\245\346\227\266\351\225\277\357\274\214\346\211\215\345\210\244\345\256\232\350\275\250\350\277\271\345\256\214\346\210\220\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityStableDwellLabel->setText(QCoreApplication::translate("MainWindow", "\347\250\263\346\200\201\347\241\256\350\256\244", nullptr));
 #if QT_CONFIG(tooltip)
         velocityStableDwellSpin->setToolTip(QCoreApplication::translate("MainWindow", "\344\275\215\347\275\256\350\257\257\345\267\256\345\222\214\345\256\236\351\231\205\351\200\237\345\272\246\345\220\214\346\227\266\350\277\233\345\205\245\345\220\204\350\207\252\345\256\271\345\267\256\345\220\216\357\274\214\345\277\205\351\241\273\350\277\236\347\273\255\344\277\235\346\214\201\350\257\245\346\227\266\351\225\277\357\274\214\346\211\215\345\210\244\345\256\232\350\275\250\350\277\271\345\256\214\346\210\220\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         velocityStableDwellSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
-        velocityFinishTimeoutLabel->setText(QCoreApplication::translate("MainWindow", "\347\273\210\347\202\271\350\266\205\346\227\266", nullptr));
 #if QT_CONFIG(tooltip)
         velocityFinishTimeoutLabel->setToolTip(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\350\247\204\345\210\222\346\227\266\351\227\264\347\273\223\346\235\237\345\220\216\345\205\201\350\256\270\347\273\247\347\273\255\347\255\211\345\276\205\347\273\210\347\202\271\347\250\263\346\200\201\347\232\204\346\234\200\351\225\277\346\227\266\351\227\264\357\274\233\350\266\205\346\227\266\344\273\215\346\234\252\346\273\241\350\266\263\346\235\241\344\273\266\345\210\231\345\256\211\345\205\250\345\201\234\346\255\242\345\271\266\346\212\245\345\221\212\345\274\202\345\270\270\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityFinishTimeoutLabel->setText(QCoreApplication::translate("MainWindow", "\347\273\210\347\202\271\350\266\205\346\227\266", nullptr));
 #if QT_CONFIG(tooltip)
         velocityFinishTimeoutSpin->setToolTip(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\350\247\204\345\210\222\346\227\266\351\227\264\347\273\223\346\235\237\345\220\216\345\205\201\350\256\270\347\273\247\347\273\255\347\255\211\345\276\205\347\273\210\347\202\271\347\250\263\346\200\201\347\232\204\346\234\200\351\225\277\346\227\266\351\227\264\357\274\233\350\266\205\346\227\266\344\273\215\346\234\252\346\273\241\350\266\263\346\235\241\344\273\266\345\210\231\345\256\211\345\205\250\345\201\234\346\255\242\345\271\266\346\212\245\345\221\212\345\274\202\345\270\270\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         velocityFinishTimeoutSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
-        velocityMaxFollowingErrorLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\200\345\244\247\350\267\237\351\232\217\350\257\257\345\267\256", nullptr));
 #if QT_CONFIG(tooltip)
         velocityMaxFollowingErrorLabel->setToolTip(QCoreApplication::translate("MainWindow", "\350\277\220\350\241\214\346\234\237\351\227\264\345\205\201\350\256\270\347\232\204\346\234\200\345\244\247\347\273\235\345\257\271\344\275\215\347\275\256\350\267\237\351\232\217\350\257\257\345\267\256\357\274\233\350\266\205\350\277\207\350\257\245\345\200\274\347\253\213\345\215\263\346\214\211\346\225\205\351\232\234\346\265\201\347\250\213\345\201\234\346\255\242\357\274\214\351\230\262\346\255\242\350\277\220\345\212\250\345\244\261\346\216\247\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityMaxFollowingErrorLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\200\345\244\247\350\267\237\351\232\217\350\257\257\345\267\256", nullptr));
 #if QT_CONFIG(tooltip)
         velocityMaxFollowingErrorSpin->setToolTip(QCoreApplication::translate("MainWindow", "\350\277\220\350\241\214\346\234\237\351\227\264\345\205\201\350\256\270\347\232\204\346\234\200\345\244\247\347\273\235\345\257\271\344\275\215\347\275\256\350\267\237\351\232\217\350\257\257\345\267\256\357\274\233\350\266\205\350\277\207\350\257\245\345\200\274\347\253\213\345\215\263\346\214\211\346\225\205\351\232\234\346\265\201\347\250\213\345\201\234\346\255\242\357\274\214\351\230\262\346\255\242\350\277\220\345\212\250\345\244\261\346\216\247\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         velocityMaxFollowingErrorSpin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260", nullptr));
-        velocityTraceTimeoutLabel->setText(QCoreApplication::translate("MainWindow", "Trace\350\266\205\346\227\266", nullptr));
 #if QT_CONFIG(tooltip)
         velocityTraceTimeoutLabel->setToolTip(QCoreApplication::translate("MainWindow", "\350\277\220\350\241\214\346\234\237\351\227\264\345\205\201\350\256\270\346\262\241\346\234\211\346\224\266\345\210\260\346\226\260Trace\345\217\215\351\246\210\345\270\247\347\232\204\346\234\200\351\225\277\346\227\266\351\227\264\357\274\233\350\266\205\350\277\207\350\257\245\345\200\274\347\253\213\345\215\263\345\201\234\346\255\242\357\274\214\351\201\277\345\205\215\344\275\277\347\224\250\350\277\207\346\234\237\345\217\215\351\246\210\347\273\247\347\273\255\346\216\247\345\210\266\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
+        velocityTraceTimeoutLabel->setText(QCoreApplication::translate("MainWindow", "Trace\350\266\205\346\227\266", nullptr));
 #if QT_CONFIG(tooltip)
         velocityTraceTimeoutSpin->setToolTip(QCoreApplication::translate("MainWindow", "\350\277\220\350\241\214\346\234\237\351\227\264\345\205\201\350\256\270\346\262\241\346\234\211\346\224\266\345\210\260\346\226\260Trace\345\217\215\351\246\210\345\270\247\347\232\204\346\234\200\351\225\277\346\227\266\351\227\264\357\274\233\350\266\205\350\277\207\350\257\245\345\200\274\347\253\213\345\215\263\345\201\234\346\255\242\357\274\214\351\201\277\345\205\215\344\275\277\347\224\250\350\277\207\346\234\237\345\217\215\351\246\210\347\273\247\347\273\255\346\216\247\345\210\266\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
@@ -3351,9 +3281,9 @@ public:
         velocityPositionStatusLabel->setText(QCoreApplication::translate("MainWindow", "\344\275\215\347\275\256 ref / card / actual / error", nullptr));
         velocityPositionStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 / 0 \302\260", nullptr));
         velocitySpeedStatusLabel->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246 ref / cmd / card / actual", nullptr));
-        velocitySpeedStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 / 0 \302\260/s", nullptr));
         velocityPidStatusLabel->setText(QCoreApplication::translate("MainWindow", "\345\211\215\351\246\210 / P / I / D / \351\231\220\345\271\205\347\212\266\346\200\201", nullptr));
         velocityPidStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 / 0 / --", nullptr));
+        velocitySpeedStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 / 0 \302\260/s", nullptr));
 #if QT_CONFIG(tooltip)
         velocityPositionChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\357\274\233\346\214\211\344\275\217\345\267\246\351\224\256\346\213\226\345\212\250\346\237\245\347\234\213\346\227\266\351\227\264\345\216\206\347\250\213\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
@@ -3377,28 +3307,21 @@ public:
         torqueAxisCombo->setItemText(6, QCoreApplication::translate("MainWindow", "6", nullptr));
         torqueAxisCombo->setItemText(7, QCoreApplication::translate("MainWindow", "7", nullptr));
 
-        torqueUnitLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241 unit", nullptr));
-        torqueUnitCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622 pulse/unit\357\274\2101 unit=1\302\260\357\274\211", nullptr));
-        torqueUnitCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622 pulse/unit\357\274\2101 unit=0.1\302\260\357\274\211", nullptr));
-        torqueUnitCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622 pulse/unit\357\274\2101 unit=0.01\302\260\357\274\211", nullptr));
-        torqueUnitCombo->setItemText(3, QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\350\204\211\345\206\262\345\275\223\351\207\217", nullptr));
-
-        torqueCustomEquivalentSpin->setSuffix(QCoreApplication::translate("MainWindow", " pulse/unit", nullptr));
         torqueMotorParameterSummaryLabel->setText(QCoreApplication::translate("MainWindow", "\350\276\223\345\207\272\350\275\264\344\275\215\347\275\256\345\217\202\346\225\260\357\274\232180224 pulse/\345\234\210 = 500.622222 pulse/\302\260\357\274\210\345\207\217\351\200\237\346\257\224 44:1\357\274\211", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueTargetLabel->setToolTip(QCoreApplication::translate("MainWindow", "CiA402 \347\233\256\346\240\207\350\275\254\347\237\251\347\231\276\345\210\206\346\257\224\357\274\232100% \345\257\271\345\272\224\345\216\237\345\247\213\345\200\274 1000\357\274\214\350\264\237\345\217\267\350\241\250\347\244\272\345\217\215\346\226\271\345\220\221\343\200\202", nullptr));
+        torqueTargetLabel->setToolTip(QCoreApplication::translate("MainWindow", "CiA402\351\242\235\345\256\232\350\275\254\347\237\251\347\231\276\345\210\206\346\257\224\357\274\233\346\255\243\350\264\237\345\217\267\345\206\263\345\256\232\350\275\254\347\237\251\346\226\271\345\220\221\357\274\214100%\345\257\271\345\272\224\345\216\237\345\247\213\345\200\2741000\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueTargetLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\350\275\254\347\237\251", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueTargetSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\350\275\254\347\237\251\347\231\276\345\210\206\346\257\224\357\274\214\347\250\213\345\272\217\346\215\242\347\256\227\344\270\272 raw=\347\231\276\345\210\206\346\257\224\303\22710 \345\220\216\344\272\244\347\273\231 nmc_torque_move\343\200\202", nullptr));
+        torqueTargetSpin->setToolTip(QCoreApplication::translate("MainWindow", "\344\270\213\345\217\221\345\200\274\346\214\211raw=\347\231\276\345\210\206\346\257\224\303\22710\346\215\242\347\256\227\357\274\233\344\276\213\345\246\20210%\345\257\271\345\272\224raw=100\357\274\214-10%\345\257\271\345\272\224raw=-100\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueTargetSpin->setSuffix(QCoreApplication::translate("MainWindow", " %", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueCommandLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\350\275\254\347\237\251\347\231\276\345\210\206\346\257\224\347\232\204\347\273\235\345\257\271\345\200\274\344\270\212\351\231\220\357\274\214\350\214\203\345\233\264 0~100%\343\200\202", nullptr));
+        torqueCommandLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\350\275\254\347\237\251\347\273\235\345\257\271\345\200\274\344\270\215\345\276\227\350\266\205\350\277\207\346\255\244\347\231\276\345\210\206\346\257\224\357\274\214\345\220\214\346\227\266\344\270\215\345\276\227\350\266\205\350\277\207100%\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueCommandLimitLabel->setText(QCoreApplication::translate("MainWindow", "\345\221\275\344\273\244\351\231\220\345\271\205", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueCommandLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\350\275\254\347\237\251\347\231\276\345\210\206\346\257\224\347\232\204\347\213\254\347\253\213\345\256\211\345\205\250\351\231\220\345\271\205\357\274\233\351\246\226\346\254\241\346\265\213\350\257\225\345\272\224\344\273\216\350\276\203\345\260\217\345\200\274\345\274\200\345\247\213\343\200\202", nullptr));
+        torqueCommandLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\213\254\347\253\213\344\272\216\345\256\236\351\231\205\350\275\254\347\237\251\344\277\235\346\212\244\351\230\210\345\200\274\357\274\233\351\246\226\346\254\241\346\265\213\350\257\225\345\273\272\350\256\256\350\256\276\347\275\256\350\276\203\345\260\217\347\231\276\345\210\206\346\257\224\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueCommandLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " %", nullptr));
         torqueZeroHintLabel->setText(QCoreApplication::translate("MainWindow", "0% \346\227\266\346\213\222\347\273\235\345\220\257\345\212\250", nullptr));
@@ -3417,28 +3340,28 @@ public:
         torqueRunTimeoutLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\200\351\225\277\350\277\220\350\241\214", nullptr));
         torqueRunTimeoutSpin->setSuffix(QCoreApplication::translate("MainWindow", " ms", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueActualLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "nmc_get_torque \350\277\224\345\233\236\347\232\204\345\216\237\345\247\213\345\200\274\346\214\211 raw/10 \346\215\242\347\256\227\344\270\272\351\242\235\345\256\232\350\275\254\347\237\251\347\231\276\345\210\206\346\257\224\357\274\233\347\273\235\345\257\271\345\200\274\350\266\205\350\277\207\350\257\245\351\230\210\345\200\274\346\227\266\347\253\213\345\215\263\345\201\234\346\255\242\343\200\202", nullptr));
+        torqueActualLimitLabel->setToolTip(QCoreApplication::translate("MainWindow", "nmc_get_torque\350\277\224\345\233\236\345\200\274\346\214\211\345\256\236\351\231\205\347\231\276\345\210\206\346\257\224=raw/10\346\215\242\347\256\227\357\274\214\347\273\235\345\257\271\345\200\274\350\266\205\351\231\220\346\227\266\347\253\213\345\215\263\345\201\234\346\255\242\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueActualLimitLabel->setText(QCoreApplication::translate("MainWindow", "\345\256\236\351\231\205\350\275\254\347\237\251\344\270\212\351\231\220", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueActualLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\213\254\347\253\213\344\272\216\347\233\256\346\240\207\345\221\275\344\273\244\351\231\220\345\271\205\347\232\204\345\256\236\351\231\205\350\275\254\347\237\251\345\217\215\351\246\210\344\277\235\346\212\244\351\230\210\345\200\274\357\274\214\345\215\225\344\275\215\344\270\272\351\242\235\345\256\232\350\275\254\347\237\251\347\231\276\345\210\206\346\257\224\343\200\202", nullptr));
+        torqueActualLimitSpin->setToolTip(QCoreApplication::translate("MainWindow", "\347\213\254\347\253\213\344\272\216\347\233\256\346\240\207\345\221\275\344\273\244\351\231\220\345\271\205\347\232\204\345\217\215\351\246\210\344\277\235\346\212\244\351\230\210\345\200\274\357\274\214\350\214\203\345\233\2640~100%\357\274\233\351\246\226\346\254\241\346\265\213\350\257\225\345\272\224\346\214\211\346\234\272\346\236\204\346\211\277\350\275\275\350\203\275\345\212\233\344\277\235\345\256\210\350\256\276\347\275\256\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueActualLimitSpin->setSuffix(QCoreApplication::translate("MainWindow", " %", nullptr));
         torqueOdGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\275\254\347\237\251\345\257\271\350\261\241\344\270\216\346\234\200\345\244\247\351\200\237\345\272\246", nullptr));
         torquePdoRequirementLabel->setText(QCoreApplication::translate("MainWindow", "\347\233\256\346\240\207\350\275\254\347\237\251 6071h / \345\256\236\351\231\205\350\275\254\347\237\251 6077h\357\274\233\344\270\215\346\211\247\350\241\214\351\242\235\345\244\226PDO\351\242\204\346\243\200\346\237\245\357\274\214\344\273\245\346\255\243\345\274\217\350\275\254\347\237\251API\350\277\224\345\233\236\347\240\201\345\210\244\345\256\232\343\200\202", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueMaximumMotorSpeedLabel->setToolTip(QCoreApplication::translate("MainWindow", "\351\251\261\345\212\250\345\231\250\347\233\264\346\216\245\346\216\247\345\210\266\347\224\265\346\234\272\357\274\214\345\233\240\346\255\2446080h\345\206\231\345\205\245\347\224\265\346\234\272\344\276\247\346\234\200\345\244\247\351\200\237\345\272\246\357\274\233\351\273\230\350\256\244\351\207\207\347\224\250\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\351\200\2375370 rpm\343\200\202", nullptr));
+        torqueMaximumMotorSpeedLabel->setToolTip(QCoreApplication::translate("MainWindow", "6080h\347\224\261\351\251\261\345\212\250\345\231\250\347\233\264\346\216\245\344\275\234\347\224\250\344\272\216\347\224\265\346\234\272\357\274\214\345\277\205\351\241\273\345\241\253\345\206\231\347\224\265\346\234\272\344\276\247\350\275\254\351\200\237\357\274\214\344\270\215\350\203\275\345\241\253\345\206\231\345\207\217\351\200\237\345\231\250\350\276\223\345\207\272\350\275\264\350\275\254\351\200\237\346\210\226\350\204\211\345\206\262\346\225\260\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
-        torqueMaximumMotorSpeedLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\200\345\244\247\347\224\265\346\234\272\351\200\237\345\272\246 SDO 6080h:00h", nullptr));
+        torqueMaximumMotorSpeedLabel->setText(QCoreApplication::translate("MainWindow", "\347\224\265\346\234\272\344\276\247\346\234\200\345\244\247\351\200\237\345\272\246 6080h:00h", nullptr));
 #if QT_CONFIG(tooltip)
-        torqueOd6080RawSpin->setToolTip(QCoreApplication::translate("MainWindow", "Diamond/CiA402 \345\257\271\350\261\2416080h\357\274\214\346\214\211\347\224\265\346\234\272\344\276\247rpm\345\206\231\345\205\245\357\274\233\347\225\214\351\235\242\345\217\246\350\241\214\346\215\242\347\256\227\345\271\266\346\230\276\347\244\272\345\207\217\351\200\237\345\231\250\350\276\223\345\207\272\350\275\264\351\200\237\345\272\246\343\200\202", nullptr));
+        torqueOd6080RawSpin->setToolTip(QCoreApplication::translate("MainWindow", "Diamond/CiA402\345\257\271\350\261\2416080h\347\232\204\347\224\265\346\234\272\344\276\247\346\234\200\345\244\247\351\200\237\345\272\246\357\274\214\351\273\230\350\256\244\351\207\207\347\224\250\347\224\265\346\234\272\351\242\235\345\256\232\350\275\254\351\200\2375370 rpm\357\274\233\345\206\231\345\205\245\345\211\215\344\273\215\345\272\224\346\240\270\345\257\271\351\251\261\345\212\250\345\231\250\345\257\271\350\261\241\345\255\227\345\205\270\345\215\225\344\275\215\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueOd6080RawSpin->setSuffix(QCoreApplication::translate("MainWindow", " rpm", nullptr));
 #if QT_CONFIG(tooltip)
         torqueWriteOdButton->setToolTip(QCoreApplication::translate("MainWindow", "\351\200\232\350\277\207SDO\345\206\231\345\205\2456080h\345\271\266\347\253\213\345\215\263\350\257\273\345\233\236\357\274\233\344\273\205\345\234\250\346\227\240\350\277\220\345\212\250\344\273\273\345\212\241\346\227\266\346\211\247\350\241\214\357\274\214\344\270\215\344\274\232\351\232\217\350\275\254\347\237\251\346\265\213\350\257\225\345\220\257\345\212\250\350\207\252\345\212\250\345\206\231\345\205\245\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
         torqueWriteOdButton->setText(QCoreApplication::translate("MainWindow", "\345\206\231\345\205\245\345\271\266\350\257\273\345\233\2366080h", nullptr));
-        torqueOutputSpeedEquivalentLabel->setText(QCoreApplication::translate("MainWindow", "\350\276\223\345\207\272\350\275\264\347\255\211\346\225\210\344\270\212\351\231\220\357\274\232122.045 rpm / 732.273 \302\260/s\357\274\210\345\207\217\351\200\237\346\257\22444:1\357\274\211", nullptr));
+        torqueOutputSpeedEquivalentLabel->setText(QCoreApplication::translate("MainWindow", "\347\255\211\346\225\210\345\207\217\351\200\237\345\231\250\350\276\223\345\207\272\350\275\264\344\270\212\351\231\220\357\274\232122.045 rpm / 732.273 \302\260/s\357\274\210\345\207\217\351\200\237\346\257\224 44:1\357\274\211", nullptr));
         torqueOdHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\250\213\345\272\217\351\200\232\350\277\207nmc_torque_move\344\270\213\345\217\221\347\233\256\346\240\207\350\275\254\347\237\251\357\274\214\345\271\266\351\200\232\350\277\207nmc_get_torque\350\257\273\345\217\226\345\256\236\351\231\205\350\275\254\347\237\251\357\274\233\350\260\203\347\224\250\345\244\261\350\264\245\346\227\266\347\233\264\346\216\245\346\212\245\345\221\212\345\272\223\345\207\275\346\225\260\351\224\231\350\257\257\347\240\201\343\200\202\346\234\254\347\250\213\345\272\217\344\273\205\345\234\250\347\202\271\345\207\273\346\214\211\351\222\256\346\227\266\351\200\232\350\277\207SDO\350\257\273\345\206\2316080h\357\274\214\344\270\215\344\275\234\345\221\250\346\234\237\350\260\203\347\224\250\343\200\202\344\275\215\347\275\256\343\200\201\351\200\237\345\272\246\345\217\212\351\231\220\344\275\215\347\273\237\344\270\200\346\214\211\345\207\217\351\200\237\345\231\250\350\276\223\345\207\272\350\275\264\346\230\276\347\244\272\357\274\214\344\275\277\347\224\250180224 pulse/\350"
                         "\276\223\345\207\272\350\275\264\345\234\210\346\215\242\347\256\227\343\200\202", nullptr));
         torqueOperationGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\223\215\344\275\234\344\270\216\347\212\266\346\200\201", nullptr));
@@ -3453,12 +3376,12 @@ public:
         torqueStateValueLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\252\350\277\220\350\241\214", nullptr));
         torqueTimeLabel->setText(QCoreApplication::translate("MainWindow", "\346\227\266\351\227\264 / API", nullptr));
         torqueTimeValueLabel->setText(QCoreApplication::translate("MainWindow", "0 s / 0 us", nullptr));
-        torqueValueLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\254\347\237\251 cmd / actual / raw", nullptr));
+        torqueValueLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\254\347\237\251 cmd / actual (%) / raw", nullptr));
         torqueValueValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0%\357\274\233raw=0 / 0", nullptr));
         torqueMotionLabel->setText(QCoreApplication::translate("MainWindow", "\350\276\223\345\207\272\350\275\264\344\275\215\347\275\256 start / actual / limit\357\274\233\351\200\237\345\272\246", nullptr));
         torqueMotionValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0 \302\260\357\274\2330 \302\260/s", nullptr));
         torqueOdStatusLabel->setText(QCoreApplication::translate("MainWindow", "\344\273\216\347\253\231 / 6080 SDO", nullptr));
-        torqueOdStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "-- / --", nullptr));
+        torqueOdStatusValueLabel->setText(QCoreApplication::translate("MainWindow", "-- / -- / --", nullptr));
 #if QT_CONFIG(tooltip)
         torqueValueChartView->setToolTip(QCoreApplication::translate("MainWindow", "\346\273\232\350\275\256\347\274\251\346\224\276\357\274\214\346\214\211\344\275\217\345\267\246\351\224\256\346\213\226\345\212\250\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
 #endif // QT_CONFIG(tooltip)
@@ -3478,14 +3401,6 @@ public:
         traceDelayAxisCombo->setItemText(6, QCoreApplication::translate("MainWindow", "6", nullptr));
         traceDelayAxisCombo->setItemText(7, QCoreApplication::translate("MainWindow", "7", nullptr));
 
-        traceDelayUnitLabel->setText(QCoreApplication::translate("MainWindow", "\346\235\277\345\215\241 unit", nullptr));
-        traceDelayUnitCombo->setItemText(0, QCoreApplication::translate("MainWindow", "500.622 pulse/unit\357\274\2101 unit=1\302\260\357\274\211", nullptr));
-        traceDelayUnitCombo->setItemText(1, QCoreApplication::translate("MainWindow", "50.0622 pulse/unit\357\274\2101 unit=0.1\302\260\357\274\211", nullptr));
-        traceDelayUnitCombo->setItemText(2, QCoreApplication::translate("MainWindow", "5.00622 pulse/unit\357\274\2101 unit=0.01\302\260\357\274\211", nullptr));
-        traceDelayUnitCombo->setItemText(3, QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211 pulse/unit", nullptr));
-
-        traceDelayCustomEquivalentLabel->setText(QCoreApplication::translate("MainWindow", "\350\207\252\345\256\232\344\271\211\345\275\223\351\207\217", nullptr));
-        traceDelayCustomEquivalentSpin->setSuffix(QCoreApplication::translate("MainWindow", " pulse/unit", nullptr));
         traceDelaySpeed1Label->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246 V1", nullptr));
         traceDelaySpeed1Spin->setSuffix(QCoreApplication::translate("MainWindow", " \302\260/s", nullptr));
         traceDelaySpeed2Label->setText(QCoreApplication::translate("MainWindow", "\351\200\237\345\272\246 V2", nullptr));
