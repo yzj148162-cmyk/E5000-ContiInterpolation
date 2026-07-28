@@ -35,13 +35,22 @@ struct CdprRigidBodyConfig
     std::array<double, 9> inertiaKgM2 {};
 };
 
+struct CdprForceSensorConfig
+{
+    CdprVector3 originInPlatformM;
+    std::array<double, 9> rotationSensorToPlatform {};
+    int sensorSign = 1;
+};
+
 struct CdprConfiguration
 {
     QString name;
     QString coordinateConvention;
     bool parametersConfirmed = false;
+    std::array<double, 6> initialPlatformPose {};
     CdprRigidBodyConfig physicalPlatform;
     CdprRigidBodyConfig virtualBody;
+    CdprForceSensorConfig forceSensor;
     std::array<CdprCableAxisConfig, 8> cables {};
     int controlPeriodUs = 1000;
     double maximumPositionErrorDegree = 2.0;

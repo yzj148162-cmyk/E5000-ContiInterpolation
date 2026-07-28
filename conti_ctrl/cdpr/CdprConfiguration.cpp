@@ -28,29 +28,69 @@ QJsonArray writeVector3(const CdprVector3 &value)
     return {value.x, value.y, value.z};
 }
 
+template <size_t Size>
+QJsonArray writeArray(const std::array<double, Size> &values)
+{
+    QJsonArray result;
+    for (double value : values) {
+        result.append(value);
+    }
+    return result;
+}
+
+template <size_t Size>
+std::array<double, Size> readArray(const QJsonValue &value)
+{
+    std::array<double, Size> result {};
+    const QJsonArray values = value.toArray();
+    for (size_t index = 0; index < Size; ++index) {
+        result[index] = arrayNumber(values, static_cast<int>(index));
+    }
+    return result;
+}
+
 CdprRigidBodyConfig readRigidBody(const QJsonObject &object)
 {
     CdprRigidBodyConfig result;
     result.massKg = object.value(QStringLiteral("mass_kg")).toDouble();
     result.centerOfMassM = readVector3(object.value(QStringLiteral("center_of_mass_m")));
-    const QJsonArray inertia = object.value(QStringLiteral("inertia_kg_m2")).toArray();
-    for (int index = 0; index < 9; ++index) {
-        result.inertiaKgM2[static_cast<size_t>(index)] =
-            arrayNumber(inertia, index);
-    }
+    result.inertiaKgM2 =
+        readArray<9>(object.value(QStringLiteral("inertia_kg_m2")));
     return result;
 }
 
 QJsonObject writeRigidBody(const CdprRigidBodyConfig &value)
 {
-    QJsonArray inertia;
-    for (double item : value.inertiaKgM2) {
-        inertia.append(item);
-    }
     return {
         {QStringLiteral("mass_kg"), value.massKg},
         {QStringLiteral("center_of_mass_m"), writeVector3(value.centerOfMassM)},
-        {QStringLiteral("inertia_kg_m2"), inertia}
+        {QStringLiteral("inertia_kg_m2"), writeArray(value.inertiaKgM2)}
+    };
+}
+
+CdprForceSensorConfig readForceSensor(const QJsonObject &object)
+{
+    CdprForceSensorConfig result;
+    result.rotationSensorToPlatform = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    result.originInPlatformM =
+        readVector3(object.value(QStringLiteral("origin_in_platform_m")));
+    if (object.contains(QStringLiteral("rotation_sensor_to_platform"))) {
+        result.rotationSensorToPlatform =
+            readArray<9>(object.value(QStringLiteral("rotation_sensor_to_platform")));
+    }
+    result.sensorSign =
+        object.value(QStringLiteral("sensor_sign")).toInt(1);
+    return result;
+}
+
+QJsonObject writeForceSensor(const CdprForceSensorConfig &value)
+{
+    return {
+        {QStringLiteral("origin_in_platform_m"),
+         writeVector3(value.originInPlatformM)},
+        {QStringLiteral("rotation_sensor_to_platform"),
+         writeArray(value.rotationSensorToPlatform)},
+        {QStringLiteral("sensor_sign"), value.sensorSign}
     };
 }
 
@@ -58,6 +98,40 @@ bool finiteVector(const CdprVector3 &value)
 {
     return std::isfinite(value.x) && std::isfinite(value.y)
         && std::isfinite(value.z);
+}
+
+template <size_t Size>
+bool finiteArray(const std::array<double, Size> &values)
+{
+    for (double value : values) {
+        if (!std::isfinite(value)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+bool isRotationMatrix(const std::array<double, 9> &matrix)
+{
+    constexpr double tolerance = 1.0e-6;
+    for (int row = 0; row < 3; ++row) {
+        for (int column = 0; column < 3; ++column) {
+            double dot = 0.0;
+            for (int index = 0; index < 3; ++index) {
+                dot += matrix[static_cast<size_t>(row * 3 + index)]
+                    * matrix[static_cast<size_t>(column * 3 + index)];
+            }
+            const double expected = row == column ? 1.0 : 0.0;
+            if (std::abs(dot - expected) > tolerance) {
+                return false;
+            }
+        }
+    }
+    const double determinant =
+        matrix[0] * (matrix[4] * matrix[8] - matrix[5] * matrix[7])
+        - matrix[1] * (matrix[3] * matrix[8] - matrix[5] * matrix[6])
+        + matrix[2] * (matrix[3] * matrix[7] - matrix[4] * matrix[6]);
+    return std::abs(determinant - 1.0) <= tolerance;
 }
 
 QString vectorText(const CdprVector3 &value)
@@ -89,8 +163,11 @@ QJsonObject toJson(const CdprConfiguration &configuration)
         {QStringLiteral("name"), configuration.name},
         {QStringLiteral("parameters_confirmed"), configuration.parametersConfirmed},
         {QStringLiteral("coordinate_convention"), configuration.coordinateConvention},
+        {QStringLiteral("initial_platform_pose"),
+         writeArray(configuration.initialPlatformPose)},
         {QStringLiteral("physical_platform"), writeRigidBody(configuration.physicalPlatform)},
         {QStringLiteral("virtual_body"), writeRigidBody(configuration.virtualBody)},
+        {QStringLiteral("force_sensor"), writeForceSensor(configuration.forceSensor)},
         {QStringLiteral("cables"), cables},
         {QStringLiteral("control"), QJsonObject {
              {QStringLiteral("period_us"), configuration.controlPeriodUs},
@@ -132,10 +209,14 @@ bool CdprConfigurationFile::load(const QString &path,
         root.value(QStringLiteral("parameters_confirmed")).toBool();
     result.coordinateConvention =
         root.value(QStringLiteral("coordinate_convention")).toString();
+    result.initialPlatformPose =
+        readArray<6>(root.value(QStringLiteral("initial_platform_pose")));
     result.physicalPlatform =
         readRigidBody(root.value(QStringLiteral("physical_platform")).toObject());
     result.virtualBody =
         readRigidBody(root.value(QStringLiteral("virtual_body")).toObject());
+    result.forceSensor =
+        readForceSensor(root.value(QStringLiteral("force_sensor")).toObject());
     const QJsonArray cables = root.value(QStringLiteral("cables")).toArray();
     if (cables.size() != 8) {
         errors.append(QStringLiteral("cables必须且只能包含8项。"));
@@ -179,6 +260,9 @@ bool CdprConfigurationFile::writeTemplate(const QString &path, QString &error)
     configuration.virtualBody.massKg = 1.0;
     configuration.physicalPlatform.inertiaKgM2 = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     configuration.virtualBody.inertiaKgM2 = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    configuration.forceSensor.rotationSensorToPlatform =
+        {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    configuration.forceSensor.sensorSign = 1;
     const std::array<CdprVector3, 8> signs {{
         {-1, -1, -1}, {-1, -1, 1}, {-1, 1, -1}, {-1, 1, 1},
         {1, -1, -1}, {1, -1, 1}, {1, 1, -1}, {1, 1, 1}
@@ -231,6 +315,26 @@ QStringList CdprConfigurationFile::validate(
     if (configuration.physicalPlatform.massKg <= 0.0
         || configuration.virtualBody.massKg <= 0.0) {
         errors.append(QStringLiteral("物理平台质量和虚拟刚体质量必须大于0。"));
+    }
+    if (!finiteArray(configuration.initialPlatformPose)) {
+        errors.append(QStringLiteral("初始末端位姿必须全部为有限数。"));
+    }
+    if (!finiteVector(configuration.physicalPlatform.centerOfMassM)
+        || !finiteArray(configuration.physicalPlatform.inertiaKgM2)
+        || !finiteVector(configuration.virtualBody.centerOfMassM)
+        || !finiteArray(configuration.virtualBody.inertiaKgM2)) {
+        errors.append(QStringLiteral("刚体质心和惯量参数必须全部为有限数。"));
+    }
+    if (!finiteVector(configuration.forceSensor.originInPlatformM)
+        || !finiteArray(configuration.forceSensor.rotationSensorToPlatform)) {
+        errors.append(QStringLiteral("力传感器安装参数必须全部为有限数。"));
+    } else if (!isRotationMatrix(configuration.forceSensor.rotationSensorToPlatform)) {
+        errors.append(QStringLiteral(
+            "力传感器到平台的旋转矩阵必须正交且行列式为+1。"));
+    }
+    if (configuration.forceSensor.sensorSign != -1
+        && configuration.forceSensor.sensorSign != 1) {
+        errors.append(QStringLiteral("力传感器符号只能为+1或-1。"));
     }
     if (configuration.controlPeriodUs <= 0
         || configuration.controlPeriodUs % 250 != 0) {
