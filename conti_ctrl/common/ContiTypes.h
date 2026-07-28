@@ -481,7 +481,7 @@ struct ContiStatus
     quint64 latestTraceSequence = 0;
     quint64 latestTraceTimeUs = 0;
     int traceSamplePeriodUs = 1000;
-    bool telemetryPlotActive = false;
+    bool manualTelemetryRecordingActive = false;
     TelemetryRecorderStatus recorder;
     VelocityControlStatus velocityControl;
     TorqueTestStatus torqueTest;

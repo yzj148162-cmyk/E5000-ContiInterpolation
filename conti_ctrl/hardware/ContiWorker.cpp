@@ -3900,7 +3900,7 @@ void ContiWorker::publishStatus()
     status.latestTraceSequence = latestTraceSequence_;
     status.latestTraceTimeUs = latestTraceTimeUs_;
     status.traceSamplePeriodUs = card_.traceSamplePeriodUs();
-    status.telemetryPlotActive = manualTelemetryRecording_;
+    status.manualTelemetryRecordingActive = manualTelemetryRecording_;
     status.recorder = telemetryRecorder_.status();
     status.velocityControl = velocityStatus_;
     status.torqueTest = torqueStatus_;

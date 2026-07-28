@@ -92,10 +92,11 @@ MainWindow::MainWindow(QWidget *parent)
     ui_->setupUi(this);
     normalizeProducerPeriodForBusCycle();
     updateBusPeriodUi();
-    initializeTelemetryCharts();
+    initializeContiTrajectoryChart();
     initializeVelocityControlCharts();
     initializeTorqueTestCharts();
     initializeTraceDelayCalibrationCharts();
+    initializeUiRefreshTimer();
     onStageChanged(ui_->stageCombo->currentIndex());
 
     worker_->moveToThread(workerThread_);
@@ -1022,23 +1023,27 @@ void MainWindow::updateStatus(const ContiStatus &status)
                                        .arg(statusText, result.timestamp));
         }
     }
-    ui_->recordingStateValueLabel->setText(status.recorder.recording
-                                               ? QStringLiteral("记录中（%1 ms Trace）")
-                                                     .arg(status.traceSamplePeriodUs / 1000.0, 0, 'f', 1)
-                                               : QStringLiteral("未记录"));
-    ui_->startRecordingButton->setEnabled(status.boardInitialized && !status.recorder.recording);
-    ui_->stopRecordingButton->setEnabled(status.telemetryPlotActive);
-    ui_->recordPathValueLabel->setText(status.recorder.outputDirectory.isEmpty()
-                                           ? QStringLiteral("开始记录后自动创建 records/run_*")
-                                           : status.recorder.outputDirectory);
-    ui_->recordStatsValueLabel->setText(QStringLiteral("%1 / %2 / %3")
-                                            .arg(status.recorder.writtenFrames)
-                                            .arg(status.recorder.queuedFrames)
-                                            .arg(status.recorder.droppedFrames));
+    QString recordingStateText = QStringLiteral("未记录");
     if (!status.recorder.errorText.isEmpty()) {
-        ui_->recordingStateValueLabel->setText(QStringLiteral("记录错误：%1")
-                                                    .arg(status.recorder.errorText));
+        recordingStateText = QStringLiteral("记录错误：%1").arg(status.recorder.errorText);
+    } else if (status.manualTelemetryRecordingActive) {
+        recordingStateText = QStringLiteral("记录中（%1 ms Trace）")
+                                 .arg(status.traceSamplePeriodUs / 1000.0, 0, 'f', 1);
+    } else if (status.recorder.recording) {
+        recordingStateText = QStringLiteral("自动记录中");
     }
+    ui_->recordingStateValueLabel->setText(recordingStateText);
+    ui_->startRecordingButton->setEnabled(status.boardInitialized && !status.recorder.recording);
+    ui_->stopRecordingButton->setEnabled(status.manualTelemetryRecordingActive);
+    const QString recordDirectory = status.recorder.outputDirectory.isEmpty()
+        ? QStringLiteral("尚未创建；开始记录后自动创建 records/run_*")
+        : status.recorder.outputDirectory;
+    ui_->recordingStateValueLabel->setToolTip(
+        QStringLiteral("输出目录：%1\n写入 / 队列 / 丢帧：%2 / %3 / %4")
+            .arg(recordDirectory)
+            .arg(status.recorder.writtenFrames)
+            .arg(status.recorder.queuedFrames)
+            .arg(status.recorder.droppedFrames));
     for (const AxisFeedback &feedback : status.axisFeedback) {
         const int row = static_cast<int>(feedback.axis);
         if (row < 0 || row >= ui_->axisFeedbackTable->rowCount()) {
@@ -1090,58 +1095,26 @@ void MainWindow::updateStatus(const ContiStatus &status)
     }
 }
 
-void MainWindow::initializeTelemetryCharts()
+void MainWindow::initializeContiTrajectoryChart()
 {
-    const auto createChart = [](const QString &title, const QString &valueTitle,
-                                 ZoomableChartView *view, QChart *&chart,
-                                 QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
-        chart = new QChart;
-        chart->setTitle(title);
-        chart->legend()->setVisible(true);
-        timeAxis = new QValueAxis(chart);
-        timeAxis->setTitleText(QStringLiteral("Trace 时间 (s)"));
-        timeAxis->setTitleVisible(true);
-        timeAxis->setLabelsVisible(true);
-        timeAxis->setLabelFormat(QStringLiteral("%.1f"));
-        timeAxis->setTickCount(6);
-        timeAxis->setRange(0.0, 30.0);
-        valueAxis = new QValueAxis(chart);
-        valueAxis->setTitleText(valueTitle);
-        valueAxis->setRange(-1.0, 1.0);
-        chart->addAxis(timeAxis, Qt::AlignBottom);
-        chart->addAxis(valueAxis, Qt::AlignLeft);
-        view->setChart(chart);
-        view->setRenderHint(QPainter::Antialiasing, false);
-        view->setAutomaticRange(0.0, 30.0, -1.0, 1.0);
-    };
-
-    createChart(QStringLiteral("两轴 Trace 指令与实际位置"), QStringLiteral("位置 (°)"),
-                ui_->positionChartView, positionChart_, positionTimeAxis_, positionValueAxis_);
-    createChart(QStringLiteral("两轴 Trace 延迟补偿跟随误差"),
-                QStringLiteral("对齐指令 - 实际 (°)"),
-                ui_->followingErrorChartView, followingErrorChart_, errorTimeAxis_, errorValueAxis_);
-    createChart(QStringLiteral("主动轴：规划期望与 Trace 实际位置"), QStringLiteral("位置 (°)"),
-                ui_->contiTrajectoryChartView, contiTrajectoryChart_,
-                contiTrajectoryTimeAxis_, contiTrajectoryValueAxis_);
-
-    const QList<QColor> colors {QColor(0, 102, 204), QColor(0, 153, 102),
-                                QColor(204, 51, 51), QColor(153, 51, 153)};
-    for (int index = 0; index < 4; ++index) {
-        positionSeries_[index] = new QLineSeries(positionChart_);
-        positionSeries_[index]->setPen(QPen(colors.at(index), 1.4));
-        positionSeries_[index]->setName(QStringLiteral("等待 Trace 轴"));
-        positionChart_->addSeries(positionSeries_[index]);
-        positionSeries_[index]->attachAxis(positionTimeAxis_);
-        positionSeries_[index]->attachAxis(positionValueAxis_);
-    }
-    for (int index = 0; index < 2; ++index) {
-        followingErrorSeries_[index] = new QLineSeries(followingErrorChart_);
-        followingErrorSeries_[index]->setPen(QPen(colors.at(index), 1.5));
-        followingErrorSeries_[index]->setName(QStringLiteral("轴%1 补偿跟随误差").arg(index));
-        followingErrorChart_->addSeries(followingErrorSeries_[index]);
-        followingErrorSeries_[index]->attachAxis(errorTimeAxis_);
-        followingErrorSeries_[index]->attachAxis(errorValueAxis_);
-    }
+    contiTrajectoryChart_ = new QChart;
+    contiTrajectoryChart_->setTitle(QStringLiteral("主动轴：规划期望与 Trace 实际位置"));
+    contiTrajectoryChart_->legend()->setVisible(true);
+    contiTrajectoryTimeAxis_ = new QValueAxis(contiTrajectoryChart_);
+    contiTrajectoryTimeAxis_->setTitleText(QStringLiteral("Trace 时间 (s)"));
+    contiTrajectoryTimeAxis_->setTitleVisible(true);
+    contiTrajectoryTimeAxis_->setLabelsVisible(true);
+    contiTrajectoryTimeAxis_->setLabelFormat(QStringLiteral("%.1f"));
+    contiTrajectoryTimeAxis_->setTickCount(6);
+    contiTrajectoryTimeAxis_->setRange(0.0, 30.0);
+    contiTrajectoryValueAxis_ = new QValueAxis(contiTrajectoryChart_);
+    contiTrajectoryValueAxis_->setTitleText(QStringLiteral("位置 (°)"));
+    contiTrajectoryValueAxis_->setRange(-1.0, 1.0);
+    contiTrajectoryChart_->addAxis(contiTrajectoryTimeAxis_, Qt::AlignBottom);
+    contiTrajectoryChart_->addAxis(contiTrajectoryValueAxis_, Qt::AlignLeft);
+    ui_->contiTrajectoryChartView->setChart(contiTrajectoryChart_);
+    ui_->contiTrajectoryChartView->setRenderHint(QPainter::Antialiasing, false);
+    ui_->contiTrajectoryChartView->setAutomaticRange(0.0, 30.0, -1.0, 1.0);
 
     contiExpectedTrajectorySeries_ = new QLineSeries(contiTrajectoryChart_);
     contiExpectedTrajectorySeries_->setName(QStringLiteral("规划期望"));
@@ -1155,15 +1128,18 @@ void MainWindow::initializeTelemetryCharts()
     contiTrajectoryChart_->addSeries(contiActualTrajectorySeries_);
     contiActualTrajectorySeries_->attachAxis(contiTrajectoryTimeAxis_);
     contiActualTrajectorySeries_->attachAxis(contiTrajectoryValueAxis_);
-
-    telemetryPlotTimer_ = new QTimer(this);
-    telemetryPlotTimer_->setTimerType(Qt::PreciseTimer);
-    telemetryPlotTimer_->setInterval(50);
-    connect(telemetryPlotTimer_, &QTimer::timeout, this, &MainWindow::updateTelemetryCharts);
-    telemetryPlotTimer_->start();
 }
 
-void MainWindow::updateTelemetryCharts()
+void MainWindow::initializeUiRefreshTimer()
+{
+    uiRefreshTimer_ = new QTimer(this);
+    uiRefreshTimer_->setTimerType(Qt::PreciseTimer);
+    uiRefreshTimer_->setInterval(50);
+    connect(uiRefreshTimer_, &QTimer::timeout, this, &MainWindow::refreshUiAndCharts);
+    uiRefreshTimer_->start();
+}
+
+void MainWindow::refreshUiAndCharts()
 {
     if (statusUiDirty_) {
         statusUiDirty_ = false;
@@ -1173,79 +1149,6 @@ void MainWindow::updateTelemetryCharts()
     updateTorqueTestCharts();
     updateTraceDelayCalibrationCharts();
     updateContiTrajectoryChart();
-    if (!hasLatestStatus_ || !latestStatus_.telemetryPlotActive) {
-        telemetryPlotWasActive_ = false;
-        return;
-    }
-    if (latestStatus_.latestTraceSequence == 0) {
-        return;
-    }
-    if (!telemetryPlotWasActive_) {
-        for (QLineSeries *series : positionSeries_) {
-            series->clear();
-        }
-        for (QLineSeries *series : followingErrorSeries_) {
-            series->clear();
-        }
-        lastPlottedTraceSequence_ = 0;
-        telemetryPlotStartTimeUs_ = latestStatus_.latestTraceTimeUs;
-        ui_->positionChartView->resetAutomaticRangeMode();
-        ui_->followingErrorChartView->resetAutomaticRangeMode();
-        telemetryPlotWasActive_ = true;
-    }
-    if (latestStatus_.latestTraceSequence < lastPlottedTraceSequence_) {
-        for (QLineSeries *series : positionSeries_) {
-            series->clear();
-        }
-        for (QLineSeries *series : followingErrorSeries_) {
-            series->clear();
-        }
-        lastPlottedTraceSequence_ = 0;
-        telemetryPlotStartTimeUs_ = latestStatus_.latestTraceTimeUs;
-        ui_->positionChartView->resetAutomaticRangeMode();
-        ui_->followingErrorChartView->resetAutomaticRangeMode();
-    }
-    if (latestStatus_.latestTraceSequence == lastPlottedTraceSequence_) {
-        return;
-    }
-
-    QList<const AxisFeedback *> traceFeedback;
-    for (const AxisFeedback &feedback : latestStatus_.axisFeedback) {
-        if (feedback.traceSampleValid) {
-            traceFeedback.push_back(&feedback);
-        }
-        if (traceFeedback.size() == 2) {
-            break;
-        }
-    }
-    if (traceFeedback.isEmpty()) {
-        return;
-    }
-
-    const double timeSeconds = latestStatus_.latestTraceTimeUs >= telemetryPlotStartTimeUs_
-        ? static_cast<double>(latestStatus_.latestTraceTimeUs - telemetryPlotStartTimeUs_) / 1000000.0
-        : 0.0;
-    for (int index = 0; index < traceFeedback.size(); ++index) {
-        const AxisFeedback &feedback = *traceFeedback.at(index);
-        positionSeries_[index * 2]->setName(QStringLiteral("轴%1 指令").arg(feedback.axis));
-        positionSeries_[index * 2 + 1]->setName(QStringLiteral("轴%1 实际").arg(feedback.axis));
-        followingErrorSeries_[index]->setName(
-            QStringLiteral("轴%1 补偿跟随误差").arg(feedback.axis));
-        positionSeries_[index * 2]->append(timeSeconds, feedback.commandPositionUnit);
-        positionSeries_[index * 2 + 1]->append(timeSeconds, feedback.encoderPositionUnit);
-        if (feedback.delayCompensationValid) {
-            followingErrorSeries_[index]->append(
-                timeSeconds, feedback.delayCompensatedFollowingErrorUnit);
-        }
-    }
-    lastPlottedTraceSequence_ = latestStatus_.latestTraceSequence;
-    updateChartRanges(ui_->positionChartView,
-                      {positionSeries_[0], positionSeries_[1], positionSeries_[2], positionSeries_[3]},
-                      timeSeconds, 0.1);
-    updateChartRanges(ui_->followingErrorChartView,
-                      {followingErrorSeries_[0], followingErrorSeries_[1]}, timeSeconds, 0.01);
-    ui_->positionChartView->update();
-    ui_->followingErrorChartView->update();
 }
 
 void MainWindow::initializeVelocityControlCharts()

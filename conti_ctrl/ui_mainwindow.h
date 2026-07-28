@@ -80,6 +80,11 @@ public:
     QLabel *axis7EnableStateLabel;
     QPushButton *enableAllAxesButton;
     QPushButton *disableAllAxesButton;
+    QGroupBox *telemetryRecordGroup;
+    QGridLayout *telemetryRecordLayout;
+    QPushButton *startRecordingButton;
+    QPushButton *stopRecordingButton;
+    QLabel *recordingStateValueLabel;
     QGroupBox *globalEmergencyGroup;
     QVBoxLayout *globalEmergencyLayout;
     QPushButton *emergencyStopButton;
@@ -235,21 +240,6 @@ public:
     QLabel *feedbackSummaryValueLabel;
     QSpacerItem *feedbackToolbarSpacer;
     QTableWidget *axisFeedbackTable;
-    QWidget *telemetryTab;
-    QVBoxLayout *telemetryLayout;
-    QGroupBox *telemetryRecordGroup;
-    QGridLayout *telemetryRecordLayout;
-    QPushButton *startRecordingButton;
-    QPushButton *stopRecordingButton;
-    QLabel *recordingStateValueLabel;
-    QLabel *recordPathLabel;
-    QLabel *recordPathValueLabel;
-    QLabel *recordStatsLabel;
-    QLabel *recordStatsValueLabel;
-    QSplitter *telemetryPlotSplitter;
-    ZoomableChartView *positionChartView;
-    ZoomableChartView *followingErrorChartView;
-    QLabel *telemetryHintLabel;
     QWidget *velocityControlTab;
     QVBoxLayout *velocityControlTabLayout;
     QScrollArea *velocityControlScrollArea;
@@ -682,6 +672,31 @@ public:
 
 
         globalControlLayout->addWidget(globalActionGroup);
+
+        telemetryRecordGroup = new QGroupBox(globalControlGroup);
+        telemetryRecordGroup->setObjectName("telemetryRecordGroup");
+        telemetryRecordLayout = new QGridLayout(telemetryRecordGroup);
+        telemetryRecordLayout->setObjectName("telemetryRecordLayout");
+        startRecordingButton = new QPushButton(telemetryRecordGroup);
+        startRecordingButton->setObjectName("startRecordingButton");
+        startRecordingButton->setEnabled(false);
+
+        telemetryRecordLayout->addWidget(startRecordingButton, 0, 0, 1, 1);
+
+        stopRecordingButton = new QPushButton(telemetryRecordGroup);
+        stopRecordingButton->setObjectName("stopRecordingButton");
+        stopRecordingButton->setEnabled(false);
+
+        telemetryRecordLayout->addWidget(stopRecordingButton, 0, 1, 1, 1);
+
+        recordingStateValueLabel = new QLabel(telemetryRecordGroup);
+        recordingStateValueLabel->setObjectName("recordingStateValueLabel");
+        recordingStateValueLabel->setWordWrap(true);
+
+        telemetryRecordLayout->addWidget(recordingStateValueLabel, 1, 0, 1, 2);
+
+
+        globalControlLayout->addWidget(telemetryRecordGroup);
 
         globalEmergencyGroup = new QGroupBox(globalControlGroup);
         globalEmergencyGroup->setObjectName("globalEmergencyGroup");
@@ -1580,77 +1595,6 @@ public:
         axisFeedbackLayout->addWidget(axisFeedbackTable);
 
         tabWidget->addTab(axisFeedbackTab, QString());
-        telemetryTab = new QWidget();
-        telemetryTab->setObjectName("telemetryTab");
-        telemetryLayout = new QVBoxLayout(telemetryTab);
-        telemetryLayout->setObjectName("telemetryLayout");
-        telemetryRecordGroup = new QGroupBox(telemetryTab);
-        telemetryRecordGroup->setObjectName("telemetryRecordGroup");
-        telemetryRecordLayout = new QGridLayout(telemetryRecordGroup);
-        telemetryRecordLayout->setObjectName("telemetryRecordLayout");
-        startRecordingButton = new QPushButton(telemetryRecordGroup);
-        startRecordingButton->setObjectName("startRecordingButton");
-        startRecordingButton->setEnabled(false);
-
-        telemetryRecordLayout->addWidget(startRecordingButton, 0, 0, 1, 1);
-
-        stopRecordingButton = new QPushButton(telemetryRecordGroup);
-        stopRecordingButton->setObjectName("stopRecordingButton");
-        stopRecordingButton->setEnabled(false);
-
-        telemetryRecordLayout->addWidget(stopRecordingButton, 0, 1, 1, 1);
-
-        recordingStateValueLabel = new QLabel(telemetryRecordGroup);
-        recordingStateValueLabel->setObjectName("recordingStateValueLabel");
-
-        telemetryRecordLayout->addWidget(recordingStateValueLabel, 0, 2, 1, 1);
-
-        recordPathLabel = new QLabel(telemetryRecordGroup);
-        recordPathLabel->setObjectName("recordPathLabel");
-
-        telemetryRecordLayout->addWidget(recordPathLabel, 1, 0, 1, 1);
-
-        recordPathValueLabel = new QLabel(telemetryRecordGroup);
-        recordPathValueLabel->setObjectName("recordPathValueLabel");
-        recordPathValueLabel->setWordWrap(true);
-
-        telemetryRecordLayout->addWidget(recordPathValueLabel, 1, 1, 1, 2);
-
-        recordStatsLabel = new QLabel(telemetryRecordGroup);
-        recordStatsLabel->setObjectName("recordStatsLabel");
-
-        telemetryRecordLayout->addWidget(recordStatsLabel, 2, 0, 1, 1);
-
-        recordStatsValueLabel = new QLabel(telemetryRecordGroup);
-        recordStatsValueLabel->setObjectName("recordStatsValueLabel");
-
-        telemetryRecordLayout->addWidget(recordStatsValueLabel, 2, 1, 1, 2);
-
-
-        telemetryLayout->addWidget(telemetryRecordGroup);
-
-        telemetryPlotSplitter = new QSplitter(telemetryTab);
-        telemetryPlotSplitter->setObjectName("telemetryPlotSplitter");
-        telemetryPlotSplitter->setOrientation(Qt::Orientation::Vertical);
-        telemetryPlotSplitter->setChildrenCollapsible(false);
-        positionChartView = new ZoomableChartView(telemetryPlotSplitter);
-        positionChartView->setObjectName("positionChartView");
-        positionChartView->setMinimumSize(QSize(0, 240));
-        telemetryPlotSplitter->addWidget(positionChartView);
-        followingErrorChartView = new ZoomableChartView(telemetryPlotSplitter);
-        followingErrorChartView->setObjectName("followingErrorChartView");
-        followingErrorChartView->setMinimumSize(QSize(0, 240));
-        telemetryPlotSplitter->addWidget(followingErrorChartView);
-
-        telemetryLayout->addWidget(telemetryPlotSplitter);
-
-        telemetryHintLabel = new QLabel(telemetryTab);
-        telemetryHintLabel->setObjectName("telemetryHintLabel");
-        telemetryHintLabel->setWordWrap(true);
-
-        telemetryLayout->addWidget(telemetryHintLabel);
-
-        tabWidget->addTab(telemetryTab, QString());
         velocityControlTab = new QWidget();
         velocityControlTab->setObjectName("velocityControlTab");
         velocityControlTabLayout = new QVBoxLayout(velocityControlTab);
@@ -1660,7 +1604,7 @@ public:
         velocityControlScrollArea->setWidgetResizable(true);
         velocityControlScrollContent = new QWidget();
         velocityControlScrollContent->setObjectName("velocityControlScrollContent");
-        velocityControlScrollContent->setGeometry(QRect(0, 0, 935, 1256));
+        velocityControlScrollContent->setGeometry(QRect(0, 0, 911, 1256));
         velocityControlContentLayout = new QVBoxLayout(velocityControlScrollContent);
         velocityControlContentLayout->setObjectName("velocityControlContentLayout");
         velocityControlParameterGroup = new QGroupBox(velocityControlScrollContent);
@@ -2253,7 +2197,7 @@ public:
         torqueTestScrollArea->setWidgetResizable(true);
         torqueTestScrollContent = new QWidget();
         torqueTestScrollContent->setObjectName("torqueTestScrollContent");
-        torqueTestScrollContent->setGeometry(QRect(0, 0, 781, 1105));
+        torqueTestScrollContent->setGeometry(QRect(0, 0, 781, 1097));
         torqueTestContentLayout = new QVBoxLayout(torqueTestScrollContent);
         torqueTestContentLayout->setObjectName("torqueTestContentLayout");
         torqueParameterGroup = new QGroupBox(torqueTestScrollContent);
@@ -2886,7 +2830,7 @@ public:
         retranslateUi(MainWindow);
 
         busCycleCombo->setCurrentIndex(2);
-        tabWidget->setCurrentIndex(4);
+        tabWidget->setCurrentIndex(0);
         holdAxisCombo->setCurrentIndex(1);
         velocityTrajectoryParameterStack->setCurrentIndex(1);
 
@@ -2954,6 +2898,19 @@ public:
         axis7EnableStateLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\2647 \346\234\252\347\237\245", nullptr));
         enableAllAxesButton->setText(QCoreApplication::translate("MainWindow", "\344\270\200\351\224\256\344\275\277\350\203\275\345\205\250\351\203\250\345\234\250\347\272\277\350\275\264", nullptr));
         disableAllAxesButton->setText(QCoreApplication::translate("MainWindow", "\344\270\200\351\224\256\345\244\261\350\203\275\345\205\250\351\203\250\345\234\250\347\272\277\350\275\264", nullptr));
+        telemetryRecordGroup->setTitle(QCoreApplication::translate("MainWindow", "\346\225\260\346\215\256\350\256\260\345\275\225", nullptr));
+#if QT_CONFIG(tooltip)
+        startRecordingButton->setToolTip(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\345\274\202\346\255\245\350\256\260\345\275\225\345\275\223\345\211\215 Trace \345\216\237\345\247\213\345\270\247\357\274\214\346\225\260\346\215\256\345\206\231\345\205\245\347\250\213\345\272\217\347\233\256\345\275\225\344\270\213\347\232\204 records/run_*\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        startRecordingButton->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\256\260\345\275\225", nullptr));
+#if QT_CONFIG(tooltip)
+        stopRecordingButton->setToolTip(QCoreApplication::translate("MainWindow", "\345\201\234\346\255\242\346\211\213\345\212\250 Trace \350\256\260\345\275\225\357\274\214\346\216\222\347\251\272\345\274\202\346\255\245\345\206\231\347\233\230\351\230\237\345\210\227\345\271\266\345\205\263\351\227\255\346\234\254\346\254\241\350\256\260\345\275\225\346\226\207\344\273\266\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        stopRecordingButton->setText(QCoreApplication::translate("MainWindow", "\345\201\234\346\255\242\350\256\260\345\275\225", nullptr));
+#if QT_CONFIG(tooltip)
+        recordingStateValueLabel->setToolTip(QCoreApplication::translate("MainWindow", "\346\230\276\347\244\272\350\256\260\345\275\225\347\212\266\346\200\201\357\274\233\346\202\254\346\265\256\345\217\257\346\237\245\347\234\213\350\276\223\345\207\272\347\233\256\345\275\225\345\222\214\345\206\231\345\205\245\343\200\201\351\230\237\345\210\227\343\200\201\344\270\242\345\270\247\347\273\237\350\256\241\343\200\202", nullptr));
+#endif // QT_CONFIG(tooltip)
+        recordingStateValueLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\252\350\256\260\345\275\225", nullptr));
         globalEmergencyGroup->setTitle(QCoreApplication::translate("MainWindow", "\347\264\247\346\200\245\346\223\215\344\275\234", nullptr));
         emergencyStopButton->setText(QCoreApplication::translate("MainWindow", "\345\205\250\345\261\200\347\253\213\345\215\263\345\201\234\346\255\242", nullptr));
         globalEmergencyHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\253\213\345\215\263\345\201\234\346\255\242\345\275\223\345\211\215\346\255\243\345\234\250\346\211\247\350\241\214\347\232\204\350\277\236\347\273\255\346\217\222\350\241\245\343\200\201\345\215\225\350\275\264\347\202\271\344\275\215\346\210\226\351\200\237\345\272\246\351\227\255\347\216\257\350\277\220\345\212\250\343\200\202", nullptr));
@@ -3131,22 +3088,6 @@ public:
         QTableWidgetItem *___qtablewidgetitem7 = axisFeedbackTable->horizontalHeaderItem(7);
         ___qtablewidgetitem7->setText(QCoreApplication::translate("MainWindow", "\345\244\207\346\263\250", nullptr));
         tabWidget->setTabText(tabWidget->indexOf(axisFeedbackTab), QCoreApplication::translate("MainWindow", "\350\275\264\351\205\215\347\275\256\344\270\216\345\217\215\351\246\210", nullptr));
-        telemetryRecordGroup->setTitle(QCoreApplication::translate("MainWindow", "\351\230\266\346\256\265 A\357\274\232\344\270\244\350\275\264 Trace \345\274\202\346\255\245\350\256\260\345\275\225", nullptr));
-        startRecordingButton->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\256\260\345\275\225", nullptr));
-        stopRecordingButton->setText(QCoreApplication::translate("MainWindow", "\345\201\234\346\255\242\350\256\260\345\275\225\345\271\266\345\206\231\345\205\245\346\226\207\344\273\266", nullptr));
-        recordingStateValueLabel->setText(QCoreApplication::translate("MainWindow", "\346\234\252\350\256\260\345\275\225", nullptr));
-        recordPathLabel->setText(QCoreApplication::translate("MainWindow", "\350\276\223\345\207\272\347\233\256\345\275\225", nullptr));
-        recordPathValueLabel->setText(QCoreApplication::translate("MainWindow", "\345\274\200\345\247\213\350\256\260\345\275\225\345\220\216\350\207\252\345\212\250\345\210\233\345\273\272 records/run_*", nullptr));
-        recordStatsLabel->setText(QCoreApplication::translate("MainWindow", "\345\206\231\345\205\245 / \351\230\237\345\210\227 / \344\270\242\345\270\247", nullptr));
-        recordStatsValueLabel->setText(QCoreApplication::translate("MainWindow", "0 / 0 / 0", nullptr));
-#if QT_CONFIG(tooltip)
-        positionChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\357\274\233\346\214\211\344\275\217\345\267\246\351\224\256\346\213\226\345\212\250\346\237\245\347\234\213\346\227\266\351\227\264\345\216\206\347\250\213\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
-#endif // QT_CONFIG(tooltip)
-#if QT_CONFIG(tooltip)
-        followingErrorChartView->setToolTip(QCoreApplication::translate("MainWindow", "\351\274\240\346\240\207\346\273\232\350\275\256\344\273\245\345\205\211\346\240\207\344\275\215\347\275\256\344\270\272\344\270\255\345\277\203\347\274\251\346\224\276\357\274\233\346\214\211\344\275\217\345\267\246\351\224\256\346\213\226\345\212\250\346\237\245\347\234\213\346\227\266\351\227\264\345\216\206\347\250\213\357\274\233\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
-#endif // QT_CONFIG(tooltip)
-        telemetryHintLabel->setText(QCoreApplication::translate("MainWindow", "\347\202\271\345\207\273\342\200\234\345\274\200\345\247\213\350\256\260\345\275\225\342\200\235\345\220\216\357\274\214\346\233\262\347\272\277\344\273\245 20 Hz \346\230\276\347\244\272\346\234\200\346\226\260 Trace \345\277\253\347\205\247\357\274\233\347\202\271\345\207\273\342\200\234\345\201\234\346\255\242\350\256\260\345\275\225\345\271\266\345\206\231\345\205\245\346\226\207\344\273\266\342\200\235\345\220\216\345\201\234\346\255\242\350\277\275\345\212\240\343\200\202\345\216\237\345\247\213 1 ms Trace \345\270\247\347\224\261\347\213\254\347\253\213\345\206\231\347\233\230\347\272\277\347\250\213\344\277\235\345\255\230\343\200\202\347\273\230\345\233\276\345\214\272\345\206\205\346\273\232\345\212\250\346\273\232\350\275\256\345\217\257\347\274\251\346\224\276\357\274\214\346\214\211\344\275\217\345\267\246\351\224\256\345\217\257\346\213\226\345\212\250\346\237\245\347\234\213\357\274\214\345\217\214\345\207\273\346\201\242\345\244\215\350\207\252\345\212\250\351\207\217\347\250\213\343\200\202", nullptr));
-        tabWidget->setTabText(tabWidget->indexOf(telemetryTab), QCoreApplication::translate("MainWindow", "\346\225\260\346\215\256\350\256\260\345\275\225\344\270\216\346\233\262\347\272\277", nullptr));
         velocityControlParameterGroup->setTitle(QCoreApplication::translate("MainWindow", "\345\215\225\350\275\264\351\200\237\345\272\246\346\250\241\345\274\217\344\275\215\347\275\256\351\227\255\347\216\257\345\217\202\346\225\260", nullptr));
         velocityTrajectoryGroup->setTitle(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\350\256\276\347\275\256", nullptr));
         velocityTrajectoryTypeLabel->setText(QCoreApplication::translate("MainWindow", "\350\275\250\350\277\271\347\261\273\345\236\213", nullptr));

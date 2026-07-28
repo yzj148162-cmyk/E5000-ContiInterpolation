@@ -154,119 +154,119 @@
             </property>
            </widget>
           </item>
-           <item row="9" column="1">
-            <widget class="QLabel" name="traceSampleValueLabel">
-             <property name="text">
-              <string>待初始化</string>
+          <item row="9" column="1">
+           <widget class="QLabel" name="traceSampleValueLabel">
+            <property name="text">
+             <string>待初始化</string>
             </property>
             <property name="wordWrap">
              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="10" column="0">
-            <widget class="QLabel" name="cardUnitDefinitionLabel">
-             <property name="toolTip">
-              <string>全程序唯一的板卡脉冲当量设置。连续插补、速度闭环、转矩测试、Trace 延迟标定及后续扩展页签均使用此值。</string>
-             </property>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="0">
+           <widget class="QLabel" name="cardUnitDefinitionLabel">
+            <property name="toolTip">
+             <string>全程序唯一的板卡脉冲当量设置。连续插补、速度闭环、转矩测试、Trace 延迟标定及后续扩展页签均使用此值。</string>
+            </property>
+            <property name="text">
+             <string>板卡 unit</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="10" column="1">
+           <widget class="QComboBox" name="cardUnitDefinitionCombo">
+            <property name="toolTip">
+             <string>全局板卡脉冲当量。修改后需关闭并重新初始化控制卡，所有测试页签统一使用该设置。</string>
+            </property>
+            <item>
              <property name="text">
-              <string>板卡 unit</string>
+              <string>500.622（1 unit=1°）</string>
              </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="10" column="1">
-            <widget class="QComboBox" name="cardUnitDefinitionCombo">
-             <property name="toolTip">
-              <string>全局板卡脉冲当量。修改后需关闭并重新初始化控制卡，所有测试页签统一使用该设置。</string>
-             </property>
-             <item>
-              <property name="text">
-               <string>500.622（1 unit=1°）</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>50.0622（1 unit=0.1°）</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>5.00622（1 unit=0.01°）</string>
-              </property>
-             </item>
-             <item>
-              <property name="text">
-               <string>自定义 pulse/unit</string>
-              </property>
-             </item>
-            </widget>
-           </item>
-           <item row="11" column="0">
-            <widget class="QLabel" name="cardCustomEquivalentLabel">
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
-             <property name="toolTip">
-              <string>选择“自定义 pulse/unit”后输入每个板卡 unit 对应的物理脉冲数。</string>
-             </property>
+            </item>
+            <item>
              <property name="text">
-              <string>自定义当量</string>
+              <string>50.0622（1 unit=0.1°）</string>
              </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="11" column="1">
-            <widget class="QDoubleSpinBox" name="cardCustomEquivalentSpin">
-             <property name="enabled">
-              <bool>false</bool>
-             </property>
-             <property name="toolTip">
-              <string>输入自定义脉冲当量，单位为 pulse/unit，必须大于 0。</string>
-             </property>
-             <property name="suffix">
-              <string> pulse/unit</string>
-             </property>
-             <property name="decimals">
-              <number>6</number>
-             </property>
-             <property name="minimum">
-              <double>0.000001000000000</double>
-             </property>
-             <property name="maximum">
-              <double>1000000000.000000000000000</double>
-             </property>
-             <property name="value">
-              <double>500.622222000000022</double>
-             </property>
-            </widget>
-           </item>
-           <item row="12" column="0">
-            <widget class="QLabel" name="equivLabel">
+            </item>
+            <item>
              <property name="text">
-              <string>当前换算</string>
+              <string>5.00622（1 unit=0.01°）</string>
              </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item row="12" column="1">
-            <widget class="QLabel" name="equivValueLabel">
+            </item>
+            <item>
              <property name="text">
-              <string>500.622222 pulse/unit；1 unit=1°；180224 pulse/rev</string>
+              <string>自定义 pulse/unit</string>
              </property>
-             <property name="wordWrap">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
+            </item>
+           </widget>
+          </item>
+          <item row="11" column="0">
+           <widget class="QLabel" name="cardCustomEquivalentLabel">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>选择“自定义 pulse/unit”后输入每个板卡 unit 对应的物理脉冲数。</string>
+            </property>
+            <property name="text">
+             <string>自定义当量</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="11" column="1">
+           <widget class="QDoubleSpinBox" name="cardCustomEquivalentSpin">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>输入自定义脉冲当量，单位为 pulse/unit，必须大于 0。</string>
+            </property>
+            <property name="suffix">
+             <string> pulse/unit</string>
+            </property>
+            <property name="decimals">
+             <number>6</number>
+            </property>
+            <property name="minimum">
+             <double>0.000001000000000</double>
+            </property>
+            <property name="maximum">
+             <double>1000000000.000000000000000</double>
+            </property>
+            <property name="value">
+             <double>500.622222000000022</double>
+            </property>
+           </widget>
+          </item>
+          <item row="12" column="0">
+           <widget class="QLabel" name="equivLabel">
+            <property name="text">
+             <string>当前换算</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+          <item row="12" column="1">
+           <widget class="QLabel" name="equivValueLabel">
+            <property name="text">
+             <string>500.622222 pulse/unit；1 unit=1°；180224 pulse/rev</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
        </item>
        <item>
         <widget class="QGroupBox" name="globalActionGroup">
@@ -404,6 +404,54 @@
         </widget>
        </item>
        <item>
+        <widget class="QGroupBox" name="telemetryRecordGroup">
+         <property name="title">
+          <string>数据记录</string>
+         </property>
+         <layout class="QGridLayout" name="telemetryRecordLayout">
+          <item row="0" column="0">
+           <widget class="QPushButton" name="startRecordingButton">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>开始异步记录当前 Trace 原始帧，数据写入程序目录下的 records/run_*。</string>
+            </property>
+            <property name="text">
+             <string>开始记录</string>
+            </property>
+           </widget>
+          </item>
+          <item row="0" column="1">
+           <widget class="QPushButton" name="stopRecordingButton">
+            <property name="enabled">
+             <bool>false</bool>
+            </property>
+            <property name="toolTip">
+             <string>停止手动 Trace 记录，排空异步写盘队列并关闭本次记录文件。</string>
+            </property>
+            <property name="text">
+             <string>停止记录</string>
+            </property>
+           </widget>
+          </item>
+          <item row="1" column="0" colspan="2">
+           <widget class="QLabel" name="recordingStateValueLabel">
+            <property name="toolTip">
+             <string>显示记录状态；悬浮可查看输出目录和写入、队列、丢帧统计。</string>
+            </property>
+            <property name="text">
+             <string>未记录</string>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
         <widget class="QGroupBox" name="globalEmergencyGroup">
          <property name="title">
           <string>紧急操作</string>
@@ -464,7 +512,7 @@
       </property>
       <widget class="QTabWidget" name="tabWidget">
        <property name="currentIndex">
-        <number>4</number>
+        <number>0</number>
        </property>
        <widget class="QWidget" name="contiTestTab">
         <attribute name="title">
@@ -963,7 +1011,7 @@
                        </property>
                       </widget>
                      </item>
-                      <item row="11" column="0">
+                     <item row="11" column="0">
                       <widget class="QLabel" name="trajectoryPointModeLabel">
                        <property name="text">
                         <string>轨迹产点方式</string>
@@ -1620,7 +1668,7 @@
               </property>
              </widget>
             </item>
-             <item row="2" column="0">
+            <item row="2" column="0">
              <widget class="QLabel" name="feedbackSourceLabel">
               <property name="text">
                <string>反馈来源</string>
@@ -1961,122 +2009,6 @@
          </item>
         </layout>
        </widget>
-       <widget class="QWidget" name="telemetryTab">
-        <attribute name="title">
-         <string>数据记录与曲线</string>
-        </attribute>
-        <layout class="QVBoxLayout" name="telemetryLayout">
-         <item>
-          <widget class="QGroupBox" name="telemetryRecordGroup">
-           <property name="title">
-            <string>阶段 A：两轴 Trace 异步记录</string>
-           </property>
-           <layout class="QGridLayout" name="telemetryRecordLayout">
-            <item row="0" column="0">
-             <widget class="QPushButton" name="startRecordingButton">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="text">
-               <string>开始记录</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="1">
-             <widget class="QPushButton" name="stopRecordingButton">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="text">
-               <string>停止记录并写入文件</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="2">
-             <widget class="QLabel" name="recordingStateValueLabel">
-              <property name="text">
-               <string>未记录</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="0">
-             <widget class="QLabel" name="recordPathLabel">
-              <property name="text">
-               <string>输出目录</string>
-              </property>
-             </widget>
-            </item>
-            <item row="1" column="1" colspan="2">
-             <widget class="QLabel" name="recordPathValueLabel">
-              <property name="text">
-               <string>开始记录后自动创建 records/run_*</string>
-              </property>
-              <property name="wordWrap">
-               <bool>true</bool>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="0">
-             <widget class="QLabel" name="recordStatsLabel">
-              <property name="text">
-               <string>写入 / 队列 / 丢帧</string>
-              </property>
-             </widget>
-            </item>
-            <item row="2" column="1" colspan="2">
-             <widget class="QLabel" name="recordStatsValueLabel">
-              <property name="text">
-               <string>0 / 0 / 0</string>
-              </property>
-             </widget>
-            </item>
-           </layout>
-          </widget>
-         </item>
-         <item>
-          <widget class="QSplitter" name="telemetryPlotSplitter">
-           <property name="orientation">
-            <enum>Qt::Orientation::Vertical</enum>
-           </property>
-           <property name="childrenCollapsible">
-            <bool>false</bool>
-           </property>
-           <widget class="ZoomableChartView" name="positionChartView">
-            <property name="minimumSize">
-             <size>
-              <width>0</width>
-              <height>240</height>
-             </size>
-            </property>
-            <property name="toolTip">
-             <string>鼠标滚轮以光标位置为中心缩放；按住左键拖动查看时间历程；双击恢复自动量程。</string>
-            </property>
-           </widget>
-           <widget class="ZoomableChartView" name="followingErrorChartView">
-            <property name="minimumSize">
-             <size>
-              <width>0</width>
-              <height>240</height>
-             </size>
-            </property>
-            <property name="toolTip">
-             <string>鼠标滚轮以光标位置为中心缩放；按住左键拖动查看时间历程；双击恢复自动量程。</string>
-            </property>
-           </widget>
-          </widget>
-         </item>
-         <item>
-          <widget class="QLabel" name="telemetryHintLabel">
-           <property name="text">
-            <string>点击“开始记录”后，曲线以 20 Hz 显示最新 Trace 快照；点击“停止记录并写入文件”后停止追加。原始 1 ms Trace 帧由独立写盘线程保存。绘图区内滚动滚轮可缩放，按住左键可拖动查看，双击恢复自动量程。</string>
-           </property>
-           <property name="wordWrap">
-            <bool>true</bool>
-           </property>
-          </widget>
-         </item>
-        </layout>
-       </widget>
        <widget class="QWidget" name="velocityControlTab">
         <attribute name="title">
          <string>速度闭环测试</string>
@@ -2092,7 +2024,7 @@
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>935</width>
+              <width>911</width>
               <height>1256</height>
              </rect>
             </property>
@@ -2497,7 +2429,7 @@
                      </widget>
                     </widget>
                    </item>
-                   </layout>
+                  </layout>
                  </widget>
                 </item>
                 <item row="0" column="1">
@@ -3228,7 +3160,7 @@
               <x>0</x>
               <y>0</y>
               <width>781</width>
-              <height>1105</height>
+              <height>1097</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="torqueTestContentLayout">
@@ -3289,7 +3221,7 @@
                   </item>
                  </widget>
                 </item>
-                 <item row="1" column="0" colspan="5">
+                <item row="1" column="0" colspan="5">
                  <widget class="QLabel" name="torqueMotorParameterSummaryLabel">
                   <property name="text">
                    <string>输出轴位置参数：180224 pulse/圈 = 500.622222 pulse/°（减速比 44:1）</string>
@@ -3875,7 +3807,7 @@
                   </item>
                  </widget>
                 </item>
-                 <item row="1" column="0">
+                <item row="1" column="0">
                  <widget class="QLabel" name="traceDelaySpeed1Label">
                   <property name="text">
                    <string>速度 V1</string>
