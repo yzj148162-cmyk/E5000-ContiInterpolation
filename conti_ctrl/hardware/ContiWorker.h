@@ -195,8 +195,11 @@ private:
     bool velocityPlotTraceStartValid_ = false;
     QQueue<TraceCommandHistorySample> velocityPlotCommandHistory_;
     quint64 velocityPlotLastTraceSequence_ = 0;
-    bool velocityBatchAlignedErrorValid_ = false;
-    double velocityBatchPeakAlignedErrorDegree_ = 0.0;
+    // 当前批次内按 Trace 时间戳对齐后的最大轨迹跟踪误差：
+    // reference(t - delay) - traceActual(t)。只用于失控保护；
+    // type05/type06 延迟对齐误差继续作为电机执行层诊断量。
+    bool velocityBatchAlignedTrackingErrorValid_ = false;
+    double velocityBatchPeakAlignedTrackingErrorDegree_ = 0.0;
     quint64 torqueRunId_ = 0;
     TorqueTestConfig torqueConfig_;
     TorqueTestStatus torqueStatus_;

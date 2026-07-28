@@ -2933,7 +2933,7 @@
                    <item row="2" column="0">
                     <widget class="QLabel" name="velocityMaxFollowingErrorLabel">
                      <property name="toolTip">
-                      <string>运行期间允许的最大绝对位置跟随误差；超过该值立即按故障流程停止，防止运动失控。</string>
+                      <string>运行期间允许的最大绝对轨迹跟踪误差，按“规划位置(t-τ)－Trace实际位置(t)”计算；τ取当前轴的Trace延迟标定值。超过该值立即按故障流程停止。</string>
                      </property>
                      <property name="text">
                       <string>最大跟随误差</string>
@@ -2943,7 +2943,7 @@
                    <item row="2" column="1">
                     <widget class="QDoubleSpinBox" name="velocityMaxFollowingErrorSpin">
                      <property name="toolTip">
-                      <string>运行期间允许的最大绝对位置跟随误差；超过该值立即按故障流程停止，防止运动失控。</string>
+                      <string>运行期间允许的最大绝对轨迹跟踪误差，按“规划位置(t-τ)－Trace实际位置(t)”计算；τ取当前轴的Trace延迟标定值。超过该值立即按故障流程停止。</string>
                      </property>
                      <property name="suffix">
                       <string> °</string>

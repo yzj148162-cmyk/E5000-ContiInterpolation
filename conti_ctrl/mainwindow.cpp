@@ -901,7 +901,7 @@ void MainWindow::updateStatus(const ContiStatus &status)
               .arg(velocity.delayCompensationMs, 0, 'f', 3)
         : QStringLiteral("--（等待延迟历史帧）");
     ui_->velocityPositionStatusValueLabel->setText(
-        QStringLiteral("%1 / %2 / %3 / %4 °；延迟对齐=%5")
+        QStringLiteral("%1 / %2 / %3 / %4 °；电机延迟对齐=%5")
             .arg(velocity.referencePositionDegree, 0, 'f', 5)
             .arg(velocity.cardCommandPositionDegree, 0, 'f', 5)
             .arg(velocity.actualPositionDegree, 0, 'f', 5)
@@ -1300,7 +1300,7 @@ void MainWindow::initializeVelocityControlCharts()
         velocityPositionSeries_[index]->attachAxis(velocityPositionValueAxis_);
     }
     const QStringList errorNames {QStringLiteral("轨迹时间误差"),
-                                  QStringLiteral("延迟对齐误差"),
+                                  QStringLiteral("电机延迟对齐误差"),
                                   QStringLiteral("正终点容差"),
                                   QStringLiteral("负终点容差")};
     const QList<QColor> errorColors {red, green,
