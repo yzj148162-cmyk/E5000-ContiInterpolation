@@ -13,6 +13,7 @@ SOURCES += \
     mainwindow.cpp \
     cdpr/CdprConfiguration.cpp \
     cdpr/CdprCoordinator.cpp \
+    cdpr/CdprKinematics.cpp \
     control/PositionVelocityPid.cpp \
     control/TraceDelayCalibration.cpp \
     hardware/LeadshineMotionCard.cpp \
@@ -25,7 +26,9 @@ SOURCES += \
 
 HEADERS += \
     cdpr/CdprConfiguration.h \
+    cdpr/CdprControlTypes.h \
     cdpr/CdprCoordinator.h \
+    cdpr/CdprKinematics.h \
     common/ContiTypes.h \
     control/PositionVelocityPid.h \
     control/TraceDelayCalibration.h \

@@ -8,12 +8,7 @@
 #include <QStringList>
 #include <QVector>
 
-struct CdprVector3
-{
-    double x = 0.0;
-    double y = 0.0;
-    double z = 0.0;
-};
+#include "CdprControlTypes.h"
 
 struct CdprCableAxisConfig
 {
@@ -82,6 +77,7 @@ struct CdprUiStatus
     QVector<CdprAxisView> axes;
     int onlineAxisCount = 0;
     bool boardInitialized = false;
+    bool kinematicsReady = false;
     bool controlStartAvailable = false;
 };
 

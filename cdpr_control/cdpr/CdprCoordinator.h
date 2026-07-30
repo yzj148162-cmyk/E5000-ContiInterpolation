@@ -2,8 +2,10 @@
 #define CDPRCOORDINATOR_H
 
 #include <QObject>
+#include <memory>
 
 #include "CdprConfiguration.h"
+#include "CdprKinematics.h"
 #include "common/ContiTypes.h"
 
 class CdprCoordinator : public QObject
@@ -24,12 +26,18 @@ signals:
     void logMessage(const QString &message);
 
 private:
+    void rebuildInitialKinematics();
     void publishStatus();
 
     CdprConfiguration configuration_;
+    std::unique_ptr<CdprKinematics> kinematics_;
+    CdprRobotState robotState_;
+    QString kinematicsSummary_;
+    QString kinematicsError_;
     QString configurationPath_;
     QStringList validationMessages_;
     bool configurationLoaded_ = false;
+    bool kinematicsReady_ = false;
     bool boardInitialized_ = false;
     int detectedAxisCount_ = 0;
     quint16 enabledAxisMask_ = 0;

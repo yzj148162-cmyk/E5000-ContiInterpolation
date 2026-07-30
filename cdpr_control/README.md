@@ -7,7 +7,9 @@
 - `MotionControlWorker`：控制状态机、规划、反馈处理和安全判定；
 - `MotionCardHardwareInterface`：独占硬件线程，作为唯一板卡访问边界；
 - `LeadshineMotionCard`：集中封装 LTDMC/nmc 系列雷赛 SDK；
-- `CdprCoordinator`：CDPR 配置加载、校验以及机器人控制骨架；
+- `CdprCoordinator`：唯一CDPR状态协调器、配置校验和初始数学自检；
+- `CdprControlTypes`：6维平台、8绳、8轴命令/反馈和机器人完整状态帧；
+- `CdprKinematics`：无静态共享状态的直线绳段正逆运动学和绳速雅可比；
 - `TelemetryRecorder`：异步数据记录。
 
 ## CDPR 样机参数约定
@@ -28,3 +30,7 @@ nmake
 ```
 
 生成的程序目标名为 `cdpr_control`。
+
+运动学离线测试位于 `tests/cdpr_kinematics_tests.pro`，覆盖G302初始绳长、
+绳速有限差分、正逆解闭环以及实例隔离。当前CDPR页只开放配置与数学自检，
+8轴实机控制入口仍保持禁用。

@@ -1,4 +1,5 @@
 #include "CdprConfiguration.h"
+#include "CdprKinematics.h"
 
 #include <QCryptographicHash>
 #include <QFile>
@@ -140,33 +141,6 @@ QString vectorText(const CdprVector3 &value)
         .arg(value.x, 0, 'f', 4)
         .arg(value.y, 0, 'f', 4)
         .arg(value.z, 0, 'f', 4);
-}
-
-CdprVector3 platformPointInWorld(
-    const CdprVector3 &point, const std::array<double, 6> &pose)
-{
-    const double sx = std::sin(pose[3]);
-    const double cx = std::cos(pose[3]);
-    const double sy = std::sin(pose[4]);
-    const double cy = std::cos(pose[4]);
-    const double sz = std::sin(pose[5]);
-    const double cz = std::cos(pose[5]);
-
-    // 姿态约定：R = Rz * Ry * Rx。
-    const double r00 = cz * cy;
-    const double r01 = cz * sy * sx - sz * cx;
-    const double r02 = cz * sy * cx + sz * sx;
-    const double r10 = sz * cy;
-    const double r11 = sz * sy * sx + cz * cx;
-    const double r12 = sz * sy * cx - cz * sx;
-    const double r20 = -sy;
-    const double r21 = cy * sx;
-    const double r22 = cy * cx;
-    return {
-        pose[0] + r00 * point.x + r01 * point.y + r02 * point.z,
-        pose[1] + r10 * point.x + r11 * point.y + r12 * point.z,
-        pose[2] + r20 * point.x + r21 * point.y + r22 * point.z
-    };
 }
 
 QJsonObject toJson(const CdprConfiguration &configuration)
@@ -440,17 +414,12 @@ QString CdprConfigurationFile::summary(
 std::array<double, 8> CdprConfigurationFile::calculateInitialCableLengths(
     const CdprConfiguration &configuration)
 {
-    std::array<double, 8> lengths {};
-    for (size_t index = 0; index < configuration.cables.size(); ++index) {
-        const CdprCableAxisConfig &cable = configuration.cables[index];
-        const CdprVector3 platformPoint = platformPointInWorld(
-            cable.platformAnchorM, configuration.initialPlatformPose);
-        const double dx = cable.frameAnchorM.x - platformPoint.x;
-        const double dy = cable.frameAnchorM.y - platformPoint.y;
-        const double dz = cable.frameAnchorM.z - platformPoint.z;
-        lengths[index] = std::sqrt(dx * dx + dy * dy + dz * dz);
-    }
-    return lengths;
+    CdprPlatformState6 platform;
+    platform.pose = configuration.initialPlatformPose;
+    platform.poseValid = true;
+    const CdprInverseKinematicsResult result =
+        CdprKinematics(configuration).inverse(platform);
+    return result.valid ? result.cables.lengthM : std::array<double, 8> {};
 }
 
 double CdprConfigurationFile::maximumCableTravelM(

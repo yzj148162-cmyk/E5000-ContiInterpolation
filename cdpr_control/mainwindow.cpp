@@ -344,7 +344,7 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
                    : QStringLiteral("请加载配置文件。"))
             : status.validationMessages.join(QStringLiteral("\n")));
     ui_->cdprStateValueLabel->setStyleSheet(
-        status.configurationValid
+        status.configurationValid && status.kinematicsReady
             ? QStringLiteral("QLabel { color: #2e7d32; font-weight: bold; }")
             : QStringLiteral("QLabel { color: #c62828; font-weight: bold; }"));
     ui_->cdprStartButton->setEnabled(status.controlStartAvailable);
