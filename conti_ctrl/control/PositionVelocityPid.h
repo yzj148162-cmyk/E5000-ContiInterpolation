@@ -22,9 +22,12 @@ public:
     void reset(double initialCommandVelocity = 0.0);
     PositionVelocityPidOutput update(const VelocityControlConfig &config,
                                      double positionErrorDegree,
-                                     double referenceVelocityDegreePerSecond,
+                                     double feedforwardVelocityDegreePerSecond,
+                                     double feedbackReferenceVelocityDegreePerSecond,
                                      double actualVelocityDegreePerSecond,
-                                     double dtSeconds);
+                                     double commandDtSeconds,
+                                     double feedbackDtSeconds,
+                                     bool feedbackFresh);
 
 private:
     double integralState_ = 0.0;

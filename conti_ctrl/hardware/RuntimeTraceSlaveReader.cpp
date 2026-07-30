@@ -79,6 +79,12 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
     }
     configured_ = true;
     everRead_ = false;
+    timingReliable_ = true;
+    lastValidFrames_ = 0;
+    lastFreeFrames_ = 0;
+    maximumValidFrames_ = 0;
+    minimumFreeFrames_ = -1;
+    locallyDroppedSamples_ = 0;
     nextSequence_ = 1;
     std::this_thread::sleep_for(std::chrono::milliseconds(std::max(2, config_.samplePeriodUs / 1000 + 1)));
     return true;
@@ -91,7 +97,13 @@ void RuntimeTraceSlaveReader::reset()
     }
     configured_ = false;
     everRead_ = false;
+    timingReliable_ = true;
     lastResult_ = 0;
+    lastValidFrames_ = 0;
+    lastFreeFrames_ = 0;
+    maximumValidFrames_ = 0;
+    minimumFreeFrames_ = -1;
+    locallyDroppedSamples_ = 0;
     values_.clear();
     samples_.clear();
     nextSequence_ = 1;
@@ -134,7 +146,12 @@ int RuntimeTraceSlaveReader::readTraceCached()
     int validNum = 0, freeNum = 0, objectTotalBytes = 0, objectTotalNum = 0;
     lastResult_ = dmc_trace_get_state(static_cast<WORD>(config_.cardNo), &validNum, &freeNum,
                                       &objectTotalBytes, &objectTotalNum);
-    if (lastResult_ != 0 || validNum <= 0) {
+    if (lastResult_ != 0) {
+        timingReliable_ = false;
+        return everRead_ ? 0 : -1;
+    }
+    updateBufferDiagnostics(validNum, freeNum);
+    if (validNum <= 0) {
         return everRead_ ? 0 : -1;
     }
     const FrameLayout layout = resolveLayout(objectTotalBytes);
@@ -149,7 +166,11 @@ int RuntimeTraceSlaveReader::readTraceCached()
         int readBytes = 0;
         lastResult_ = dmc_trace_get_data(static_cast<WORD>(config_.cardNo), bufferSize, buffer.data(), &readBytes);
         if (lastResult_ != 0 || readBytes < layout.frameBytes) {
+            timingReliable_ = false;
             return total > 0 ? total : (everRead_ ? 0 : -1);
+        }
+        if (readBytes % layout.frameBytes != 0) {
+            timingReliable_ = false;
         }
         const int completeFrames = readBytes / layout.frameBytes;
         for (int frame = 0; frame < completeFrames; ++frame) {
@@ -168,17 +189,42 @@ int RuntimeTraceSlaveReader::readTraceCached()
             samples_.push_back({nextSequence_++, values_});
             while (static_cast<int>(samples_.size()) > config_.maxQueuedSamples) {
                 samples_.pop_front();
+                ++locallyDroppedSamples_;
+                timingReliable_ = false;
             }
         }
         total += completeFrames;
         lastResult_ = dmc_trace_get_state(static_cast<WORD>(config_.cardNo), &validNum, &freeNum,
                                           &objectTotalBytes, &objectTotalNum);
-        if (lastResult_ != 0 || validNum <= 0 || completeFrames < frameCount) {
+        if (lastResult_ != 0) {
+            timingReliable_ = false;
+            break;
+        }
+        updateBufferDiagnostics(validNum, freeNum);
+        if (validNum <= 0 || completeFrames < frameCount) {
             break;
         }
     }
     everRead_ = everRead_ || total > 0;
     return total;
+}
+
+void RuntimeTraceSlaveReader::updateBufferDiagnostics(int validFrames, int freeFrames)
+{
+    lastValidFrames_ = std::max(0, validFrames);
+    lastFreeFrames_ = std::max(0, freeFrames);
+    maximumValidFrames_ = std::max(maximumValidFrames_, lastValidFrames_);
+    if (minimumFreeFrames_ < 0) {
+        minimumFreeFrames_ = lastFreeFrames_;
+    } else {
+        minimumFreeFrames_ = std::min(minimumFreeFrames_, lastFreeFrames_);
+    }
+
+    // Trace API不返回每帧硬件时间戳。本程序只能按“实际读到的帧数×采样周期”
+    // 重建逻辑时间；一旦卡侧无剩余空间，就无法证明期间没有覆盖旧帧。
+    if (lastFreeFrames_ == 0) {
+        timingReliable_ = false;
+    }
 }
 
 std::vector<RuntimeTraceSlaveReader::Sample> RuntimeTraceSlaveReader::takeSamples()

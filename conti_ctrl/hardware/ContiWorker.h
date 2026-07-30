@@ -186,6 +186,13 @@ private:
     QElapsedTimer velocityAlignedErrorFreshClock_;
     QElapsedTimer velocityCompletionClock_;
     quint64 velocityLastTraceSequence_ = 0;
+    quint64 velocityLastFeedbackTraceTimeUs_ = 0;
+    double velocityFeedbackElapsedS_ = 0.0;
+    double velocityFeedbackReferencePositionDegree_ = 0.0;
+    double velocityFeedbackReferenceVelocityDegreePerSecond_ = 0.0;
+    double velocityFeedbackPositionErrorDegree_ = 0.0;
+    double velocityFeedbackDtSeconds_ = 0.001;
+    bool velocityFeedbackReferenceValid_ = false;
     qint64 velocityLastDiagnosticMs_ = -1;
     QVector<VelocityPlotSample> pendingVelocityPlotSamples_;
     QElapsedTimer velocityPlotPublishClock_;
@@ -262,6 +269,7 @@ private:
     int traceFramesRead_ = 0;
     quint64 latestTraceSequence_ = 0;
     quint64 latestTraceTimeUs_ = 0;
+    TraceReadDiagnostics traceReadDiagnostics_;
     bool trajectoryComparisonActive_ = false;
     quint64 trajectoryTraceStartTimeUs_ = 0;
     bool traceVelocityAnchorValid_ = false;

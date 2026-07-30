@@ -44,17 +44,30 @@ public:
     bool isConfigured() const { return configured_; }
     bool hasEverRead() const { return everRead_; }
     short lastApiResult() const { return lastResult_; }
+    bool timingReliable() const { return timingReliable_; }
+    int lastValidFrames() const { return lastValidFrames_; }
+    int lastFreeFrames() const { return lastFreeFrames_; }
+    int maximumValidFrames() const { return maximumValidFrames_; }
+    int minimumFreeFrames() const { return minimumFreeFrames_; }
+    quint64 locallyDroppedSamples() const { return locallyDroppedSamples_; }
 
 private:
     struct FrameLayout { int frameBytes = 0; int valueStart = 0; int objectStep = 0; };
     FrameLayout resolveLayout(int objectTotalBytes) const;
     int outputIndex(int objectIndex) const;
     void ensureValues();
+    void updateBufferDiagnostics(int validFrames, int freeFrames);
 
     ReaderConfig config_;
     bool configured_ = false;
     bool everRead_ = false;
+    bool timingReliable_ = true;
     short lastResult_ = 0;
+    int lastValidFrames_ = 0;
+    int lastFreeFrames_ = 0;
+    int maximumValidFrames_ = 0;
+    int minimumFreeFrames_ = -1;
+    quint64 locallyDroppedSamples_ = 0;
     std::vector<double> values_;
     std::deque<Sample> samples_;
     quint64 nextSequence_ = 1;

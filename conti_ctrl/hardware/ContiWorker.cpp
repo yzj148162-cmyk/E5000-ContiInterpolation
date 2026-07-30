@@ -1238,6 +1238,13 @@ void ContiWorker::startVelocityControl(const VelocityControlConfig &requestedCon
     velocityMotionStarted_ = false;
     velocityReferenceInitialized_ = false;
     velocityLastTraceSequence_ = latestTraceSequence_;
+    velocityLastFeedbackTraceTimeUs_ = 0;
+    velocityFeedbackElapsedS_ = 0.0;
+    velocityFeedbackReferencePositionDegree_ = 0.0;
+    velocityFeedbackReferenceVelocityDegreePerSecond_ = 0.0;
+    velocityFeedbackPositionErrorDegree_ = 0.0;
+    velocityFeedbackDtSeconds_ = std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
+    velocityFeedbackReferenceValid_ = false;
     velocityLastDiagnosticMs_ = -1;
     pendingVelocityPlotSamples_.clear();
     velocityPlotPublishClock_.invalidate();
@@ -1395,7 +1402,9 @@ void ContiWorker::runVelocityControlCycle()
         finishVelocityControl(QStringLiteral("速度闭环 Trace 读取失败：%1").arg(traceStateText_), true);
         return;
     }
-    if (latestTraceSequence_ != velocityLastTraceSequence_) {
+    const bool traceFeedbackFresh =
+        latestTraceSequence_ != velocityLastTraceSequence_;
+    if (traceFeedbackFresh) {
         velocityLastTraceSequence_ = latestTraceSequence_;
         velocityTraceFreshClock_.restart();
     } else if (velocityTraceFreshClock_.isValid()
@@ -1406,6 +1415,20 @@ void ContiWorker::runVelocityControlCycle()
     }
     if (velocityConfig_.axis >= static_cast<quint16>(latestAxisFeedback_.size())) {
         finishVelocityControl(QStringLiteral("速度闭环反馈轴索引越界"), true);
+        return;
+    }
+    if (!traceReadDiagnostics_.timingReliable) {
+        finishVelocityControl(
+            QStringLiteral(
+                "Trace 时间轴不可信：卡侧有效/剩余=%1/%2，历史最高有效=%3，"
+                "历史最小剩余=%4，本地丢弃=%5；"
+                "已停止使用按读取序号重建的时间进行闭环控制。")
+                .arg(traceReadDiagnostics_.validFrames)
+                .arg(traceReadDiagnostics_.freeFrames)
+                .arg(traceReadDiagnostics_.maximumValidFrames)
+                .arg(traceReadDiagnostics_.minimumFreeFrames)
+                .arg(traceReadDiagnostics_.locallyDroppedSamples),
+            true);
         return;
     }
     const AxisFeedback &feedback = latestAxisFeedback_.at(velocityConfig_.axis);
@@ -1455,6 +1478,13 @@ void ContiWorker::runVelocityControlCycle()
         stateText_ = QStringLiteral("速度闭环运行中");
         velocityPlotTraceStartTimeUs_ = latestTraceTimeUs_;
         velocityPlotTraceStartValid_ = true;
+        velocityLastFeedbackTraceTimeUs_ = feedback.traceTimeUs;
+        velocityFeedbackElapsedS_ = 0.0;
+        velocityFeedbackReferencePositionDegree_ = velocityStartPositionDegree_;
+        velocityFeedbackReferenceVelocityDegreePerSecond_ = 0.0;
+        velocityFeedbackPositionErrorDegree_ =
+            velocityStartPositionDegree_ - feedback.encoderPositionUnit;
+        velocityFeedbackReferenceValid_ = true;
         velocityPlotPublishClock_.start();
         VelocityPlotSample initialSample;
         initialSample.runId = velocityRunId_;
@@ -1475,19 +1505,61 @@ void ContiWorker::runVelocityControlCycle()
                             .arg(velocityConfig_.axis)
                             .arg(velocityStartPositionDegree_, 0, 'f', 6)
                             .arg(velocityFinalPositionDegree_, 0, 'f', 6));
+        emit logMessage(QStringLiteral(
+                            "Trace 时间基准已建立：首帧序号=%1，逻辑时间=%2 us；"
+                            "卡侧有效/剩余=%3/%4。控制时钟继续独立产点，"
+                            "PID反馈只在新Trace帧到达时按同帧规划状态更新。")
+                            .arg(feedback.traceSequence)
+                            .arg(feedback.traceTimeUs)
+                            .arg(traceReadDiagnostics_.validFrames)
+                            .arg(traceReadDiagnostics_.freeFrames));
         publishStatus();
         return;
     }
 
     const double elapsedS = velocityRunClock_.elapsed() / 1000.0;
-    const double dtSeconds = velocityCycleClock_.isValid()
+    const double commandDtSeconds = velocityCycleClock_.isValid()
         ? std::max(1e-6, velocityCycleClock_.restart() / 1000.0)
         : velocityConfig_.controlPeriodMs / 1000.0;
     double referencePosition = 0.0;
     double referenceVelocity = 0.0;
     evaluateVelocityReference(elapsedS, referencePosition, referenceVelocity);
-    const double trajectoryTimeError =
-        referencePosition - feedback.encoderPositionUnit;
+    if (traceFeedbackFresh) {
+        if (feedback.traceTimeUs < velocityPlotTraceStartTimeUs_) {
+            finishVelocityControl(
+                QStringLiteral("Trace 时间倒退：当前=%1 us，速度闭环起点=%2 us")
+                    .arg(feedback.traceTimeUs)
+                    .arg(velocityPlotTraceStartTimeUs_),
+                true);
+            return;
+        }
+        velocityFeedbackElapsedS_ =
+            static_cast<double>(feedback.traceTimeUs - velocityPlotTraceStartTimeUs_)
+            / 1000000.0;
+        evaluateVelocityReference(
+            velocityFeedbackElapsedS_,
+            velocityFeedbackReferencePositionDegree_,
+            velocityFeedbackReferenceVelocityDegreePerSecond_);
+        velocityFeedbackPositionErrorDegree_ =
+            velocityFeedbackReferencePositionDegree_ - feedback.encoderPositionUnit;
+        if (velocityLastFeedbackTraceTimeUs_ > 0
+            && feedback.traceTimeUs > velocityLastFeedbackTraceTimeUs_) {
+            velocityFeedbackDtSeconds_ =
+                static_cast<double>(feedback.traceTimeUs - velocityLastFeedbackTraceTimeUs_)
+                / 1000000.0;
+        } else {
+            velocityFeedbackDtSeconds_ =
+                std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
+        }
+        velocityLastFeedbackTraceTimeUs_ = feedback.traceTimeUs;
+        velocityFeedbackReferenceValid_ = true;
+    }
+    if (!velocityFeedbackReferenceValid_) {
+        velocityStatus_.stateText = QStringLiteral("等待可对齐的Trace反馈");
+        publishStatus();
+        return;
+    }
+    const double trajectoryTimeError = velocityFeedbackPositionErrorDegree_;
     const bool followingErrorProtectionValid =
         velocityBatchAlignedTrackingErrorValid_;
     const double followingErrorForProtection =
@@ -1513,7 +1585,9 @@ void ContiWorker::runVelocityControlCycle()
 
     const PositionVelocityPidOutput output = velocityPid_.update(
         velocityConfig_, trajectoryTimeError, referenceVelocity,
-        feedback.actualVelocityUnitPerSecond, dtSeconds);
+        velocityFeedbackReferenceVelocityDegreePerSecond_,
+        feedback.actualVelocityUnitPerSecond, commandDtSeconds,
+        velocityFeedbackDtSeconds_, traceFeedbackFresh);
     QElapsedTimer apiClock;
     apiClock.start();
     short apiResult = 0;
@@ -1547,11 +1621,14 @@ void ContiWorker::runVelocityControlCycle()
     velocityStatus_.active = true;
     velocityStatus_.motionStarted = velocityMotionStarted_;
     velocityStatus_.elapsedS = elapsedS;
-    velocityStatus_.controlDtMs = dtSeconds * 1000.0;
+    velocityStatus_.controlDtMs = commandDtSeconds * 1000.0;
     velocityStatus_.maximumJitterMs = std::max(
         velocityStatus_.maximumJitterMs,
         std::abs(velocityStatus_.controlDtMs - velocityConfig_.controlPeriodMs));
     velocityStatus_.referencePositionDegree = referencePosition;
+    velocityStatus_.feedbackReferencePositionDegree =
+        velocityFeedbackReferencePositionDegree_;
+    velocityStatus_.feedbackElapsedS = velocityFeedbackElapsedS_;
     velocityStatus_.cardCommandPositionDegree = feedback.commandPositionUnit;
     velocityStatus_.actualPositionDegree = feedback.encoderPositionUnit;
     velocityStatus_.positionErrorDegree = trajectoryTimeError;
@@ -1560,7 +1637,12 @@ void ContiWorker::runVelocityControlCycle()
     velocityStatus_.delayCompensationMs = feedback.delayCompensationMs;
     velocityStatus_.delayAlignedFollowingErrorValid =
         feedback.delayCompensationValid;
+    velocityStatus_.traceTimingReliable = traceReadDiagnostics_.timingReliable;
+    velocityStatus_.traceValidFrames = traceReadDiagnostics_.validFrames;
+    velocityStatus_.traceFreeFrames = traceReadDiagnostics_.freeFrames;
     velocityStatus_.referenceVelocityDegreePerSecond = referenceVelocity;
+    velocityStatus_.feedbackReferenceVelocityDegreePerSecond =
+        velocityFeedbackReferenceVelocityDegreePerSecond_;
     velocityStatus_.commandVelocityDegreePerSecond = output.commandVelocity;
     velocityStatus_.cardCommandVelocityDegreePerSecond = feedback.commandVelocityUnitPerSecond;
     velocityStatus_.actualVelocityDegreePerSecond = feedback.actualVelocityUnitPerSecond;
@@ -1576,7 +1658,7 @@ void ContiWorker::runVelocityControlCycle()
     velocityStatus_.stateText = elapsedS < velocityConfig_.durationS
         ? QStringLiteral("闭环运行中") : QStringLiteral("终点稳态确认中");
 
-    const bool terminalStable = elapsedS >= velocityConfig_.durationS
+    const bool terminalStable = velocityFeedbackElapsedS_ >= velocityConfig_.durationS
         && std::abs(trajectoryTimeError) <= velocityConfig_.positionToleranceDegree
         && std::abs(feedback.actualVelocityUnitPerSecond)
                <= velocityConfig_.speedToleranceDegreePerSecond;
@@ -1615,20 +1697,28 @@ void ContiWorker::runVelocityControlCycle()
                   .arg(feedback.delayCompensationMs, 0, 'f', 3)
             : QStringLiteral("无效");
         emit logMessage(QStringLiteral(
-                            "速度闭环：t=%1 s，位置 ref/act/轨迹误差=%2/%3/%4°，"
-                            "保护用延迟对齐轨迹误差=%5，"
-                            "电机延迟对齐误差=%6；"
-                            "速度 ref/cmd/card/act=%7/%8/%9/%10°/s，API=%11 us。")
+                            "速度闭环：控制/反馈时刻=%1/%2 s，"
+                            "位置 ref_now/ref_frame/act/同帧误差=%3/%4/%5/%6°，"
+                            "保护用延迟对齐轨迹误差=%7，"
+                            "电机延迟对齐误差=%8；"
+                            "速度 ref_now/ref_frame/cmd/card/act=%9/%10/%11/%12/%13°/s，"
+                            "Trace帧=%14，卡侧有效/剩余=%15/%16，API=%17 us。")
                             .arg(elapsedS, 0, 'f', 3)
+                            .arg(velocityFeedbackElapsedS_, 0, 'f', 3)
                             .arg(referencePosition, 0, 'f', 4)
+                            .arg(velocityFeedbackReferencePositionDegree_, 0, 'f', 4)
                             .arg(feedback.encoderPositionUnit, 0, 'f', 4)
                             .arg(trajectoryTimeError, 0, 'f', 4)
                             .arg(alignedTrackingErrorText)
                             .arg(alignedMotorErrorText)
                             .arg(referenceVelocity, 0, 'f', 4)
+                            .arg(velocityFeedbackReferenceVelocityDegreePerSecond_, 0, 'f', 4)
                             .arg(output.commandVelocity, 0, 'f', 4)
                             .arg(feedback.commandVelocityUnitPerSecond, 0, 'f', 4)
                             .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 4)
+                            .arg(feedback.traceSequence)
+                            .arg(traceReadDiagnostics_.validFrames)
+                            .arg(traceReadDiagnostics_.freeFrames)
                             .arg(apiDurationUs));
     }
     publishStatus();
@@ -1647,6 +1737,8 @@ void ContiWorker::finishVelocityControl(const QString &message, bool emergency)
     velocityControlActive_ = false;
     velocityMotionStarted_ = false;
     velocityReferenceInitialized_ = false;
+    velocityFeedbackReferenceValid_ = false;
+    velocityLastFeedbackTraceTimeUs_ = 0;
     velocityStatus_.active = false;
     velocityStatus_.motionStarted = false;
     velocityAlignedErrorFreshClock_.invalidate();
@@ -4052,6 +4144,7 @@ bool ContiWorker::configureFeedbackTrace(const QVector<quint16> &axes,
     latestAxisFeedback_ = card_.axisFeedback();
     traceFramesRead_ = card_.traceFramesRead();
     traceStateText_ = card_.traceStateText();
+    traceReadDiagnostics_ = card_.traceReadDiagnostics();
     QVector<TraceTelemetryFrame> frames = card_.takeTraceTelemetryFrames();
     if (!frames.isEmpty()) {
         const long currentMark = listOpen_ ? card_.currentMark(config_) : -1;
@@ -4073,12 +4166,14 @@ bool ContiWorker::pollTraceFeedback()
     if (!card_.pollFeedback(error)) {
         traceFramesRead_ = card_.traceFramesRead();
         traceStateText_ = error;
+        traceReadDiagnostics_ = card_.traceReadDiagnostics();
         return false;
     }
     traceAxes_ = card_.traceAxes();
     latestAxisFeedback_ = card_.axisFeedback();
     traceFramesRead_ = card_.traceFramesRead();
     traceStateText_ = card_.traceStateText();
+    traceReadDiagnostics_ = card_.traceReadDiagnostics();
     QVector<TraceTelemetryFrame> frames = card_.takeTraceTelemetryFrames();
     if (!frames.isEmpty()) {
         const long currentMark = listOpen_ ? card_.currentMark(config_) : -1;

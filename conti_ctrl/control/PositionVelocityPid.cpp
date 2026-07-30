@@ -20,23 +20,33 @@ void PositionVelocityPid::reset(double initialCommandVelocity)
 PositionVelocityPidOutput PositionVelocityPid::update(
     const VelocityControlConfig &config,
     double positionErrorDegree,
-    double referenceVelocityDegreePerSecond,
+    double feedforwardVelocityDegreePerSecond,
+    double feedbackReferenceVelocityDegreePerSecond,
     double actualVelocityDegreePerSecond,
-    double dtSeconds)
+    double commandDtSeconds,
+    double feedbackDtSeconds,
+    bool feedbackFresh)
 {
     PositionVelocityPidOutput output;
-    const double dt = std::max(1e-6, dtSeconds);
+    const double commandDt = std::max(1e-6, commandDtSeconds);
+    const double feedbackDt = std::max(1e-6, feedbackDtSeconds);
     output.feedforward = config.velocityFeedforwardEnabled
-        ? config.velocityFeedforwardGain * referenceVelocityDegreePerSecond : 0.0;
+        ? config.velocityFeedforwardGain * feedforwardVelocityDegreePerSecond : 0.0;
 
     const double previousIntegral = integralState_;
     if (config.pidEnabled) {
-        integralState_ = clampSymmetric(integralState_ + positionErrorDegree * dt,
-                                        config.integralLimitDegreeSecond);
+        if (feedbackFresh) {
+            integralState_ = clampSymmetric(
+                integralState_ + positionErrorDegree * feedbackDt,
+                config.integralLimitDegreeSecond);
+        } else {
+            output.integralFrozen = true;
+        }
         output.p = config.kp * positionErrorDegree;
         output.i = config.ki * integralState_;
         output.d = config.kd
-            * (referenceVelocityDegreePerSecond - actualVelocityDegreePerSecond);
+            * (feedbackReferenceVelocityDegreePerSecond
+               - actualVelocityDegreePerSecond);
     }
 
     const auto calculateRaw = [&] {
@@ -60,7 +70,8 @@ PositionVelocityPidOutput PositionVelocityPid::update(
         output.velocitySaturated = std::abs(velocityLimited - output.rawVelocity) > 1e-12;
     }
 
-    const double maximumStep = std::max(0.0, config.maxAccelerationDegreePerSecond2) * dt;
+    const double maximumStep =
+        std::max(0.0, config.maxAccelerationDegreePerSecond2) * commandDt;
     const double step = std::clamp(velocityLimited - previousCommandVelocity_,
                                    -maximumStep, maximumStep);
     output.commandVelocity = previousCommandVelocity_ + step;

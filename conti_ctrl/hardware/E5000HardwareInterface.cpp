@@ -388,9 +388,14 @@ public:
                     traceStateText_ = error;
                     return false;
                 }
+                const quint64 traceTimeUs =
+                    (sample.sequence > 0 ? sample.sequence - 1 : 0)
+                    * static_cast<quint64>(traceSamplePeriodUs_);
                 for (int index = 0; index < traceAxes_.size(); ++index) {
                     AxisFeedback &feedback = latestAxisFeedback_[traceAxes_.at(index)];
                     const std::size_t axisCount = static_cast<std::size_t>(traceAxes_.size());
+                    feedback.traceSequence = sample.sequence;
+                    feedback.traceTimeUs = traceTimeUs;
                     feedback.commandVelocityUnitPerSecond =
                         sample.values[static_cast<std::size_t>(index)];
                     feedback.actualVelocityUnitPerSecond =
@@ -402,7 +407,14 @@ public:
                     feedback.traceSampleValid = true;
                 }
             }
-            traceStateText_ = QStringLiteral("Trace 正常：本次读取 %1 帧").arg(traceFramesRead_);
+            traceStateText_ = QStringLiteral(
+                                  "Trace 正常：本次读取 %1 帧，卡侧有效/剩余=%2/%3，时间轴=%4")
+                                  .arg(traceFramesRead_)
+                                  .arg(feedbackTrace_.lastValidFrames())
+                                  .arg(feedbackTrace_.lastFreeFrames())
+                                  .arg(feedbackTrace_.timingReliable()
+                                           ? QStringLiteral("可信")
+                                           : QStringLiteral("不可信"));
         }
         for (const quint16 axis : traceAxes_) {
             AxisFeedback state;
@@ -730,6 +742,20 @@ int E5000HardwareInterface::traceFramesRead() const
 { return invokeHardware(backend_, [&] { return backend_->traceFramesRead_; }); }
 int E5000HardwareInterface::traceSamplePeriodUs() const
 { return invokeHardware(backend_, [&] { return backend_->traceSamplePeriodUs_; }); }
+TraceReadDiagnostics E5000HardwareInterface::traceReadDiagnostics() const
+{
+    return invokeHardware(backend_, [&] {
+        TraceReadDiagnostics diagnostics;
+        diagnostics.timingReliable = backend_->feedbackTrace_.timingReliable();
+        diagnostics.validFrames = backend_->feedbackTrace_.lastValidFrames();
+        diagnostics.freeFrames = backend_->feedbackTrace_.lastFreeFrames();
+        diagnostics.maximumValidFrames = backend_->feedbackTrace_.maximumValidFrames();
+        diagnostics.minimumFreeFrames = backend_->feedbackTrace_.minimumFreeFrames();
+        diagnostics.locallyDroppedSamples =
+            backend_->feedbackTrace_.locallyDroppedSamples();
+        return diagnostics;
+    });
+}
 QVector<TraceTelemetryFrame> E5000HardwareInterface::takeTraceTelemetryFrames()
 {
     return invokeHardware(backend_, [&] {

@@ -223,13 +223,19 @@ struct VelocityControlStatus
     double controlDtMs = 0.0;
     double maximumJitterMs = 0.0;
     double referencePositionDegree = 0.0;
+    double feedbackReferencePositionDegree = 0.0;
+    double feedbackElapsedS = 0.0;
     double cardCommandPositionDegree = 0.0;
     double actualPositionDegree = 0.0;
     double positionErrorDegree = 0.0;
     double delayAlignedFollowingErrorDegree = 0.0;
     double delayCompensationMs = 8.0;
     bool delayAlignedFollowingErrorValid = false;
+    bool traceTimingReliable = true;
+    int traceValidFrames = 0;
+    int traceFreeFrames = 0;
     double referenceVelocityDegreePerSecond = 0.0;
+    double feedbackReferenceVelocityDegreePerSecond = 0.0;
     double commandVelocityDegreePerSecond = 0.0;
     double cardCommandVelocityDegreePerSecond = 0.0;
     double actualVelocityDegreePerSecond = 0.0;
@@ -383,6 +389,8 @@ struct AxisFeedback
 {
     quint16 axis = 0;
     bool valid = false;
+    quint64 traceSequence = 0;
+    quint64 traceTimeUs = 0;
     quint16 stateMachine = 0;
     quint16 axisErrorCode = 0;
     double commandPositionUnit = 0.0;
@@ -397,6 +405,19 @@ struct AxisFeedback
     double actualVelocityUnitPerSecond = 0.0;
     bool traceSampleValid = false;
     QString errorText;
+};
+
+// Trace API没有为每帧返回绝对硬件时间戳，traceTimeUs由连续读取序号和固定
+// 采样周期重建。只要卡侧缓冲未耗尽且本地未丢弃帧，该逻辑时间可用于帧间对齐；
+// 一旦出现溢出风险，timingReliable会保持为false，直到重新配置Trace。
+struct TraceReadDiagnostics
+{
+    bool timingReliable = true;
+    int validFrames = 0;
+    int freeFrames = 0;
+    int maximumValidFrames = 0;
+    int minimumFreeFrames = -1;
+    quint64 locallyDroppedSamples = 0;
 };
 
 // 阶段 A 只记录当前 Trace 中的两个测试轴。位置保存为原始脉冲，时间由

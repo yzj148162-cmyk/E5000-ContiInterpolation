@@ -85,6 +85,7 @@ public:
     bool traceEverRead() const;
     int traceFramesRead() const;
     int traceSamplePeriodUs() const;
+    TraceReadDiagnostics traceReadDiagnostics() const;
     QVector<TraceTelemetryFrame> takeTraceTelemetryFrames();
     short traceLastApiResult() const;
     QString traceStateText() const;
