@@ -59,7 +59,7 @@ int main(int argc, char *argv[])
     }
 
     const CdprInverseKinematicsResult inverse =
-        kinematics.inverse(platformAt(configuration.initialPlatformPose));
+        kinematics.inverse(platformAt(configuration.presetInitialPlatformPose));
     if (!require(inverse.valid,
                  QStringLiteral("初始位姿逆运动学失败：%1")
                      .arg(inverse.errorText))) {
@@ -88,14 +88,14 @@ int main(int argc, char *argv[])
         0.013, -0.009, 0.011, 0.007, -0.005, 0.006
     };
     const CdprInverseKinematicsResult moving =
-        kinematics.inverse(platformAt(configuration.initialPlatformPose, twist));
+        kinematics.inverse(platformAt(configuration.presetInitialPlatformPose, twist));
     if (!require(moving.valid && moving.cables.velocityValid,
                  QStringLiteral("绳速逆解无效。"))) {
         return 1;
     }
     constexpr double timeStep = 1.0e-5;
-    CdprVector6 plusPose = configuration.initialPlatformPose;
-    CdprVector6 minusPose = configuration.initialPlatformPose;
+    CdprVector6 plusPose = configuration.presetInitialPlatformPose;
+    CdprVector6 minusPose = configuration.presetInitialPlatformPose;
     for (int dof = 0; dof < kCdprDofCount; ++dof) {
         plusPose[static_cast<size_t>(dof)]
             += twist[static_cast<size_t>(dof)] * timeStep;
@@ -121,7 +121,7 @@ int main(int argc, char *argv[])
         }
     }
 
-    CdprVector6 forwardGuess = configuration.initialPlatformPose;
+    CdprVector6 forwardGuess = configuration.presetInitialPlatformPose;
     forwardGuess[0] += 0.005;
     forwardGuess[1] -= 0.004;
     forwardGuess[2] += 0.003;
@@ -137,7 +137,7 @@ int main(int argc, char *argv[])
     }
     for (int dof = 0; dof < kCdprDofCount; ++dof) {
         if (!require(near(forward.pose[static_cast<size_t>(dof)],
-                          configuration.initialPlatformPose[
+                          configuration.presetInitialPlatformPose[
                               static_cast<size_t>(dof)],
                           1.0e-6),
                      QStringLiteral("正逆运动学闭环的第%1个位姿分量不一致。")
@@ -151,9 +151,9 @@ int main(int argc, char *argv[])
     secondConfiguration.cables[0].frameAnchorM.x += 0.1;
     CdprKinematics secondKinematics(secondConfiguration);
     const CdprInverseKinematicsResult second =
-        secondKinematics.inverse(platformAt(configuration.initialPlatformPose));
+        secondKinematics.inverse(platformAt(configuration.presetInitialPlatformPose));
     const CdprInverseKinematicsResult firstAgain =
-        kinematics.inverse(platformAt(configuration.initialPlatformPose));
+        kinematics.inverse(platformAt(configuration.presetInitialPlatformPose));
     if (!require(second.valid && firstAgain.valid
                      && !near(second.cables.lengthM[0],
                               firstAgain.cables.lengthM[0], 1.0e-4)

@@ -79,8 +79,18 @@ CdprForceSensorConfig readForceSensor(const QJsonObject &object)
         result.rotationSensorToPlatform =
             readArray<9>(object.value(QStringLiteral("rotation_sensor_to_platform")));
     }
-    result.sensorSign =
-        object.value(QStringLiteral("sensor_sign")).toInt(1);
+    result.wrenchReactionSign =
+        object.contains(QStringLiteral("wrench_reaction_sign"))
+        ? object.value(QStringLiteral("wrench_reaction_sign")).toInt(1)
+        : object.value(QStringLiteral("sensor_sign")).toInt(1);
+    if (object.contains(QStringLiteral("channel_scale"))) {
+        result.channelScale =
+            readArray<6>(object.value(QStringLiteral("channel_scale")));
+    }
+    if (object.contains(QStringLiteral("channel_bias"))) {
+        result.channelBias =
+            readArray<6>(object.value(QStringLiteral("channel_bias")));
+    }
     return result;
 }
 
@@ -91,7 +101,9 @@ QJsonObject writeForceSensor(const CdprForceSensorConfig &value)
          writeVector3(value.originInPlatformM)},
         {QStringLiteral("rotation_sensor_to_platform"),
          writeArray(value.rotationSensorToPlatform)},
-        {QStringLiteral("sensor_sign"), value.sensorSign}
+        {QStringLiteral("wrench_reaction_sign"), value.wrenchReactionSign},
+        {QStringLiteral("channel_scale"), writeArray(value.channelScale)},
+        {QStringLiteral("channel_bias"), writeArray(value.channelBias)}
     };
 }
 
@@ -156,12 +168,12 @@ QJsonObject toJson(const CdprConfiguration &configuration)
         });
     }
     return {
-        {QStringLiteral("schema_version"), 2},
+        {QStringLiteral("schema_version"), 3},
         {QStringLiteral("name"), configuration.name},
         {QStringLiteral("parameters_confirmed"), configuration.parametersConfirmed},
         {QStringLiteral("coordinate_convention"), configuration.coordinateConvention},
-        {QStringLiteral("initial_platform_pose"),
-         writeArray(configuration.initialPlatformPose)},
+        {QStringLiteral("preset_initial_platform_pose"),
+         writeArray(configuration.presetInitialPlatformPose)},
         {QStringLiteral("physical_platform"), writeRigidBody(configuration.physicalPlatform)},
         {QStringLiteral("force_sensor"), writeForceSensor(configuration.forceSensor)},
         {QStringLiteral("drum_safety"), QJsonObject {
@@ -199,9 +211,11 @@ bool CdprConfigurationFile::load(const QString &path,
     }
 
     const QJsonObject root = document.object();
-    if (root.value(QStringLiteral("schema_version")).toInt() != 2) {
+    const int schemaVersion =
+        root.value(QStringLiteral("schema_version")).toInt();
+    if (schemaVersion != 2 && schemaVersion != 3) {
         errors.append(QStringLiteral(
-            "不支持的schema_version，仅支持版本2；请重新生成配置模板。"));
+            "不支持的schema_version，仅支持版本2或3；请重新生成配置模板。"));
         return false;
     }
 
@@ -211,8 +225,11 @@ bool CdprConfigurationFile::load(const QString &path,
         root.value(QStringLiteral("parameters_confirmed")).toBool();
     result.coordinateConvention =
         root.value(QStringLiteral("coordinate_convention")).toString();
-    result.initialPlatformPose =
-        readArray<6>(root.value(QStringLiteral("initial_platform_pose")));
+    result.presetInitialPlatformPose = schemaVersion >= 3
+        ? readArray<6>(
+              root.value(QStringLiteral("preset_initial_platform_pose")))
+        : readArray<6>(
+              root.value(QStringLiteral("initial_platform_pose")));
     result.physicalPlatform =
         readRigidBody(root.value(QStringLiteral("physical_platform")).toObject());
     result.forceSensor =
@@ -239,7 +256,7 @@ bool CdprConfigurationFile::load(const QString &path,
             readVector3(item.value(QStringLiteral("platform_anchor_m")));
         result.cables[static_cast<size_t>(index)] = cable;
     }
-    result.initialCableLengthsM = calculateInitialCableLengths(result);
+    result.referenceCableLengthsM = calculateInitialCableLengths(result);
     const QJsonObject control = root.value(QStringLiteral("control")).toObject();
     result.controlPeriodUs = control.value(QStringLiteral("period_us")).toInt();
     result.maximumPositionErrorDegree =
@@ -260,7 +277,7 @@ bool CdprConfigurationFile::writeTemplate(const QString &path, QString &error)
     configuration.physicalPlatform.inertiaKgM2 = {1, 0, 0, 0, 1, 0, 0, 0, 1};
     configuration.forceSensor.rotationSensorToPlatform =
         {1, 0, 0, 0, 1, 0, 0, 0, 1};
-    configuration.forceSensor.sensorSign = 1;
+    configuration.forceSensor.wrenchReactionSign = 1;
     configuration.drumSafety.diameterM = 0.16;
     configuration.drumSafety.maximumTurnsFromInitial = 6.5;
     const std::array<CdprVector3, 8> signs {{
@@ -280,7 +297,7 @@ bool CdprConfigurationFile::writeTemplate(const QString &path, QString &error)
             signs[static_cast<size_t>(index)].z * 0.1
         };
     }
-    configuration.initialCableLengthsM =
+    configuration.referenceCableLengthsM =
         calculateInitialCableLengths(configuration);
 
     QFile file(path);
@@ -313,8 +330,8 @@ QStringList CdprConfigurationFile::validate(
     if (configuration.physicalPlatform.massKg <= 0.0) {
         errors.append(QStringLiteral("动平台质量必须大于0。"));
     }
-    if (!finiteArray(configuration.initialPlatformPose)) {
-        errors.append(QStringLiteral("初始末端位姿必须全部为有限数。"));
+    if (!finiteArray(configuration.presetInitialPlatformPose)) {
+        errors.append(QStringLiteral("预设初始末端位姿必须全部为有限数。"));
     }
     if (!finiteVector(configuration.physicalPlatform.centerOfMassM)
         || !finiteArray(configuration.physicalPlatform.inertiaKgM2)) {
@@ -327,9 +344,19 @@ QStringList CdprConfigurationFile::validate(
         errors.append(QStringLiteral(
             "力传感器到平台的旋转矩阵必须正交且行列式为+1。"));
     }
-    if (configuration.forceSensor.sensorSign != -1
-        && configuration.forceSensor.sensorSign != 1) {
-        errors.append(QStringLiteral("力传感器符号只能为+1或-1。"));
+    if (configuration.forceSensor.wrenchReactionSign != -1
+        && configuration.forceSensor.wrenchReactionSign != 1) {
+        errors.append(QStringLiteral("力传感器作用/反作用符号只能为+1或-1。"));
+    }
+    if (!finiteArray(configuration.forceSensor.channelScale)
+        || !finiteArray(configuration.forceSensor.channelBias)) {
+        errors.append(QStringLiteral("力传感器六通道比例和零偏必须全部为有限数。"));
+    }
+    for (double scale : configuration.forceSensor.channelScale) {
+        if (scale == 0.0) {
+            errors.append(QStringLiteral("力传感器六通道比例不能为0。"));
+            break;
+        }
     }
     if (configuration.controlPeriodUs <= 0
         || configuration.controlPeriodUs % 250 != 0) {
@@ -367,7 +394,7 @@ QStringList CdprConfigurationFile::validate(
             errors.append(prefix + QStringLiteral("连接点坐标必须为有限数。"));
         }
         const double initialLength =
-            configuration.initialCableLengthsM[static_cast<size_t>(index)];
+            configuration.referenceCableLengthsM[static_cast<size_t>(index)];
         if (!std::isfinite(initialLength) || initialLength <= 0.0) {
             errors.append(prefix + QStringLiteral(
                 "由初始末端位姿逆解得到的初始绳长无效。"));
@@ -392,7 +419,9 @@ QString CdprConfigurationFile::summary(
         "名称：%1\n坐标约定：%2\n动平台质量：%3 kg\n"
         "控制周期：%4 us\n最大位置误差：%5°\n"
         "卷筒：直径%6 mm，初始位置双向最多%7圈（%8 m）\n"
-        "逆解初始绳长：%9\n绳0出绳点示例：%10；平台点：%11")
+        "预设启动位姿逆解参考绳长：%9\n"
+        "F/T作用/反作用符号：%10\n"
+        "绳0出绳点示例：%11；平台点：%12")
         .arg(configuration.name, configuration.coordinateConvention)
         .arg(configuration.physicalPlatform.massKg, 0, 'f', 4)
         .arg(configuration.controlPeriodUs)
@@ -402,11 +431,12 @@ QString CdprConfigurationFile::summary(
         .arg(maximumCableTravelM(configuration), 0, 'f', 4)
         .arg([&configuration] {
             QStringList values;
-            for (double length : configuration.initialCableLengthsM) {
+            for (double length : configuration.referenceCableLengthsM) {
                 values.append(QString::number(length, 'f', 4));
             }
             return values.join(QStringLiteral(", "));
         }())
+        .arg(configuration.forceSensor.wrenchReactionSign)
         .arg(vectorText(configuration.cables[0].frameAnchorM),
              vectorText(configuration.cables[0].platformAnchorM));
 }
@@ -415,7 +445,7 @@ std::array<double, 8> CdprConfigurationFile::calculateInitialCableLengths(
     const CdprConfiguration &configuration)
 {
     CdprPlatformState6 platform;
-    platform.pose = configuration.initialPlatformPose;
+    platform.pose = configuration.presetInitialPlatformPose;
     platform.poseValid = true;
     const CdprInverseKinematicsResult result =
         CdprKinematics(configuration).inverse(platform);
@@ -430,7 +460,9 @@ double CdprConfigurationFile::maximumCableTravelM(
 }
 
 bool CdprConfigurationFile::cableTravelWithinLimit(
-    const CdprConfiguration &configuration, int cableIndex,
+    const CdprConfiguration &configuration,
+    const std::array<double, 8> &runtimeInitialCableLengthsM,
+    int cableIndex,
     double currentCableLengthM, double *travelFromInitialM)
 {
     if (cableIndex < 0 || cableIndex >= 8
@@ -438,7 +470,7 @@ bool CdprConfigurationFile::cableTravelWithinLimit(
         return false;
     }
     const double travel = currentCableLengthM
-        - configuration.initialCableLengthsM[static_cast<size_t>(cableIndex)];
+        - runtimeInitialCableLengthsM[static_cast<size_t>(cableIndex)];
     if (travelFromInitialM) {
         *travelFromInitialM = travel;
     }

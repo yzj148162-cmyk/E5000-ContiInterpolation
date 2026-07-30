@@ -82,6 +82,16 @@ QString leadshineRuntimeDescription()
     return QStringLiteral("雷赛运行库诊断：当前平台不支持读取 Windows DLL 版本。");
 #endif
 }
+
+QString cdprVector6Text(const CdprVector6 &value, int precision = 4)
+{
+    QStringList parts;
+    parts.reserve(6);
+    for (double component : value) {
+        parts.append(QString::number(component, 'f', precision));
+    }
+    return parts.join(QStringLiteral(", "));
+}
 }
 
 MainWindow::MainWindow(QWidget *parent)
@@ -113,6 +123,9 @@ MainWindow::MainWindow(QWidget *parent)
 MainWindow::~MainWindow()
 {
     if (cdprThread_->isRunning()) {
+        QMetaObject::invokeMethod(
+            cdprCoordinator_, "disconnectNokov",
+            Qt::BlockingQueuedConnection);
         cdprThread_->quit();
         cdprThread_->wait();
     }
@@ -225,6 +238,80 @@ void MainWindow::connectWorker()
             this, &MainWindow::onCdprCreateTemplateClicked);
     connect(ui_->cdprValidateButton, &QPushButton::clicked,
             this, [this] { emit validateCdprConfigurationRequested(); });
+    connect(ui_->cdprInitialPoseSourceCombo,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+        emit setCdprInitialPoseSourceRequested(index);
+    });
+    const auto publishPresetPose = [this] {
+        emit setCdprPresetInitialPoseRequested(
+            ui_->cdprPresetXSpin->value(),
+            ui_->cdprPresetYSpin->value(),
+            ui_->cdprPresetZSpin->value(),
+            ui_->cdprPresetRollSpin->value(),
+            ui_->cdprPresetPitchSpin->value(),
+            ui_->cdprPresetYawSpin->value());
+    };
+    connect(ui_->cdprPresetXSpin,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [publishPresetPose](double) { publishPresetPose(); });
+    connect(ui_->cdprPresetYSpin,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [publishPresetPose](double) { publishPresetPose(); });
+    connect(ui_->cdprPresetZSpin,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [publishPresetPose](double) { publishPresetPose(); });
+    connect(ui_->cdprPresetRollSpin,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [publishPresetPose](double) { publishPresetPose(); });
+    connect(ui_->cdprPresetPitchSpin,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [publishPresetPose](double) { publishPresetPose(); });
+    connect(ui_->cdprPresetYawSpin,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [publishPresetPose](double) { publishPresetPose(); });
+    connect(ui_->cdprNokovConnectButton, &QPushButton::clicked,
+            this, [this] {
+        emit connectCdprNokovRequested(ui_->cdprNokovIpEdit->text());
+    });
+    connect(ui_->cdprNokovDisconnectButton, &QPushButton::clicked,
+            this, [this] { emit disconnectCdprNokovRequested(); });
+    connect(ui_->cdprCaptureInitialStateButton, &QPushButton::clicked,
+            this, [this, publishPresetPose] {
+        publishPresetPose();
+        emit captureCdprInitialStateRequested();
+    });
+    connect(ui_->cdprForceInputSourceCombo,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index) {
+        emit setCdprForceInputSourceRequested(index);
+    });
+    connect(ui_->cdprApplySimulatedWrenchButton, &QPushButton::clicked,
+            this, [this] {
+        emit setCdprSimulatedWrenchRequested(
+            ui_->cdprForceFxSpin->value(),
+            ui_->cdprForceFySpin->value(),
+            ui_->cdprForceFzSpin->value(),
+            ui_->cdprForceMxSpin->value(),
+            ui_->cdprForceMySpin->value(),
+            ui_->cdprForceMzSpin->value());
+    });
+    connect(ui_->cdprClearSimulatedWrenchButton, &QPushButton::clicked,
+            this, [this] {
+        const QList<QDoubleSpinBox *> controls {
+            ui_->cdprForceFxSpin, ui_->cdprForceFySpin,
+            ui_->cdprForceFzSpin, ui_->cdprForceMxSpin,
+            ui_->cdprForceMySpin, ui_->cdprForceMzSpin
+        };
+        for (QDoubleSpinBox *control : controls) {
+            control->setValue(0.0);
+        }
+        emit clearCdprSimulatedWrenchRequested();
+    });
+    connect(ui_->cdprResetDynamicsButton, &QPushButton::clicked,
+            this, [this] { emit resetCdprDynamicsRequested(); });
+    connect(ui_->cdprAdvanceDynamicsButton, &QPushButton::clicked,
+            this, [this] { emit advanceCdprDynamicsOnceRequested(); });
 
     connect(this, &MainWindow::initializeBoardRequested, worker_, &MotionControlWorker::initializeBoard);
     connect(this, &MainWindow::closeBoardRequested, worker_, &MotionControlWorker::closeBoard);
@@ -271,6 +358,26 @@ void MainWindow::connectWorker()
             cdprCoordinator_, &CdprCoordinator::validateConfiguration);
     connect(this, &MainWindow::writeCdprConfigurationTemplateRequested,
             cdprCoordinator_, &CdprCoordinator::writeConfigurationTemplate);
+    connect(this, &MainWindow::setCdprInitialPoseSourceRequested,
+            cdprCoordinator_, &CdprCoordinator::setInitialPoseSource);
+    connect(this, &MainWindow::setCdprPresetInitialPoseRequested,
+            cdprCoordinator_, &CdprCoordinator::setPresetInitialPose);
+    connect(this, &MainWindow::connectCdprNokovRequested,
+            cdprCoordinator_, &CdprCoordinator::connectNokov);
+    connect(this, &MainWindow::disconnectCdprNokovRequested,
+            cdprCoordinator_, &CdprCoordinator::disconnectNokov);
+    connect(this, &MainWindow::captureCdprInitialStateRequested,
+            cdprCoordinator_, &CdprCoordinator::captureInitialState);
+    connect(this, &MainWindow::setCdprForceInputSourceRequested,
+            cdprCoordinator_, &CdprCoordinator::setForceInputSource);
+    connect(this, &MainWindow::setCdprSimulatedWrenchRequested,
+            cdprCoordinator_, &CdprCoordinator::setSimulatedSensorWrench);
+    connect(this, &MainWindow::clearCdprSimulatedWrenchRequested,
+            cdprCoordinator_, &CdprCoordinator::clearSimulatedSensorWrench);
+    connect(this, &MainWindow::resetCdprDynamicsRequested,
+            cdprCoordinator_, &CdprCoordinator::resetDynamics);
+    connect(this, &MainWindow::advanceCdprDynamicsOnceRequested,
+            cdprCoordinator_, &CdprCoordinator::advanceDynamicsOnce);
     connect(ui_->readBusCycleButton, &QPushButton::clicked,
             this, [this] { emit refreshBusCycleRequested(); });
     connect(worker_, &MotionControlWorker::logMessage, this, &MainWindow::appendLog);
@@ -349,6 +456,87 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
             : QStringLiteral("QLabel { color: #c62828; font-weight: bold; }"));
     ui_->cdprStartButton->setEnabled(status.controlStartAvailable);
     ui_->cdprStopButton->setEnabled(false);
+    ui_->cdprInitialPoseSourceCombo->setCurrentIndex(
+        status.initialPoseSource == CdprInitialPoseSource::Preset ? 0 : 1);
+    ui_->cdprForceInputSourceCombo->setCurrentIndex(
+        status.forceInputSource == CdprForceInputSource::Simulated ? 0 : 1);
+    {
+        const QSignalBlocker blockX(ui_->cdprPresetXSpin);
+        const QSignalBlocker blockY(ui_->cdprPresetYSpin);
+        const QSignalBlocker blockZ(ui_->cdprPresetZSpin);
+        const QSignalBlocker blockRoll(ui_->cdprPresetRollSpin);
+        const QSignalBlocker blockPitch(ui_->cdprPresetPitchSpin);
+        const QSignalBlocker blockYaw(ui_->cdprPresetYawSpin);
+        ui_->cdprPresetXSpin->setValue(status.presetInitialPose[0]);
+        ui_->cdprPresetYSpin->setValue(status.presetInitialPose[1]);
+        ui_->cdprPresetZSpin->setValue(status.presetInitialPose[2]);
+        ui_->cdprPresetRollSpin->setValue(status.presetInitialPose[3]);
+        ui_->cdprPresetPitchSpin->setValue(status.presetInitialPose[4]);
+        ui_->cdprPresetYawSpin->setValue(status.presetInitialPose[5]);
+    }
+    ui_->cdprNokovStatusValueLabel->setText(status.nokovText);
+    ui_->cdprNokovFrameValueLabel->setText(
+        QStringLiteral("帧号 %1；年龄 %2 ms；标记点 %3")
+            .arg(status.nokovFrameNumber >= 0
+                     ? QString::number(status.nokovFrameNumber)
+                     : QStringLiteral("--"))
+            .arg(status.nokovFrameAgeMs >= 0
+                     ? QString::number(status.nokovFrameAgeMs)
+                     : QStringLiteral("--"))
+            .arg(status.markers.size()));
+    ui_->cdprNokovConnectButton->setEnabled(!status.nokovConnected);
+    ui_->cdprNokovDisconnectButton->setEnabled(status.nokovConnected);
+    ui_->cdprTraceFtStatusLabel->setText(status.traceFtText);
+    ui_->cdprPlatformWrenchValueLabel->setText(
+        status.forceInputReady
+            ? QStringLiteral("平台质心力旋量：[")
+                  + cdprVector6Text(status.platformWrench, 3)
+                  + QStringLiteral("]")
+            : QStringLiteral("平台质心力旋量：无有效输入"));
+    ui_->cdprReadinessValueLabel->setText(
+        QStringLiteral("配置%1｜运动学%2｜初始位姿%3｜"
+                       "外力输入%4｜Newmark%5｜8轴实机链×")
+            .arg(status.configurationValid
+                     ? QStringLiteral("✓") : QStringLiteral("×"))
+            .arg(status.kinematicsReady
+                     ? QStringLiteral("✓") : QStringLiteral("×"))
+            .arg(status.initialPoseReady
+                     ? QStringLiteral("✓") : QStringLiteral("×"))
+            .arg(status.forceInputReady
+                     ? QStringLiteral("✓") : QStringLiteral("×"))
+            .arg(status.dynamicsReady
+                     ? QStringLiteral("✓") : QStringLiteral("×")));
+    ui_->cdprDynamicsStatusValueLabel->setText(status.dynamicsText);
+    ui_->cdprDesiredPlatformValueLabel->setText(
+        status.dynamicsState.poseValid
+            ? QStringLiteral("期望位姿 [m, rad]：[%1]\n"
+                             "期望速度 [m/s, rad/s]：[%2]")
+                  .arg(cdprVector6Text(status.dynamicsState.pose, 6),
+                       cdprVector6Text(status.dynamicsState.twist, 6))
+            : QStringLiteral("期望平台状态：--"));
+    ui_->cdprAdvanceDynamicsButton->setEnabled(
+        status.dynamicsReady && status.forceInputReady);
+
+    ui_->cdprMarkerTable->setRowCount(status.markers.size());
+    for (int row = 0; row < status.markers.size(); ++row) {
+        const CdprMarkerView &marker = status.markers.at(row);
+        const QStringList values {
+            QString::number(marker.id),
+            QString::number(marker.positionM.x, 'f', 6),
+            QString::number(marker.positionM.y, 'f', 6),
+            QString::number(marker.positionM.z, 'f', 6)
+        };
+        for (int column = 0; column < values.size(); ++column) {
+            QTableWidgetItem *item =
+                ui_->cdprMarkerTable->item(row, column);
+            if (item == nullptr) {
+                item = new QTableWidgetItem;
+                ui_->cdprMarkerTable->setItem(row, column, item);
+            }
+            item->setText(values.at(column));
+        }
+    }
+    ui_->cdprMarkerTable->resizeColumnsToContents();
 
     for (int row = 0; row < ui_->cdprAxisTable->rowCount(); ++row) {
         QStringList values {

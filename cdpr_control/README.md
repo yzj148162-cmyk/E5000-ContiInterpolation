@@ -10,6 +10,9 @@
 - `CdprCoordinator`：唯一CDPR状态协调器、配置校验和初始数学自检；
 - `CdprControlTypes`：6维平台、8绳、8轴命令/反馈和机器人完整状态帧；
 - `CdprKinematics`：无静态共享状态的直线绳段正逆运动学和绳速雅可比；
+- `CdprDynamics`：纯惯性自由刚体Newmark-beta软件单步；
+- `CdprForceInput`：模拟六维力、F/T Trace占位及传感器到平台质心的力旋量变换；
+- `NokovMarkerProvider`：仅采集全部标记点，并向样机几何位姿重建接口提供数据；
 - `TelemetryRecorder`：异步数据记录。
 
 ## CDPR 样机参数约定
@@ -31,6 +34,7 @@ nmake
 
 生成的程序目标名为 `cdpr_control`。
 
-运动学离线测试位于 `tests/cdpr_kinematics_tests.pro`，覆盖G302初始绳长、
-绳速有限差分、正逆解闭环以及实例隔离。当前CDPR页只开放配置与数学自检，
-8轴实机控制入口仍保持禁用。
+运动学离线测试位于 `tests/cdpr_kinematics_tests.pro`；Newmark与六维力变换
+测试位于 `tests/cdpr_dynamics_tests.pro`。当前CDPR页包含结构参数、初始化与
+输入、控制状态和8绳监视四个子页。Nokov几何位姿重建、真实F/T Trace对象、
+8轴编码器启动基准和实机控制链尚未接通，因此8轴实机控制入口仍保持禁用。

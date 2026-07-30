@@ -29,6 +29,33 @@ struct CdprFrameStamp
     bool valid = false;
 };
 
+enum class CdprInitialPoseSource : quint8
+{
+    Preset = 0,
+    NokovMarkers
+};
+
+enum class CdprForceInputSource : quint8
+{
+    Simulated = 0,
+    TraceFtSensor
+};
+
+enum class CdprWrenchCoordinate : quint8
+{
+    Sensor = 0,
+    PlatformBodyAtCenterOfMass
+};
+
+// wrench = [Fx, Fy, Fz, Mx, My, Mz]，单位依次为 N 和 N·m。
+struct CdprWrenchSample
+{
+    CdprFrameStamp stamp;
+    CdprVector6 wrench {};
+    CdprWrenchCoordinate coordinate = CdprWrenchCoordinate::Sensor;
+    bool valid = false;
+};
+
 // pose = [x, y, z, rx, ry, rz]，姿态为 Rz*Ry*Rx，角度单位 rad。
 // twist/acceleration 的后三项分别为世界坐标系角速度和角加速度。
 struct CdprPlatformState6
@@ -69,6 +96,19 @@ struct CdprAxisFeedbackFrame8
     quint16 validAxisMask = 0;
 };
 
+// 每次实机启动重新建立的基准，不能由配置文件中的参考位姿替代。
+struct CdprStartupState
+{
+    CdprFrameStamp stamp;
+    CdprInitialPoseSource poseSource = CdprInitialPoseSource::Preset;
+    CdprPlatformState6 initialPlatform;
+    CdprCableState8 initialCables;
+    CdprVector8 initialAxisPositionDegree {};
+    quint16 validAxisMask = 0;
+    bool poseStable = false;
+    bool valid = false;
+};
+
 enum class CdprRunState : quint8
 {
     Unconfigured = 0,
@@ -89,6 +129,8 @@ struct CdprRobotState
     CdprPlatformState6 actualPlatform;
     CdprCableState8 desiredCables;
     CdprCableState8 actualCables;
+    CdprWrenchSample rawWrench;
+    CdprWrenchSample platformWrench;
     CdprAxisCommandFrame8 axisCommand;
     CdprAxisFeedbackFrame8 axisFeedback;
     quint32 safetyFlags = 0;

@@ -30,7 +30,11 @@ struct CdprForceSensorConfig
 {
     CdprVector3 originInPlatformM;
     std::array<double, 9> rotationSensorToPlatform {};
-    int sensorSign = 1;
+    // +1：设备输出已经表示“环境作用于平台”的力旋量；
+    // -1：设备输出为相反的作用/反作用定义，六个分量整体反号。
+    int wrenchReactionSign = 1;
+    std::array<double, 6> channelScale {1, 1, 1, 1, 1, 1};
+    std::array<double, 6> channelBias {};
 };
 
 struct CdprDrumSafetyConfig
@@ -44,14 +48,22 @@ struct CdprConfiguration
     QString name;
     QString coordinateConvention;
     bool parametersConfirmed = false;
-    std::array<double, 6> initialPlatformPose {};
+    // 仅作为无Nokov时的预设启动值和离线运动学自检参考，
+    // 实机启动基准必须由CdprStartupState显式建立。
+    std::array<double, 6> presetInitialPlatformPose {};
     CdprRigidBodyConfig physicalPlatform;
     CdprForceSensorConfig forceSensor;
     CdprDrumSafetyConfig drumSafety;
     std::array<CdprCableAxisConfig, 8> cables {};
-    std::array<double, 8> initialCableLengthsM {};
+    std::array<double, 8> referenceCableLengthsM {};
     int controlPeriodUs = 1000;
     double maximumPositionErrorDegree = 2.0;
+};
+
+struct CdprMarkerView
+{
+    int id = -1;
+    CdprVector3 positionM;
 };
 
 struct CdprAxisView
@@ -78,6 +90,22 @@ struct CdprUiStatus
     int onlineAxisCount = 0;
     bool boardInitialized = false;
     bool kinematicsReady = false;
+    bool dynamicsReady = false;
+    bool initialPoseReady = false;
+    bool forceInputReady = false;
+    CdprInitialPoseSource initialPoseSource = CdprInitialPoseSource::Preset;
+    CdprForceInputSource forceInputSource = CdprForceInputSource::Simulated;
+    CdprVector6 presetInitialPose {};
+    CdprVector6 simulatedSensorWrench {};
+    CdprVector6 platformWrench {};
+    CdprPlatformState6 dynamicsState;
+    QString dynamicsText = QStringLiteral("未配置");
+    QString nokovText = QStringLiteral("未连接");
+    QString traceFtText = QStringLiteral("Trace F/T对象类型待配置");
+    bool nokovConnected = false;
+    qint64 nokovFrameNumber = -1;
+    qint64 nokovFrameAgeMs = -1;
+    QVector<CdprMarkerView> markers;
     bool controlStartAvailable = false;
 };
 
@@ -95,7 +123,9 @@ public:
     static double maximumCableTravelM(
         const CdprConfiguration &configuration);
     static bool cableTravelWithinLimit(
-        const CdprConfiguration &configuration, int cableIndex,
+        const CdprConfiguration &configuration,
+        const std::array<double, 8> &runtimeInitialCableLengthsM,
+        int cableIndex,
         double currentCableLengthM, double *travelFromInitialM = nullptr);
 };
 

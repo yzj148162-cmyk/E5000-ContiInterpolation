@@ -58,6 +58,20 @@ signals:
     void loadCdprConfigurationRequested(const QString &path);
     void validateCdprConfigurationRequested();
     void writeCdprConfigurationTemplateRequested(const QString &path);
+    void setCdprInitialPoseSourceRequested(int source);
+    void setCdprPresetInitialPoseRequested(
+        double x, double y, double z,
+        double roll, double pitch, double yaw);
+    void connectCdprNokovRequested(const QString &serverAddress);
+    void disconnectCdprNokovRequested();
+    void captureCdprInitialStateRequested();
+    void setCdprForceInputSourceRequested(int source);
+    void setCdprSimulatedWrenchRequested(
+        double fx, double fy, double fz,
+        double mx, double my, double mz);
+    void clearCdprSimulatedWrenchRequested();
+    void resetCdprDynamicsRequested();
+    void advanceCdprDynamicsOnceRequested();
 
 private slots:
     void onStageChanged(int index);

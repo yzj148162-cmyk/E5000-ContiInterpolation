@@ -1,9 +1,9 @@
 {
-    "schema_version": 2,
+    "schema_version": 3,
     "name": "G302八绳六自由度CDPR",
     "parameters_confirmed": false,
     "coordinate_convention": "世界坐标系与G302全局坐标系一致；末端位姿为[x,y,z,rx,ry,rz]，姿态按Rz*Ry*Rx；平台局部坐标系原点位于质心；长度单位m、角度单位rad",
-    "initial_platform_pose": [
+    "preset_initial_platform_pose": [
         0.0,
         -0.8,
         0.5166666666666667,
@@ -47,7 +47,23 @@
             0.0,
             -1.0
         ],
-        "sensor_sign": 1
+        "wrench_reaction_sign": 1,
+        "channel_scale": [
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0,
+            1.0
+        ],
+        "channel_bias": [
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0,
+            0.0
+        ]
     },
     "drum_safety": {
         "diameter_m": 0.16,

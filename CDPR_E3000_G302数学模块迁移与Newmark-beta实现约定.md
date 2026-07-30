@@ -54,7 +54,7 @@
 
 - 8个 `frame_anchor_m`；
 - 8个 `platform_anchor_m`；
-- 初始平台位姿；
+- 无Nokov时使用的预设初始平台位姿；
 - 动平台总质量、质心和惯量；
 - 传感器原点及传感器到平台的旋转；
 - 8绳到8轴的映射和方向；
@@ -62,14 +62,19 @@
 - 相对初始位置双向最大6.5圈；
 - 控制周期1000 μs。
 
-初始8绳长度不作为独立配置项，由初始位姿通过同一套逆运动学计算，避免
-配置值与几何参数不一致。
+初始8绳长度不作为独立固定配置项。每次启动先从预设值或Nokov标记点重建
+获得当次初始位姿，再通过同一套逆运动学计算启动参考绳长，避免配置值与
+几何参数不一致。
 
 ---
 
 ## 4. 六维力处理
 
 传感器原始量先做通道、符号、零偏和温漂处理，再转换到平台坐标系。
+
+当前配置用每通道 `scale` 和 `bias` 做标定，并用
+`wrenchReactionSign` 表示传感器读数与“平台所受外力”之间是否整体反向。
+整体符号修正不代替坐标旋转，也不代替各通道的零偏和比例系数。
 
 设传感器坐标系力旋量为：
 
@@ -310,7 +315,11 @@ J_TT+w=0
 | 正运动学离线求解 | `CdprKinematics.*` | 已完成 |
 | 初始正逆解闭环自检 | `CdprCoordinator.*` | 已完成 |
 | 绳加速度完整项 | `CdprKinematics.*` | 待实现 |
-| Newmark-β单步推进 | `CdprDynamics.*` | 待实现 |
+| Newmark-β单步推进 | `CdprDynamics.*` | 已完成软件单步 |
+| 模拟力及传感器坐标变换 | `CdprForceInput.*` | 已完成 |
+| Nokov标记点采集 | `NokovMarkerProvider.*` | 已完成 |
+| Nokov标记点位姿重建 | `CdprMarkerPoseEstimator` | 接口已留，待实现 |
+| Trace F/T采集 | `TraceFtSensorSource` | 占位，类型待定 |
 | 张力分配和干涉 | 独立数学模块 | 待实现 |
 | 绳索—电机映射 | `CableMotorMapper.*` | 待实现 |
 
@@ -331,4 +340,5 @@ J_TT+w=0
 
 对应代码测试入口为：
 
-`cdpr_control/tests/cdpr_kinematics_tests.pro`。
+- `cdpr_control/tests/cdpr_kinematics_tests.pro`
+- `cdpr_control/tests/cdpr_dynamics_tests.pro`
