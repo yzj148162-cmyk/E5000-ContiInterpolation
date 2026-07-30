@@ -1,0 +1,636 @@
+#include "hardware/LeadshineMotionCard.h"
+
+#include <QThread>
+#include <QStringList>
+
+#include <algorithm>
+#include <cmath>
+#include <cstring>
+
+#include "LTDMC.h"
+
+namespace {
+bool checkResult(short result, const QString &operation, QString &errorMessage)
+{
+    if (result == 0) {
+        return true;
+    }
+    errorMessage = QStringLiteral("%1 失败，错误码=%2").arg(operation).arg(result);
+    return false;
+}
+}
+
+bool LeadshineMotionCard::initializeBoard(WORD requestedCardNo,
+                                          short &boardCount,
+                                          QString &errorMessage) const
+{
+    boardCount = dmc_board_init();
+    // 雷赛手册规定：0 表示未检测到控制卡；正数为成功检测到的板卡数量；负数为错误码。
+    if (boardCount <= 0) {
+        errorMessage = QStringLiteral("dmc_board_init 失败，返回值=%1（未检测到控制卡或初始化异常）")
+                           .arg(boardCount);
+        return false;
+    }
+    if (requestedCardNo >= static_cast<WORD>(boardCount)) {
+        errorMessage = QStringLiteral("请求卡号 %1 无效：当前仅检测到 %2 张控制卡（卡号范围 0-%3）")
+                           .arg(requestedCardNo)
+                           .arg(boardCount)
+                           .arg(boardCount - 1);
+        dmc_board_close();
+        return false;
+    }
+    return true;
+}
+
+bool LeadshineMotionCard::closeBoard(QString &errorMessage) const
+{
+    return checkResult(dmc_board_close(), QStringLiteral("dmc_board_close"), errorMessage);
+}
+
+bool LeadshineMotionCard::readEthercatSlaveCount(WORD cardNo, WORD portNo,
+                                                  WORD &slaveCount,
+                                                  QString &errorMessage) const
+{
+    slaveCount = 0;
+    return checkResult(nmc_get_total_slaves(cardNo, portNo, &slaveCount),
+                       QStringLiteral("nmc_get_total_slaves(port=%1)").arg(portNo),
+                       errorMessage);
+}
+
+bool LeadshineMotionCard::setAxisEquivalent(WORD cardNo,
+                                             WORD axis,
+                                             double pulsePerUnit,
+                                             QString &errorMessage) const
+{
+    if (pulsePerUnit <= 0.0) {
+        errorMessage = QStringLiteral("轴 %1 的脉冲当量必须大于 0").arg(axis);
+        return false;
+    }
+    return checkResult(dmc_set_equiv(cardNo, axis, pulsePerUnit),
+                       QStringLiteral("dmc_set_equiv(axis=%1, equiv=%2)")
+                           .arg(axis)
+                           .arg(pulsePerUnit, 0, 'f', 4),
+                       errorMessage);
+}
+
+bool LeadshineMotionCard::clearAxisFaults(WORD cardNo,
+                                          WORD axis,
+                                          QString &noticeMessage,
+                                          QString &errorMessage) const
+{
+    noticeMessage.clear();
+
+    WORD busErrorCode = 0;
+    if (!checkResult(nmc_get_errcode(cardNo, 2, &busErrorCode),
+                     QStringLiteral("nmc_get_errcode"), errorMessage)) {
+        return false;
+    }
+    if (busErrorCode != 0) {
+        if (!checkResult(nmc_clear_errcode(cardNo, 2),
+                         QStringLiteral("nmc_clear_errcode"), errorMessage)) {
+            return false;
+        }
+        noticeMessage += QStringLiteral("检测到总线错误码 %1，已执行清除。 ").arg(busErrorCode);
+        QThread::msleep(20);
+    }
+
+    WORD axisErrorCode = 0;
+    if (!checkResult(nmc_get_axis_errcode(cardNo, axis, &axisErrorCode),
+                     QStringLiteral("nmc_get_axis_errcode"), errorMessage)) {
+        return false;
+    }
+    if (axisErrorCode != 0) {
+        if (!checkResult(nmc_clear_axis_errcode(cardNo, axis),
+                         QStringLiteral("nmc_clear_axis_errcode"), errorMessage)) {
+            return false;
+        }
+        noticeMessage += QStringLiteral("检测到轴错误码 %1，已执行清除。").arg(axisErrorCode);
+        QThread::msleep(20);
+    }
+    return true;
+}
+
+bool LeadshineMotionCard::enableAxis(WORD cardNo, WORD axis, QString &errorMessage) const
+{
+    short enableResult = 0;
+    short stateResult = 0;
+    WORD stateMachine = 0;
+    for (int attempt = 0; attempt < 20; ++attempt) {
+        enableResult = nmc_set_axis_enable(cardNo, axis);
+        stateResult = nmc_get_axis_state_machine(cardNo, axis, &stateMachine);
+        if (enableResult == 0 && stateResult == 0 && stateMachine == 4U) {
+            return true;
+        }
+        QThread::msleep(50);
+    }
+    errorMessage = QStringLiteral("轴 %1 未进入操作使能状态：enable 返回码=%2，状态读取返回码=%3，状态机=%4")
+                       .arg(axis)
+                       .arg(enableResult)
+                       .arg(stateResult)
+                       .arg(stateMachine);
+    return false;
+}
+
+bool LeadshineMotionCard::disableAxis(WORD cardNo, WORD axis, QString &errorMessage) const
+{
+    return checkResult(nmc_set_axis_disable(cardNo, axis), QStringLiteral("nmc_set_axis_disable"), errorMessage);
+}
+
+bool LeadshineMotionCard::readPositionUnit(WORD cardNo, WORD axis, double &position, QString &errorMessage) const
+{
+    return checkResult(dmc_get_position_unit(cardNo, axis, &position),
+                       QStringLiteral("dmc_get_position_unit"), errorMessage);
+}
+
+bool LeadshineMotionCard::readTargetPositionUnit(WORD cardNo, WORD axis,
+                                                  double &position, QString &errorMessage) const
+{
+    return checkResult(dmc_get_target_position_unit(cardNo, axis, &position),
+                       QStringLiteral("dmc_get_target_position_unit"), errorMessage);
+}
+
+bool LeadshineMotionCard::readAxisFeedback(WORD cardNo, WORD axis, AxisFeedback &feedback) const
+{
+    feedback = AxisFeedback {};
+    feedback.axis = axis;
+
+    QStringList errors;
+    // 位置和跟随误差由 dmc_trace_* 的同帧 PDO 样本提供，不能在这里用逐次 API 读取替代。
+    const short stateResult = nmc_get_axis_state_machine(cardNo, axis, &feedback.stateMachine);
+    if (stateResult != 0) {
+        errors << QStringLiteral("状态机 rc=%1").arg(stateResult);
+    }
+    const short errorResult = nmc_get_axis_errcode(cardNo, axis, &feedback.axisErrorCode);
+    if (errorResult != 0) {
+        errors << QStringLiteral("轴错误码 rc=%1").arg(errorResult);
+    }
+
+    feedback.valid = errors.isEmpty();
+    feedback.errorText = errors.join(QStringLiteral("；"));
+    return feedback.valid;
+}
+
+bool LeadshineMotionCard::startPointMove(const SingleAxisJogConfig &config,
+                                         QString &errorMessage) const
+{
+    const double safeVelocity = qMax(qAbs(config.maxVelocityUnitPerSecond), 1e-5);
+
+    // 与 0523_final 的单电机点位逻辑一致：若旧运动尚未结束，先减速停下再下发新目标。
+    if (dmc_check_done(config.cardNo, config.axis) == 0) {
+        if (!stopAxis(config.cardNo, config.axis, false, errorMessage)) {
+            return false;
+        }
+        bool stopped = false;
+        for (int retry = 0; retry < 100; ++retry) {
+            if (dmc_check_done(config.cardNo, config.axis) != 0) {
+                stopped = true;
+                break;
+            }
+            QThread::msleep(10);
+        }
+        if (!stopped) {
+            errorMessage = QStringLiteral("轴 %1 在 1 s 内未完成减速停止，拒绝下发新的点位命令").arg(config.axis);
+            return false;
+        }
+    }
+
+    const short clearResult = dmc_clear_stop_reason(config.cardNo, config.axis);
+    const short profileResult = dmc_set_profile_unit(config.cardNo, config.axis, 0.0,
+                                                      safeVelocity, 0.1, 0.1, 0.0);
+    const short sCurveResult = dmc_set_s_profile(config.cardNo, config.axis, 0, 0.0);
+    // 与雷赛官方上位机一致：posi_mode=0 表示相对点位运动。
+    // targetPositionUnit 是相对于下发时刻当前位置的位移，正负号决定运动方向。
+    const short moveResult = dmc_pmove_unit(config.cardNo, config.axis,
+                                             config.targetPositionUnit, 0);
+    if (clearResult == 0 && profileResult == 0 && sCurveResult == 0 && moveResult == 0) {
+        return true;
+    }
+    errorMessage = QStringLiteral("单轴点位启动失败：clear=%1，profile=%2，s-curve=%3，pmove=%4")
+                       .arg(clearResult)
+                       .arg(profileResult)
+                       .arg(sCurveResult)
+                       .arg(moveResult);
+    return false;
+}
+
+bool LeadshineMotionCard::startVelocityMove(
+    const VelocityControlConfig &config,
+    double initialVelocityDegreePerSecond,
+    QString &errorMessage) const
+{
+    if (config.degreesPerCardUnit <= 0.0
+        || std::abs(initialVelocityDegreePerSecond)
+               < config.startVelocityThresholdDegreePerSecond) {
+        errorMessage = QStringLiteral("速度模式启动参数无效：初始速度=%1°/s，启动阈值=%2°/s")
+                           .arg(initialVelocityDegreePerSecond, 0, 'f', 6)
+                           .arg(config.startVelocityThresholdDegreePerSecond, 0, 'f', 6);
+        return false;
+    }
+    const double initialCardVelocity = std::abs(initialVelocityDegreePerSecond)
+        / config.degreesPerCardUnit;
+    const double transitionTime = std::max(0.001, config.onlineChangeTimeS);
+    const short clearResult = dmc_clear_stop_reason(config.cardNo, config.axis);
+    const short profileResult = dmc_set_profile_unit(config.cardNo, config.axis, 0.0,
+                                                      initialCardVelocity,
+                                                      transitionTime,
+                                                      transitionTime, 0.0);
+    const short sCurveResult = dmc_set_s_profile(config.cardNo, config.axis, 0, 0.0);
+    const WORD direction = initialVelocityDegreePerSecond < 0.0 ? 0U : 1U;
+    const short moveResult = dmc_vmove(config.cardNo, config.axis, direction);
+    if (clearResult == 0 && profileResult == 0 && sCurveResult == 0 && moveResult == 0) {
+        return true;
+    }
+    errorMessage = QStringLiteral("速度模式启动失败：clear=%1，profile=%2，s-curve=%3，vmove=%4")
+                       .arg(clearResult)
+                       .arg(profileResult)
+                       .arg(sCurveResult)
+                       .arg(moveResult);
+    return false;
+}
+
+bool LeadshineMotionCard::changeVelocity(
+    const VelocityControlConfig &config,
+    double velocityDegreePerSecond,
+    short &apiResult,
+    QString &errorMessage) const
+{
+    if (config.degreesPerCardUnit <= 0.0) {
+        apiResult = -1;
+        errorMessage = QStringLiteral("速度模式 card unit 定义必须大于0");
+        return false;
+    }
+    const double cardVelocity = velocityDegreePerSecond / config.degreesPerCardUnit;
+    apiResult = dmc_change_speed_unit(config.cardNo, config.axis,
+                                      cardVelocity, config.onlineChangeTimeS);
+    return checkResult(apiResult,
+                       QStringLiteral("dmc_change_speed_unit(axis=%1, velocity=%2 unit/s, T=%3 s)")
+                           .arg(config.axis)
+                           .arg(cardVelocity, 0, 'f', 6)
+                           .arg(config.onlineChangeTimeS, 0, 'f', 4),
+                       errorMessage);
+}
+
+bool LeadshineMotionCard::startTorqueMove(
+    WORD cardNo, WORD axis, int torqueRaw, WORD positionLimitValid,
+    double positionLimitCardUnit, WORD positionMode, short &apiResult,
+    QString &errorMessage) const
+{
+    apiResult = nmc_torque_move(cardNo, axis, torqueRaw, positionLimitValid,
+                                positionLimitCardUnit, positionMode);
+    return checkResult(
+        apiResult,
+        QStringLiteral("nmc_torque_move(axis=%1, torque=%2, limitValid=%3, "
+                       "limit=%4 unit, posMode=%5)")
+            .arg(axis).arg(torqueRaw).arg(positionLimitValid)
+            .arg(positionLimitCardUnit, 0, 'f', 6).arg(positionMode),
+        errorMessage);
+}
+
+bool LeadshineMotionCard::changeTorque(WORD cardNo, WORD axis, int torqueRaw,
+                                        short &apiResult,
+                                        QString &errorMessage) const
+{
+    apiResult = nmc_change_torque(cardNo, axis, torqueRaw);
+    return checkResult(apiResult,
+                       QStringLiteral("nmc_change_torque(axis=%1, torque=%2)")
+                           .arg(axis).arg(torqueRaw),
+                       errorMessage);
+}
+
+bool LeadshineMotionCard::readTorque(WORD cardNo, WORD axis, int &torqueRaw,
+                                      short &apiResult,
+                                      QString &errorMessage) const
+{
+    torqueRaw = 0;
+    apiResult = nmc_get_torque(cardNo, axis, &torqueRaw);
+    return checkResult(apiResult,
+                       QStringLiteral("nmc_get_torque(axis=%1)").arg(axis),
+                       errorMessage);
+}
+
+bool LeadshineMotionCard::writeTorqueVelocityLimit(
+    WORD cardNo, WORD axis, long value,
+    WORD &nodeAddress, long &readback, QString &errorMessage) const
+{
+    WORD subAddress = 0;
+    const short addressResult =
+        nmc_get_axis_node_address(cardNo, axis, &nodeAddress, &subAddress);
+    if (!checkResult(addressResult,
+                     QStringLiteral("nmc_get_axis_node_address(axis=%1)").arg(axis),
+                     errorMessage)) {
+        return false;
+    }
+    if (nodeAddress == 0) {
+        errorMessage = QStringLiteral("轴 %1 未返回有效 EtherCAT 从站地址").arg(axis);
+        return false;
+    }
+
+    constexpr WORD index = 0x6080;
+    constexpr WORD kEthercatPort = 2;
+    constexpr WORD kSubIndex = 0;
+    constexpr WORD kBitLength = 32;
+    const short writeResult =
+        nmc_set_node_od(cardNo, kEthercatPort, nodeAddress, index, kSubIndex,
+                        kBitLength, value);
+    if (!checkResult(writeResult,
+                     QStringLiteral("nmc_set_node_od(node=%1, index=0x%2, value=%3)")
+                         .arg(nodeAddress)
+                         .arg(index, 4, 16, QLatin1Char('0'))
+                         .arg(value),
+                     errorMessage)) {
+        return false;
+    }
+    const short readResult =
+        nmc_get_node_od(cardNo, kEthercatPort, nodeAddress, index, kSubIndex,
+                        kBitLength, &readback);
+    if (!checkResult(readResult,
+                     QStringLiteral("nmc_get_node_od(node=%1, index=0x%2)")
+                         .arg(nodeAddress)
+                         .arg(index, 4, 16, QLatin1Char('0')),
+                     errorMessage)) {
+        return false;
+    }
+    if (readback != value) {
+        errorMessage = QStringLiteral(
+            "转矩速度限制写入后读回不一致：写入=%1，读回=%2").arg(value).arg(readback);
+        return false;
+    }
+    return true;
+}
+
+bool LeadshineMotionCard::readTorqueDriveDiagnostic(
+    WORD cardNo, WORD axis, TorqueDriveDiagnostic &diagnostic,
+    QString &errorMessage) const
+{
+    diagnostic = {};
+
+    WORD stopped = 0;
+    if (!checkResult(dmc_check_done_ex(cardNo, axis, &stopped),
+                     QStringLiteral("dmc_check_done_ex(axis=%1)").arg(axis),
+                     errorMessage)) {
+        return false;
+    }
+    diagnostic.axisStopped = stopped != 0;
+
+    WORD runMode = 0;
+    if (!checkResult(dmc_get_axis_run_mode(cardNo, axis, &runMode),
+                     QStringLiteral("dmc_get_axis_run_mode(axis=%1)").arg(axis),
+                     errorMessage)) {
+        return false;
+    }
+    diagnostic.controllerRunMode = runMode;
+
+    WORD subAddress = 0;
+    if (!checkResult(
+            nmc_get_axis_node_address(cardNo, axis, &diagnostic.nodeAddress,
+                                      &subAddress),
+            QStringLiteral("nmc_get_axis_node_address(axis=%1)").arg(axis),
+            errorMessage)) {
+        return false;
+    }
+    if (diagnostic.nodeAddress == 0) {
+        errorMessage = QStringLiteral("轴 %1 未返回有效 EtherCAT 从站地址").arg(axis);
+        return false;
+    }
+
+    constexpr WORD kEthercatPort = 2;
+    auto readOd = [&](WORD index, WORD bitLength, long &value) {
+        value = 0;
+        return checkResult(
+            nmc_get_node_od(cardNo, kEthercatPort, diagnostic.nodeAddress,
+                            index, 0, bitLength, &value),
+            QStringLiteral("nmc_get_node_od(node=%1, index=0x%2, bits=%3)")
+                .arg(diagnostic.nodeAddress)
+                .arg(index, 4, 16, QLatin1Char('0'))
+                .arg(bitLength),
+            errorMessage);
+    };
+
+    long statusWord = 0;
+    long requestedMode = 0;
+    long displayedMode = 0;
+    long targetTorque = 0;
+    long actualTorque = 0;
+    if (!readOd(0x6041, 16, statusWord)
+        || !readOd(0x6060, 8, requestedMode)
+        || !readOd(0x6061, 8, displayedMode)
+        || !readOd(0x6071, 16, targetTorque)
+        || !readOd(0x6077, 16, actualTorque)) {
+        return false;
+    }
+
+    diagnostic.statusWord = static_cast<quint16>(statusWord & 0xffff);
+    diagnostic.requestedMode =
+        static_cast<qint8>(static_cast<quint8>(requestedMode & 0xff));
+    diagnostic.displayedMode =
+        static_cast<qint8>(static_cast<quint8>(displayedMode & 0xff));
+    diagnostic.targetTorqueRaw =
+        static_cast<qint16>(static_cast<quint16>(targetTorque & 0xffff));
+    diagnostic.actualTorqueRaw =
+        static_cast<qint16>(static_cast<quint16>(actualTorque & 0xffff));
+    return true;
+}
+
+bool LeadshineMotionCard::stopAxis(WORD cardNo, WORD axis, bool emergency,
+                                   QString &errorMessage) const
+{
+    return checkResult(dmc_stop(cardNo, axis, emergency ? 1 : 0),
+                       emergency ? QStringLiteral("dmc_stop(立即停止)")
+                                 : QStringLiteral("dmc_stop(减速停止)"),
+                       errorMessage);
+}
+
+bool LeadshineMotionCard::isAxisMotionDone(WORD cardNo, WORD axis) const
+{
+    return dmc_check_done(cardNo, axis) != 0;
+}
+
+bool LeadshineMotionCard::axisMotionDone(WORD cardNo, WORD axis, bool &done,
+                                          QString &errorMessage) const
+{
+    WORD state = 0;
+    if (!checkResult(dmc_check_done_ex(cardNo, axis, &state),
+                     QStringLiteral("dmc_check_done_ex"), errorMessage)) {
+        return false;
+    }
+    done = state != 0;
+    return true;
+}
+
+bool LeadshineMotionCard::axisRunMode(WORD cardNo, WORD axis, quint16 &mode,
+                                      QString &errorMessage) const
+{
+    WORD runMode = 0;
+    if (!checkResult(dmc_get_axis_run_mode(cardNo, axis, &runMode),
+                     QStringLiteral("dmc_get_axis_run_mode"), errorMessage)) {
+        return false;
+    }
+    mode = runMode;
+    return true;
+}
+
+bool LeadshineMotionCard::isContiMotionDone(const ContiTestConfig &config) const
+{
+    return dmc_check_done_multicoor(config.cardNo, config.crdNo) != 0;
+}
+
+bool LeadshineMotionCard::configureAndOpen(const ContiTestConfig &config, QString &errorMessage) const
+{
+    WORD axes[2] = {config.activeAxis, config.holdAxis};
+    const double cardMaxVectorVelocity = MotorUnit::degreesToCardUnits(
+        config.maxVectorVelocity, config.degreesPerCardUnit);
+    const double cardPathError = MotorUnit::degreesToCardUnits(
+        config.pathErrorUnit, config.degreesPerCardUnit);
+
+    // 手册要求：前瞻设置必须发生在 open_list 前。
+    if (!checkResult(dmc_conti_set_lookahead_mode(config.cardNo, config.crdNo,
+                                                   config.lookaheadEnabled ? 1 : 0,
+                                                   0, cardPathError, 0),
+                     QStringLiteral("dmc_conti_set_lookahead_mode"), errorMessage)) {
+        return false;
+    }
+    if (!checkResult(dmc_set_vector_profile_unit(config.cardNo, config.crdNo, 0,
+                                                  cardMaxVectorVelocity,
+                                                  config.accelerationTimeS,
+                                                  config.decelerationTimeS, 0),
+                     QStringLiteral("dmc_set_vector_profile_unit"), errorMessage)) {
+        return false;
+    }
+    if (!checkResult(dmc_set_vector_s_profile(config.cardNo, config.crdNo, 0, config.sCurveTimeS),
+                     QStringLiteral("dmc_set_vector_s_profile"), errorMessage)) {
+        return false;
+    }
+    return checkResult(dmc_conti_open_list(config.cardNo, config.crdNo, 2, axes),
+                       QStringLiteral("dmc_conti_open_list"), errorMessage);
+}
+
+bool LeadshineMotionCard::pushLine(const ContiTestConfig &config,
+                                    const ContiPoint &point,
+                                    long mark,
+                                    QString &errorMessage) const
+{
+    WORD axes[2] = {config.activeAxis, config.holdAxis};
+    double target[2] = {
+        MotorUnit::degreesToCardUnits(point.targetUnit[0], config.degreesPerCardUnit),
+        MotorUnit::degreesToCardUnits(point.targetUnit[1], config.degreesPerCardUnit)
+    };
+    return checkResult(dmc_conti_line_unit(config.cardNo, config.crdNo, 2, axes, target,
+                                            1, mark),
+                       QStringLiteral("dmc_conti_line_unit"), errorMessage);
+}
+
+bool LeadshineMotionCard::start(const ContiTestConfig &config, QString &errorMessage) const
+{
+    return checkResult(dmc_conti_start_list(config.cardNo, config.crdNo),
+                       QStringLiteral("dmc_conti_start_list"), errorMessage);
+}
+
+ContiSpeedRatioResult LeadshineMotionCard::changeSpeedRatio(const ContiTestConfig &config,
+                                                             QString &errorMessage) const
+{
+    const short result = dmc_conti_change_speed_ratio(config.cardNo, config.crdNo, config.speedRatio);
+    if (result == 0) {
+        return ContiSpeedRatioResult::Applied;
+    }
+    // 手册错误码 5049：当前段尚未规划。start_list 返回后短暂出现属于正常就绪过程，
+    // 由上层在后续补点周期重试，不能作为连续插补启动失败处理。
+    if (result == 5049) {
+        return ContiSpeedRatioResult::NotReady;
+    }
+    checkResult(result, QStringLiteral("dmc_conti_change_speed_ratio"), errorMessage);
+    return ContiSpeedRatioResult::Failed;
+}
+
+bool LeadshineMotionCard::stop(const ContiTestConfig &config, bool emergency, QString &errorMessage) const
+{
+    return checkResult(dmc_conti_stop_list(config.cardNo, config.crdNo, emergency ? 1 : 0),
+                       QStringLiteral("dmc_conti_stop_list"), errorMessage);
+}
+
+bool LeadshineMotionCard::closeList(const ContiTestConfig &config, QString &errorMessage) const
+{
+    return checkResult(dmc_conti_close_list(config.cardNo, config.crdNo),
+                       QStringLiteral("dmc_conti_close_list"), errorMessage);
+}
+
+bool LeadshineMotionCard::readContiCardReadback(const ContiTestConfig &config,
+                                                 ContiCardReadback &readback,
+                                                 QString &errorMessage) const
+{
+    WORD lookaheadEnabled = 0;
+    long lookaheadSegments = 0;
+    double cardPathError = 0.0;
+    double cardLookaheadAcceleration = 0.0;
+    if (!checkResult(dmc_conti_get_lookahead_mode(config.cardNo, config.crdNo,
+                                                   &lookaheadEnabled, &lookaheadSegments,
+                                                   &cardPathError, &cardLookaheadAcceleration),
+                     QStringLiteral("dmc_conti_get_lookahead_mode"), errorMessage)) {
+        return false;
+    }
+
+    double cardMinVelocity = 0.0;
+    double cardMaxVelocity = 0.0;
+    double accelerationTimeS = 0.0;
+    double decelerationTimeS = 0.0;
+    double cardStopVelocity = 0.0;
+    if (!checkResult(dmc_get_vector_profile_unit(config.cardNo, config.crdNo,
+                                                  &cardMinVelocity, &cardMaxVelocity,
+                                                  &accelerationTimeS, &decelerationTimeS,
+                                                  &cardStopVelocity),
+                     QStringLiteral("dmc_get_vector_profile_unit"), errorMessage)) {
+        return false;
+    }
+
+    double sCurveTimeS = 0.0;
+    if (!checkResult(dmc_get_vector_s_profile(config.cardNo, config.crdNo, 0, &sCurveTimeS),
+                     QStringLiteral("dmc_get_vector_s_profile"), errorMessage)) {
+        return false;
+    }
+
+    readback.lookaheadEnabled = lookaheadEnabled != 0;
+    readback.lookaheadSegments = lookaheadSegments;
+    readback.pathErrorDegree = MotorUnit::cardUnitsToDegrees(
+        cardPathError, config.degreesPerCardUnit);
+    readback.lookaheadAccelerationDegreePerSecond2 = MotorUnit::cardUnitsToDegrees(
+        cardLookaheadAcceleration, config.degreesPerCardUnit);
+    readback.minVectorVelocityDegreePerSecond = MotorUnit::cardUnitsToDegrees(
+        cardMinVelocity, config.degreesPerCardUnit);
+    readback.maxVectorVelocityDegreePerSecond = MotorUnit::cardUnitsToDegrees(
+        cardMaxVelocity, config.degreesPerCardUnit);
+    readback.accelerationTimeS = accelerationTimeS;
+    readback.decelerationTimeS = decelerationTimeS;
+    readback.stopVectorVelocityDegreePerSecond = MotorUnit::cardUnitsToDegrees(
+        cardStopVelocity, config.degreesPerCardUnit);
+    readback.sCurveTimeS = sCurveTimeS;
+    return true;
+}
+
+bool LeadshineMotionCard::readVectorSpeedDegreePerSecond(
+    const ContiTestConfig &config,
+    double &speedDegreePerSecond,
+    QString &errorMessage) const
+{
+    double cardSpeed = 0.0;
+    if (!checkResult(dmc_read_vector_speed_unit(config.cardNo, config.crdNo, &cardSpeed),
+                     QStringLiteral("dmc_read_vector_speed_unit"), errorMessage)) {
+        return false;
+    }
+    speedDegreePerSecond = MotorUnit::cardUnitsToDegrees(
+        cardSpeed, config.degreesPerCardUnit);
+    return true;
+}
+
+long LeadshineMotionCard::currentMark(const ContiTestConfig &config) const
+{
+    return dmc_conti_read_current_mark(config.cardNo, config.crdNo);
+}
+
+long LeadshineMotionCard::remainSpace(const ContiTestConfig &config) const
+{
+    return dmc_conti_remain_space(config.cardNo, config.crdNo);
+}
+
+short LeadshineMotionCard::runState(const ContiTestConfig &config) const
+{
+    return dmc_conti_get_run_state(config.cardNo, config.crdNo);
+}

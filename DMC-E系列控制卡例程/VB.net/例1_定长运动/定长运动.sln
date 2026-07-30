@@ -1,0 +1,20 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 11.00
+# Visual Studio 2010
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "定长运动", "定长运动\定长运动.vbproj", "{E43E6236-5926-4631-9739-F8618989856A}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x86 = Debug|x86
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{E43E6236-5926-4631-9739-F8618989856A}.Debug|x86.ActiveCfg = Debug|x86
+		{E43E6236-5926-4631-9739-F8618989856A}.Debug|x86.Build.0 = Debug|x86
+		{E43E6236-5926-4631-9739-F8618989856A}.Release|x86.ActiveCfg = Release|x86
+		{E43E6236-5926-4631-9739-F8618989856A}.Release|x86.Build.0 = Release|x86
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal

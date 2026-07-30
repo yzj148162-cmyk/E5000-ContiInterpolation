@@ -2,12 +2,21 @@
 ipch/
 Debug/
 Release/
+debug/
+release/
 x64/
 x86/
 build*/
+ipch/
 
 *.sdf
 *.ipch
+*.pch
+*.bsc
+*.sbr
+*.idb
+*.tlog
+*.lastbuildstate
 *.obj
 *.pdb
 *.ilk
@@ -16,3 +25,6 @@ build*/
 *.log
 *.user
 ui_*.h
+.qmake.stash
+/conti_ctrl/Makefile*
+/cdpr_control/Makefile*

@@ -1,0 +1,273 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// 中文(简体，中国) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHS)
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
+#pragma code_page(936)
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHS)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 4, 2\r\n"
+    "#pragma code_page(936)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\DMCd1.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""l.chs\\afxres.rc""          // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\DMCd1.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_DMCd1_DIALOG DIALOGEX 0, 0, 494, 284
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "定长运动"
+FONT 9, "宋体", 0, 0, 0x1
+BEGIN
+    GROUPBOX        "信息显示",IDC_STATIC,174,12,160,100
+    GROUPBOX        "输入参数",IDC_STATIC,13,11,157,205
+    LTEXT           "运行速度：",IDC_STATIC,22,84,40,14
+    LTEXT           "加速时间：",IDC_STATIC,22,105,40,14
+    LTEXT           "减速时间：",IDC_STATIC,22,126,40,14
+    LTEXT           "S段时间：",IDC_STATIC,23,143,39,14
+    EDITTEXT        IDC_EDIT_Speed,67,81,47,15,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_AccTime,67,102,47,15,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_DecTime,67,122,47,15,ES_AUTOHSCROLL
+    EDITTEXT        IDC_EDIT_SPara,67,141,47,15,ES_AUTOHSCROLL
+    LTEXT           "运行距离：",IDC_STATIC,22,184,42,11
+    EDITTEXT        IDC_EDIT_Distance,67,182,48,13,ES_AUTOHSCROLL
+    PUSHBUTTON      "执行运动",IDC_Button_StartMove,23,243,63,21
+    PUSHBUTTON      "停止运动",IDC_Button_Stop,101,243,63,21
+    LTEXT           "起始速度：",IDC_STATIC,22,63,40,14
+    EDITTEXT        IDC_EDIT_StartSpeed,67,61,47,15,ES_AUTOHSCROLL
+    COMBOBOX        IDC_COMBO_AxisNum,67,23,48,97,CBS_DROPDOWNLIST | CBS_SORT | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "电机轴号：",IDC_STATIC,24,27,41,8
+    EDITTEXT        IDC_EDIT_Equiv,67,42,47,14,ES_AUTOHSCROLL
+    LTEXT           "脉冲当量：",IDC_STATIC,22,45,41,8
+    LTEXT           "停止速度：",IDC_STATIC,21,163,40,14
+    EDITTEXT        IDC_EDIT_StopSpeed,67,161,47,15,ES_AUTOHSCROLL
+    PUSHBUTTON      "在线变位",IDC_Button_ChangePos,381,169,63,21
+    PUSHBUTTON      "设置脉冲当量",IDC_Button_SetEquiv,273,242,63,21
+    PUSHBUTTON      "退出程序",IDC_Button_Exit,360,241,63,21
+    GROUPBOX        "在线变位",IDC_STATIC,342,115,139,99
+    GROUPBOX        "在线变速",IDC_STATIC,341,13,138,90
+    EDITTEXT        IDC_EDIT_CurSpeed,237,24,40,14,ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
+    LTEXT           "pulse/unit",IDC_STATIC,122,43,41,8
+    LTEXT           "unit/s",IDC_STATIC,122,64,25,8
+    LTEXT           "unit/s",IDC_STATIC,122,85,25,8
+    LTEXT           "unit/s",IDC_STATIC,121,164,25,8
+    LTEXT           "s",IDC_STATIC,122,107,8,8
+    LTEXT           "s",IDC_STATIC,121,123,8,8
+    LTEXT           "s",IDC_STATIC,121,145,8,8
+    LTEXT           "unit",IDC_STATIC,122,183,25,8
+    LTEXT           "当前速度：",IDC_STATIC,193,26,41,8
+    LTEXT           "当前位置：",IDC_STATIC,194,43,41,8
+    LTEXT           "unit/s",IDC_STATIC,288,26,25,8
+    EDITTEXT        IDC_EDIT_CurPos,237,42,40,14,ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
+    LTEXT           "unit",IDC_STATIC,288,44,25,8
+    LTEXT           "反馈位置：",IDC_STATIC,193,60,41,8
+    LTEXT           "运动状态：",IDC_STATIC,193,78,41,8
+    EDITTEXT        IDC_EDIT_CurEncPos,237,59,40,14,ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
+    EDITTEXT        IDC_EDIT_Status,237,74,74,14,ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
+    LTEXT           "unit",IDC_STATIC,288,60,25,8
+    LTEXT           "运行速度：",IDC_STATIC,354,33,40,14
+    EDITTEXT        IDC_EDIT_ChangeSpeed,397,30,47,15,ES_AUTOHSCROLL
+    LTEXT           "unit/s",IDC_STATIC,450,33,25,8
+    LTEXT           "加速时间：",IDC_STATIC,355,51,40,14
+    EDITTEXT        IDC_EDIT_ChangeTime,396,47,47,15,ES_AUTOHSCROLL
+    LTEXT           "s",IDC_STATIC,452,50,8,8
+    LTEXT           "目标位置：",IDC_STATIC,351,141,42,11
+    EDITTEXT        IDC_EDIT_ChangePos,397,139,48,13,ES_AUTOHSCROLL
+    LTEXT           "unit",IDC_STATIC,451,141,25,8
+    PUSHBUTTON      "指令清零",IDC_Button_Clear,191,242,63,21
+    PUSHBUTTON      "在线变速",IDC_Button_ChangeSpeed,377,71,63,21
+    LTEXT           "轴状态机：",IDC_STATIC,191,93,41,8
+    EDITTEXT        IDC_EDIT_StateMachine,237,91,77,14,ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
+    GROUPBOX        "复位操作及总线状态",IDC_STATIC,176,113,157,103
+    PUSHBUTTON      "硬件复位",IDC_Button_HardwareReset,193,149,47,21
+    PUSHBUTTON      "软件复位",IDC_Button_SoftwareReset,253,149,47,21
+    LTEXT           "总线状态：",IDC_STATIC,195,130,41,8
+    EDITTEXT        IDC_EDIT_EtherCatState,237,127,75,14,ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
+    LTEXT           "",IDC_STATIC_Message,194,181,121,24
+    GROUPBOX        "",IDC_STATIC,182,172,143,40
+END
+
+IDD_DIALOG1 DIALOG 0, 0, 187, 96
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "对话"
+FONT 10, "System"
+BEGIN
+    DEFPUSHBUTTON   "确定",IDOK,130,7,50,14
+    PUSHBUTTON      "取消",IDCANCEL,130,24,50,14
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404b0"
+        BEGIN
+            VALUE "FileDescription", "DMCd1 Microsoft 基础类应用程序"
+            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "InternalName", "DMCd1"
+            VALUE "LegalCopyright", "版权所有 (C) 2007"
+            VALUE "OriginalFilename", "DMCd1.EXE"
+            VALUE "ProductName", "DMCd1 应用程序"
+            VALUE "ProductVersion", "1, 0, 0, 1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_DMCd1_DIALOG, DIALOG
+    BEGIN
+        RIGHTMARGIN, 490
+        BOTTOMMARGIN, 282
+    END
+
+    IDD_DIALOG1, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 180
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 89
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog Info
+//
+
+IDD_DMCd1_DIALOG DLGINIT
+BEGIN
+    IDC_COMBO_AxisNum, 0x403, 2, 0
+0x0030, 
+    IDC_COMBO_AxisNum, 0x403, 2, 0
+0x0031, 
+    IDC_COMBO_AxisNum, 0x403, 2, 0
+0x0032, 
+    IDC_COMBO_AxisNum, 0x403, 2, 0
+0x0033, 
+    IDC_COMBO_AxisNum, 0x403, 2, 0
+0x0034, 
+    IDC_COMBO_AxisNum, 0x403, 2, 0
+0x0035, 
+    IDC_COMBO_AxisNum, 0x403, 2, 0
+0x0036, 
+    IDC_COMBO_AxisNum, 0x403, 2, 0
+0x0037, 
+    0
+END
+
+#endif    // 中文(简体，中国) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHS)
+#ifdef _WIN32
+LANGUAGE 4, 2
+#pragma code_page(936)
+#endif //_WIN32
+#include "res\DMCd1.rc2"  // non-Microsoft Visual C++ edited resources
+#include "l.chs\afxres.rc"          // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

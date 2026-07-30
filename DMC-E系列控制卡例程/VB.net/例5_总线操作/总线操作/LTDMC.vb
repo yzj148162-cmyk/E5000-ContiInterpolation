@@ -1,0 +1,3177 @@
+Option Strict Off
+Option Explicit On
+Public Module ModuleCard
+
+    Public Delegate Function DMC3K5K_OPERATE(ByVal operate_data As IntPtr) As UInt32
+    '板卡配置 控制卡初始化函数 大于0：卡数，小于0：绝对值减1表示拨码重号，等于0：没找到控制卡硬件或初始化失败</returns>
+    Declare Function dmc_board_init Lib "LTDMC.dll" () As Int16
+    Declare Function dmc_board_init_onecard Lib "LTDMC.dll" (ByVal CardNo As Int16) As Int16
+    Declare Function dmc_board_close_onecard Lib "LTDMC.dll" (ByVal CardNo As Int16) As Int16
+
+    '控制卡关闭函数 资源释放 错误代码
+    Declare Function dmc_board_close Lib "LTDMC.dll" () As Int16
+
+    '控制卡硬件复位 错误代码
+    Declare Function dmc_board_reset Lib "LTDMC.dll" () As Int16
+    Declare Function dmc_board_reset_onecard Lib "LTDMC.dll" (ByVal CardNo As Int16) As Int16
+    '读取初始化后控制卡信息
+    '</summary>
+    '<param name="CardNum">初始化成功的卡数</param>
+    '<param name="CardTypeList">卡类型列表：卡类型采用16进制表示，如0x5410,0x5800</param>
+    '<param name="CardIdList">卡ID列表</param>
+    '<returns>错误代码
+
+    Declare Function dmc_get_CardInfList Lib "LTDMC.dll" (ByRef CardNum As UInt16, ByVal CardTypeList() As UInt32, ByVal CardIdList() As UInt16) As Int16
+    ' <summary>
+    ' 读取控制卡版本信息
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="CardVersion">控制卡硬件版本号</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_soft_reset Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    Declare Function dmc_cool_reset Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    Declare Function dmc_original_reset Lib "LTDMC.dll" (ByVal CardNo As Int16) As Int16
+    Declare Function dmc_get_card_ID Lib "LTDMC.dll" (ByVal CardNo As Int16, ByRef CardID As UInt32) As Int16
+    Declare Function dmc_get_card_version Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef CardVersion As UInt32) As Int16
+    ' <summary> 
+    ' </summary>
+    ' <param name="CardNo"></param>
+    ' <param name="FirmID">控制卡固件类型</param>
+    ' <param name="SubFirmID">控制卡固件版本号</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_card_soft_version Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef FirmID As UInt32, ByRef SubFirmID As UInt32) As Int16
+    ' <summary>
+    ' 读取动态库版本号 用日期表示
+    ' </summary>
+    ' <param name="LibVer">版本号</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_card_lib_version Lib "LTDMC.dll" (ByRef LibVer As Int32) As Int16
+    ' <summary>
+    ' 设置函数库函数调用参数打印输出模式
+    ' </summary>
+    ' <param name="mode">打印输出模式：0-不输出，1-输出</param>
+    ' <param name="FileName">文件名：相对或绝对地址文件</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_debug_mode Lib "LTDMC.dll" (ByVal mode As UInt16, ByVal FileName As String) As Int16
+    ' <summary>
+    ' 读取函数库函数调用参数打印输出模式
+    ' </summary>
+    ' <param name="mode">打印输出模式：0-不输出，1-输出</param>
+    ' <param name="FileName">文件名：相对或绝对地址文件</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_debug_mode Lib "LTDMC.dll" (ByVal mode As UInt16, ByVal FileName As String) As Int16
+    '密码管理
+    ' <summary>
+    ' 密码校验 失败3次之后 无法再次校验
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="check_sn">旧密码</param>
+    ' <returns>校验状态：0-失败，1-成功</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_total_liners Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef TotalAxis As Int32) As Integer
+    Declare Function dmc_get_total_adcnum Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef TotalIn As Integer, ByRef TotalOut As Integer) As Integer
+    Declare Function dmc_get_total_ionum Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef TotalIn As UInt16, ByRef TotalOut As UInt16) As Int16
+
+    'Declare Function dmc_set_AxisIoMap Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal MsgType As UInt16, ByVal MapPortType As UInt16, ByVal MapPortIndex As UInt16, ByVal Filter As UInt32) As Int16
+    'Declare Function dmc_get_AxisIoMap Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal MsgType As UInt16, ByRef MapPortType As UInt16, ByRef MapPortIndex As UInt16, ByRef Filter As UInt32) As Int16
+    Declare Function dmc_check_sn Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal check_sn As String) As Int16
+    ' <summary>
+    ' 密码修改
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="new_sn">新密码</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_write_sn Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal new_sn As String) As Int16
+    Declare Function dmc_enter_password_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal str_pass As String) As Int16
+    '下载参数文件
+    ' <summary>
+    ' 下载参数文件
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="FileName">文件名：相对或绝对地址文件</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_download_configfile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal FileName As String) As Int16
+    '下载固件文件
+    ' <summary>
+    ' 下载固件文件
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="FileName">文件名：相对或绝对地址文件</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_download_firmware Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal FileName As String) As Int16
+    ' <summary>
+    ' 读取控制卡轴数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="TotalAxis">轴数</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_total_axes Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef TotalAxis As UInt32) As Int16
+
+    '脉冲卡 轴IO映射配置
+    ' <summary>
+    ' 设置轴IO映射
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="IoType">轴IO信号类型</param>
+    ' <param name="MapIoType">轴IO映射IO口类型</param>
+    ' <param name="MapIoIndex">轴IO映射IO口号</param>
+    ' <param name="Filter">滤波时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_axis_io_map Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal IoType As UInt16, ByVal MapIoType As UInt16, ByVal MapIoIndex As UInt16, ByVal Filter As Double) As Int16
+    ' <summary>
+    ' 读取轴IO映射
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="IoType">轴IO信号类型</param>
+    ' <param name="MapIoType">轴IO映射IO口类型</param>
+    ' <param name="MapIoIndex">轴IO映射IO口号</param>
+    ' <param name="Filter">滤波时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_axis_io_map Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal IoType As UInt16, ByRef MapIoType As UInt16, ByRef MapIoIndex As UInt16, ByRef Filter As Double) As Int16
+    ' <summary>
+    ' 设置所有专用IO滤波时间
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="filter_time">滤波时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_special_input_filter Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal filter_time As Double) As Int16
+
+    '脉冲卡 虚拟IO映射  用于读取滤波后的IO口电平状态
+    ' <summary>
+    ' 设置虚拟IO映射
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">虚拟IO口号：0-15</param>
+    ' <param name="MapIoType">轴IO映射IO口类型</param>
+    ' <param name="MapIoIndex">轴IO映射IO口号</param>
+    ' <param name="Filter">滤波时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_io_map_virtual Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByVal MapIoType As UInt16, ByVal MapIoIndex As UInt16, ByVal Filter As Double) As Int16
+    ' <summary>
+    ' 读取虚拟IO映射
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">虚拟IO口号：0-15</param>
+    ' <param name="MapIoType">轴IO映射IO口类型</param>
+    ' <param name="MapIoIndex">轴IO映射IO口号</param>
+    ' <param name="Filter">滤波时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_io_map_virtual Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByRef MapIoType As UInt16, ByRef MapIoIndex As UInt16, ByRef Filter As Double) As Int16
+    ' <summary>
+    ' 读取滤波后的IO输入状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">虚拟IO口号：0-15</param>
+    ' <returns>输入状态：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_inbit_virtual Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16) As Int16
+
+    '限位/异常设置
+    ' <summary>
+    ' 设置软限位参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7></param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="source_sel">位置源：0-指令位置，1-编码器位置</param>
+    ' <param name="SL_action">制动方式：0-减速停止，1-立即停止</param>
+    ' <param name="N_limit">负限位值</param>
+    ' <param name="P_limit">正限位值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_softlimit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal source_sel As UInt16, ByVal SL_action As UInt16, ByVal N_limit As Int32, ByVal P_limit As Int32) As Int16  '设置软限位参数
+    ' <summary>
+    ' 读取软限位参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7></param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="source_sel">位置源：0-指令位置，1-编码器位置</param>
+    ' <param name="SL_action">制动方式：0-减速停止，1-立即停止</param>
+    ' <param name="N_limit">负限位值</param>
+    ' <param name="P_limit">正限位值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_softlimit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef source_sel As UInt16, ByRef SL_action As UInt16, ByRef N_limit As Int32, ByRef P_limit As Int32) As Int16    '读取软限位参数
+    ' <summary>
+    ' 设置硬件限位模式，适用于脉冲卡
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="el_enable">使能：0-禁止，1-允许</param>
+    ' <param name="el_logic">有效电平：0-低电平，1-高电平</param>
+    ' <param name="el_mode">制动方式：0-减速停止，1-立即停止</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_el_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal el_enable As UInt16, ByVal el_logic As UInt16, ByVal el_mode As UInt16) As Int16      '设置EL信号
+    ' <summary>
+    ' 读取硬件限位模式，适用于脉冲卡
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="el_enable">使能：0-禁止，1-允许</param>
+    ' <param name="el_logic">有效电平：0-低电平，1-高电平</param>
+    ' <param name="el_mode">制动方式：0-减速停止，1-立即停止</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_el_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef el_enable As UInt16, ByRef el_logic As UInt16, ByRef el_mode As UInt16) As Int16   '读取设置EL信号
+    ' <summary>
+    ' 设置硬件急停模式，适用于脉冲卡
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="emg_logic">有效电平：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_emg_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal emg_logic As UInt16) As Int16    '设置EMG信号
+    ' <summary>
+    ' 读取硬件急停模式，适用于脉冲卡
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="emg_logic">有效电平：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_emg_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef emg_logic As UInt16) As Int16        '读取设置EMG信号
+    Declare Function dmc_set_dstp_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal logic As UInt16, ByVal time As Int32) As Int16
+    Declare Function dmc_get_dstp_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef logic As UInt16, ByRef time As Int32) As Int16
+    Declare Function dmc_set_dstp_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal time As Int32) As Int16
+    Declare Function dmc_get_dstp_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef time As Int32) As Int16
+    ' 外部减速停止信号及减速停止时间配置
+    ' <summary>
+    ' 设置外部IO减速停止模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="logic">有效电平：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_io_dstp_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal logic As UInt16) As Int16
+    ' <summary>
+    ' 读取外部IO减速停止模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="logic">有效电平：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_io_dstp_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef logic As UInt16) As Int16
+    ' <summary>
+    ' 设置减速停止时间，针对所有减速停止有效
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="stop_time">停止时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_dec_stop_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal stop_time As Double) As Int16
+    ' <summary>
+    ' 读取减速停止时间，针对所有减速停止有效
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="stop_time">停止时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_dec_stop_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef stop_time As Double) As Int16
+    '插补运动减速停止时间设置
+    Declare Function dmc_set_vector_dec_stop_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal stop_time As Double) As Int16
+    Declare Function dmc_get_vector_dec_stop_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef stop_time As Double) As Int16
+    '减速停止距离
+    Declare Function dmc_set_dec_stop_dist Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal dist As Int32) As Int16
+    Declare Function dmc_get_dec_stop_dist Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef dist As Int32) As Int16
+    '设置通用输入口的一位减速停止IO口
+    Declare Function dmc_set_io_dstp_bitno Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal bitno As UInt16, ByVal filter As Double) As Int16
+    Declare Function dmc_get_io_dstp_bitno Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef bitno As UInt16, ByRef filter As Double) As Int16
+
+    '速度设置
+    ' <summary>
+    ' 设置单轴速度参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Min_Vel">起始速度</param>
+    ' <param name="Max_Vel">运行速度</param>
+    ' <param name="Tacc">加速时间，单位s</param>
+    ' <param name="Tdec">减速时间，单位s</param>
+    ' <param name="Stop_vel">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal Stop_vel As Double) As Int16 '设定速度曲线参数
+    ' <summary>
+    ' 读取单轴速度参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Min_Vel">起始速度</param>
+    ' <param name="Max_Vel">运行速度</param>
+    ' <param name="Tacc">加速时间，单位s</param>
+    ' <param name="Tdec">减速时间，单位s</param>
+    ' <param name="Stop_vel">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef Min_Vel As Double, ByRef Max_Vel As Double, ByRef Tacc As Double, ByRef Tdec As Double, ByRef Stop_vel As Double) As Int16 '读取速度曲线参数
+    Declare Function dmc_set_acc_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal Stop_vel As Double) As Int16 '设定速度曲线参数
+    Declare Function dmc_get_acc_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef Min_Vel As Double, ByRef Max_Vel As Double, ByRef Tacc As Double, ByRef Tdec As Double, ByRef Stop_vel As Double) As Int16 '读取速度曲线参数
+
+    ' <summary>
+    ' 设置S速度曲线参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="s_mode">s段参数模式：0</param>
+    ' <param name="s_para">s段时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_s_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal s_mode As UInt16, ByVal s_para As Double) As Int16        '设置平滑速度曲线参数
+    ' <summary>
+    ' 设置S速度曲线参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="s_mode">s段参数模式：0</param>
+    ' <param name="s_para">s段时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_s_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal s_mode As UInt16, ByRef s_para As Double) As Int16    '读取平滑速度曲线参数
+    ' <summary>
+    ' 设置单段插补速度参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Min_Vel">起始速度</param>
+    ' <param name="Max_Vel">运行速度</param>
+    ' <param name="Tacc">加速时间，单位s</param>
+    ' <param name="Tdec">减速时间，单位s</param>
+    ' <param name="Stop_vel">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_vector_profile_multicoor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal Stop_vel As Double) As Int16
+    ' <summary>
+    ' 读取单段插补速度参数，3000脉冲卡
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Min_Vel">起始速度</param>
+    ' <param name="Max_Vel">运行速度</param>
+    ' <param name="Tacc">加速时间，单位s</param>
+    ' <param name="Tdec">减速时间，单位s</param>
+    ' <param name="Stop_vel">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_vector_profile_multicoor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef Min_Vel As Double, ByRef Max_Vel As Double, ByRef Tacc As Double, ByRef Tdec As Double, ByRef Stop_vel As Double) As Int16
+    Declare Function dmc_set_vector_s_profile_multicoor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal s_mode As UInt16, ByVal s_para As Double) As Int16
+    Declare Function dmc_get_vector_s_profile_multicoor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal s_mode As UInt16, ByRef s_para As Double) As Int16
+
+    '运动模块脉冲模式
+    ' <summary>
+    ' 设置脉冲模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="outmode">脉冲输出模式：0-5</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_pulse_outmode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal outmode As UInt16) As Int16    '设定脉冲输出模式
+    ' <summary>
+    ' 读取脉冲模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="outmode">脉冲输出模式：0-5</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_pulse_outmode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef outmode As UInt16) As Int16      '读取脉冲输出模式
+
+    '单轴运动
+    '点位运动
+    ' <summary>
+    ' 单轴定长运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Dist">目标位置</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_pmove Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Dist As Int32, ByVal posi_mode As UInt16) As Int16  '指定轴做定长位移运动
+    Declare Function dmc_pmove_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Dist As Double, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal Stop_vel As Double, ByVal s_para As Double, ByVal posi_mode As UInt16) As Int16 '设定速度曲线参数
+
+    ' <summary>
+    ' 在线变位
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Dist">目标位置</param>
+    ' <param name="posi_mode">位置模式：0 保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_reset_target_position Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Dist As Int32, ByVal posi_mode As UInt16) As Int16  '运动中改变目标位置
+    ' <summary>
+    ' 在线变速
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Curr_Vel">新速度值</param>
+    ' <param name="Taccdec">新加减速时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_change_speed Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Curr_Vel As Double, ByVal Taccdec As Double) As Int16        '在线改变指定轴的当前运动速度
+    ' <summary>
+    ' 强制变位
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Dist">目标位置</param>
+    ' <param name="posi_mode">位置模式：0 保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_update_target_position Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Dist As Int32, ByVal posi_mode As UInt16) As Int16  '强行改变目标位置
+    'JOG运动
+    ' <summary>
+    ' 速度运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="dir">运动方向：0-负方向，1-正方向</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_vmove Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal dir As UInt16) As Int16    '指定轴做连续运动
+    'PVT运动 旧版,3K5K脉冲卡
+    ' <summary>
+    ' PVT运动数据
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Count">数据数组元素个数</param>
+    ' <param name="pTime">时间数据数组，单位s</param>
+    ' <param name="pPos">位置数据数组</param>
+    ' <param name="pVel">速度数据数组</param>
+    ' <returns></returns>
+    ' <remarks></remarks>
+    Declare Function dmc_PvtTable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Int32, ByVal pVel() As Double) As Int16
+    ' <summary>
+    ' PTS运动数据
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Count">数据数组元素个数</param>
+    ' <param name="pTime">时间数据数组，单位s</param>
+    ' <param name="pPos">位置数据数组</param>
+    ' <param name="pPercent">加速度变化百分比数据数组</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_PtsTable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Int32, ByVal pPercent() As Double) As Int16
+    ' <summary>
+    ' PVTS运动数据
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Count">数据数组元素个数</param>
+    ' <param name="pTime">时间数据数组，单位s</param>
+    ' <param name="pPos">位置数据数组</param>
+    ' <param name="velBegin">起始速度</param>
+    ' <param name="velEnd">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_PvtsTable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Int32, ByVal velBegin As Double, ByVal velEnd As Double) As Int16
+    ' <summary>
+    ' PTT运动数据
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Count">数据数组元素个数</param>
+    ' <param name="pTime">时间数据数组，单位s</param>
+    ' <param name="pPos">位置数据数组</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_PttTable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Int32) As Int16
+    ' <summary>
+    ' PVT启动运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="AxisNum">轴数：1-8</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_PvtMove Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16) As Int16
+    'PVT缓冲区添加
+    Declare Function dmc_PttTable_add Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Int32) As Int16
+    Declare Function dmc_PtsTable_add Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Int32, ByRef pPercent As Double) As Int16
+    Declare Function dmc_pvt_get_remain_space Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    'PVT运动 总线卡新规划
+    Declare Function dmc_pvt_table_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Double, ByVal pVel() As Double) As Int16
+    Declare Function dmc_pts_table_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Double, ByVal pPercent() As Double) As Int16
+    Declare Function dmc_pvts_table_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Double, ByVal velBegin As Double, ByVal velEnd As Double) As Int16
+    Declare Function dmc_ptt_table_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Count As Int32, ByVal pTime() As Double, ByVal pPos() As Double) As Integer
+    Declare Function dmc_pvt_move Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16) As Int16
+
+    Declare Function dmc_SetGearProfile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal MasterType As UInt16, ByVal MasterIndex As UInt16, ByVal MasterEven As UInt32, ByVal SlaveEven As UInt32, ByVal MasterSlope As UInt32) As Int16
+    Declare Function dmc_GetGearProfile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef MasterType As UInt16, ByRef MasterIndex As UInt16, ByRef MasterEven As UInt32, ByRef SlaveEven As UInt32, ByRef MasterSlope As UInt32) As Int16
+    Declare Function dmc_GearMove Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As Int16) As Integer
+
+    '多轴运动
+    '直线插补
+    ' <summary>
+    ' 单段直线插补，3000系列脉冲卡	
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-8</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="DistList">目标位置列表</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ''' <remarks></remarks>
+    Declare Function dmc_line_multicoor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal DistList() As Int32, ByVal posi_mode As UInt16) As Int16     '指定轴直线插补运动
+    '平面圆弧
+    ' <summary>
+    ' 2轴单段圆弧插补，3000系列脉冲卡	
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="Cen_Pos">圆心位置</param>
+    ' <param name="Arc_Dir">圆弧方向：0-顺时针，1-逆时针</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_arc_move_multicoor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Int32, ByVal Cen_Pos() As Int32, ByVal Arc_Dir As UInt16, ByVal posi_mode As UInt16) As Int16
+
+    '回零运动
+    ' <summary>
+    ' 设置原点信号
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="org_logic">有效电平：0-低电平，1-高电平</param>
+    ' <param name="Filter">滤波时间：0 保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_home_pin_logic Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal org_logic As UInt16, ByVal Filter As Double) As Int16         '设置HOME信号
+    ' <summary>
+    ' 读取原点信号
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="org_logic">有效电平：0-低电平，1-高电平</param>
+    ' <param name="Filter">滤波时间：0 保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_home_pin_logic Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef org_logic As UInt16, ByRef Filter As Double) As Int16     '读取设置HOME信号
+    ' <summary>
+    ' 设置回零模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="home_dir">回零方向：0-负方向，1-正方向</param>
+    ' <param name="vel_mode">回零速度模式：0-低速回零，1-高速回零</param>
+    ' <param name="home_mode">回零模式：0-一次回零，1-一次回零+反找，2-二次回零，3-一次回零+一次EZ回零，4-一次EZ回零</param>
+    ' <param name="EZ_count">EZ次数：1 保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_homemode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal home_dir As UInt16, ByVal vel_mode As Double, ByVal home_mode As UInt16, ByVal EZ_count As UInt16) As Int16 '设定指定轴的回原点模式
+    ' <summary>
+    ' 读取回零模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="home_dir">回零方向：0-负方向，1-正方向</param>
+    ' <param name="vel_mode">回零速度模式：0-低速回零，1-高速回零</param>
+    ' <param name="home_mode">回零模式：0-一次回零，1-一次回零+反找，2-二次回零，3-一次回零+一次EZ回零，4-一次EZ回零</param>
+    ' <param name="EZ_count">EZ次数：1 保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_homemode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef home_dir As UInt16, ByRef vel_mode As Double, ByRef home_mode As UInt16, ByRef EZ_count As UInt16) As Int16 '读取指定轴的回原点模式
+    ' <summary>
+    ' 回零运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_home_move Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    Declare Function dmc_set_home_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Low_Vel As Double, ByVal High_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double) As Int16 '设定回零速度曲线参数
+    Declare Function dmc_get_home_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef Low_Vel As Double, ByRef High_Vel As Double, ByRef Tacc As Double, ByRef Tdec As Double) As Int16 '读取回零速度曲线参数
+    Declare Function dmc_get_home_result Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef state As UInt16) As Int16
+    Declare Function dmc_set_home_position_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal position As Double) As Int16
+    Declare Function dmc_get_home_position_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef position As Double) As Int16
+    Declare Function dmc_set_el_home Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal mode As UInt16) As Int16
+    '回原点减速信号配置，3410专用
+    Declare Function dmc_set_sd_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal sd_logic As UInt16, ByVal sd_mode As UInt16) As Int16      '设置SD信号
+    Declare Function dmc_get_sd_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef sd_logic As UInt16, ByRef sd_mode As UInt16) As Int16    '读取设置SD信号
+    '原点锁存
+    '3800 5800专用
+    ' <summary>
+    ' 设置原点锁存模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="logic">锁存触发方式：0-下降沿触发，1-上升沿触发</param>
+    ' <param name="source">锁存源：0-指令位置，1-反馈位置</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_homelatch_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal logic As UInt16, ByVal source As UInt16) As Int16
+    ' <summary>
+    ' 读取原点锁存模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="logic">锁存触发方式：0-下降沿触发，1-上升沿触发</param>
+    ' <param name="source">锁存源：0-指令位置，1-反馈位置</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_homelatch_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef logic As UInt16, ByRef source As UInt16) As Int16
+    ' <summary>
+    ' 读取原点锁存状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>锁存状态：0-未锁存，1-已锁存</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_homelatch_flag Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int32
+    ' <summary>
+    ' 清除原点锁存状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_reset_homelatch_flag Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    ' <summary>
+    ' 读取原点锁存值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_homelatch_value Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int32
+
+    'ez锁存，脉冲卡
+    Declare Function dmc_set_ezlatch_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal logic As UInt16, ByVal Source As UInt16) As Int16
+    Declare Function dmc_get_ezlatch_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef logic As UInt16, ByRef Source As UInt16) As Int16
+    Declare Function dmc_get_ezlatch_flag Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int32
+    Declare Function dmc_reset_ezlatch_flag Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    Declare Function dmc_get_ezlatch_value Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int32
+
+    '手轮运动
+    '脉冲卡专用 手轮通道选择
+    ' <summary>
+    ' 设置手轮通道
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="index">手轮通道：0-高速通道，1-低速通道</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_handwheel_channel Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal index As UInt16) As Int16
+    ' <summary>
+    ' 读取手轮通道
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="index">手轮通道：0-高速通道，1-低速通道</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_handwheel_channel Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef index As UInt16) As Int16
+    '一个手轮信号控制单个轴运动
+    ' <summary>
+    ' 设置手轮模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="inmode">手轮模式：0-AB相，1-脉冲+方向</param>
+    ' <param name="multi">倍率：[-100,100],负值表示反向</param>
+    ' <param name="vh">保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_handwheel_inmode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal inmode As UInt16, ByVal multi As Int32, ByVal vh As Double) As Int16      '设置输入手轮脉冲信号的工作方式
+    ' <summary>
+    ' 读取手轮模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="inmode">手轮模式：0-AB相，1-脉冲+方向</param>
+    ' <param name="multi">倍率：[-100,100],负值表示反向</param>
+    ' <param name="vh">保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_handwheel_inmode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef inmode As UInt16, ByRef multi As Int32, ByRef vh As Double) As Int16    '读取输入手轮脉冲信号的工作方式
+    Declare Function dmc_set_handwheel_inmode_decimals Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal inmode As UInt16, ByVal multi As Double, ByVal vh As Double) As Int16      '设置输入手轮脉冲信号的工作方式
+    Declare Function dmc_get_handwheel_inmode_decimals Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef inmode As UInt16, ByRef multi As Double, ByRef vh As Double) As Int16    '读取输入手轮脉冲信号的工作方式
+    '3800 5800专用 一个手轮信号控制多轴运动
+    ' <summary>
+    ' 设置多轴跟随手轮模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="inmode">手轮模式：0-AB相，1-脉冲+方向</param>
+    ' <param name="AxisNum">轴数：1-8</param>
+    ' <param name="AxisList">跟随手轮轴列表</param>
+    ' <param name="multi">跟随倍率列表，[-100,100],负值表示反向</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_handwheel_inmode_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal inmode As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal multi() As Int32) As Int16     '设置输入手轮脉冲信号的工作方式
+    ' <summary>
+    ' 读取多轴跟随手轮模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="inmode">手轮模式：0-AB相，1-脉冲+方向</param>
+    ' <param name="AxisNum">轴数：1-8</param>
+    ' <param name="AxisList">跟随手轮轴列表</param>
+    ' <param name="multi">跟随倍率列表，[-100,100],负值表示反向</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_handwheel_inmode_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef inmode As UInt16, ByRef AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal multi() As Int32) As Int16   '读取输入手轮脉冲信号的工作方式
+    Declare Function dmc_set_handwheel_inmode_extern_decimals Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal inmode As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal multi() As Double) As Int16     '设置输入手轮脉冲信号的工作方式
+    Declare Function dmc_get_handwheel_inmode_extern_decimals Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef inmode As UInt16, ByRef AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal multi() As Double) As Int16   '读取输入手轮脉冲信号的工作方式
+
+    '启动手轮运动
+    ' <summary>
+    ' 启动手轮运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_handwheel_move Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16         '启动指定轴的手轮脉冲运动
+
+    Declare Function dmc_handwheel_set_axislist Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisSelIndex As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16) As Int16
+    Declare Function dmc_handwheel_get_axislist Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisSelIndex As UInt16, ByRef AxisNum As UInt16, ByVal AxisList() As UInt16) As Int16
+    Declare Function dmc_handwheel_set_ratiolist Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisSelIndex As UInt16, ByVal StartRatioIndex As UInt16, ByVal RatioSelNum As UInt16, ByVal RatioList() As Double) As Int16
+    Declare Function dmc_handwheel_get_ratiolist Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisSelIndex As UInt16, ByVal StartRatioIndex As UInt16, ByVal RatioSelNum As UInt16, ByVal RatioList() As Double) As Int16
+    Declare Function dmc_handwheel_set_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal inmode As UInt16, ByVal IfHardEnable As UInt16) As Int16
+    Declare Function dmc_handwheel_get_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef inmode As UInt16, ByRef IfHardEnable As UInt16) As Int16
+    Declare Function dmc_handwheel_set_index Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisSelIndex As UInt16, ByVal RatioSelIndex As UInt16) As Int16
+    Declare Function dmc_handwheel_get_index Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef AxisSelIndex As UInt16, ByRef RatioSelIndex As UInt16) As Int16
+    'Declare Function dmc_handwheel_move Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal ForceMove As Integer) As Integer
+    Declare Function dmc_handwheel_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    '编码器
+    ' <summary>
+    ' 设置编码器模式，脉冲卡
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="mode">编码器计数模式：0-脉冲+方向，1-1倍AB相，2-1倍AB相,3-4倍AB相</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_counter_inmode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal mode As UInt16) As Int16      '设定编码器的计数方式
+    ' <summary>
+    ' 读取编码器模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="mode">编码器计数模式：0-脉冲+方向，1-1倍AB相，2-1倍AB相,3-4倍AB相</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_counter_inmode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef mode As UInt16) As Int16        '读取编码器的计数方式
+    ' <summary>
+    ' 读取编码器反馈值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>反馈值</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int32
+    ' <summary>
+    ' 设置编码器位置值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="encoder_value">位置值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal encoder_value As Int32) As Int16
+    ' <summary>
+    ' 设置EZ信号模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="ez_logic">有效电平：0-低电平，1-高电平</param>
+    ' <param name="ez_mode">保留：0</param>
+    ' <param name="Filter">保留：0</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_ez_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal ez_logic As UInt16, ByVal ez_mode As UInt16, ByVal Filter As Double) As Int16       '设置EZ信号
+    ' <summary>
+    ' 读取EZ信号模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="ez_logic">有效电平：0-低电平，1-高电平</param>
+    ' <param name="ez_mode">保留：0</param>
+    ' <param name="Filter">保留：0</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_ez_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef ez_logic As UInt16, ByRef ez_mode As UInt16, ByRef Filter As Double) As Int16     '读取设置EZ信号
+
+    Declare Function dmc_set_auxiliary_encoder_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal inmode As UInt16, ByVal multi As UInt16) As Int16
+    Declare Function dmc_get_auxiliary_encoder_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef inmode As UInt16, ByRef multi As UInt16) As Int16
+    Declare Function dmc_set_auxiliary_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal pos As UInt16) As Int16
+    Declare Function dmc_get_auxiliary_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef inmode As UInt16) As Int16
+    '锁存 脉冲卡
+    ' <summary>
+    ' 设置锁存信号模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="ltc_logic">LTC 信号的触发方式，0：下降沿锁存，1：上升沿锁存</param>
+    ' <param name="ltc_mode">保留：0</param>
+    ' <param name="Filter">保留：0</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_ltc_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal ltc_logic As UInt16, ByVal ltc_mode As UInt16, ByVal Filter As Double) As Int16    '设置LTC信号
+    ' <summary>
+    ' 读取锁存信号模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="ltc_logic">LTC 信号的触发方式，0：下降沿锁存，1：上升沿锁存</param>
+    ' <param name="ltc_mode">保留：0</param>
+    ' <param name="Filter">保留：0</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_ltc_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef ltc_logic As UInt16, ByRef ltc_mode As UInt16, ByRef Filter As Double) As Int16  '读取设置LTC信号
+    ' <summary>
+    ' 设置锁存模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="all_enable">锁存模式：0-单轴单次锁存，1-所有轴同时单次锁存，2-单轴连续锁存，3-外部触发延时急停</param>
+    ' <param name="latch_source">锁存源：0-指令位置，1-反馈位置</param>
+    ' <param name="latch_channel">保留：0</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_latch_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal all_enable As UInt16, ByVal latch_source As UInt16, ByVal latch_channel As UInt16) As Int16     '设置锁存方式
+    ' <summary>
+    ' 读取锁存模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="all_enable">锁存模式：0-单轴单次锁存，1-所有轴同时单次锁存，2-单轴连续锁存，3-外部触发延时急停</param>
+    ' <param name="latch_source">锁存源：0-指令位置，1-反馈位置</param>
+    ' <param name="latch_channel">保留：0</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_latch_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef all_enable As UInt16, ByRef latch_source As UInt16, ByRef latch_channel As UInt16) As Int16
+    ' <summary>
+    ' 读取锁存值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>所存值</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_latch_value Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int32           '读取控制卡内锁存值，再连续锁存模式下读取一次控制卡内有效锁存个数将会自动减1,并将锁存值保存在PC缓冲区内
+    Declare Function dmc_get_latch_value_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos_by_mm As Double) As Int16           '读取控制卡内锁存值，再连续锁存模式下读取一次控制卡内有效锁存个数将会自动减1,并将锁存值保存在PC缓冲区内
+
+    ' <summary>
+    ' 读取锁存次数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>锁存次数</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_latch_flag Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16             '读取控制卡内有效锁存个数
+    ' <summary>
+    ' 复位锁存次数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_reset_latch_flag Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16       '复位标志
+    ' <summary>
+    ' 按索引号读取连续锁存值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="index">索引号</param>
+    ' <returns>所存值</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_latch_value_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal index As UInt16) As Int32  '按索引号读取PC缓冲区中已保存的锁存值，读的时候会将控制卡内的有效锁存值全部保存在PC缓冲区中
+    ' <summary>
+    ' 读取连续锁存次数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>锁存次数</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_latch_flag_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16            '读取PC缓冲区中已保存的已锁存值个数
+    'DMC3410 5800专用 LTC端口触发延时急停时间 单位us
+    ' <summary>
+    ' 设置外部触发延时急停时间
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="time">延时急停时间，单位us</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_latch_stop_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal time As Int32) As Int16
+    ' <summary>
+    ' 读取外部触发延时急停时间
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="time">延时急停时间，单位us</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_latch_stop_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef time As Int32) As Int16
+    'DMC3800 5800专用 LTC反相输出
+    ' <summary>
+    ' 设置LTC锁存反相输出模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="bitno">反相输出口：0-15</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_SetLtcOutMode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal bitno As UInt16) As Int16
+    ' <summary>
+    ' 读取LTC锁存反相输出模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="bitno">反相输出口：0-15</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_GetLtcOutMode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef bitno As UInt16) As Int16
+    '高速锁存 总线卡
+    Declare Function dmc_ltc_set_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal ltc_mode As UInt16, ByVal ltc_logic As UInt16, ByVal filter As Double) As Int16    '设置LTC信号
+    Declare Function dmc_ltc_get_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByRef ltc_mode As UInt16, ByRef ltc_logic As UInt16, ByRef filter As Double) As Int16    '设置LTC信号
+    Declare Function dmc_ltc_set_source Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal axis As UInt16, ByVal ltc_source As UInt16) As Int16
+    Declare Function dmc_ltc_get_source Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal axis As UInt16, ByRef ltc_source As UInt16) As Int16
+    Declare Function dmc_ltc_reset Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16) As Integer
+    Declare Function dmc_ltc_get_number Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal axis As UInt16, ByRef number As UInt16) As Int16
+    Declare Function dmc_ltc_get_value_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal axis As UInt16, ByRef Value As Double) As Int16
+    '单轴低速位置比较
+    ' <summary>
+    ' 设置单轴低速位置比较器配置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="cmp_source">比较源：0-指令位置，1-反馈位置</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_set_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal cmp_source As UInt16) As Int16       '配置比较器
+    ' <summary>
+    ' 读取单轴低速位置比较器配置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="cmp_source">比较源：0-指令位置，1-反馈位置</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_get_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef cmp_source As UInt16) As Int16   '读取配置比较器
+    ' <summary>
+    ' 清除位置比较位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_clear_points Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16          '清除所有比较点
+    ' <summary>
+    ' 添加比较位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pos">比较位置</param>
+    ' <param name="dir">比较方向：0：小于等于，1：大于等于0   比较位置与当前位置比较</param>
+    ' <param name="action">触发动作功能</param>
+    ' <param name="actpara">触发动作参数</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_add_point Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal pos As Int32, ByVal dir As UInt16, ByVal action As UInt16, ByVal actpara As Int32) As Int16    '添加比较点
+    ' <summary>
+    ' 读取当前比较位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pos">比较位置</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_get_current_point Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Int32) As Int16    '读取当前比较点
+    ' <summary>
+    ' 读取已比较点数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pointNum">已比较点数</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_get_points_runned Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pointNum As Int32) As Int16       '查询已经比较过的点
+    ' <summary>
+    ' 读取剩余比较空间
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pointNum">剩余比较空间</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_get_points_remained Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pointNum As Int32) As Int16     '查询可以加入的比较点数量
+    '二维低速位置比较
+    ' <summary>
+    ' 设置二维比较器配置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="cmp_source">比较源：0-指令位置，1-反馈位置</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_set_config_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UInt16, ByVal cmp_source As UInt16) As Int16           '配置比较器
+    ' <summary>
+    ' 读取二维比较器配置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="enable">使能：0-禁止，1-允许</param>
+    ' <param name="cmp_source">比较源：0-指令位置，1-反馈位置</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_get_config_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef enable As UInt16, ByRef cmp_source As UInt16) As Int16           '读取配置比较器
+    ' <summary>
+    ' 清除二维比较位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_clear_points_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16          '清除所有比较点
+    ' <summary>
+    ' 添加二维比较位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pos">比较位置（xpos,ypos)</param>
+    ' <param name="dir">比较方向（x_dir,y_dir)</param>
+    ' <param name="action">触发动作功能</param>
+    ' <param name="actpara">触发动作参数</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_add_point_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis() As UInt16, ByVal pos() As Int32, ByVal dir() As UInt16, ByVal action As UInt16, ByVal actpara As Int32) As Int16          '添加两轴位置比较点
+    '5000脉冲卡添加二维比较位置
+    Declare Function dmc_compare_add_point_extern_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis() As UInt16, ByVal pos() As Double, ByVal dir() As UInt16, ByVal action As UInt16, ByVal actpara As Int32) As Int16          '添加两轴位置比较点
+
+    ' <summary>
+    ' 读取当前比较位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="pos">比较位置（xpos,ypos)</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_get_current_point_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pos() As Int32) As Int16    '读取当前比较点
+
+    Declare Function dmc_compare_get_current_point_extern_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pos() As Double) As Int16    '读取当前比较点
+    ' <summary>
+    ' 读取已比较点数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="pointNum">已比较点数</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_get_points_runned_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef pointNum As Int32) As Int16       '查询已经比较过的点
+    ' <summary>
+    ' 读取剩余比较空间
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="pointNum">剩余比较空间</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_compare_get_points_remained_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef pointNum As Int32) As Int16      '查询可以加入的二维比较点数量
+
+    Declare Function dmc_compare_set_config_multi Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal queue As UInt16, ByVal enable As UInt16, ByVal axis As UInt16, ByVal cmp_source As UInt16) As Int16       '配置比较器
+    Declare Function dmc_compare_get_config_multi Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal queue As UInt16, ByRef enable As UInt16, ByRef axis As UInt16, ByRef cmp_source As UInt16) As Int16
+    Declare Function dmc_compare_add_point_multi Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cmp As UInt16, ByVal pos As Int32, ByVal Dir As UInt16, ByVal action As UInt16, ByVal actpara As Int32, ByVal times As Double) As Int16    '添加比较点
+
+    '单轴高速位置比较函数
+    ' <summary>
+    ' 设置高速比较模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="cmp_mode">比较模式：0-禁止，1-等于，2-小于，3-大于，4-队列，5-线性</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_set_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal cmp_mode As UInt16) As Int16
+    ' <summary>
+    ' 读取高速比较模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="cmp_mode">比较模式：0-禁止，1-等于，2-小于，3-大于，4-队列，5-线性</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_get_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef cmp_mode As UInt16) As Int16
+    '高速位置比较扩展，保留
+    Declare Function dmc_hcmp_set_config_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal axis As UInt16, ByVal cmp_source As UInt16, ByVal cmp_logic As UInt16, ByVal cmp_mode As UInt16, ByVal Dist As Int32, ByVal time As Int32) As Int16
+    Declare Function dmc_hcmp_get_config_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef axis As UInt16, ByRef cmp_source As UInt16, ByRef cmp_logic As UInt16, ByRef cmp_mode As UInt16, ByRef Dist As Int32, ByRef time As Int32) As Int16
+
+    ' <summary>
+    ' 设置高速比较参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="axis">比较轴号：0-7</param>
+    ' <param name="cmp_source">比较源：0-指令位置，1-反馈位置</param>
+    ' <param name="cmp_logic">比较输出状态：0-低电平，1-高电平</param>
+    ' <param name="time">脉冲时间，单位us,最小1us</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_set_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal axis As UInt16, ByVal cmp_source As UInt16, ByVal cmp_logic As UInt16, ByVal time As Int32) As Int16
+    ' <summary>
+    ' 读取高速比较参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="axis">比较轴号：0-7</param>
+    ' <param name="cmp_source">比较源：0-指令位置，1-反馈位置</param>
+    ' <param name="cmp_logic">比较输出状态：0-低电平，1-高电平</param>
+    ' <param name="time">脉冲时间，单位us,最小1us</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_get_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef axis As UInt16, ByRef cmp_source As UInt16, ByRef cmp_logic As UInt16, ByRef time As Int32) As Int16
+    ' <summary>
+    ' 添加高速比较位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="cmp_pos">比较位置</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_add_point Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal cmp_pos As Int32) As Int16
+    ' <summary>
+    ' 设置高速比较线性模式参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="Increment">比较位置增量值</param>
+    ' <param name="Count">比较次数</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_set_liner Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal Increment As Int32, ByVal Count As Int32) As Int16
+    ' <summary>
+    ' 读取高速比较线性模式参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="Increment">比较位置增量值</param>
+    ' <param name="Count">比较次数</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_get_liner Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef Increment As Int32, ByRef Count As Int32) As Int16
+    ' <summary>
+    ' 读取高速比较当前状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="remained_points">剩余可用比较点数</param>
+    ' <param name="current_point">当前比较位置</param>
+    ' <param name="runned_points">已比较点数</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_get_current_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef remained_points As Int32, ByRef current_point As Int32, ByRef runned_points As Int32) As Int16
+    ' <summary>
+    ' 清除高速比较位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_hcmp_clear_points Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16) As Int16
+    ' <summary>
+    ' 读高速比较输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_cmp_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16) As Int16
+    ' <summary>
+    ' 写高速比较输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="hcmp">高速比较器号：0-3</param>
+    ' <param name="on_off">输出口状态：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_write_cmp_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal on_off As UInt16) As Int16
+
+    '二维高速位置比较功能
+    Declare Function dmc_hcmp_2d_set_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal cmp_enable As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_get_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef cmp_enable As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_set_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal cmp_mode As UInt16, ByVal x_axis As UInt16, ByVal x_cmp_source As UInt16, ByVal y_axis As UInt16, ByVal y_cmp_source As UInt16, ByVal errors As Int32, ByVal cmp_logic As UInt16, ByVal time As Int32, ByVal pwm_enable As UInt16, ByVal duty As Double, ByVal freq As Int32, ByVal port_sel As UInt16, ByVal pwm_number As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_get_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef cmp_mode As UInt16, ByRef x_axis As UInt16, ByRef x_cmp_source As UInt16, ByRef y_axis As UInt16, ByRef y_cmp_source As UInt16, ByRef errors As Int32, ByRef cmp_logic As UInt16, ByRef time As Int32, ByRef pwm_enable As UInt16, ByRef duty As Double, ByRef freq As Int32, ByRef port_sel As UInt16, ByRef pwm_number As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_add_point Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal x_cmp_pos As Int32, ByVal y_cmp_pos As Int32) As Int16
+    Declare Function dmc_hcmp_2d_get_current_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef remained_points As Int32, ByRef x_current_point As Int32, ByRef y_current_point As Int32, ByRef runned_points As Int32, ByRef current_state As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_clear_points Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_force_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal cmp_outbit As Integer) As Int16
+
+    '通用IO
+    ' <summary>
+    ' 按位读输入口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <returns>输入口状态：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_inbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16) As Int16            '读取输入口的状态
+    ' <summary>
+    ' 按位写输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <param name="on_off">输出状态：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_write_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16) As Int16         '设置输出口的状态
+    ' <summary>
+    ' 按位读输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <returns>输出口状态：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16) As Int16           '读取输出口的状态
+    ' <summary>
+    ' 按端口读输入口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="portno">端口号：0-1</param>
+    ' <returns>输入口状态：bit0-bit31表示in0-in31,位值：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_inport Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16) As UInt32     '读取输入端口的值
+    ' <summary>
+    ' 按端口读输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="portno">端口号：0</param>
+    ' <returns>输出口状态：bit0-bit31表示out0-out31,位值：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_outport Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16) As UInt32            '读取输出端口的值
+    ' <summary>
+    ' 按端口写输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="portno">端口号：0</param>
+    ' <param name="outport_val">输出口状态：bit0-bit31表示out0-out31,位值：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_write_outport Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16, ByVal outport_val As UInt32) As Int16       '设置输出端口的值
+    ' IO辅助功能函数
+    ' <summary>
+    ' IO翻转
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <param name="reverse_time">翻转时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+
+    Declare Function dmc_reverse_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByVal reverse_time As Double) As Int16
+    ' <summary>
+    ' 设置IO计数模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <param name="mode">IO计数模式0：禁用，1：上升沿计数，2：下降沿计数</param>
+    ' <param name="Filter">滤波时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_io_count_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByVal mode As UInt16, ByVal Filter As Double) As Int16
+    ' <summary>
+    ' 读取IO计数模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <param name="mode">IO计数模式0：禁用，1：上升沿计数，2：下降沿计数</param>
+    ' <param name="Filter">滤波时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_io_count_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByRef mode As UInt16, ByRef Filter As Double) As Int16
+    ' <summary>
+    ' 设置IO计数值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <param name="CountValue">计数值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_io_count_value Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByVal CountValue As Int32) As Int16
+    ' <summary>
+    ' 读取IO计数值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <param name="CountValue">计数值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_io_count_value Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByRef CountValue As Int32) As Int16
+
+    '伺服专用IO 脉冲卡指令
+    ' <summary>
+    ' 设置INP模式  INP信号会影响到轴的运动状态（check_done)
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能状态：0-禁止，1-允许</param>
+    ' <param name="inp_logic">有效电平：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_inp_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal inp_logic As UInt16) As Int16      '设置INP信号
+    ' <summary>
+    ' 读取INP模式  INP信号会影响到轴的运动状态（check_done)
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能状态：0-禁止，1-允许</param>
+    ' <param name="inp_logic">有效电平：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_inp_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef inp_logic As UInt16) As Int16  '读取设置INP信号
+    Declare Function dmc_set_rdy_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal rdy_logic As UInt16) As Int16
+    Declare Function dmc_get_rdy_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef rdy_logic As UInt16) As Int16
+    Declare Function dmc_set_erc_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal erc_logic As UInt16, ByVal erc_width As UInt16, ByVal erc_off_time As UInt16) As Int16   '设置ERC信号
+    Declare Function dmc_get_erc_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef erc_logic As UInt16, ByRef erc_width As UInt16, ByRef erc_off_time As UInt16) As Int16   '读取设置ERC信号
+    ' <summary>
+    ' 设置ALM模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能状态：0-禁止，1-允许</param>
+    ' <param name="alm_logic">有效电平：0-低电平，1-高电平</param>
+    ' <param name="alm_action">制动方式：0-立即停止</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_alm_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal alm_logic As UInt16, ByVal alm_action As UInt16) As Int16 '设置ALM信号
+    ' <summary>
+    ' 读取ALM模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="enable">使能状态：0-禁止，1-允许</param>
+    ' <param name="alm_logic">有效电平：0-低电平，1-高电平</param>
+    ' <param name="alm_action">制动方式：0-立即停止</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_alm_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef alm_logic As UInt16, ByRef alm_action As UInt16) As Int16     '读取设置ALM信号
+    ' <summary>
+    ' 写伺服使能信号输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="on_off">输出状态：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_write_sevon_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal on_off As UInt16) As Int16       '输出SEVON信号
+    ' <summary>
+    ' 读伺服使能信号输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>输出状态：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_sevon_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16         '读取SEVON信号
+    ' <summary>
+    ' 读伺服准备好信号输入口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>输入状态：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_rdy_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16           '读取RDY状态
+    ' <summary>
+    ' 写伺服误差清除输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="on_off">输出状态：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_write_erc_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal on_off As UInt16) As Int16       '控制ERC信号输出 
+    ' <summary>
+    ' 读伺服误差清除输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>输出状态：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_erc_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16       '读取控制ERC信号输出 
+    Declare Function dmc_write_sevrst_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal on_off As UInt16) As Int16
+    Declare Function dmc_read_sevrst_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+
+    '运动状态
+    ' <summary>
+    ' 读取当前速度
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>速度值</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_current_speed Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Double      '读取指定轴的当前速度
+    ' <summary>
+    ' 读取当前插补速度
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <returns>插补速度</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_vector_speed Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Double    '读取当前卡的插补速度
+    ' <summary>
+    ' 读取当前指令位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>位置值</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_position Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int32      '读取指定轴的当前位置
+    ' <summary>
+    ' 设置指令位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="current_position">位置值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_position Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal current_position As Int32) As Int16   '设定指定轴的当前位置
+    ' <summary>
+    ' 检测轴的运动状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>运动状态：0-运动，1-停止</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_check_done Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16     '读取指定轴的运动状态
+    ' <summary>
+    ' 检测单段插补运动状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <returns>运动状态：0-运动，1-停止</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_check_done_multicoor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int16
+    ' <summary>
+    ' 轴IO状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>轴IO状态：0 ALM 1 EL+ 2 EL- 3 EMG 4 ORG 6 SL+ 7 SL- 8 INP 9 EZ 10 RDY 11 DSTP</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_axis_io_status Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As UInt32    '读取指定轴有关运动信号的状态
+    ' <summary>
+    ' 停止单轴运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="stop_mode">停止模式：0-减速停止，1-立即停止</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal stop_mode As UInt16) As Int16       '单轴停止
+    ' <summary>
+    ' 停止单段插补运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="stop_mode">停止模式：0-减速停止，1-立即停止</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_stop_multicoor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal stop_mode As UInt16) As Int16
+    ' <summary>
+    ' 急停所有轴运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_emg_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16      '紧急停止所有轴
+    ' <summary>
+    ' 读取目标位置
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>目标位置值</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_target_position Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int32      '读取目标位置
+    Declare Function dmc_get_target_position_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Double) As Int32      '读取目标位置
+    '检测轴到位状态
+    ' <summary>
+    ' 设置误差带
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="factor">编码器系数</param>
+    ' <param name="pos_error">误差带</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_factor_error Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal factor As Double, ByVal pos_error As Int32) As Int16
+    ' <summary>
+    ' 读取误差带
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="factor">编码器系数</param>
+    ' <param name="pos_error">误差带</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_factor_error Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef factor As Double, ByRef pos_error As Int32) As Int16
+    ' <summary>
+    ' 检测指令位置到位 超时100ms
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>到位状态：0-不在误差带范围内，1-在误差带范围内</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_check_success_pulse Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    ' <summary>
+    ' 检测反馈位置到位 超时100ms
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>到位状态：0-不在误差带范围内，1-在误差带范围内</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_check_success_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+
+    '3800 5800专用 主卡与接线盒通讯状态
+    ' <summary>
+    ' 读取通讯状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="state">状态：0-连接，1-断开</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_LinkState Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef state As UInt16) As Int16      '连接状态
+
+    'DMC5000卡 3K5K总线卡 脉冲当量操作 连续插补功能 
+    ' <summary>
+    ' 读取运动模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="run_mode">运动模式</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_axis_run_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef run_mode As UInt16) As Int16       '轴运动模式
+    Declare Function dmc_set_trace Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16) As Int16      'trace功能
+    Declare Function dmc_get_trace Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16) As Int16
+    Declare Function dmc_read_trace_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal data_option As UInt16, ByRef ReceiveSize As Int32, ByVal time() As Double, ByVal data() As Double, ByRef remain_num As Int32) As Int16
+    ' <summary>
+    ' 读取脉冲当量
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="equiv">脉冲当量值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_equiv Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef equiv As Double) As Int16       '脉冲当量
+    ' <summary>
+    ' 设置脉冲当量
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="equiv">脉冲当量值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_equiv Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal equiv As Double) As Int16
+    ' <summary>
+    ' 设置反向间隙
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="backlash">反向间隙值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_backlash_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal backlash As Double) As Int16  '反向间隙
+    ' <summary>
+    ' 读取反向间隙值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="backlash">反向间隙值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_backlash_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef backlash As Double) As Int16
+    ' <summary>
+    ' 设置指令位置值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pos">位置值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_backlash Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal backlash As Int32) As Int16  '反向间隙
+    Declare Function dmc_get_backlash Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef backlash As Int32) As Int16
+
+    Declare Function dmc_set_position_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal pos As Double) As Int16    '当前指令位置
+    ' <summary>
+    ' 读取指令位置值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pos">指令位置值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_position_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Double) As Int16
+    ' <summary>
+    ' 设置编码器（反馈）位置值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pos">位置值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_encoder_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal pos As Double) As Int16   '当前反馈位置
+    ' <summary>
+    ' 读取编码器（反馈）位置值
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="pos">位置值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_encoder_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Double) As Int16
+    '手轮编码器 总线卡
+    Declare Function dmc_set_handwheel_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal pos As Int32) As Int16
+    Declare Function dmc_get_handwheel_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef pos As Int32) As Int16
+    '设置辅助编码模式，总线卡
+    Declare Function dmc_set_extra_encoder_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal inmode As UInt16, ByVal multi As UInt16) As Int16
+    Declare Function dmc_get_extra_encoder_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef inmode As UInt16, ByRef multi As UInt16) As Int16
+    Declare Function dmc_set_extra_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal pos As Int32) As Int16
+    Declare Function dmc_get_extra_encoder Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef pos As Int32) As Int16
+
+    ' <summary>
+    ' 定长运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Dist">目标位置</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_pmove_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Dist As Double, ByVal posi_mode As UInt16) As Int16  '定长
+    ' <summary>
+    ' 单段直线插补
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_line_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal posi_mode As UInt16) As Int16   '单段直线
+    ' <summary>
+    ' 单段插补圆心圆弧/螺旋线/渐开线
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="Cen_Pos">圆心位置</param>
+    ' <param name="Arc_Dir">圆弧方向：0-顺时针，1-逆时针</param>
+    ' <param name="Circle">圆弧圈数</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_arc_move_center_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal Cen_Pos() As Double, ByVal Arc_Dir As UInt16, ByVal Circle As Int32, ByVal posi_mode As UInt16) As Int16    '圆心终点式圆弧/螺旋线/渐开线
+    ' <summary>
+    ' 单段插补半径圆弧/螺旋线
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="Arc_Radius">半径值</param>
+    ' <param name="Arc_Dir">圆弧方向：0-顺时针，1-逆时针</param>
+    ' <param name="Circle">圆弧圈数</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_arc_move_radius_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal Arc_Radius As Double, ByVal Arc_Dir As UInt16, ByVal Circle As Int32, ByVal posi_mode As UInt16) As Int16   '半径终点式圆弧/螺旋线
+    ' <summary>
+    ' 连续插补三点圆弧（包括空间）/螺旋线
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="Mid_Pos">中间位置</param>
+    ' <param name="Circle">圈数：不小于0时表示基于轴列表前两轴平面的螺旋线，小于0时绝对值减1表示空间圆弧圈数</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_arc_move_3points_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal Mid_Pos() As Double, ByVal Circle As Int32, ByVal posi_mode As UInt16) As Int16    '三点式圆弧/螺旋线
+    ' <summary>
+    ' 矩形区域插补
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">对角位置</param>
+    ' <param name="Mark_Pos">矩形方向标记位置</param>
+    ' <param name="Count">行数/圈数</param>
+    ' <param name="rect_mode">矩形插补模式:0-逐行，1-渐开线</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_rectangle_move_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal Mark_Pos() As Double, ByVal Count As Int32, ByVal rect_mode As UInt16, ByVal posi_mode As UInt16) As Int16
+    ' <summary>
+    ' 读取当前速度，轴参与插补读的是插补速度
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="current_speed">当前速度值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_current_speed_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef current_speed As Double) As Int16  '轴当前运行速度
+    ' <summary>
+    ' 设置单段插补速度参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Min_Vel">起始速度</param>
+    ' <param name="Max_Vel">运行速度</param>
+    ' <param name="Tacc">加速时间，单位s</param>
+    ' <param name="Tdec">减速时间，单位s</param>
+    ' <param name="Stop_vel">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_vector_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal Stop_vel As Double) As Int16    '单段插补速度参数
+    ' <summary>
+    ' 读取单段插补速度参数，总线卡/5000脉冲卡
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Min_Vel">起始速度</param>
+    ' <param name="Max_Vel">运行速度</param>
+    ' <param name="Tacc">加速时间，单位s</param>
+    ' <param name="Tdec">减速时间，单位s</param>
+    ' <param name="Stop_vel">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_vector_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef Min_Vel As Double, ByRef Max_Vel As Double, ByRef Tacc As Double, ByRef Tdec As Double, ByRef Stop_vel As Double) As Int16
+    Declare Function dmc_set_vector_s_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal s_mode As UInt16, ByVal s_para As Double) As Int16
+    Declare Function dmc_get_vector_s_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal s_mode As UInt16, ByRef s_para As Double) As Int16
+
+    ' <summary>
+    ' 设置单轴速度参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Min_Vel">起始速度</param>
+    ' <param name="Max_Vel">运行速度</param>
+    ' <param name="Tacc">加速时间，单位s</param>
+    ' <param name="Tdec">减速时间，单位s</param>
+    ' <param name="Stop_vel">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal Stop_vel As Double) As Int16   '单轴速度参数
+    ' <summary>
+    ' 读取单轴速度参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="Min_Vel">起始速度</param>
+    ' <param name="Max_Vel">运行速度</param>
+    ' <param name="Tacc">加速时间，单位s</param>
+    ' <param name="Tdec">减速时间，单位s</param>
+    ' <param name="Stop_vel">停止速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef Min_Vel As Double, ByRef Max_Vel As Double, ByRef Tacc As Double, ByRef Tdec As Double, ByRef Stop_vel As Double) As Int16
+    Declare Function dmc_set_profile_unit_acc Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal Stop_vel As Double) As Int16   '单轴速度参数
+    Declare Function dmc_get_profile_unit_acc Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef Min_Vel As Double, ByRef Max_Vel As Double, ByRef Tacc As Double, ByRef Tdec As Double, ByRef Stop_vel As Double) As Int16
+    ' <summary>
+    ' 在线变位
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="New_pos">新位置值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_reset_target_position_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal New_pos As Double) As Int16   '在线变位
+    ' <summary>
+    ' 强制变位
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="New_pos">新位置值</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_update_target_position_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal New_pos As Double) As Int16   '强行变位
+    ' <summary>
+    ' 在线变速
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="New_vel">新速度值</param>
+    ' <param name="Taccdec">新加减速时间，单位s</param>
+    ' returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_change_speed_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal New_vel As Double, ByVal Taccdec As Double) As Int16           '在线变速
+
+    '连续插补
+    ' <summary>
+    ' 打开连续插补缓冲区
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表：AxisList[0]-X,AxisList[1]-Y,AxisList[2]-Z,AxisList[3]-U,AxisList[4]-V,AxisList[5]-W</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_open_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16) As Int16     '打开连续缓存区
+    ' <summary>
+    ' 关闭连续插补缓冲区
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_close_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int16     '关闭连续缓存区
+    Declare Function dmc_conti_reset_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int16
+    ' <summary>
+    ' 停止连续插补
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="stop_mode">停止模式：0-减速停止，1-立即停止</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_stop_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal stop_mode As UInt16) As Int16    '连续插补中停止
+    ' <summary>
+    ' 暂停连续插补
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_pause_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int16     '连续插补中暂停
+    ' <summary>
+    ' 启动连续插补
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_start_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int16    '开始连续插补
+    ' <summary>
+    ' 读取剩余缓冲区空间，调用插补指令请请先判断是否有剩余空间
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <returns>剩余空间</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_remain_space Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int32     '查连续插补剩余缓存数
+    ' <summary>
+    ' 读取当前段号
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <returns>当前段号</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_read_current_mark Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int32  '读取当前连续插补段的标号
+    ' <summary>
+    ' 设置拐角混合运动自动平滑过度使能状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="enable">使能状态：0-禁用，1-允许</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_blend Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal enable As UInt16) As Int16    'blend拐角过度模式
+    ' <summary>
+    ' 读取拐角混合运动自动平滑过度使能状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="enable">使能状态：0-禁用，1-允许</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_get_blend Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef enable As UInt16) As Int16
+    ' <summary>
+    ' 设置插补速度  打开缓冲区前请先预设参数，确定加减速时间，打开缓冲区之后加减速时间参数保存在缓冲区中，执行时Blend失效，速度不连续
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Min_Vel">保留</param>
+    ' <param name="Max_Vel">最大运行速度</param>
+    ' <param name="Tacc">加减速时间，单位s</param>
+    ' <param name="Tdec">保留</param>
+    ' <param name="Stop_vel">保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal Stop_vel As Double) As Int16   '设置连续插补速度
+
+    ' <summary>
+    ' 设置插补速度
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Max_Vel">最大运行速度</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_speed_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal Max_Vel As Double) As Int16   '设置连续插补速度
+
+    ' <summary>
+    ' 设置连续插补加减速时间，，打开缓冲区之后加减速时间参数保存在缓冲区中，执行时Blend失效，速度不连续
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Taccdec">加减速时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_taccdec Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal Taccdec As Double) As Int16
+    ' <summary>
+    ' 设置S型速度曲线参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="s_mode">保留：0</param>
+    ' <param name="s_para">S段时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_s_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal s_mode As UInt16, ByVal s_para As Double) As Int16      '设置连续插补平滑时间
+    ' <summary>
+    ' 读取S型速度曲线参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="s_mode">保留：0</param>
+    ' <param name="s_para">S段时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_get_s_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal s_mode As UInt16, ByRef s_para As Double) As Int16
+    Declare Function dmc_conti_set_lookahead_end_vel_zero Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal enable As UInt16) As Int16
+
+    ' <summary>
+    ' 预设单段速度倍率
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Percent">速度倍率：0-1</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_override Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal Percent As Double) As Int16   '设置每段速度比例  缓冲区指令
+    ' <summary>
+    ' 在线调整速度倍率
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="Percent">速度倍率：0-1</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_change_speed_ratio Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal Percent As Double) As Int16
+    ' <summary>
+    ' 读取连续插补状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <returns>连续插补状态：0-运行，1-暂停，2-正常停止，3-未启动，4-空闲</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_get_run_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int16
+    ' <summary>
+    ' 读取连续插补运动状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <returns>运动状态：0-运行，1-停止</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_check_done Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int16
+    ' <summary>
+    ' 等待输入
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <param name="on_off">输入口有效状态：0-低电平，1-高电平</param>
+    ' <param name="TimeOut">超时时间，单位s</param>
+    ' <param name="mark">段号：0-自动递增</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_wait_input Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16, ByVal TimeOut As Double, ByVal mark As Int32) As Int16   '设置连续插补等待输入
+    ' <summary>
+    ' 相对起点IO滞后输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="bitno">输出口号：0-31</param>
+    ' <param name="on_off">输出状态：0-低电平，1-高电平</param>
+    ' <param name="delay_value">滞后值</param>
+    ' <param name="delay_mode">滞后模式：0-时间，1-距离</param>
+    ' <param name="ReverseTime">翻转时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_delay_outbit_to_start Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16, ByVal delay_value As Double, ByVal delay_mode As UInt16, ByVal ReverseTime As Double) As Int16    '相对于轨迹段起点IO滞后输出
+    ' <summary>
+    ' 相对终点IO滞后输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="bitno">输出口号：0-31</param>
+    ' <param name="on_off">输出状态：0-低电平，1-高电平</param>
+    ' <param name="delay_time">滞后时间，单位s</param>
+    ' <param name="ReverseTime">翻转时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_delay_outbit_to_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16, ByVal delay_time As Double, ByVal ReverseTime As Double) As Int16   '相对于轨迹段终点IO滞后输出
+    ' <summary>
+    ' 相对终点IO提前输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="bitno">输出口号：0-31</param>
+    ' <param name="on_off">输出状态：0-低电平，1-高电平</param>
+    ' <param name="ahead_value">提前量</param>
+    ' <param name="ahead_mode">提前模式：0-时间，1-距离</param>
+    ' <param name="ReverseTime">翻转时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_ahead_outbit_to_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16, ByVal ahead_value As Double, ByVal ahead_mode As UInt16, ByVal ReverseTime As Double) As Int16  '相对轨迹段终点IO提前输出
+    ' <summary>
+    ' 相对起点IO精确滞后距离输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="cmp_no">高速比较输出口号：0-3</param>
+    ' <param name="on_off">输出状态：0-低电平，1-高电平</param>
+    ' <param name="map_axis">关联轴号：0-X,1-Y,2-Z,3-U,4-V,5-W</param>
+    ' <param name="delay_dist">滞后距离</param>
+    ' <param name="pos_source">位置源：0-指令位置，1-反馈位置</param>
+    ' <param name="ReverseTime">翻转时间,单位us,至少1us</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_accurate_outbit_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal cmp_no As UInt16, ByVal on_off As UInt16, ByVal map_axis As UInt16, ByVal delay_dist As Double, ByVal pos_source As UInt16, ByVal ReverseTime As Double) As Int16     '确定位置精确输出
+    ' <summary>
+    ' 连续插补立即输出IO
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="bitno">IO口号：0-31</param>
+    ' <param name="on_off">输出状态：0-低电平，1-高电平</param>
+    ' <param name="ReverseTime">翻转时间，单位s</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_write_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16, ByVal ReverseTime As Double) As Int16     '缓冲区立即IO输出
+    ' <summary>
+    ' 清除IO段内未执行完的动作，比如延时翻转
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="IoMask">IO口标记：bit0-bit31代表out0-out31,位值：0-不清除，1-清除</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_clear_io_action Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal IoMask As UInt32) As Int16   '清除段内未执行完的IO动作
+    ' <summary>
+    ' 设置连续插补暂停时输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="action">执行动作：0-不动作，1-暂停时输出，运行时不恢复，2-暂停时输出，运行时恢复，3-停止时输出，运行时不恢复</param>
+    ' <param name="mask">IO口标记：bit0-bit31代表out0-out31,位值：0-不参与动作，1-参与动作</param>
+    ' <param name="state">IO口状态：bit0-bit31代表out0-out31,位值：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_pause_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal action As UInt16, ByVal mask As Int32, ByVal state As Int32) As Int16   '暂停时IO输出 action 0, 不工作；1， 暂停时输出io_state; 2 暂停时输出io_state, 继续运行时首先恢复原来的io; 3,在2的基础上，停止时也生效
+    ' <summary>
+    ' 读取连续插补暂停时输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="action">执行动作：0-不动作，1-暂停时输出，运行时不恢复，2-暂停时输出，运行时恢复，3-停止时输出，运行时不恢复</param>
+    ' <param name="mask">IO口标记：bit0-bit31代表out0-out31,位值：0-不参与动作，1-参与动作</param>
+    ' <param name="state">IO口状态：bit0-bit31代表out0-out31,位值：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_get_pause_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef action As UInt16, ByRef mask As Int32, ByRef state As Int32) As Int16
+    ' <summary>
+    ' 连续插补暂停延时
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="delay_time">延时时间，单位s</param>
+    ' <param name="mark">段号：0-自动递增</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_delay Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal delay_time As Double, ByVal mark As Int32) As Int16    '添加延时指令
+    Declare Function dmc_conti_reverse_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal bitno As UInt16, ByVal reverse_time As Double) As Int16
+    Declare Function dmc_conti_delay_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16, ByVal delay_time As Double) As Int16
+
+    ' <summary>
+    ' 连续插补直线插补
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <param name="mark">段号：0-自动递增</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_line_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal posi_mode As UInt16, ByVal mark As Int32) As Int16    '连续插补直线
+    ' <summary>
+    ' 连续插补圆心圆弧/螺旋线/渐开线
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="Cen_Pos">圆心位置</param>
+    ' <param name="Arc_Dir">圆弧方向：0-顺时针，1-逆时针</param>
+    ' <param name="Circle">圆弧圈数:负值表示同心圆</param>
+    ' <param name="posi_mode">位置模式</param>
+    ' <param name="mark">段号：0-自动递增</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_arc_move_center_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal Cen_Pos() As Double, ByVal Arc_Dir As UInt16, ByVal Circle As Int32, ByVal posi_mode As UInt16, ByVal mark As Int32) As Int16    '圆心终点式圆弧/螺旋线/渐开线
+    ' <summary>
+    ' 连续插补半径圆弧/螺旋线
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="Arc_Radius">半径值</param>
+    ' <param name="Arc_Dir">圆弧方向：0-顺时针，1-逆时针</param>
+    ' <param name="Circle">圆弧圈数:负值表示同心圆圈数</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <param name="mark">段号：0-自动递增</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_arc_move_radius_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal Arc_Radius As Double, ByVal Arc_Dir As UInt16, ByVal Circle As Int32, ByVal posi_mode As UInt16, ByVal mark As Int32) As Int16   '半径终点式圆弧/螺旋线
+    ' <summary>
+    ' 连续插补三点圆弧（包括空间）/螺旋线
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2-6</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">目标位置</param>
+    ' <param name="Mid_Pos">中间位置</param>
+    ' <param name="Circle">圈数：不小于0时表示基于轴列表前两轴平面的螺旋线，小于0时绝对值减1表示空间圆弧圈数</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <param name="mark">段号：0-自动递增</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_arc_move_3points_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal Mid_Pos() As Double, ByVal Circle As Int32, ByVal posi_mode As UInt16, ByVal mark As Int32) As Int16    '三点式圆弧/螺旋线
+    ' <summary>
+    ' 设置渐开线插补模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="mode">模式：0-不封闭，1-封闭</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_involute_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal mode As UInt16) As Int16
+    ' <summary>
+    ' 读取渐开线插补模式
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="mode">封闭圆模式：0-不封闭，1-封闭</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_get_involute_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef mode As UInt16) As Int16
+    Declare Function dmc_set_gear_follow_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal master_axis As UInt16, ByVal Ratio As Double) As Int16
+    Declare Function dmc_get_gear_follow_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef master_axis As UInt16, ByRef Ratio As Double) As Int16
+
+    ' <summary>
+    ' 矩形区域插补
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="AxisNum">轴数：2</param>
+    ' <param name="AxisList">轴列表</param>
+    ' <param name="Target_Pos">对角位置</param>
+    ' <param name="Mark_Pos">矩形方向标记位置</param>
+    ' <param name="Count">行数/圈数</param>
+    ' <param name="rect_mode">矩形插补模式:0-逐行，1-渐开线</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <param name="mark">段号：0-自动递增，>0按设置值设置段号</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_rectangle_move_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal Target_Pos() As Double, ByVal Mark_Pos() As Double, ByVal Count As Int32, ByVal rect_mode As UInt16, ByVal posi_mode As UInt16, ByVal mark As Int32) As Int16
+    ' <summary>
+    ' 计算圆心圆弧弧长
+    ' </summary>
+    ' <param name="start_pos">起始位置</param>
+    ' <param name="target_pos">目标位置</param>
+    ' <param name="cen_pos">圆形位置</param>
+    ' <param name="arc_dir">圆弧方向</param>
+    ' <param name="circle">圈数</param>
+    ' <param name="ArcLength">弧长</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_calculate_arclength_center Lib "LTDMC.dll" (ByRef start_pos As Double, ByRef target_pos As Double, ByRef cen_pos As Double, ByVal arc_dir As UInt16, ByVal circle As Double, ByRef ArcLength As Double) As Int16
+    ' <summary>
+    ' 计算三点圆弧弧长
+    ' </summary>
+    ' <param name="start_pos">起始位置</param>
+    ' <param name="target_pos">目标位置</param>
+    ' <param name="cen_pos">圆形位置</param>
+    ' <param name="circle">圈数</param>
+    ' <param name="ArcLength">弧长</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_calculate_arclength_3point Lib "LTDMC.dll" (ByRef start_pos As Double, ByRef target_pos As Double, ByRef cen_pos As Double, ByVal circle As Double, ByRef ArcLength As Double) As Int16
+    ' <summary>
+    ' 计算半径圆弧弧长
+    ' </summary>
+    ' <param name="start_pos">起始位置</param>
+    ' <param name="target_pos">目标位置</param>
+    ' <param name="arc_radius">圆弧半径</param>
+    ' <param name="arc_dir">圆弧方向</param>
+    ' <param name="circle">圈数</param>
+    ' <param name="ArcLength">弧长</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_calculate_arclength_radius Lib "LTDMC.dll" (ByRef start_pos As Double, ByRef target_pos As Double, ByVal arc_radius As Double, ByVal arc_dir As UInt16, ByVal circle As Double, ByRef ArcLength As Double) As Int16
+
+    ' <summary>
+    ' 设置CanIO通讯状态 脉冲卡指令
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="NodeNum">节点数：1-8</param>
+    ' <param name="state">状态：0-断开，1-连接，2-复位后自动连接</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_can_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NodeNum As UInt16, ByVal state As UInt16, ByVal baud As Integer) As Int16
+    ' <summary>
+    ' 读取CanIO通讯状态
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="NodeNum">节点数：1-8</param>
+    ' <param name="state">状态：0-断开，1-连接，2-异常</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_can_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef NodeNum As UInt16, ByRef state As UInt16) As Int16
+    ' <summary>
+    ' 按位写CanIO输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Node">节点号：0-7</param>
+    ' <param name="bitno">IO口号：0-15</param>
+    ' <param name="on_off">输出口状态：0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_write_can_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Node As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16) As Int16
+    ' <summary>
+    ' 按位读CanIo输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Node">节点号：0-7</param>
+    ' <param name="bitno">IO口号：0-15</param>
+    ' <returns>输出口状态：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_can_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Node As UInt16, ByVal bitno As UInt16) As Int16
+    ' <summary>
+    ' 按位读CanIo输入口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Node">节点号：0-7</param>
+    ' <param name="bitno">IO口号：0-15</param>
+    ' <returns>输入口状态：0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_can_inbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Node As UInt16, ByVal bitno As UInt16) As Int16
+    ' <summary>
+    ' 按端口号写CanIO输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Node">节点号：0-7</param>
+    ' <param name="PortNo">端口号：0-1</param>
+    ' <param name="outport_val">输出端口值：bit0-bit31对应Out0-out31,0-低电平，1-高电平</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_write_can_outport Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Node As UInt16, ByVal PortNo As UInt16, ByVal outport_val As UInt32) As Int16
+    ' <summary>
+    ' 按端口号读CanIO输出口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Node">节点号：0-7</param>
+    ' <param name="PortNo">端口号：0-1</param>
+    ' <returns>输出端口值：bit0-bit31对应Out0-out31,0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_can_outport Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Node As UInt16, ByVal PortNo As UInt16) As UInt32
+    ' <summary>
+    ' 按端口号读CanIO输入口
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Node">节点号：0-7</param>
+    ' <param name="PortNo">端口号：0-1</param>
+    ' <returns>输入端口值：bit0-bit31对应Out0-out31,0-低电平，1-高电平</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_read_can_inport Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Node As UInt16, ByVal PortNo As UInt16) As UInt32
+    ' <summary>
+    ' 读取CanIo通讯错误码
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Errcode">CAN错误码</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_can_errcode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef Errcode As UInt16) As Int16
+    Declare Function dmc_get_can_errcode_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef errcode As UInt16, ByRef msg_losed As UInt16, ByRef emg_msg_num As UInt16, ByRef lostHeartB As UInt16, ByRef EmgMsg As UInt16) As Int16
+
+    ' <summary>
+    ' 读取轴停止原因
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="StopReason">停止原因</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_stop_reason Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef StopReason As Int32) As Int16   '读取轴停止原因
+    ' <summary>
+    ' 清除轴停止原因
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_clear_stop_reason Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16   '清除轴停止原因
+
+    ' <summary>
+    ' 控制外轴运动
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="axis">轴号：0-7</param>
+    ' <param name="dist">距离，单位unit</param>
+    ' <param name="posi_mode">位置模式：0-相对，1-绝对</param>
+    ' <param name="mode">模式：0-暂停启动，1-直接启动</param>
+    ' <param name="mark">段号：0-自动递增，>0按设置值设置段号</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_pmove_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal axis As UInt16, ByVal dist As Double, ByVal posi_mode As UInt16, ByVal mode As UInt16, ByVal mark As Int32) As Int16
+    '小线段前瞻 5000脉冲卡/总线卡
+    Declare Function dmc_conti_set_lookahead_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal enable As UInt16, ByVal LookaheadSegments As Int32, ByVal PathError As Double, ByVal LookaheadAcc As Double) As Int16
+    Declare Function dmc_conti_get_lookahead_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef enable As UInt16, ByRef LookaheadSegments As Int32, ByRef PathError As Double, ByRef LookaheadAcc As Double) As Int16
+    '控制卡接线盒DA AD指令
+    Declare Function dmc_set_da_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_get_da_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef enable As UInt16) As Int16
+    Declare Function dmc_set_da_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal Vout As Double) As Int16
+    Declare Function dmc_get_da_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef Vout As Double) As Int16
+    Declare Function dmc_get_ad_input Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef Vout As Double) As Int16
+    'DA跟随 5000脉冲卡
+    Declare Function dmc_conti_set_da_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal channel As UInt16, ByVal Vout As Double) As Int16
+    Declare Function dmc_conti_set_da_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal enable As UInt16, ByVal channel As UInt16, ByVal mark As Int32) As Int16
+
+    Declare Function dmc_conti_set_da_follow_speed Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal da_no As UInt16, ByVal MaxVel As Double, ByVal MaxValue As Double, ByVal acc_offset As Double, ByVal dec_offset As Double, ByVal acc_dist As Double, ByVal dec_dist As Double) As Int16
+    Declare Function dmc_conti_get_da_follow_speed Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal da_no As UInt16, ByRef MaxVel As Double, ByRef MaxValue As Double, ByRef acc_offset As Double, ByRef dec_offset As Double, ByRef acc_dist As Double, ByRef dec_dist As Double) As Int16
+
+    Declare Function dmc_set_pwm_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16, ByVal on_off As UInt16, ByVal dfreqency As Double, ByVal dduty As Double) As Int16
+    Declare Function dmc_get_pwm_pin Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16, ByRef on_off As UInt16, ByRef dfreqency As Double, ByRef dduty As Double) As Int16
+    ' <summary>
+    ' 设置7号轴PWM输出功能 5000系列总线卡/脉冲卡
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="enable">使能：0-禁用，1-启用</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_pwm_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UInt16) As Int16
+    ' <summary>
+    ' 读取7号轴PWM输出功能
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="enable">使能：0-禁用，1-启用</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_pwm_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef enable As UInt16) As Int16
+    ' <summary>
+    ' 连续插补中设置PWM输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="pwm_no">PWM通道：0-1</param>
+    ' <param name="fDuty">占空比：0-1</param>
+    ' <param name="fFre">频率：0-2MHz</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_pwm_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal pwm_no As UInt16, ByVal fDuty As Double, ByVal fFre As Double) As Int16
+    Declare Function dmc_set_pwm_enable_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_get_pwm_enable_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef enable As UInt16) As Int16
+
+    ' <summary>
+    ' 设置PWM输出，立即执行
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="pwm_no">PWM通道：0-1</param>
+    ' <param name="fDuty">占空比：0-1</param>
+    ' <param name="fFre">频率：0-2MHz</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_pwm_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pwm_no As UInt16, ByVal fDuty As Double, ByVal fFre As Double) As Int16
+    ' <summary>
+    ' 读取PWM输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="pwm_no">PWM通道：0-1</param>
+    ' <param name="fDuty">占空比：0-1</param>
+    ' <param name="fFre">频率：0-2MHz</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_get_pwm_output Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pwm_no As UInt16, ByRef fDuty As Double, ByRef fFre As Double) As Int16
+    ' <summary>
+    ' 设置PWM速度跟随参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="pwm_no">PWM通道：0-1</param>
+    ' <param name="mode">跟随模式:0-不跟随 保持状态,1-不跟随 输出低电平,2-不跟随 输出高电平,3-跟随 占空比自动调整,4-跟随 频率自动调整</param>
+    ' <param name="MaxVel">最大运行速度，单位unit</param>
+    ' <param name="MaxValue">最大输出占空比或者频率</param>
+    ' <param name="OutValue">固定输出频率（0-2MHz)或占空比（0-1）</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_set_pwm_follow_speed Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal pwm_no As UInt16, ByVal mode As UInt16, ByVal MaxVel As Double, ByVal MaxValue As Double, ByVal OutValue As Double) As Int16
+    ' <summary>
+    ' 读取PWM速度跟随参数
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="pwm_no">PWM通道：0-1</param>
+    ' <param name="mode">跟随模式:0-不跟随 保持状态,1-不跟随 输出低电平,2-不跟随 输出高电平,3-跟随 占空比自动调整,4-跟随 频率自动调整</param>
+    ' <param name="MaxVel">最大运行速度，单位unit</param>
+    ' <param name="MaxValue">最大输出占空比或者频率</param>
+    ' <param name="OutValue">固定输出频率（0-2MHz)或占空比（0-1）</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_get_pwm_follow_speed Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal pwm_no As UInt16, ByRef mode As UInt16, ByRef MaxVel As Double, ByRef MaxValue As Double, ByRef OutValue As Double) As Int16
+    ' <summary>
+    ' 设置PWM开关对应的占空比
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="pwmno">pwm口号：0-1</param>
+    ' <param name="fOnDuty">打开占空比：0-1</param>
+    ' <param name="fOffDuty">关闭占空比：0-1</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_set_pwm_onoff_duty Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pwmno As UInt16, ByVal fOnDuty As Double, ByVal fOffDuty As Double) As Int16
+    Declare Function dmc_get_pwm_onoff_duty Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pwmno As UInt16, ByRef fOnDuty As Double, ByRef fOffDuty As Double) As Int16
+    ' <summary>
+    ' 相对起点PWM滞后输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="pwmno">pwm口号：0-1</param>
+    ' <param name="on_off">输出状态：0-关闭，1-打开</param>
+    ' <param name="delay_value">滞后值</param>
+    ' <param name="delay_mode">滞后模式：0-时间，1-距离</param>
+    ' <param name="ReverseTime">保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_delay_pwm_to_start Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal pwmno As UInt16, ByVal on_off As UInt16, ByVal delay_value As Double, ByVal delay_mode As UInt16, ByVal ReverseTime As Double) As Int16    '相对于轨迹段起点IO滞后输出
+    ' <summary>
+    ' 相对终点PWM提前输出
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="pwmno">pwm口号：0-1</param>
+    ' <param name="on_off">输出状态：0-关闭，1-打开</param>
+    ' <param name="ahead_value">提前量</param>
+    ' <param name="ahead_mode">提前模式：0-时间，1-距离</param>
+    ' <param name="ReverseTime">保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_ahead_pwm_to_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal pwmno As UInt16, ByVal on_off As UInt16, ByVal ahead_value As Double, ByVal ahead_mode As UInt16, ByVal ReverseTime As Double) As Int16  '相对轨迹段终点pwm提前输出
+    ' <summary>
+    ' 连续插补立即输出PWM
+    ' </summary>
+    ' <param name="CardNo">卡号：0-7</param>
+    ' <param name="Crd">坐标系号：0-1</param>
+    ' <param name="pwmno">pwm口号：0-1</param>
+    ' <param name="on_off">输出状态：0-关闭，1-打开</param>
+    ' <param name="ReverseTime">保留</param>
+    ' <returns>错误代码</returns>
+    ' <remarks></remarks>
+    Declare Function dmc_conti_write_pwm Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal pwmno As UInt16, ByVal on_off As UInt16, ByVal ReverseTime As Double) As Int16     '缓冲区立即IO输出
+    Declare Function dmc_set_arc_limit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal enable As UInt16, ByVal MaxCenAcc As Double, ByVal MaxArcError As Double) As Int16
+    Declare Function dmc_get_arc_limit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef enable As UInt16, ByRef MaxCenAcc As Double, ByRef MaxArcError As Double) As Int16
+    Declare Function dmc_trace_start Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisNum As UInt16, ByRef AxisList As UInt16) As Int16
+    Declare Function dmc_trace_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+
+
+    '软锁存
+    Declare Function dmc_softltc_set_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal ltc_enable As UInt16, ByVal ltc_mode As UInt16, ByVal ltc_inbit As UInt16, ByVal ltc_logic As UInt16, ByVal filter As Double) As Int16
+    Declare Function dmc_softltc_get_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByRef ltc_enable As UInt16, ByRef ltc_mode As UInt16, ByRef ltc_inbit As UInt16, ByRef ltc_logic As UInt16, ByRef filter As Double) As Int16
+
+    Declare Function dmc_softltc_set_source Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal axis As UInt16, ByVal ltc_source As UInt16) As Int16
+    Declare Function dmc_softltc_get_source Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal axis As UInt16, ByRef ltc_source As UInt16) As Int16
+
+    Declare Function dmc_softltc_reset Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16) As Integer
+    Declare Function dmc_softltc_get_number Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal axis As UInt16, ByRef number As Int32) As Int16
+    Declare Function dmc_softltc_get_value_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal axis As UInt16, ByRef Value As Double) As Int16
+
+    Declare Function dmc_set_IoFilter Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByVal filter As Double) As Int16
+    Declare Function dmc_get_IoFilter Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByRef filter As Double) As Int16
+
+    Declare Function dmc_set_lsc_index_value Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal IndexID As UInt16, ByVal IndexValue As Int32) As Int16
+    Declare Function dmc_get_lsc_index_value Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal IndexID As UInt16, ByRef IndexValue As Int32) As Int16
+
+    Declare Function dmc_set_lsc_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Origin As UInt16, ByVal Interal As UInt32, ByVal NegIndex As UInt32, ByVal PosIndex As UInt32, ByVal Ratio As Double) As Int16
+    Declare Function dmc_get_lsc_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef Origin As UInt16, ByRef Interal As UInt32, ByRef NegIndex As UInt32, ByRef PosIndex As UInt32, ByRef Ratio As Double) As Int16
+    '看门狗旧指令，不使用
+    Declare Function dmc_set_watchdog Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal enable As UInt16, ByVal time As UInt32) As Int16
+    Declare Function dmc_call_watchdog Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    '区域软限位
+    Declare Function dmc_set_zone_limit_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef axis As UInt16, ByRef Source As UInt16, ByVal x_pos_p As Int32, ByVal x_pos_n As Int32, ByVal y_pos_p As Int32, ByVal y_pos_n As Int32, ByVal action_para As UInt16) As Int16
+    Declare Function dmc_get_zone_limit_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef axis As UInt16, ByRef Source As UInt16, ByRef x_pos_p As Int32, ByRef x_pos_n As Int32, ByRef y_pos_p As Int32, ByRef y_pos_n As Int32, ByRef action_para As UInt16) As Int16
+    Declare Function dmc_set_zone_limit_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UInt16) As Integer
+    '轴互锁功能
+    Declare Function dmc_set_interlock_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef axis As UInt16, ByRef Source As UInt16, ByVal delta_pos As Int32, ByVal action_para As UInt16) As Int16
+    Declare Function dmc_get_interlock_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef axis As UInt16, ByRef Source As UInt16, ByRef delta_pos As Int32, ByRef action_para As UInt16) As Int16
+    Declare Function dmc_set_interlock_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UInt16) As Int16
+    '龙门模式的误差保护 5000系列卡
+    Declare Function dmc_set_grant_error_protect Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal dstp_error As UInt32, ByVal emg_error As Int32) As Int16
+    Declare Function dmc_get_grant_error_protect Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef dstp_error As UInt32, ByRef emg_error As Int32) As Int16
+    '物件分拣功能 分拣专用
+    Declare Function dmc_set_camerablow_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal camerablow_en As UInt16, ByVal cameraPos As Int32, ByVal piece_num As UInt16, ByVal piece_distance As Int32, ByVal axis_sel As UInt16, ByVal latch_distance_min As Int32) As Int16
+    Declare Function dmc_get_camerablow_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef camerablow_en As UInt16, ByRef cameraPos As Int32, ByRef piece_num As UInt16, ByRef piece_distance As Int32, ByRef axis_sel As UInt16, ByRef latch_distance_min As Int32) As Int16
+    Declare Function dmc_clear_camerablow_errorcode Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    Declare Function dmc_get_camerablow_errorcode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef errorcode As UInt16) As Int16
+
+    Declare Function dmc_set_encoder_da_follow_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_get_encoder_da_follow_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16) As Int16
+    '配置通用输入（0~15）做为轴的限位信号
+    Declare Function dmc_set_io_limit_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16, ByVal enable As UInt16, ByVal axis_sel As UInt16, ByVal el_mode As UInt16, ByVal el_logic As UInt16) As Int16
+    Declare Function dmc_get_io_limit_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16, ByRef enable As UInt16, ByRef axis_sel As UInt16, ByRef el_mode As UInt16, ByRef el_logic As UInt16) As Int16
+    '手轮滤波参数
+    Declare Function dmc_set_handwheel_filter Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal filter_factor As Double) As Int16
+    Declare Function dmc_get_handwheel_filter Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef filter_factor As Double) As Int16
+    '读取坐标系各轴的当前规划坐标
+    Declare Function dmc_conti_get_interp_map Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal pPosList() As Double) As Int16
+    '坐标系错误代码 
+    Declare Function dmc_conti_get_crd_errcode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef errcode As UInt16) As Int16
+
+    Declare Function dmc_line_unit_follow Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As Integer, ByVal Dist() As Double, ByVal posi_mode As UInt16) As Int16
+    Declare Function dmc_conti_line_unit_follow Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As Integer, ByVal pPosList() As Double, ByVal posi_mode As UInt16, ByVal mark As Int32) As Int16
+    '连续插补缓冲区DA操作
+    Declare Function dmc_conti_set_da_action Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal mode As UInt16, ByVal portno As UInt16, ByVal dvalue As Double) As Int16
+    '读编码器速度
+    Declare Function dmc_read_encoder_speed Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef current_speed As Double) As Int16
+
+    Declare Function dmc_axis_follow_line_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal enable_flag As UInt16) As Int16
+    '插补轴脉冲补偿
+    Declare Function dmc_set_interp_compensation Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal dvalue As Double, ByVal time As Double) As Int16
+    Declare Function dmc_get_interp_compensation Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef dvalue As Double, ByRef time As Double) As Int16
+    'IO精确停止
+    Declare Function dmc_set_io_exactstop Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal ioNum As UInt16, ByVal ioList() As UInt16, ByVal enable As UInt16, ByVal valid_logic As UInt16, ByVal action As UInt16, ByVal move_dir As UInt16) As Int16
+
+    Declare Function dmc_get_distance_to_start Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef distance_x As Double, ByRef distance_y As Double, ByVal imark As Int32) As Int16
+
+    Declare Function dmc_set_start_distance_flag Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal flag As Double) As Int16
+
+    Declare Function dmc_set_home_soft_limit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal N_limit As Int32, ByVal P_limit As Int32) As Int16
+    Declare Function dmc_get_home_soft_limit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef N_limit As Int32, ByRef P_limit As Int32) As Int16
+
+    Declare Function dmc_conti_gear_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal axis As UInt16, ByVal Dist As Double, ByVal follow_mode As UInt16, ByVal imark As Int32) As Int16
+
+    '轨迹拟合使能设置
+    Declare Function dmc_set_path_fitting_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal enable As UInt16) As Int16
+    '螺距补偿功能(新)
+    Declare Function dmc_enable_leadscrew_comp Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_set_leadscrew_comp_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal n As UInt16, ByVal startpos As Int32, ByVal lenpos As Int32, ByVal pCompPos() As Int32, ByVal pCompNeg() As Int32) As Int16
+    '指定轴做定长位移运动 按固定曲线运动
+    Declare Function dmc_t_pmove_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal TargetPos As Double, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal stop_Vel As Double, ByVal acc As Double, ByVal dec As Double, ByVal posi_mode As UInt16) As Int16
+
+    Declare Function dmc_set_pulse_encoder_count_error Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal errorlen As UInt16) As Int16
+    Declare Function dmc_get_pulse_encoder_count_error Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef errorlen As UInt16) As Int16
+    Declare Function dmc_check_pulse_encoder_count_error Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pulse_position As Int32, ByRef enc_position As Int32) As Int16
+
+    Declare Function dmc_update_target_position_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal mid_pos As Double, ByVal aim_pos As Double, ByVal posi_mode As UInt16) As Int16
+    '新物件分拣功能 分拣专用
+    Declare Function dmc_sorting_close Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    Declare Function dmc_sorting_start Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    Declare Function dmc_sorting_set_init_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cameraCount As UInt16, ByVal pCameraPos() As Int32, ByVal pCamIONo() As UInt16, ByVal cameraTime As UInt32, ByVal cameraTrigLevel As UInt16, ByVal blowCount As UInt16, ByVal pBlowPos() As Int32, ByVal pBlowIONo() As UInt16, ByVal blowTime As UInt32, ByVal blowTrigLevel As UInt16, ByVal axis As UInt16, ByVal dir As UInt16, ByVal checkMode As UInt16) As Int16
+
+    Declare Function dmc_sorting_set_camera_trig_count Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cameraNum As UInt16, ByVal cameraTrigCnt As UInt32) As Int16
+    Declare Function dmc_sorting_get_camera_trig_count Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cameraNum As UInt16, ByRef pCameraTrigCnt As UInt32, ByVal count As UInt16) As Int16
+    Declare Function dmc_sorting_set_blow_trig_count Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UInt16, ByVal blowTrigCnt As UInt32) As Int16
+    Declare Function dmc_sorting_get_blow_trig_count Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UInt16, ByRef pBlowTrigCnt As UInt32, ByVal count As UInt16) As Int16
+
+    Declare Function dmc_sorting_get_camera_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal index As UInt16, ByRef pos As Int32, ByRef trigTime As UInt32, ByRef ioNo As UInt16, ByRef trigLevel As UInt16) As Int16
+    Declare Function dmc_sorting_get_blow_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal index As UInt16, ByRef pos As Int32, ByRef trigTime As UInt32, ByRef ioNo As UInt16, ByRef trigLevel As UInt16) As Int16
+    Declare Function dmc_sorting_get_blow_status Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef trigCntAll As UInt32, ByRef trigMore As UInt16, ByRef trigLess As UInt16) As Int16
+    Declare Function dmc_sorting_trig_blow Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UInt16) As Int16
+    Declare Function dmc_sorting_set_blow_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_sorting_set_piece_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal maxWidth As UInt32, ByVal minWidth As UInt32, ByVal minDistance As UInt32, ByVal minTimeIntervel As UInt32) As Int16
+    Declare Function dmc_sorting_get_piece_status Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef pieceFind As UInt32, ByRef piecePassCam As UInt32, ByRef dist2next As UInt32, ByRef pieceWidth As UInt32) As Int16
+    Declare Function dmc_sorting_set_cam_trig_phase Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNo As UInt16, ByVal coef As Double) As Int16
+    Declare Function dmc_sorting_set_blow_trig_phase Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNo As UInt16, ByVal coef As Double) As Int16
+
+    Declare Function dmc_set_sevon_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal on_off As UInt16) As Int16
+    Declare Function dmc_get_sevon_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+
+    Declare Function dmc_compare_add_point_cycle Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cmp As UInt16, ByVal pos As Int32, ByVal dir As UInt16, ByVal bitno As UInt32, ByVal cycle As UInt32, ByVal level As UInt16) As Int16
+
+
+    Declare Function dmc_set_encoder_count_error_action_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UInt16, ByVal stopmode As UInt16) As Int16
+    Declare Function dmc_get_encoder_count_error_action_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef enable As UInt16, ByRef stopmode As UInt16) As Int16
+
+
+    Declare Function dmc_set_home_el_return Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16) As Int16
+
+    Declare Function dmc_conti_set_encoder_da_follow_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal axis As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_conti_get_encoder_da_follow_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef axis As UInt16, ByRef enable As UInt16) As Int16
+
+    Declare Function dmc_check_done_pos Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal posi_mode As UInt16) As Int16
+    Declare Function dmc_set_factor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal factor As Double) As Int16
+    Declare Function dmc_get_factor Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal errors As Int32) As Int16
+
+    Declare Function dmc_set_io_count_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal chan As UInt16, ByVal bitno As UInt16, ByVal mode As UInt16,
+                                                               ByVal filter As Double, ByVal count_value As Double, ByVal axis_list() As UInt16, ByVal axis_num As UInt16, ByVal stop_mode As UInt16) As Int16
+    Declare Function dmc_get_io_count_profile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal chan As UInt16, ByRef bitno As UInt16, ByRef mode As UInt16,
+                                                           ByRef filter As Double, ByRef count_value As Double, ByVal axis_list() As UInt16, ByRef axis_num As UInt16, ByRef stop_mode As UInt16) As Int16
+    Declare Function dmc_set_io_count_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal chan As UInt16, ByVal ifenable As UInt16) As Int16
+    Declare Function dmc_clear_io_count Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal chan As UInt16) As Int16
+    Declare Function dmc_get_io_count_value_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal chan As UInt16, ByRef current_value As Int32) As Int16
+
+    Declare Function dmc_get_position_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Double) As Int16
+    Declare Function dmc_get_encoder_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Double) As Int16
+
+    Declare Function dmc_set_home_shift_param Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal pos_clear_mode As UInt16, ByVal ShiftValue As Double) As Int16
+    Declare Function dmc_get_home_shift_param Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos_clear_mode As UInt16, ByRef ShiftValue As Double) As Int16
+
+    Declare Function dmc_change_speed_extend Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Curr_Vel As Double, ByVal Taccdec As Double, ByVal pin_num As UInt16, ByVal trig_mode As UInt16) As Int16
+
+    Declare Function dmc_follow_vector_speed_move Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Follow_AxisNum As UInt16, ByVal Follow_AxisList() As UInt16, ByVal ratio As Double) As Int16
+
+    Declare Function dmc_conti_line_unit_extend Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal pPosList() As Double,
+                                                                 ByVal posi_mode As UInt16, ByVal Extend_Len As Double, ByVal enable As UInt16, ByVal mark As Int32) As Int16
+    '二维高速比较 总线卡/5000脉冲卡
+    Declare Function dmc_hcmp_2d_set_config_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal cmp_mode As UInt16, ByVal x_axis As UInt16, ByVal x_cmp_source As UInt16,
+                                                             ByVal x_cmp_error As Double, ByVal y_axis As UInt16, ByVal y_cmp_source As UInt16, ByVal y_cmp_error As Double, ByVal cmp_logic As UInt16, ByVal time As Int32) As Int16
+    Declare Function dmc_hcmp_2d_get_config_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef cmp_mode As UInt16, ByRef x_axis As UInt16, ByRef x_cmp_source As UInt16,
+                                                         ByRef x_cmp_error As Double, ByRef y_axis As UInt16, ByRef y_cmp_source As UInt16, ByRef y_cmp_error As Double, ByRef cmp_logic As UInt16, ByRef time As Int32) As Int16
+    Declare Function dmc_hcmp_2d_set_pwmoutput Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal pwm_enable As UInt16, ByVal duty As Double, ByVal freq As Double, ByVal pwm_number As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_get_pwmoutput Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef pwm_enable As UInt16, ByRef duty As Double, ByRef freq As Double, ByRef pwm_number As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_add_point_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal x_cmp_pos As Double, ByVal y_cmp_pos As Double, ByVal cmp_outbit As UInt16) As Int16
+    Declare Function dmc_hcmp_2d_get_current_state_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef remained_points As Int32, ByRef x_current_point As Double, ByRef y_current_point As Double,
+                                                                         ByRef runned_points As Int32, ByRef current_state As UInt16, ByRef current_outbit As UInt16) As Int16
+
+    '通用文件下载
+    ''函数参数必须严格保持一致性
+    Declare Function dmc_download_file Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pfilename As String, ByVal pfilenameinControl() As Byte, ByVal filetype As UInt16) As Int16
+    Declare Function dmc_download_memfile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pbuffer() As Byte, ByVal buffsize As UInt32, ByVal pfilenameinControl() As Byte, ByVal filetype As UInt16) As Int16
+    Declare Function dmc_upload_file Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pfilename As String, ByVal pfilenameinControl() As Byte, ByVal filetype As UInt16) As Int16
+    Declare Function dmc_upload_memfile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal pbuffer() As Byte, ByVal buffsize As UInt32, ByVal pfilenameinControl() As Byte, ByRef puifilesize As UInt32, ByVal filetype As UInt16) As Int16
+    Declare Function dmc_get_progress Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef process As Single) As Int16
+    '总线参数
+    Declare Function nmc_download_configfile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal PortNum As UInt16, ByVal FileName As String) As Int16
+    Declare Function nmc_download_mapfile Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal FileName As String) As Int16
+    Declare Function nmc_upload_configfile Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal FileName As String) As Integer
+
+    Declare Function nmc_set_manager_para Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal baudrate As UInt32, ByVal ManagerID As Integer) As Integer
+    Declare Function nmc_get_manager_para Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByRef baudrate As UInt32, ByRef ManagerID As Integer) As Integer
+    Declare Function nmc_set_manager_od Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal index As Integer, ByVal subindex As Integer, ByVal valuelength As Integer, ByVal value As Int32) As Integer
+    Declare Function nmc_get_manager_od Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal index As Integer, ByVal subindex As Integer, ByVal valuelength As Integer, ByRef value As Int32) As Integer
+
+    Declare Function nmc_get_total_axes Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef TotalAxis As Integer) As Integer
+    Declare Function nmc_get_total_ionum Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef TotalIn As Integer, ByRef TotalOut As Integer) As Integer
+    '获取总线端口错误码
+    Declare Function nmc_get_errcode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal channel As Integer, ByRef Errcode As Integer) As Integer
+    '清除总线端口错误码
+    Declare Function nmc_clear_errcode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Integer
+    Declare Function nmc_get_LostHeartbeat_Nodes Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByRef NodeID As Integer, ByRef NodeNum As Integer) As Integer
+    Declare Function nmc_get_EmergeneyMessege_Nodes Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByRef NodeMsg As Int32, ByRef MsgNum As Integer) As Integer
+    Declare Function nmc_SendNmtCommand Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal NodeID As Integer, ByVal NmtCommand As Integer) As Integer
+    Declare Function nmc_syn_move Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal AxisNum As Integer, ByVal AxisList() As Integer, ByVal Position() As Int32, ByVal PosiMode() As Integer) As Integer
+
+    Declare Function nmc_syn_move_unit Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal AxisNum As Integer, ByVal AxisList() As Integer, ByVal position() As Double, ByVal PosiMode() As Integer) As Integer
+    '总线多轴同步运动
+    Declare Function nmc_sync_pmove_unit Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal AxisNum As Integer, ByVal AxisList() As Integer, ByVal Dist() As Double, ByVal PosiMode() As Integer) As Integer
+    Declare Function nmc_sync_vmove_unit Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal AxisNum As Integer, ByVal AxisList() As Integer, ByVal Dir() As Integer) As Integer
+    '设置主站参数
+    Declare Function nmc_set_master_para Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal Baudrate As Integer, ByVal NodeCnt As Int32, ByVal MasterId As Integer) As Integer
+    '读取主站参数
+    Declare Function nmc_get_master_para Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByRef Baudrate As Integer, ByRef NodeCnt As Int32, ByRef MasterId As Integer) As Integer
+
+    'EtherCAT 获取总线ADDA输入输出口数
+    Declare Function nmc_get_total_adcnum Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef TotalIn As Integer, ByRef TotalOut As Integer) As Integer
+    Declare Function nmc_set_controller_workmode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal controller_mode As Integer) As Integer
+    Declare Function nmc_get_controller_workmode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef controller_mode As Integer) As Integer
+    Declare Function nmc_set_cycletime Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal Fieldbustype As Integer, ByVal CycleTime As Integer) As Integer
+    Declare Function nmc_get_cycletime Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal Fieldbustype As Integer, ByRef CycleTime As Integer) As Integer
+
+
+    Declare Function nmc_set_node_od Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal NodeNum As Integer, ByVal index As Integer, ByVal subindex As Integer, ByVal valuelength As Integer, ByVal value As Int32) As Integer
+    Declare Function nmc_get_node_od Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal NodeNum As Integer, ByVal index As Integer, ByVal subindex As Integer, ByVal valuelength As Integer, ByRef value As Int32) As Integer
+    Declare Function nmc_reset_to_factory Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal NodeNum As Integer) As Integer
+    Declare Function nmc_write_to_pci Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal NodeNum As Integer) As Integer
+    Declare Function nmc_set_alarm_clear Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal NodeNum As Integer) As Integer
+    Declare Function nmc_get_slave_nodes Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal Baudrate As Integer, ByRef NodeId As Integer, ByRef NodeNum As Integer) As Integer
+    Declare Function nmc_write_outbit Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeID As Integer, ByVal IoBit As Integer, ByVal IoValue As Integer) As Integer
+    Declare Function nmc_read_outbit Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeID As Integer, ByVal IoBit As Integer, ByRef IoValue As Integer) As Integer
+    Declare Function nmc_read_inbit Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeID As Integer, ByVal IoBit As Integer, ByRef IoValue As Integer) As Integer
+    'CAN ADDA指令 设置DA参数 脉冲卡	
+    Declare Function nmc_set_da_output Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeId As Integer, ByVal channel As Integer, ByVal Value As Double) As Integer
+    Declare Function nmc_get_da_output Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeId As Integer, ByVal channel As Integer, ByRef Value As Double) As Integer
+    Declare Function nmc_get_ad_input Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeId As Integer, ByVal channel As Integer, ByRef Value As Double) As Integer
+    Declare Function nmc_set_ad_mode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeId As Integer, ByVal channel As Integer, ByVal mode As Integer, ByVal buffer_nums As Int32) As Integer
+    Declare Function nmc_get_ad_mode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeId As Integer, ByVal channel As Integer, ByRef mode As Integer, ByVal buffer_nums As Int32) As Integer
+    Declare Function nmc_set_da_mode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeId As Integer, ByVal channel As Integer, ByVal mode As Integer, ByVal buffer_nums As Int32) As Integer
+    Declare Function nmc_get_da_mode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeId As Integer, ByVal channel As Integer, ByRef mode As Integer, ByVal buffer_nums As Int32) As Integer
+    Declare Function nmc_write_to_flash Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal NodeNum As Integer) As Integer
+
+    Declare Function nmc_set_connect_state Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeNum As Integer, ByVal state As Integer, ByVal baud As Integer) As Integer
+    Declare Function nmc_get_connect_state Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef NodeNum As Integer, ByRef state As Integer) As Integer
+
+    Declare Function nmc_write_outport Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeID As Integer, ByVal PortNo As Integer, ByVal IoValue As Integer) As Integer
+    Declare Function nmc_read_outport Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeID As Integer, ByVal PortNo As Integer, ByRef IoValue As Integer) As Integer
+    Declare Function nmc_read_inport Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal NodeID As Integer, ByVal PortNo As Integer, ByRef IoValue As Integer) As Integer
+    '轴状态机
+    Declare Function nmc_get_axis_state_machine Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef Axis_StateMachine As Integer) As Integer
+    '获取轴状态字
+    Declare Function nmc_get_axis_statusword Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef statusword As Integer) As Integer
+    '获取轴配置控制模式，返回值（6回零模式，8csp模式）
+    Declare Function nmc_get_axis_setting_contrlmode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef Contrlmode As Integer) As Integer
+    '设置总线轴控制字
+    Declare Function nmc_set_axis_contrlword Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal contrlword As Int32) As Integer
+    '获取总线轴控制字
+    Declare Function nmc_get_axis_contrlword Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef contrlword As Integer) As Integer
+    Declare Function nmc_get_axis_type Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef Axis_Type As Integer) As Integer
+    '获取总线时间量，平均时间，最大时间，执行周期数
+    Declare Function nmc_get_consume_time_fieldbus Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal Fieldbustype As Integer, ByRef Average_time As Integer, ByRef Max_time As Integer, ByRef Cycles As Int32) As Integer
+    '清除时间量
+    Declare Function nmc_clear_consume_time_fieldbus Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal Fieldbustype As Integer) As Integer
+    '总线单轴使能函数 255表示全使能
+    Declare Function nmc_set_axis_enable Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Integer
+    Declare Function nmc_set_axis_disable Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Integer
+    '获取轴的从站信息
+    Declare Function nmc_get_axis_node_address Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef SlaveAddr As Integer, ByRef Sub_SlaveAddr As Integer) As Integer
+    '获取总线轴数
+    Declare Function nmc_get_total_slaves Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByRef TotalSlaves As Integer) As Integer
+    '总线回原点函数
+    Declare Function nmc_set_home_profile Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal home_mode As Integer, ByVal Low_Vel As Double, ByVal High_Vel As Double, ByVal Tacc As Double, ByVal Tdec As Double, ByVal offsetpos As Double) As Integer
+    Declare Function nmc_get_home_profile Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef home_mode As Integer, ByRef Low_Vel As Double, ByRef High_Vel As Double, ByRef Tacc As Double, ByRef Tdec As Double, ByRef offsetpos As Double) As Integer
+    Declare Function nmc_home_move Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Int16
+
+    Declare Function dmc_set_safety_param Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal enable As Integer, ByVal safety_pos As Integer) As Integer
+    Declare Function dmc_get_safety_param Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef enable As Integer, ByRef safety_pos As Integer) As Integer
+    Declare Function nmc_start_scan_ethercat Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal AddressID As Integer) As Integer
+    Declare Function nmc_stop_scan_ethercat Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal AddressID As Integer) As Integer
+    '设置轴的运行模式 1为pp模式，6为回零模式，8为csp模式
+    Declare Function nmc_set_axis_run_mode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal run_mode As Integer) As Integer
+    '读取总线线程时间消耗参数
+    Declare Function dmc_get_perline_time Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal TypeIndex As Integer, ByRef Averagetime As Int32, ByRef Maxtime As Int32, ByRef Cycles As Int32) As Integer
+    '获取总线轴错误码
+    Declare Function nmc_get_axis_errcode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef Errcode As Integer) As Integer
+    Declare Function nmc_get_card_errcode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef errcode As Integer) As Integer
+    '清除总线轴错误码
+    Declare Function nmc_clear_axis_errcode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Integer
+    Declare Function nmc_clear_card_errcode Lib "LTDMC.dll" (ByVal CardNo As Integer) As Integer
+    '清除端口报警
+    Declare Function nmc_clear_alarm_fieldbus Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer) As Integer
+    '停止ethercat总线,返回0表示成功，其他参数表示不成功
+    Declare Function nmc_stop_etc Lib "LTDMC.dll" (ByVal CardNo As Integer, ByRef ETCState As Integer) As Integer
+    Declare Function nmc_set_axis_contrlmode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal Contrlmode As Int32) As Integer
+    Declare Function nmc_get_axis_contrlmode Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef Contrlmode As Integer) As Integer
+    Declare Function nmc_get_axis_io_in Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Integer
+    Declare Function nmc_set_axis_io_out Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal iostate As Int32) As Integer
+    Declare Function nmc_get_axis_io_out Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Integer
+    'RTEX卡添加函数
+    Declare Function nmc_start_connect Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal chan As Integer, ByRef info As Integer, ByRef len As Integer) As Integer
+    Declare Function nmc_get_vendor_info Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal info() As Byte, ByRef len As Integer) As Integer
+    Declare Function nmc_get_slave_type_info Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal info() As Byte, ByRef len As Integer) As Integer
+    Declare Function nmc_get_slave_name_info Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal info() As Byte, ByRef len As Integer) As Integer
+    Declare Function nmc_get_slave_version_info Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal info() As Byte, ByRef len As Integer) As Integer
+
+    Declare Function nmc_write_parameter Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal index As Integer, ByVal subindex As Integer, ByVal para_data As UInt32) As Integer
+    Declare Function nmc_write_slave_eeprom Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Integer
+
+    Declare Function nmc_read_parameter Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal index As Integer, ByVal subindex As Integer, ByRef para_data As UInt32) As Integer
+    Declare Function nmc_read_parameter_attributes Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal index As Integer, ByVal subindex As Integer, ByRef para_data As UInt32) As Integer
+
+    Declare Function nmc_set_cmdcycletime Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal cmdtime As UInt32) As Integer
+    '设置RTEX总线周期比(us)
+    Declare Function nmc_get_cmdcycletime Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByRef cmdtime As UInt32) As Integer
+
+    Declare Function nmc_config_atuo_log Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal ifenable As Integer, ByVal dir As Integer, ByVal byte_index As Integer, ByVal mask As Integer, ByVal condition As Integer, ByVal counter As UInt32) As Integer
+    '扩展PDO
+    Declare Function nmc_write_rxpdo_extra Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal address As Integer, ByVal DataLen As Integer, ByVal Value As Int32) As Integer
+    Declare Function nmc_read_rxpdo_extra Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal address As Integer, ByVal DataLen As Integer, ByRef Value As Int32) As Integer
+    Declare Function nmc_read_txpdo_extra Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal address As Integer, ByVal DataLen As Integer, ByRef Value As Int32) As Integer
+    Declare Function nmc_write_rxpdo_extra_uint Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal address As Integer, ByVal DataLen As Integer, ByVal Value As UInt32) As Integer
+    Declare Function nmc_read_rxpdo_extra_uint Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal address As Integer, ByVal DataLen As Integer, ByRef Value As UInt32) As Integer
+    Declare Function nmc_read_txpdo_extra_uint Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal PortNum As Integer, ByVal address As Integer, ByVal DataLen As Integer, ByRef Value As UInt32) As Integer
+    Declare Function nmc_get_log_state Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal chan As Integer, ByRef state As Integer) As Integer
+    Declare Function nmc_driver_reset Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer) As Integer
+    Declare Function nmc_set_offset_pos Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByVal offset_pos As Double) As Integer
+    Declare Function nmc_get_offset_pos Lib "LTDMC.dll" (ByVal CardNo As Integer, ByVal axis As Integer, ByRef offset_pos As Double) As Integer
+
+    '清除rtex绝对值编码器的多圈值
+    Declare Function nmc_clear_abs_driver_multi_cycle Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+
+    '---------------------------EtherCAT IO扩展模块操作指令----------------------
+    '设置io输出32位总线扩展
+    Declare Function nmc_write_outport_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal NoteID As UInt16, ByVal portno As UInt16, ByVal outport_val As UInt32) As Int16
+    '读取io输出32位总线扩展
+    Declare Function nmc_read_outport_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal NoteID As UInt16, ByVal portno As UInt16, ByRef outport_val As UInt32) As Int16
+    '读取io输入32位总线扩展
+    Declare Function nmc_read_inport_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal NoteID As UInt16, ByVal portno As UInt16, ByRef inport_val As UInt32) As Int16
+    '设置io输出
+    Declare Function nmc_write_outbit_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal NoteID As UInt16, ByVal IoBit As UInt16, ByVal IoValue As UInt16) As Int16
+    '读取io输出
+    Declare Function nmc_read_outbit_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal NoteID As UInt16, ByVal IoBit As UInt16, ByRef IoValue As UInt16) As Int16
+    '读取io输入
+    Declare Function nmc_read_inbit_extern Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal NoteID As UInt16, ByVal IoBit As UInt16, ByRef IoValue As UInt16) As Int16
+
+    '返回最近错误码
+    Declare Function nmc_get_current_fieldbus_state_info Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByRef Axis As UInt16, ByRef ErrorType As UInt16, ByRef SlaveAddr As UInt16, ByRef ErrorFieldbusCode As UInt32) As Int16
+    '返回历史错误码
+    Declare Function nmc_get_detail_fieldbus_state_info Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal ReadErrorNum As UInt32, ByRef TotalNum As UInt32, ByRef ActualNum As UInt32, ByVal Axis() As UInt16, ByVal ErrorType() As UInt16, ByVal SlaveAddr() As UInt16, ByVal ErrorFieldbusCode() As UInt32) As Int16
+    '启动采集
+    Declare Function nmc_start_pdo_trace Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16, ByVal Index_Num As UInt16, ByVal Trace_Len As UInt32, ByVal Index() As UInt16, ByVal Sub_Index() As UInt16) As Int16
+    '获取采集参数
+    Declare Function nmc_get_pdo_trace Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16, ByRef Index_Num As UInt16, ByRef Trace_Len As UInt32, ByVal Index() As UInt16, ByVal Sub_Index() As UInt16) As Int16
+    '设置触发采集参数
+    Declare Function nmc_set_pdo_trace_trig_para Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16, ByVal Trig_Index As UInt16, ByVal Trig_Sub_Index As UInt16, ByVal Trig_Value As Integer, ByVal Trig_Mode As UInt16) As Int16
+    '获取触发采集参数
+    Declare Function nmc_get_pdo_trace_trig_para Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16, ByRef Trig_Index As UInt16, ByRef Trig_Sub_Index As UInt16, ByRef Trig_Value As Integer, ByRef Trig_Mode As UInt16) As Int16
+    '采集清除
+    Declare Function nmc_clear_pdo_trace_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16) As Int16
+    '采集停止
+    Declare Function nmc_stop_pdo_trace Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16) As Int16
+    '采集数据读取
+    Declare Function nmc_read_pdo_trace_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16, ByVal StartAddr As UInt32, ByVal Readlen As UInt32, ByRef ActReadlen As UInt32, ByVal Data() As Byte) As Int16
+    '已采集个数
+    Declare Function nmc_get_pdo_trace_num Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16, ByRef Data_num As UInt32, ByRef Size_of_each_bag As UInt32) As Int16
+    '采集状态
+    Declare Function nmc_get_pdo_trace_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal SlaveAddr As UInt16, ByRef Trace_state As UInt16) As Int16
+    '总线专用
+    Declare Function nmc_reset_canopen Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    Declare Function nmc_reset_rtex Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    Declare Function nmc_reset_etc Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    '总线错误处理配置
+    Declare Function nmc_set_fieldbus_error_switch Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByVal data As UInt16) As Int16
+    Declare Function nmc_get_fieldbus_error_switch Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Channel As UInt16, ByRef data As UInt16) As Int16
+    Declare Function nmc_torque_move Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Torque As Integer, ByVal PosLimitValid As UInt16, ByVal PosLimitValue As Double, ByVal PosMode As UInt16) As Int16
+    Declare Function nmc_change_torque Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal Torque As Integer) As Int16
+    '读取转矩大小
+    Declare Function nmc_get_torque Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef Torque As Integer) As Int16
+    'modbus函数
+    Declare Function dmc_modbus_active_COM1 Lib "LTDMC.dll" (ByVal id As UInt16, ByVal COMID As String, ByVal speed As Integer, ByVal bits As Integer, ByVal check As Integer, ByVal stoped As Integer) As Int16
+    Declare Function dmc_modbus_active_COM2 Lib "LTDMC.dll" (ByVal id As UInt16, ByVal COMID As String, ByVal speed As Integer, ByVal bits As Integer, ByVal check As Integer, ByVal stoped As Integer) As Int16
+    Declare Function dmc_modbus_active_ETH Lib "LTDMC.dll" (ByVal id As UInt16, ByVal port As UInt16) As Int16
+
+    Declare Function dmc_set_modbus_0x Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt16, ByVal inum As UInt16, ByVal pdata() As Byte) As Int16
+    Declare Function dmc_get_modbus_0x Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt16, ByVal inum As UInt16, ByVal pdata() As Byte) As Int16
+    Declare Function dmc_set_modbus_4x Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt16, ByVal inum As UInt16, ByVal pdata() As Byte) As Int16
+    Declare Function dmc_get_modbus_4x Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt16, ByVal inum As UInt16, ByVal pdata() As Byte) As Int16
+
+    Declare Function dmc_set_modbus_4x_float Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt16, ByVal inum As UInt16, ByVal pdata() As Single) As Int16
+    Declare Function dmc_get_modbus_4x_float Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt16, ByVal inum As UInt16, ByVal pdata() As Single) As Int16
+    Declare Function dmc_set_modbus_4x_int Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt16, ByVal inum As UInt16, ByVal pdata() As Integer) As Int16
+    Declare Function dmc_get_modbus_4x_int Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt16, ByVal inum As UInt16, ByVal pdata() As Integer) As Int16
+
+    Declare Function dmc_conti_line_io_union Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal pPosList() As Double, ByVal posi_mode As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16, ByVal io_value As Double, ByVal io_mode As UInt16, ByVal MapAxis As UInt16, ByVal pos_source As UInt16, ByVal ReverseTime As Double, ByVal mark As Long) As Int16
+    '设置编码器方向
+    Declare Function dmc_set_encoder_dir Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal dir As UInt16) As Int16
+    '圆弧区域软限位
+    Declare Function dmc_set_arc_zone_limit_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisList() As UInt16, ByVal AxisNum As UInt16, ByVal Center() As Double, ByVal Radius As Double, ByVal Source As UInt16, ByVal StopMode As UInt16) As Int16
+    Declare Function dmc_get_arc_zone_limit_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisList() As UInt16, ByRef AxisNum As UInt16, ByVal Center() As Double, ByRef Radius As Double, ByRef Source As UInt16, ByRef StopMode As UInt16) As Int16
+    Declare Function dmc_get_arc_zone_limit_axis_status Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    Declare Function dmc_set_arc_zone_limit_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_get_arc_zone_limit_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef enable As UInt16) As Int16
+    '1、	启用缓存方式添加比较位置：
+    Declare Function dmc_hcmp_fifo_set_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal fifo_mode As UInt16) As Int16
+    Declare Function dmc_hcmp_fifo_get_mode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef fifo_mode As UInt16) As Int16
+    '2、	读取剩余缓存状态，上位机通过此函数判断是否继续添加比较位置
+    Declare Function dmc_hcmp_fifo_get_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef remained_points As Long) As Int16
+    '3、	按数组的方式批量添加比较位置
+    Declare Function dmc_hcmp_fifo_add_point_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal num As UInt16, ByVal cmp_pos() As Double) As Int16
+    '4、	清除比较位置,也会把FPGA的位置同步清除掉
+    Declare Function dmc_hcmp_fifo_clear_points Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16) As Int16
+    '添加大数据，会堵塞一段时间，指导数据添加完成
+    Declare Function dmc_hcmp_fifo_add_table Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal num As UInt16, ByVal cmp_pos() As Double) As Int16
+    '控制卡接线盒断线后是否初始化输出电平
+    Declare Function dmc_set_output_status_repower Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_t_pmove_extern_softlanding Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal MidPos As Double, ByVal TargetPos As Double, ByVal start_Vel As Double, ByVal Max_Vel As Double, ByVal stop_Vel As Double, ByVal delay_ms As UInt32, ByVal Max_Vel2 As Double, ByVal stop_vel2 As Double, ByVal acc_time As Double, ByVal dec_time As Double, ByVal posi_mode As UInt16) As Int16
+    Declare Function dmc_compare_add_point_XD Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cmp As UInt16, ByVal pos As Long, ByVal dir As UInt16, ByVal action As UInt16, ByVal actpara As UInt32, ByVal startPos As Long) As Int16 'xd定制比较函数
+
+    Declare Function dmc_pmove_change_pos_speed_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal tar_vel As Double, ByVal tar_rel_pos As Double, ByVal trig_mode As UInt16, ByVal source As UInt16) As Int16
+    Declare Function dmc_get_pmove_change_pos_speed_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef tar_vel As Double, ByRef tar_rel_pos As Double, ByRef trig_mode As UInt16, ByRef source As UInt16) As Int16
+    Declare Function dmc_pmove_change_pos_speed_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_get_pmove_change_pos_speed_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16) As Int16
+    Declare Function dmc_compare_add_point_extend Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal pos As Long, ByVal dir As UInt16, ByVal action As UInt16, ByVal para_num As UInt16, ByRef actpara As UInt32, ByVal compare_time As UInt32) As Int16
+    Declare Function dmc_get_cmd_position Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Double) As Int16
+    '逻辑采样配置
+    Declare Function dmc_set_logic_analyzer_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal SampleFre As UInt32, ByVal SampleDepth As UInt32, ByVal SampleMode As UInt16) As Int16
+    Declare Function dmc_start_logic_analyzer Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_get_logic_analyzer_counter Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal channel As UInt16, ByRef counter As UInt32) As Int16
+    'kg定制	 20190923修改定制函数接口
+    Declare Function dmc_read_inbit_append Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16) As Int16 '读取输入口的状态
+    Declare Function dmc_write_outbit_append Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16, ByVal on_off As UInt16) As Int16 '设置输出口的状态
+    Declare Function mc_read_outbit_append Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UInt16) As Int16 '读取输出口的状态
+    Declare Function dmc_read_inport_append Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16) As UInt32 '读取输入端口的值
+    Declare Function dmc_read_outport_append Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16) As UInt32 '读取输出端口的值
+    Declare Function dmc_write_outport_append Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UInt16, ByVal port_value As UInt32) As Int16 '设置所有输出端口的值
+    '设置坐标系切向跟随
+    Declare Function dmc_set_tangent_follow Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal axis As UInt16, ByVal follow_curve As UInt16, ByVal rotate_dir As UInt16, ByVal degree_equivalent As Double) As Int16
+    ' 获取指定坐标系切向跟随参数
+    Declare Function dmc_get_tangent_follow_param Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef axis As UInt16, ByRef follow_curve As UInt16, ByRef rotate_dir As UInt16, ByRef degree_equivalent As Double) As Int16
+    ' 取消坐标系跟随
+    Declare Function dmc_disable_follow_move Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16) As Int16
+    ' 椭圆插补
+    Declare Function dmc_ellipse_move Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal axisNum As UInt16, ByVal Axis_List() As UInt16, ByVal Target_Pos() As Double, ByVal Cen_Pos() As Double, ByVal A_Axis_Len As Double, ByVal B_Axis_Len As Double, ByVal Dir As UInt16, ByVal Pos_Mode As UInt16) As Int16
+    Declare Function dmc_read_vector_speed_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef current_speed As Double) As Int16   '读取当前卡的插补速度
+    '读取参数遇限位反找使能
+    Declare Function dmc_get_home_el_return Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16) As Int16
+    '新看门狗功能
+    Declare Function dmc_set_watchdog_action_event Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal event_mask As UInt16) As Int16
+    Declare Function dmc_get_watchdog_action_event Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef event_mask As UInt16) As Int16
+    Declare Function dmc_set_watchdog_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal timer_period As Double, ByVal enable As UInt16) As Int16
+    Declare Function dmc_get_watchdog_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef timer_period As Double, ByRef enable As UInt16) As Int16
+    Declare Function dmc_reset_watchdog_timer Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    'io定制功能
+    Declare Function dmc_set_io_check_control Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal sensor_in_no As UInt16, ByVal check_mode As UInt16, ByVal A_out_no As UInt16, ByVal B_out_no As UInt16, ByVal C_out_no As UInt16, ByVal output_mode As UInt16) As Int16
+    Declare Function dmc_get_io_check_control Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef sensor_in_no As UInt16, ByRef check_mode As UInt16, ByRef A_out_no As UInt16, ByRef B_out_no As UInt16, ByRef C_out_no As UInt16, ByRef output_mode As UInt16) As Int16
+    Declare Function dmc_stop_io_check_control Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    '设置限位反找偏移距离
+    Declare Function dmc_set_el_ret_deviation Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal deviation As Double) As Int16
+    Declare Function dmc_get_el_ret_deviation Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef deviation As Double) As Int16
+    '龙门模式的误差保护当量函数
+    Declare Function dmc_set_grant_error_protect_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal dstp_error As Double, ByVal emg_error As Double) As Int16
+    Declare Function dmc_get_grant_error_protect_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef dstp_error As Double, ByRef emg_error As Double) As Int16
+    '螺距补偿相关
+    Declare Function dmc_get_leadscrew_comp_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef n As UInt16, ByRef startpos As Integer, ByRef lenpos As Integer, ByVal pCompPos() As Integer, ByVal pCompNeg() As Integer) As Int16
+    Declare Function dmc_set_leadscrew_comp_config_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal n As UInt16, ByVal startpos As Double, ByVal lenpos As Double, ByVal pCompPos() As Double, ByVal pCompNeg() As Double) As Int16
+    Declare Function dmc_get_leadscrew_comp_config_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef n As UInt16, ByRef startpos As Double, ByRef lenpos As Double, ByVal pCompPos() As Double, ByVal pCompNeg() As Double) As Int16
+    'EZ锁存 原点锁存，软锁存相关
+    Declare Function dmc_get_homelatch_value_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Double) As Int16
+    Declare Function dmc_get_ezlatch_value_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pos As Double) As Int16
+    '高速锁存
+    Declare Function dmc_get_latch_value_extern_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal index As UInt16, ByRef pos_by_mm As Double) As Int16 '按索引取值读取 
+    '一维比较
+    Declare Function dmc_compare_add_point_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cmp As UInt16, ByVal pos As Double, ByVal dir As UInt16, ByVal action As UInt16, ByVal actpara As UInt32) As Int16 '添加比较点
+    Declare Function dmc_compare_get_current_point_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cmp As UInt16, ByRef pos As Double) As Int16 '读取当前比较点
+    '多组位置比较
+    Declare Function dmc_compare_add_point_multi_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cmp As UInt16, ByVal pos As Double, ByVal dir As UInt16, ByVal action As UInt16, ByVal actpara As UInt32, ByVal times As Double) As Int16 '添加比较点 增强
+    '高速位置比较
+    Declare Function dmc_hcmp_add_point_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal cmp_pos As Double) As Int16
+    Declare Function dmc_hcmp_set_liner_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal Increment As Double, ByVal Count As Int32) As Int16 '设置线性模式参数
+    Declare Function dmc_hcmp_get_liner_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal Increment As Double, ByRef Count As Int32) As Int16
+    Declare Function dmc_hcmp_get_current_state_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef remained_points As Int32, ByRef current_point As Double, ByRef runned_points As Int32) As Int16  '读取高速比较状态
+    Declare Function dmc_set_softlimit_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal enable As UInt16, ByVal source_sel As UInt16, ByVal SL_action As UInt16, ByVal N_limit As Double, ByVal P_limit As Double) As Int16 '设置软限位参数
+    Declare Function dmc_get_softlimit_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef enable As UInt16, ByRef source_sel As UInt16, ByRef SL_action As UInt16, ByRef N_limit As Double, ByRef P_limit As Double) As Int16 '读取软限位参数
+    '两轴位置叠加，高速比较功能
+    Declare Function dmc_hcmp_set_config_overlap Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal axis As UInt16, ByVal cmp_source As UInt16, ByVal cmp_logic As UInt16, ByVal time As Int32, ByVal axis_num As UInt16, ByVal aux_axis As UInt16, ByVal aux_source As UInt16) As Int16
+    Declare Function dmc_hcmp_get_config_overlap Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByRef axis As UInt16, ByRef cmp_source As UInt16, ByRef cmp_logic As UInt16, ByRef time As Int32, ByRef axis_num As UInt16, ByRef aux_axis As UInt16, ByRef aux_source As UInt16) As Int16
+
+    Declare Function dmc_t_pmove_extern_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal MidPos As Double, ByVal TargetPos As Double, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal stop_Vel As Double, ByVal acc As Double, ByVal dec As Double, ByVal posi_mode As UInt16) As Int16
+
+    Declare Function dmc_rtcp_set_kinematic_type Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal machine_type As UInt16) As Int16
+    Declare Function dmc_rtcp_get_kinematic_type Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByRef machine_type As UInt16) As Int16
+    '启动或者关闭RTCP功能,后续添加
+
+    '螺旋插补
+    Declare Function dmc_conti_helix_move_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AixsList() As UInt16, ByVal StartPos() As Double, ByVal TargetPos() As Double, ByVal Arc_Dir As UInt16, ByVal Circle As Integer, ByVal mode As UInt16, ByVal mark As Integer) As Int16
+    Declare Function dmc_helix_move_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UInt16, ByVal AxisNum As UInt16, ByVal AixsList() As UInt16, ByVal StartPos() As Double, ByVal TargetPos() As Double, ByVal Arc_Dir As UInt16, ByVal Circle As Integer, ByVal mode As UInt16) As Int16
+    Declare Function dmc_compare_add_point_cycle_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cmp As UInt16, ByVal pos As Double, ByVal dir As UInt16, ByVal bitno As UInt32, ByVal cycle As UInt32, ByVal level As UInt16) As Int16 '添加比较点
+    'PDO缓存20190715
+    Declare Function dmc_pdo_buffer_enter Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    Declare Function dmc_pdo_buffer_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    Declare Function dmc_pdo_buffer_clear Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16) As Int16
+    Declare Function dmc_pdo_buffer_run_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef RunState As Integer, ByRef Remain As Integer, ByRef NotRunned As Integer, ByRef Runned As Integer) As Int16
+    Declare Function dmc_pdo_buffer_add_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal size As Integer, ByVal data_table() As Integer) As Int16
+
+    Declare Function dmc_pdo_buffer_start_multi Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal ResultList() As UInt16) As Int16
+    Declare Function dmc_pdo_buffer_pause_multi Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal ResultList() As UInt16) As Int16
+    Declare Function dmc_pdo_buffer_stop_multi Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal ResultList() As UInt16) As Int16
+    'Declare Function dmc_pdo_buffer_add_data_multi Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisNum As UInt16, ByVal AxisList() As UInt16, ByVal size As Integer, ByVal data_table()() As Integer) As Int16
+    Declare Function dmc_calculate_arccenter_3point Lib "LTDMC.dll" (ByVal start_pos() As Double, ByVal mid_pos() As Double, ByVal target_pos() As Double, ByVal cen_pos() As Double) As Int16
+    '点位缓存门型运动
+    Declare Function dmc_m_set_muti_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis_num As UShort, ByVal axis_list() As UShort, ByVal start_vel() As Double, ByVal max_vel() As Double, ByVal tacc() As Double, ByVal tdec() As Double, ByVal stop_vel() As Double) As Int16 '两轴速度设置
+    Declare Function dmc_m_set_profile_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal start_vel As Double, ByVal max_vel As Double, ByVal tacc As Double, ByVal tdec As Double, ByVal stop_vel As Double) As Int16 '单轴速度设置
+    Declare Function dmc_m_add_sigaxis_moveseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal Target_pos As Double, ByVal process_mode As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_sigaxis_move_twoseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal Target_pos As Double, ByVal second_pos As Double, ByVal second_vel As Double, ByVal second_endvel As Double, ByVal process_mode As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_mutiaxis_moveseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axisnum As UShort, ByVal axis_list() As UShort, ByVal Target_pos() As Double, ByVal process_mode As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_mutiaxis_move_twoseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axisnum As UShort, ByVal axis_list() As UShort, ByVal Target_pos() As Double, ByVal second_pos() As Double, ByVal second_vel() As Double, ByVal second_endvel() As Double, ByVal process_mode As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_ioTrig_movseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axisnum As UShort, ByVal axis_list() As UShort, ByVal Target_pos() As Double, ByVal process_mode As UShort, ByVal trigINbit As UShort, ByVal trigINstate As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_mutiposTrig_movseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal Target_pos As Double, ByVal process_mode As UShort, ByVal trigaxisNum As UShort, ByVal trigAxisList() As UShort, ByVal trigPos() As Double, ByVal trigPosType() As UShort, ByVal trigMode() As UShort, ByVal mark As UInt32) As Int16 '位置触发移动
+    Declare Function dmc_m_add_mutiposTrig_mov_twoseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal Target_pos As Double, ByVal softland_pos As Double, ByVal softland_vel As Double, ByVal softland_endvel As Double, ByVal process_mode As UShort, ByVal trigAxisNum As UShort, ByVal trigAxisList() As UShort, ByVal trigPos() As Double, ByVal trigPosType() As UShort, ByVal trigMode() As UShort, ByVal mark As UInt32) As Int16 '多轴位置触发移动
+    Declare Function dmc_m_add_upseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal Target_pos As Double, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_up_twoseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal Target_pos As Double, ByVal second_pos As Double, ByVal second_vel As Double, ByVal second_endvel As Double, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_ioPosTrig_movseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axisnum As UShort, ByVal axis_list() As UShort, ByVal Target_pos() As Double, ByVal process_mode As UShort, ByVal trigAxis As UShort, ByVal trigPos As Double, ByVal trigPosType As UShort, ByVal trigMode As UShort, ByVal TrigINNum As UShort, ByVal trigINList() As UShort, ByVal trigINstate() As UShort, ByVal mark As UInt32) As Int16 '位置+io触发移动
+    Declare Function dmc_m_add_ioPosTrig_mov_twoseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axisnum As UShort, ByVal axis_list() As UShort, ByVal Target_pos() As Double, ByVal second_pos() As Double, ByVal second_vel() As Double, ByVal second_endvel() As Double, ByVal process_mode As UShort, ByVal trigAxis As UShort, ByVal trigPos As Double, ByVal trigPosType As UShort, ByVal trigMode As UShort, ByVal TrigINNum As UShort, ByVal trigINList() As UShort, ByVal trigINstate() As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_posTrig_movseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axisnum As UShort, ByVal axis_list() As UShort, ByVal Target_pos() As Double, ByVal process_mode As UShort, ByVal trigAxis As UShort, ByVal trigPos As Double, ByVal trigPosType As UShort, ByVal trigMode As UShort, ByVal mark As UInt32) As Int16 '位置触发移动
+    Declare Function dmc_m_add_posTrig_mov_twoseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axisnum As UShort, ByVal axis_list() As UShort, ByVal Target_pos() As Double, ByVal second_pos() As Double, ByVal second_vel() As Double, ByVal second_endvel() As Double, ByVal process_mode As UShort, ByVal trigAxis As UShort, ByVal trigPos As Double, ByVal trigPosType As UShort, ByVal trigMode As UShort, ByVal mark As UInt32) As Int16 '位置触发移动
+    Declare Function dmc_m_add_ioPosTrig_down_seg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal safePos As Double, ByVal Target_pos As Double, ByVal trigaxisNum As UShort, ByVal trigAxisList() As UShort, ByVal trigPos() As Double, ByVal trigPosType() As UShort, ByVal trigMode() As UShort, ByVal trigIN As UShort, ByVal trigINstate As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_ioPosTrig_down_twoseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal safePos As Double, ByVal Target_pos As Double, ByVal second_pos As Double, ByVal second_vel As Double, ByVal second_endvel As Double, ByVal trigAxisNum As UShort, ByVal trigAxisList() As UShort, ByVal trigPos() As Double, ByVal trigPosType() As UShort, ByVal trigMode() As UShort, ByVal trigIN As UShort, ByVal trigINstate As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_posTrig_down_seg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal safePos As Double, ByVal Target_pos As Double, ByVal trigaxisNum As UShort, ByVal trigAxisList() As UShort, ByVal trigPos() As Double, ByVal trigPosType() As UShort, ByVal trigMode() As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_mutiposTrig_singledown_seg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal safePos As Double, ByVal Target_pos As Double, ByVal process_mode As UShort, ByVal trigaxisNum As UShort, ByVal trigAxisList() As UShort, ByVal trigPos() As Double, ByVal trigPosType() As UShort, ByVal trigMode() As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_mutiposTrig_mutidown_seg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axisnum As UShort, ByVal axis_list() As UShort, ByVal Safe_pos() As Double, ByVal Target_pos() As Double, ByVal process_mode As UShort, ByVal trigaxisNum As UShort, ByVal trigAxisList() As UShort, ByVal trigPos() As Double, ByVal trigPosType() As UShort, ByVal trigMode() As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_posTrig_down_twoseg_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal safePos As Double, ByVal Target_pos As Double, ByVal second_pos As Double, ByVal second_vel As Double, ByVal second_endvel As Double, ByVal trigAxisNum As UShort, ByVal trigAxisList() As UShort, ByVal trigPos() As Double, ByVal trigPosType() As UShort, ByVal trigMode() As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_posTrig_down_seg_cmd_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal safePos As Double, ByVal Target_pos As Double, ByVal trigaxisNum As UShort, ByVal trigAxisList() As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_add_posTrig_down_twoseg_cmd_data Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis As UShort, ByVal safePos As Double, ByVal Target_pos As Double, ByVal second_pos As Double, ByVal second_vel As Double, ByVal second_endvel As Double, ByVal trigAxisNum As UShort, ByVal trigAxisList() As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_posTrig_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal bitno As UShort, ByVal on_off As UShort, ByVal ahead_axis As UShort, ByVal ahead_value As Double, ByVal ahead_PosType As UShort, ByVal ahead_Mode As UShort, ByVal mark As UInt32) As Int16 '位置触发IO输出
+    Declare Function dmc_m_immediate_write_outbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal bitno As UShort, ByVal on_off As UShort, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_wait_input Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal bitno As UShort, ByVal on_off As UShort, ByVal time_out As Double, ByVal mark As UInt32) As Int16
+    Declare Function dmc_m_delay_time Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal delay_time As Double, ByVal mark As UInt32) As Int16 '延时指令
+    Declare Function dmc_m_get_run_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByRef state As UShort, ByRef enable As UShort, ByRef stop_reason As UInt32, ByRef trig_phase As UShort, ByRef mark As UInt32) As Int16
+    Declare Function dmc_m_open_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal axis_num As UShort, ByVal axis_list() As UShort) As Int16
+    Declare Function dmc_m_close_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16) As Int16
+    Declare Function dmc_m_start_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16) As Int16
+    Declare Function dmc_m_stop_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal stopMode As UInt16) As Int16
+    Declare Function dmc_m_pause_list Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal stopMode As UInt16) As Int16
+    Declare Function dmc_m_set_encoder_error_allow Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByVal allow_error As Double) As Int16
+    Declare Function dmc_m_get_encoder_error_allow Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal group As UInt16, ByRef allow_error As Double) As Int16
+
+    Declare Function dmc_get_ad_input_all Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef Vout As Double) As Int16
+    Declare Function dmc_conti_pmove_unit_pausemode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UShort, ByVal TargetPos As Double, ByVal Min_Vel As Double, ByVal Max_Vel As Double, ByVal stop_Vel As Double, ByVal acc As Double, ByVal dec As Double, ByVal smooth_time As Double, ByVal posi_mode As UShort) As Int16
+    Declare Function dmc_conti_return_pausemode Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UShort, ByVal axis As UShort) As Int16
+    Declare Function dmc_check_if_crc_support Lib "LTDMC.dll" (ByVal CardNo As UInt16) As Int16
+    '轴碰撞检测功能接口 
+    Declare Function dmc_set_axis_conflict_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis_list() As UShort, ByVal axis_depart_dir() As UShort, ByVal home_dist As Double, ByVal conflict_dist As Double, ByVal stop_mode As UShort) As Int16
+    Declare Function dmc_get_axis_conflict_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis_list() As UShort, ByVal axis_depart_dir() As UShort, ByRef home_dist As Double, ByRef conflict_dist As Double, ByRef stop_mode As UShort) As Int16
+    Declare Function dmc_axis_conflict_config_en Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal enable As UShort) As Int16
+    Declare Function dmc_get_axis_conflict_config_en Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef enable As UShort) As Int16
+    'trig_num 触发次数，trig_pos 触发位置
+    Declare Function dmc_get_pmove_change_pos_speed_state Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UShort, ByRef trig_num As UShort, ByVal trig_pos() As Double) As Int16
+    '读输入输出增加带返回值的接口
+    Declare Function dmc_read_inbit_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UShort, ByRef state As UShort) As Int16 '读取输入口的状态
+    Declare Function dmc_read_outbit_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal bitno As UShort, ByRef state As UShort) As Int16 '读取输出口的状态
+    Declare Function dmc_read_inport_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UShort, ByRef state As UInt32) As Int16 '读取输入端口的值
+    Declare Function dmc_read_outport_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal portno As UShort, ByRef state As UInt32) As Int16 '读取输出端口的值
+    '模块增加读取状态
+    '设置io输出
+    Declare Function nmc_write_outbit_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UShort, ByVal IoBit As UShort, ByVal IoValue As UShort, ByRef state As UShort) As Int16
+    '读取io输出
+    Declare Function nmc_read_outbit_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UShort, ByVal IoBit As UShort, ByRef IoValue As UShort, ByRef state As UShort) As Int16
+    '读取io输入
+    Declare Function nmc_read_inbit_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UShort, ByVal IoBit As UShort, ByRef IoValue As UShort, ByRef state As UShort) As Int16
+    '设置io输出32位
+    Declare Function nmc_write_outport_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UShort, ByVal portno As UShort, ByVal outport_val As UInt32, ByRef state As UShort) As Int16
+    '读取io输出32位
+    Declare Function nmc_read_outport_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UShort, ByVal portno As UShort, ByRef outport_val As UInt32, ByRef state As UShort) As Int16
+    '读取io输入32位
+    Declare Function nmc_read_inport_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UShort, ByVal portno As UShort, ByRef outport_val As UInt32, ByRef state As UShort) As Int16
+    '设置DA参数	
+    Declare Function nmc_set_da_output_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UInt16, ByVal channel As UInt16, ByVal Value As Double, ByRef state As UShort) As Int16
+    Declare Function nmc_get_da_output_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UInt16, ByVal channel As UInt16, ByRef Value As Double, ByRef state As UShort) As Int16
+    '读取AD参数
+    Declare Function nmc_get_ad_input_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UInt16, ByVal channel As UInt16, ByRef Value As Double, ByRef state As UShort) As Int16
+    '配置AD模式
+    Declare Function nmc_set_ad_mode_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UInt16, ByVal channel As UInt16, ByVal mode As UShort, ByVal buffer_nums As UInt32, ByRef state As UShort) As Int16
+    Declare Function nmc_get_ad_mode_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UInt16, ByVal channel As UInt16, ByRef mode As UShort, ByVal buffer_nums As UInt32, ByRef state As UShort) As Int16
+    '配置DA模式
+    Declare Function nmc_set_da_mode_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UInt16, ByVal channel As UInt16, ByVal mode As UShort, ByVal buffer_nums As UInt32, ByRef state As UShort) As Int16
+    Declare Function nmc_get_da_mode_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal NoteID As UInt16, ByVal channel As UInt16, ByRef mode As UShort, ByVal buffer_nums As UInt32, ByRef state As UShort) As Int16
+    '参数写入flash
+    Declare Function nmc_write_to_flash_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal PortNum As UInt16, ByVal NodeNum As UInt16, ByRef state As UShort) As Int16
+    '物件分拣加通道
+    Declare Function dmc_sorting_close_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_start_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_set_init_config_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cameraCount As UShort, ByVal pCameraPos() As Integer, ByVal pCamIONo() As UShort, ByVal cameraTime As UInt32, ByVal cameraTrigLevel As UShort, ByVal blowCount As UShort, ByVal pBlowPos() As Integer, ByVal pBlowIONo() As UShort, ByVal blowTime As UInt32, ByVal blowTrigLevel As UShort, ByVal axis As UShort, ByVal dir As UShort, ByVal checkMode As UShort, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_set_camera_trig_count_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cameraNum As UShort, ByVal cameraTrigCnt As UInt32, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_get_camera_trig_count_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal cameraNum As UShort, ByRef cameraTrigCnt As UInt32, ByVal count As UShort, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_set_blow_trig_count_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UShort, ByVal blowTrigCnt As UInt32, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_get_blow_trig_count_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UShort, ByRef blowTrigCnt As UInt32, ByVal count As UShort, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_get_camera_config_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal index As UShort, ByRef pos As Integer, ByRef trigTime As UInt32, ByRef ioNo As UShort, ByRef trigLevel As UShort, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_get_blow_config_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal index As UShort, ByRef pos As Integer, ByRef trigTime As UInt32, ByRef ioNo As UShort, ByRef trigLevel As UShort, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_get_blow_status_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef trigCntAll As UInt32, ByRef trigMore As UShort, ByRef trigLess As UShort, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_trig_blow_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UShort, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_set_blow_enable_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UShort, ByVal enable As UShort, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_set_piece_config_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal maxWidth As UInt32, ByVal minWidth As UInt32, ByVal minDistance As UInt32, ByVal minTimeIntervel As UInt32, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_get_piece_status_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef pieceFind As UInt32, ByRef piecePassCam As UInt32, ByRef dist2next As UInt32, ByRef pieceWidth As UInt32, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_set_cam_trig_phase_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UShort, ByVal coef As Double, ByVal sortModuleNo As UShort) As Int16
+    Declare Function dmc_sorting_set_blow_trig_phase_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowNum As UShort, ByVal coef As Double, ByVal sortModuleNo As UShort) As Int16
+    '获取分拣指令数量函数
+    Declare Function dmc_get_sortdev_blow_cmd_cnt Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowDevNum As UShort, ByRef cnt As Long) As Int16
+    '获取未处理指令数量函数函数
+    Declare Function dmc_get_sortdev_blow_cmderr_cnt Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal blowDevNum As UShort, ByRef errCnt As Long) As Int16
+    '分拣队列状态
+    Declare Function dmc_get_sortqueue_status Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef curSorQueueLen As Long, ByRef passCamWithNoCmd As Long) As Int16
+    '椭圆连续插补
+    Declare Function dmc_conti_ellipse_move_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UShort, ByVal AxisNum As UShort, ByVal AxisList() As UShort, ByVal Target_Pos() As Double, ByVal Cen_Pos() As Double, ByVal A_Axis_Len As Double, ByVal B_Axis_Len As Double, ByVal Dir As UShort, ByVal Pos_Mode As UShort, ByVal mark As Long) As Int16
+    '获取轴状态函数
+    Declare Function dmc_get_axis_status_advance Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis_no As UShort, ByVal motion_no As UShort, ByRef axis_plan_state As UShort, ByRef ErrPlulseCnt As UInt32, ByRef fpga_busy As UShort) As Int16
+    '连续插补vmove
+    Declare Function dmc_conti_vmove_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UShort, ByVal axis As UShort, ByVal vel As Double, ByVal acc As Double, ByVal dir As UShort, ByVal imark As Int32) As Int16
+    Declare Function dmc_conti_vmove_stop Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Crd As UShort, ByVal axis As UShort, ByVal dec As Double, ByVal imark As Int32) As Int16
+    '掉电保持（DMC3000/5000系列卡受限使用）
+    Declare Function dmc_set_persistent_reg_byte Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt32, ByVal inum As UInt32, ByVal pdata() As Byte) As Int16
+    Declare Function dmc_get_persistent_reg_byte Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt32, ByVal inum As UInt32, ByVal pdata() As Byte) As Int16
+    Declare Function dmc_set_persistent_reg_float Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt32, ByVal inum As UInt32, ByVal pdata() As Single) As Int16
+    Declare Function dmc_get_persistent_reg_float Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt32, ByVal inum As UInt32, ByVal pdata() As Single) As Int16
+    Declare Function dmc_set_persistent_reg_int Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt32, ByVal inum As UInt32, ByVal pdata() As Integer) As Int16
+    Declare Function dmc_get_persistent_reg_int Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal start As UInt32, ByVal inum As UInt32, ByVal pdata() As Integer) As Int16
+    'EtherCAT总线复位IO模块输出保持开关设置202001（适用于所有EtherCAT总线卡）
+    Declare Function nmc_set_slave_output_retain Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Enable As UInt16) As Int16
+    Declare Function nmc_get_slave_output_retain Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef Enable As UInt16) As Int16
+    '轴参数配置写flash，实现断电保存急停信号配置（适用于DMC3000系列脉冲卡）
+    Declare Function dmc_set_persistent_param_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal item As UInt32) As Int16
+    Declare Function dmc_get_persistent_param_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef item As UInt32) As Int16
+    '一维高速比较，添加的比较点关联运动方向，添加少量数据（适用于DMC5X10系列脉冲卡）
+    Declare Function dmc_hcmp_fifo_add_point_dir_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal num As UInt16, ByVal cmp_pos() As Double, ByVal dir As UInt32) As Int16
+    '一维高速比较，添加的比较点关联运动方向，添加大量数据（适用于DMC5X10系列脉冲卡）
+    Declare Function dmc_hcmp_fifo_add_table_dir Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal hcmp As UInt16, ByVal num As UInt16, ByVal cmp_pos() As Double, ByVal dir As UInt32) As Int16
+    '读取指定轴有关运动信号的状态（适用于所有卡）
+    Declare Function dmc_axis_io_status_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef state As UInt32) As Int16
+    '读取指定轴的运动状态（适用于所有卡）
+    Declare Function dmc_check_done_ex Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef state As UInt16) As Int16
+    '读取运行时是启动正常固件还是备份固件（适用于DMC3000/5000/5X10系列脉冲卡）
+    Declare Function dmc_get_firmware_boot_type Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef boot_type As UInt16) As Int16
+    '/**************************中断功能 （适用于DMC5X10系列脉冲卡）************************/
+    '开启控制卡中断功能
+    Declare Function dmc_int_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal funcIntHandler As DMC3K5K_OPERATE, ByVal operate_data As IntPtr) As UInt32
+    '禁止控制卡的中断
+    Declare Function dmc_int_disable Lib "LTDMC.dll" (ByVal CardNo As UInt16) As UInt32
+    '设置/读取指定控制卡中断通道使能
+    Declare Function dmc_set_intmode_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Intno As UInt16, ByVal Enable As UInt16) As Int16
+    Declare Function dmc_get_intmode_enable Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Intno As UInt16, ByRef Status As UInt16) As Int16
+    '设置/读取指定控制卡中断配置
+    Declare Function dmc_set_intmode_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Intno As UInt16, ByVal IntItem As UInt16, ByVal IntIndex As UInt16, ByVal IntSubIndex As UInt16, ByVal Logic As UInt16) As Int16
+    Declare Function dmc_get_intmode_config Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Intno As UInt16, ByRef IntItem As UInt16, ByRef IntIndex As UInt16, ByRef IntSubIndex As UInt16, ByRef Logic As UInt16) As Int16
+    '读取指定控制卡中断通道的中断状态
+    Declare Function dmc_get_int_status Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByRef IntStatus As UInt32) As Int16
+    '复位指定控制卡输入口的中断
+    Declare Function dmc_reset_int_status Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal Intno As UInt16) As Int16
+    '/**************************************************************************************/
+    'IO变速变位，配置io输入口（适用于EtherCAT总线系列卡）
+    Declare Function dmc_pmove_change_pos_speed_inbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal inbit As UInt16, ByVal enable As UInt16) As Int16
+    Declare Function dmc_get_pmove_change_pos_speed_inbit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef inbit As UInt16, ByRef enable As UInt16) As Int16
+    '圆形区域软限位unit（适用于DMC5X10系列脉冲卡）
+    Declare Function dmc_set_arc_zone_limit_config_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisList() As UInt16, ByVal AxisNum As UInt16, ByVal Center() As Double, ByVal Radius As Double, ByVal Source As UInt16, ByVal StopMode As UInt16) As Int16
+    Declare Function dmc_get_arc_zone_limit_config_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal AxisList() As UInt16, ByRef AxisNum As UInt16, ByVal Center() As Double, ByRef Radius As Double, ByRef Source As UInt16, ByRef StopMode As UInt16) As Int16
+    '设置/回读LTC端口触发延时急停轴配置（适用于EtherCAT总线系列卡）
+    Declare Function dmc_set_latch_stop_axis Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByVal num As UInt16, ByVal axislist() As UInt16) As Int16
+    Declare Function dmc_get_latch_stop_axis Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal latch As UInt16, ByRef num As UInt16, ByVal axislist() As UInt16) As Int16
+    '添加二维低速位置比较点（适用于EtherCAT总线系列卡）
+    Declare Function dmc_compare_add_point_cycle_2d Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis() As UInt16, ByVal pos() As Double, ByVal dir() As UInt16, ByVal bitno As UInt32, ByVal cycle As UInt32, ByVal level As UInt16) As Int16
+    '设置/回读位置误差带unit（适用于DMC5X10脉冲卡、EtherCAT总线卡）
+    Declare Function dmc_set_factor_error_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal factor As Double, ByVal err As Double) As Int16
+    Declare Function dmc_get_factor_error_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef factor As Double, ByRef err As Double) As Int16
+    '设置/回读脉冲计数值和编码器反馈值之间差值的报警阈值unit（适用于DMC5X10脉冲卡、EtherCAT总线卡）
+    Declare Function dmc_set_pulse_encoder_count_error_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByVal err As Double) As Int16
+    Declare Function dmc_get_pulse_encoder_count_error_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef err As Double) As Int16
+    '检查脉冲计数值和编码器反馈值之间差值是否超过报警阈值unit（适用于DMC5X10脉冲卡、EtherCAT总线卡）
+    Declare Function dmc_check_pulse_encoder_count_error_unit Lib "LTDMC.dll" (ByVal CardNo As UInt16, ByVal axis As UInt16, ByRef pulse_position As Double, ByRef enc_position As Double) As Int16
+
+End Module
+

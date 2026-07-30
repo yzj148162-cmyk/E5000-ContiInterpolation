@@ -1,0 +1,42 @@
+<html>
+<body>
+<pre>
+<h1>Build Log</h1>
+<h3>
+--------------------Configuration: DMCd1 - Win32 Debug--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating command line "rc.exe /l 0x804 /fo"Debug/DMCd1.res" /d "_DEBUG" /d "_AFXDLL" "G:\PC软件组2016\2018-工作-J\E3032\VC\例13_下载EtherCAT配置文件\DMCd1.rc"" 
+Creating temporary file "C:\Users\ADMINI~1\AppData\Local\Temp\RSPA17E.tmp" with contents
+[
+/nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /D "_AFXDLL" /D "_MBCS" /FR"Debug/" /Fp"Debug/DMCd1.pch" /YX"stdafx.h" /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
+"G:\PC软件组2016\2018-工作-J\E3032\VC\例13_下载EtherCAT配置文件\DMCd1.cpp"
+"G:\PC软件组2016\2018-工作-J\E3032\VC\例13_下载EtherCAT配置文件\DMCd1Dlg.cpp"
+]
+Creating command line "cl.exe @C:\Users\ADMINI~1\AppData\Local\Temp\RSPA17E.tmp" 
+Creating temporary file "C:\Users\ADMINI~1\AppData\Local\Temp\RSPA17F.tmp" with contents
+[
+/nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /D "_AFXDLL" /D "_MBCS" /FR"Debug/" /Fp"Debug/DMCd1.pch" /Yc"stdafx.h" /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
+"G:\PC软件组2016\2018-工作-J\E3032\VC\例13_下载EtherCAT配置文件\StdAfx.cpp"
+]
+Creating command line "cl.exe @C:\Users\ADMINI~1\AppData\Local\Temp\RSPA17F.tmp" 
+Creating command line "link.exe /nologo /subsystem:windows /incremental:yes /pdb:"Debug/DMCd1.pdb" /debug /machine:I386 /out:"Debug/DMCd1.exe" /pdbtype:sept  ".\Debug\DMCd1.obj" ".\Debug\DMCd1Dlg.obj" ".\Debug\StdAfx.obj" ".\Debug\DMCd1.res" ".\LTDMC.lib" "
+<h3>Output Window</h3>
+Compiling resources...
+Compiling...
+StdAfx.cpp
+Compiling...
+DMCd1.cpp
+DMCd1Dlg.cpp
+Linking...
+Creating command line "bscmake.exe /nologo /o"Debug/DMCd1.bsc"  ".\Debug\StdAfx.sbr" ".\Debug\DMCd1.sbr" ".\Debug\DMCd1Dlg.sbr""
+Creating browse info file...
+<h3>Output Window</h3>
+
+
+
+<h3>Results</h3>
+DMCd1.exe - 0 error(s), 0 warning(s)
+</pre>
+</body>
+</html>

@@ -1,0 +1,36 @@
+<html>
+<body>
+<pre>
+<h1>Build Log</h1>
+<h3>
+--------------------Configuration: DMCd1 - Win32 Debug--------------------
+</h3>
+<h3>Command Lines</h3>
+Creating command line "rc.exe /l 0x804 /fo"Debug/DMCd1.res" /d "_DEBUG" /d "_AFXDLL" "G:\PC软件组2016\2017-工作-J\5000控制卡例程\总线卡例程\VC6.0_5000_20170623\例12_总线操作\DMCd1.rc"" 
+Creating temporary file "C:\Users\ADMINI~1\AppData\Local\Temp\RSP5FDC.tmp" with contents
+[
+/nologo /MDd /W3 /Gm /GX /ZI /Od /D "WIN32" /D "_DEBUG" /D "_WINDOWS" /D "_AFXDLL" /D "_MBCS" /FR"Debug/" /Fp"Debug/DMCd1.pch" /YX"stdafx.h" /Fo"Debug/" /Fd"Debug/" /FD /GZ /c 
+"G:\PC软件组2016\2017-工作-J\5000控制卡例程\总线卡例程\VC6.0_5000_20170623\例12_总线操作\DMCd1Dlg.cpp"
+]
+Creating command line "cl.exe @C:\Users\ADMINI~1\AppData\Local\Temp\RSP5FDC.tmp" 
+Creating command line "link.exe /nologo /subsystem:windows /incremental:yes /pdb:"Debug/DMCd1.pdb" /debug /machine:I386 /out:"Debug/DMCd1.exe" /pdbtype:sept  ".\Debug\DMCd1.obj" ".\Debug\DMCd1Dlg.obj" ".\Debug\StdAfx.obj" ".\Debug\DMCd1.res" ".\LTDMC.lib" "
+<h3>Output Window</h3>
+Compiling resources...
+Compiling...
+DMCd1Dlg.cpp
+G:\PC软件组2016\2017-工作-J\5000控制卡例程\总线卡例程\VC6.0_5000_20170623\例12_总线操作\DMCd1Dlg.cpp(356) : warning C4244: 'initializing' : conversion from 'long' to 'unsigned short', possible loss of data
+G:\PC软件组2016\2017-工作-J\5000控制卡例程\总线卡例程\VC6.0_5000_20170623\例12_总线操作\DMCd1Dlg.cpp(357) : warning C4244: 'initializing' : conversion from 'long' to 'unsigned short', possible loss of data
+G:\PC软件组2016\2017-工作-J\5000控制卡例程\总线卡例程\VC6.0_5000_20170623\例12_总线操作\DMCd1Dlg.cpp(408) : warning C4244: 'initializing' : conversion from 'long' to 'unsigned short', possible loss of data
+G:\PC软件组2016\2017-工作-J\5000控制卡例程\总线卡例程\VC6.0_5000_20170623\例12_总线操作\DMCd1Dlg.cpp(409) : warning C4244: 'initializing' : conversion from 'long' to 'unsigned short', possible loss of data
+Linking...
+Creating command line "bscmake.exe /nologo /o"Debug/DMCd1.bsc"  ".\Debug\StdAfx.sbr" ".\Debug\DMCd1.sbr" ".\Debug\DMCd1Dlg.sbr""
+Creating browse info file...
+<h3>Output Window</h3>
+
+
+
+<h3>Results</h3>
+DMCd1.exe - 0 error(s), 0 warning(s)
+</pre>
+</body>
+</html>

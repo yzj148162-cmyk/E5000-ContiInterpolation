@@ -1,0 +1,327 @@
+// Microsoft Visual C++ generated resource script.
+//
+#include "resource.h"
+
+#define APSTUDIO_READONLY_SYMBOLS
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 2 resource.
+//
+#include "afxres.h"
+
+/////////////////////////////////////////////////////////////////////////////
+#undef APSTUDIO_READONLY_SYMBOLS
+
+/////////////////////////////////////////////////////////////////////////////
+// 中文(简体，中国) resources
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHS)
+LANGUAGE LANG_CHINESE, SUBLANG_CHINESE_SIMPLIFIED
+#pragma code_page(936)
+
+#ifdef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// TEXTINCLUDE
+//
+
+1 TEXTINCLUDE 
+BEGIN
+    "resource.h\0"
+END
+
+2 TEXTINCLUDE 
+BEGIN
+    "#include ""afxres.h""\r\n"
+    "\0"
+END
+
+3 TEXTINCLUDE 
+BEGIN
+    "#define _AFX_NO_SPLITTER_RESOURCES\r\n"
+    "#define _AFX_NO_OLE_RESOURCES\r\n"
+    "#define _AFX_NO_TRACKER_RESOURCES\r\n"
+    "#define _AFX_NO_PROPERTY_RESOURCES\r\n"
+    "\r\n"
+    "#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHS)\r\n"
+    "#ifdef _WIN32\r\n"
+    "LANGUAGE 4, 2\r\n"
+    "#pragma code_page(936)\r\n"
+    "#endif //_WIN32\r\n"
+    "#include ""res\\DMCd1.rc2""  // non-Microsoft Visual C++ edited resources\r\n"
+    "#include ""l.chs\\afxres.rc""          // Standard components\r\n"
+    "#endif\r\n"
+    "\0"
+END
+
+#endif    // APSTUDIO_INVOKED
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Icon
+//
+
+// Icon with lowest ID value placed first to ensure application icon
+// remains consistent on all systems.
+IDR_MAINFRAME           ICON                    "res\\DMCd1.ico"
+IDI_ICON_GREEN          ICON                    "res\\icon1.ico"
+IDI_ICON_RED            ICON                    "res\\ico00001.ico"
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Dialog
+//
+
+IDD_DMCd1_DIALOG DIALOGEX 0, 0, 481, 370
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_VISIBLE | WS_CAPTION | WS_SYSMENU
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "IO"
+FONT 9, "宋体", 0, 0, 0x1
+BEGIN
+    GROUPBOX        "EtherCAT IO",IDC_STATIC,267,10,185,60
+    GROUPBOX        "通用输入口（0-7）",IDC_STATIC,9,9,249,92
+    LTEXT           "0",IDC_STATIC,28,20,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN0,19,28,20,20
+    LTEXT           "2",IDC_STATIC,84,20,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN2,73,28,20,20
+    LTEXT           "3",IDC_STATIC,110,20,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN3,100,28,20,20
+    LTEXT           "1",IDC_STATIC,56,20,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN1,46,28,20,20
+    LTEXT           "4",IDC_STATIC,136,20,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN4,127,28,20,20
+    LTEXT           "5",IDC_STATIC,165,20,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN5,154,28,20,20
+    LTEXT           "6",IDC_STATIC,191,20,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN6,181,28,20,20
+    LTEXT           "7",IDC_STATIC,218,20,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN7,208,28,20,20
+    GROUPBOX        "通用输出口（0-7）",IDC_STATIC,0,109,249,86
+    LTEXT           "0",IDC_STATIC,27,119,8,8
+    LTEXT           "2",IDC_STATIC,83,119,8,8
+    LTEXT           "3",IDC_STATIC,109,119,8,8
+    LTEXT           "1",IDC_STATIC,55,119,8,8
+    LTEXT           "4",IDC_STATIC,135,119,8,8
+    LTEXT           "5",IDC_STATIC,164,119,8,8
+    LTEXT           "6",IDC_STATIC,190,119,8,8
+    LTEXT           "7",IDC_STATIC,217,119,8,8
+    PUSHBUTTON      "",IDC_BUTTON_OUT0,19,128,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT1,46,128,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT2,73,128,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT3,100,128,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT4,127,128,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT5,154,128,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT6,181,128,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT7,208,128,21,21,BS_ICON
+    GROUPBOX        "EtherCAT-输入口",IDC_STATIC,8,197,249,81
+    LTEXT           "0",IDC_STATIC,27,208,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN0,18,216,20,20
+    LTEXT           "2",IDC_STATIC,83,208,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN2,72,216,20,20
+    LTEXT           "3",IDC_STATIC,109,208,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN3,99,216,20,20
+    LTEXT           "1",IDC_STATIC,55,208,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN1,45,216,20,20
+    LTEXT           "4",IDC_STATIC,135,208,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN4,126,216,20,20
+    LTEXT           "5",IDC_STATIC,164,208,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN5,153,216,20,20
+    LTEXT           "6",IDC_STATIC,190,208,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN6,180,216,20,20
+    LTEXT           "7",IDC_STATIC,217,208,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN7,207,216,20,20
+    LTEXT           "8",IDC_STATIC,27,240,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN8,18,248,20,20
+    LTEXT           "10",IDC_STATIC,83,240,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN10,73,248,20,20
+    LTEXT           "11",IDC_STATIC,109,240,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN11,99,248,20,20
+    LTEXT           "9",IDC_STATIC,55,240,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN9,45,248,20,20
+    LTEXT           "12",IDC_STATIC,136,240,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN12,127,248,20,20
+    LTEXT           "13",IDC_STATIC,165,240,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN13,153,248,20,20
+    LTEXT           "14",IDC_STATIC,191,240,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN14,181,248,20,20
+    LTEXT           "15",IDC_STATIC,217,240,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_CANIN15,207,248,20,20
+    GROUPBOX        "EtherCAT-输出口",IDC_STATIC,8,284,249,81
+    LTEXT           "0",IDC_STATIC,28,293,8,8
+    LTEXT           "2",IDC_STATIC,84,293,8,8
+    LTEXT           "3",IDC_STATIC,110,293,8,8
+    LTEXT           "1",IDC_STATIC,56,293,8,8
+    LTEXT           "4",IDC_STATIC,136,293,8,8
+    LTEXT           "5",IDC_STATIC,164,293,8,8
+    LTEXT           "6",IDC_STATIC,190,293,8,8
+    LTEXT           "7",IDC_STATIC,218,293,8,8
+    LTEXT           "8",IDC_STATIC,28,325,8,8
+    LTEXT           "10",IDC_STATIC,84,325,8,8
+    LTEXT           "11",IDC_STATIC,110,325,8,8
+    LTEXT           "9",IDC_STATIC,56,325,8,8
+    LTEXT           "12",IDC_STATIC,136,325,8,8
+    LTEXT           "13",IDC_STATIC,166,325,8,8
+    LTEXT           "14",IDC_STATIC,192,325,8,8
+    LTEXT           "15",IDC_STATIC,218,325,8,8
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT0,20,302,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT1,46,302,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT2,74,302,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT3,100,302,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT4,128,302,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT5,154,302,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT6,182,302,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT7,208,302,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT8,20,336,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT9,46,336,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT10,74,336,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT11,100,336,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT12,128,336,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT13,154,336,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT14,182,336,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_CANOUT15,208,336,21,21,BS_ICON
+    LTEXT           "EtherCAT IO输入数:",IDC_STATIC,276,27,80,8
+    EDITTEXT        IDC_EDIT_CanNodeNum,357,24,51,14,ES_AUTOHSCROLL | ES_READONLY
+    LTEXT           "EtherCAT IO输出数:",IDC_STATIC,278,48,78,8
+    EDITTEXT        IDC_EDIT_CanStatus,355,49,51,14,ES_AUTOHSCROLL | ES_READONLY
+    PUSHBUTTON      "退出程序",IDC_BUTTON_Exit,327,239,59,20
+    LTEXT           "本例程为DMC-E5032总线卡接了一个EM32DX-E1 EtherCAT总线IO扩展模块(16入16出)",IDC_STATIC,279,193,162,40
+    GROUPBOX        "复位操作及总线状态",IDC_STATIC,269,82,182,103
+    PUSHBUTTON      "硬件复位",IDC_Button_HardwareReset,302,118,47,21
+    PUSHBUTTON      "软件复位",IDC_Button_SoftwareReset,362,118,47,21
+    LTEXT           "总线状态：",IDC_STATIC,304,99,41,8
+    EDITTEXT        IDC_EDIT_EtherCatState,346,96,75,14,ES_AUTOHSCROLL | ES_READONLY | ES_NUMBER
+    LTEXT           "",IDC_STATIC_Message,302,150,121,24
+    GROUPBOX        "",IDC_STATIC,290,141,143,40
+    LTEXT           "8",IDC_STATIC,28,54,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN8,19,62,20,20
+    LTEXT           "10",IDC_STATIC,84,54,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN10,73,62,20,20
+    LTEXT           "11",IDC_STATIC,110,54,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN11,100,62,20,20
+    LTEXT           "9",IDC_STATIC,56,54,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN9,46,62,20,20
+    LTEXT           "12",IDC_STATIC,136,54,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN12,127,62,20,20
+    LTEXT           "13",IDC_STATIC,165,54,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN13,154,62,20,20
+    LTEXT           "14",IDC_STATIC,191,54,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN14,181,62,20,20
+    LTEXT           "15",IDC_STATIC,218,54,8,8
+    ICON            IDI_ICON_RED,IDC_STATIC_IN15,208,62,20,20
+    LTEXT           "8",IDC_STATIC,23,155,8,8
+    LTEXT           "10",IDC_STATIC,79,155,8,8
+    LTEXT           "11",IDC_STATIC,105,155,8,8
+    LTEXT           "9",IDC_STATIC,51,155,8,8
+    LTEXT           "12",IDC_STATIC,131,155,8,8
+    LTEXT           "13",IDC_STATIC,161,155,8,8
+    LTEXT           "14",IDC_STATIC,187,155,8,8
+    LTEXT           "15",IDC_STATIC,213,155,8,8
+    PUSHBUTTON      "",IDC_BUTTON_OUT15,209,166,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT8,17,165,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT9,44,165,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT10,71,165,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT11,98,165,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT12,125,165,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT13,152,165,21,21,BS_ICON
+    PUSHBUTTON      "",IDC_BUTTON_OUT14,179,165,21,21,BS_ICON
+END
+
+IDD_DIALOG1 DIALOG 0, 0, 187, 96
+STYLE DS_SETFONT | DS_MODALFRAME | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "对话"
+FONT 10, "System"
+BEGIN
+    DEFPUSHBUTTON   "确定",IDOK,130,7,50,14
+    PUSHBUTTON      "取消",IDCANCEL,130,24,50,14
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// Version
+//
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION 1,0,0,1
+ PRODUCTVERSION 1,0,0,1
+ FILEFLAGSMASK 0x3fL
+#ifdef _DEBUG
+ FILEFLAGS 0x1L
+#else
+ FILEFLAGS 0x0L
+#endif
+ FILEOS 0x4L
+ FILETYPE 0x1L
+ FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "080404B0"
+        BEGIN
+            VALUE "FileDescription", "DMCd1 Microsoft 基础类应用程序"
+            VALUE "FileVersion", "1, 0, 0, 1"
+            VALUE "InternalName", "DMCd1"
+            VALUE "LegalCopyright", "版权所有 (C) 2007"
+            VALUE "OriginalFilename", "DMCd1.EXE"
+            VALUE "ProductName", "DMCd1 应用程序"
+            VALUE "ProductVersion", "1, 0, 0, 1"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x804, 1200
+    END
+END
+
+
+/////////////////////////////////////////////////////////////////////////////
+//
+// DESIGNINFO
+//
+
+#ifdef APSTUDIO_INVOKED
+GUIDELINES DESIGNINFO
+BEGIN
+    IDD_DMCd1_DIALOG, DIALOG
+    BEGIN
+        BOTTOMMARGIN, 368
+    END
+
+    IDD_DIALOG1, DIALOG
+    BEGIN
+        LEFTMARGIN, 7
+        RIGHTMARGIN, 180
+        TOPMARGIN, 7
+        BOTTOMMARGIN, 89
+    END
+END
+#endif    // APSTUDIO_INVOKED
+
+#endif    // 中文(简体，中国) resources
+/////////////////////////////////////////////////////////////////////////////
+
+
+
+#ifndef APSTUDIO_INVOKED
+/////////////////////////////////////////////////////////////////////////////
+//
+// Generated from the TEXTINCLUDE 3 resource.
+//
+#define _AFX_NO_SPLITTER_RESOURCES
+#define _AFX_NO_OLE_RESOURCES
+#define _AFX_NO_TRACKER_RESOURCES
+#define _AFX_NO_PROPERTY_RESOURCES
+
+#if !defined(AFX_RESOURCE_DLL) || defined(AFX_TARG_CHS)
+#ifdef _WIN32
+LANGUAGE 4, 2
+#pragma code_page(936)
+#endif //_WIN32
+#include "res\DMCd1.rc2"  // non-Microsoft Visual C++ edited resources
+#include "l.chs\afxres.rc"          // Standard components
+#endif
+
+/////////////////////////////////////////////////////////////////////////////
+#endif    // not APSTUDIO_INVOKED
+

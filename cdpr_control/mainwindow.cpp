@@ -1,0 +1,1818 @@
+#include "mainwindow.h"
+
+#include "ui_mainwindow.h"
+
+#include <QApplication>
+#include <QClipboard>
+#include <QDateTime>
+#include <QDir>
+#include <QFileDialog>
+#include <QMetaObject>
+#include <QPainter>
+#include <QPen>
+#include <QSignalBlocker>
+#include <QStringList>
+#include <QThread>
+#include <QTimer>
+#include <QTableWidgetItem>
+
+#include <QtCharts/QChart>
+#include <QtCharts/QChartView>
+#include <QtCharts/QLineSeries>
+#include <QtCharts/QValueAxis>
+
+#include <cmath>
+#include <initializer_list>
+#include <limits>
+
+#ifdef Q_OS_WIN
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <winver.h>
+#endif
+
+#include "hardware/MotionControlWorker.h"
+#include "cdpr/CdprCoordinator.h"
+#include "widgets/ZoomableChartView.h"
+
+namespace {
+QString leadshineRuntimeDescription()
+{
+#ifdef Q_OS_WIN
+    const HMODULE module = GetModuleHandleW(L"LTDMC.dll");
+    if (module == nullptr) {
+        return QStringLiteral("雷赛运行库诊断：当前进程尚未加载 LTDMC.dll。");
+    }
+
+    wchar_t pathBuffer[32768] {};
+    const DWORD pathLength =
+        GetModuleFileNameW(module, pathBuffer,
+                           static_cast<DWORD>(std::size(pathBuffer)));
+    const QString path = pathLength > 0
+        ? QString::fromWCharArray(pathBuffer, static_cast<qsizetype>(pathLength))
+        : QStringLiteral("<路径读取失败>");
+
+    QString version = QStringLiteral("<版本资源读取失败>");
+    DWORD ignored = 0;
+    const DWORD versionBytes = GetFileVersionInfoSizeW(pathBuffer, &ignored);
+    if (versionBytes > 0) {
+        QByteArray versionData(static_cast<qsizetype>(versionBytes), '\0');
+        if (GetFileVersionInfoW(pathBuffer, 0, versionBytes,
+                                versionData.data()) != FALSE) {
+            VS_FIXEDFILEINFO *fixedInfo = nullptr;
+            UINT fixedInfoBytes = 0;
+            if (VerQueryValueW(versionData.data(), L"\\",
+                               reinterpret_cast<void **>(&fixedInfo),
+                               &fixedInfoBytes) != FALSE
+                && fixedInfo != nullptr
+                && fixedInfoBytes >= sizeof(VS_FIXEDFILEINFO)) {
+                version = QStringLiteral("%1.%2.%3.%4")
+                    .arg(HIWORD(fixedInfo->dwFileVersionMS))
+                    .arg(LOWORD(fixedInfo->dwFileVersionMS))
+                    .arg(HIWORD(fixedInfo->dwFileVersionLS))
+                    .arg(LOWORD(fixedInfo->dwFileVersionLS));
+            }
+        }
+    }
+    return QStringLiteral("雷赛运行库诊断：已加载 LTDMC.dll %1；路径=%2")
+        .arg(version, QDir::toNativeSeparators(path));
+#else
+    return QStringLiteral("雷赛运行库诊断：当前平台不支持读取 Windows DLL 版本。");
+#endif
+}
+}
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui_(new Ui::MainWindow)
+    , workerThread_(new QThread(this))
+    , worker_(new MotionControlWorker)
+    , cdprThread_(new QThread(this))
+    , cdprCoordinator_(new CdprCoordinator)
+{
+    ui_->setupUi(this);
+    normalizeProducerPeriodForBusCycle();
+    updateBusPeriodUi();
+    initializeContiTrajectoryChart();
+    initializeVelocityControlCharts();
+    initializeTorqueTestCharts();
+    initializeUiRefreshTimer();
+    onStageChanged(ui_->stageCombo->currentIndex());
+
+    worker_->moveToThread(workerThread_);
+    cdprCoordinator_->moveToThread(cdprThread_);
+    connectWorker();
+    workerThread_->start();
+    cdprThread_->start();
+    appendLog(QStringLiteral("程序已启动：请先初始化控制卡，再使能所选测试轴。"));
+    appendLog(leadshineRuntimeDescription());
+}
+
+MainWindow::~MainWindow()
+{
+    if (cdprThread_->isRunning()) {
+        cdprThread_->quit();
+        cdprThread_->wait();
+    }
+    delete cdprCoordinator_;
+    if (workerThread_->isRunning()) {
+        QMetaObject::invokeMethod(worker_, "shutdownHardware", Qt::BlockingQueuedConnection);
+        workerThread_->quit();
+        workerThread_->wait();
+    }
+    delete worker_;
+    delete ui_;
+}
+
+void MainWindow::connectWorker()
+{
+    connect(ui_->stageCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onStageChanged);
+    connect(ui_->trajectoryPointModeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int) { onStageChanged(ui_->stageCombo->currentIndex()); });
+    connect(ui_->busCycleCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onBusCycleSelectionChanged);
+    connect(ui_->cardUnitDefinitionCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int) { updateGlobalCardUnitUi(); });
+    connect(ui_->cardCustomEquivalentSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [this](double) { updateGlobalCardUnitUi(); });
+    updateGlobalCardUnitUi();
+    connect(ui_->velocityTrajectoryTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            ui_->velocityTrajectoryParameterStack, &QStackedWidget::setCurrentIndex);
+    ui_->velocityTrajectoryParameterStack->setCurrentIndex(
+        ui_->velocityTrajectoryTypeCombo->currentIndex());
+    connect(ui_->producerPeriodSpin, qOverload<int>(&QSpinBox::valueChanged),
+            this, &MainWindow::onProducerPeriodChanged);
+    connect(ui_->initializeButton, &QPushButton::clicked, this, &MainWindow::onInitializeClicked);
+    connect(ui_->closeBoardButton, &QPushButton::clicked, this, &MainWindow::onCloseBoardClicked);
+    connect(ui_->contiEnableAxesButton, &QPushButton::clicked, this, &MainWindow::onEnableAxesClicked);
+    connect(ui_->contiDisableAxesButton, &QPushButton::clicked, this, &MainWindow::onDisableAxesClicked);
+    connect(ui_->enableAllAxesButton, &QPushButton::clicked,
+            this, &MainWindow::onEnableAllAxesClicked);
+    connect(ui_->disableAllAxesButton, &QPushButton::clicked,
+            this, &MainWindow::onDisableAllAxesClicked);
+    connect(ui_->startButton, &QPushButton::clicked, this, &MainWindow::onStartClicked);
+    connect(ui_->stopButton, &QPushButton::clicked, this, &MainWindow::onStopClicked);
+    connect(ui_->emergencyStopButton, &QPushButton::clicked, this, &MainWindow::onEmergencyStopClicked);
+    connect(ui_->copyLogButton, &QPushButton::clicked, this, &MainWindow::onCopyLogClicked);
+    connect(ui_->clearLogButton, &QPushButton::clicked, this, &MainWindow::onClearLogClicked);
+    connect(ui_->jogEnableButton, &QPushButton::clicked, this, &MainWindow::onEnableJogAxisClicked);
+    connect(ui_->jogDisableButton, &QPushButton::clicked, this, &MainWindow::onDisableJogAxisClicked);
+    connect(ui_->jogSetCurrentZeroButton, &QPushButton::clicked,
+            this, &MainWindow::onSetJogAxisZeroClicked);
+    connect(ui_->jogStartButton, &QPushButton::clicked, this, &MainWindow::onStartPointMoveClicked);
+    connect(ui_->jogStopButton, &QPushButton::clicked, this, &MainWindow::onStopPointMoveClicked);
+    connect(ui_->jogEmergencyStopButton, &QPushButton::clicked,
+            this, &MainWindow::onEmergencyStopPointMoveClicked);
+    connect(ui_->jogUseActualPositionButton, &QPushButton::clicked,
+            this, &MainWindow::onUseActualPositionClicked);
+    connect(ui_->jogShowAbsoluteCheck, &QCheckBox::toggled,
+            this, &MainWindow::onJogPositionDisplayModeChanged);
+    connect(ui_->jogAxisCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, &MainWindow::onJogPositionDisplayModeChanged);
+    connect(ui_->startRecordingButton, &QPushButton::clicked,
+            this, &MainWindow::onStartRecordingClicked);
+    connect(ui_->stopRecordingButton, &QPushButton::clicked,
+            this, &MainWindow::onStopRecordingClicked);
+    connect(ui_->velocityEnableAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityEnableAxisClicked);
+    connect(ui_->velocityDisableAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityDisableAxisClicked);
+    connect(ui_->velocityStartButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityStartClicked);
+    connect(ui_->velocityStopButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityStopClicked);
+    connect(ui_->velocityEmergencyStopButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityEmergencyStopClicked);
+    connect(ui_->velocityResetButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityResetClicked);
+    connect(ui_->velocityClearCurvesButton, &QPushButton::clicked,
+            this, &MainWindow::onVelocityClearCurvesClicked);
+    connect(ui_->torqueOd6080RawSpin, qOverload<int>(&QSpinBox::valueChanged),
+            this, [this](int) {
+        updateTorqueOutputSpeedEquivalent();
+    });
+    updateTorqueOutputSpeedEquivalent();
+    connect(ui_->torqueEnableAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueEnableAxisClicked);
+    connect(ui_->torqueDisableAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueDisableAxisClicked);
+    connect(ui_->torqueWriteOdButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueWriteOdClicked);
+    connect(ui_->torqueStartButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueStartClicked);
+    connect(ui_->torqueUpdateButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueUpdateClicked);
+    connect(ui_->torqueStopButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueStopClicked);
+    connect(ui_->torqueEmergencyStopButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueEmergencyStopClicked);
+    connect(ui_->torqueClearCurvesButton, &QPushButton::clicked,
+            this, &MainWindow::onTorqueClearCurvesClicked);
+    connect(ui_->traceDelayStartButton, &QPushButton::clicked,
+            this, &MainWindow::onTraceDelayStartClicked);
+    connect(ui_->traceDelayStopButton, &QPushButton::clicked,
+            this, &MainWindow::onTraceDelayStopClicked);
+    connect(ui_->traceDelayEmergencyStopButton, &QPushButton::clicked,
+            this, &MainWindow::onTraceDelayEmergencyStopClicked);
+    connect(ui_->traceDelayResetAxisButton, &QPushButton::clicked,
+            this, &MainWindow::onTraceDelayResetAxisClicked);
+    connect(ui_->cdprLoadConfigButton, &QPushButton::clicked,
+            this, &MainWindow::onCdprLoadConfigurationClicked);
+    connect(ui_->cdprCreateTemplateButton, &QPushButton::clicked,
+            this, &MainWindow::onCdprCreateTemplateClicked);
+    connect(ui_->cdprValidateButton, &QPushButton::clicked,
+            this, [this] { emit validateCdprConfigurationRequested(); });
+
+    connect(this, &MainWindow::initializeBoardRequested, worker_, &MotionControlWorker::initializeBoard);
+    connect(this, &MainWindow::closeBoardRequested, worker_, &MotionControlWorker::closeBoard);
+    connect(this, &MainWindow::enableAxesRequested, worker_, &MotionControlWorker::enableSelectedAxes);
+    connect(this, &MainWindow::disableAxesRequested, worker_, &MotionControlWorker::disableSelectedAxes);
+    connect(this, &MainWindow::enableAllAxesRequested, worker_, &MotionControlWorker::enableAllDetectedAxes);
+    connect(this, &MainWindow::disableAllAxesRequested, worker_, &MotionControlWorker::disableAllDetectedAxes);
+    connect(this, &MainWindow::startTestRequested, worker_, &MotionControlWorker::startTest);
+    connect(this, &MainWindow::stopTestRequested, worker_, &MotionControlWorker::stopTest);
+    connect(this, &MainWindow::enableJogAxisRequested, worker_, &MotionControlWorker::enableJogAxis);
+    connect(this, &MainWindow::disableJogAxisRequested, worker_, &MotionControlWorker::disableJogAxis);
+    connect(this, &MainWindow::setJogAxisZeroRequested, worker_, &MotionControlWorker::setJogAxisZero);
+    connect(this, &MainWindow::startPointMoveRequested, worker_, &MotionControlWorker::startPointMove);
+    connect(this, &MainWindow::stopPointMoveRequested, worker_, &MotionControlWorker::stopPointMove);
+    connect(this, &MainWindow::startVelocityControlRequested,
+            worker_, &MotionControlWorker::startVelocityControl);
+    connect(this, &MainWindow::stopVelocityControlRequested,
+            worker_, &MotionControlWorker::stopVelocityControl);
+    connect(this, &MainWindow::resetVelocityControllerRequested,
+            worker_, &MotionControlWorker::resetVelocityController);
+    connect(this, &MainWindow::writeTorqueVelocityLimitRequested,
+            worker_, &MotionControlWorker::writeTorqueVelocityLimit);
+    connect(this, &MainWindow::startTorqueTestRequested,
+            worker_, &MotionControlWorker::startTorqueTest);
+    connect(this, &MainWindow::updateTorqueCommandRequested,
+            worker_, &MotionControlWorker::updateTorqueCommand);
+    connect(this, &MainWindow::stopTorqueTestRequested,
+            worker_, &MotionControlWorker::stopTorqueTest);
+    connect(this, &MainWindow::startTraceDelayCalibrationRequested,
+            worker_, &MotionControlWorker::startTraceDelayCalibration);
+    connect(this, &MainWindow::stopTraceDelayCalibrationRequested,
+            worker_, &MotionControlWorker::stopTraceDelayCalibration);
+    connect(this, &MainWindow::resetTraceDelayCalibrationAxisRequested,
+            worker_, &MotionControlWorker::resetTraceDelayCalibrationAxis);
+    connect(this, &MainWindow::startTelemetryRecordingRequested,
+            worker_, &MotionControlWorker::startTelemetryRecording);
+    connect(this, &MainWindow::stopTelemetryRecordingRequested,
+            worker_, &MotionControlWorker::stopTelemetryRecording);
+    connect(this, &MainWindow::refreshBusCycleRequested,
+            worker_, &MotionControlWorker::refreshBusCycle);
+    connect(this, &MainWindow::loadCdprConfigurationRequested,
+            cdprCoordinator_, &CdprCoordinator::loadConfiguration);
+    connect(this, &MainWindow::validateCdprConfigurationRequested,
+            cdprCoordinator_, &CdprCoordinator::validateConfiguration);
+    connect(this, &MainWindow::writeCdprConfigurationTemplateRequested,
+            cdprCoordinator_, &CdprCoordinator::writeConfigurationTemplate);
+    connect(ui_->readBusCycleButton, &QPushButton::clicked,
+            this, [this] { emit refreshBusCycleRequested(); });
+    connect(worker_, &MotionControlWorker::logMessage, this, &MainWindow::appendLog);
+    connect(worker_, &MotionControlWorker::statusChanged, this, [this](const ContiStatus &status) {
+        latestStatus_ = status;
+        hasLatestStatus_ = true;
+        statusUiDirty_ = true;
+    });
+    connect(worker_, &MotionControlWorker::statusChanged,
+            cdprCoordinator_, &CdprCoordinator::updateHardwareStatus);
+    connect(cdprCoordinator_, &CdprCoordinator::statusChanged,
+            this, &MainWindow::updateCdprStatus);
+    connect(cdprCoordinator_, &CdprCoordinator::logMessage,
+            this, &MainWindow::appendLog);
+    connect(worker_, &MotionControlWorker::velocityPlotSamplesReady,
+            this, [this](const QVector<VelocityPlotSample> &samples) {
+        constexpr qsizetype kMaximumPendingSamples = 20000;
+        pendingVelocityPlotSamples_ += samples;
+        const qsizetype overflow = pendingVelocityPlotSamples_.size() - kMaximumPendingSamples;
+        if (overflow > 0) {
+            pendingVelocityPlotSamples_.remove(0, overflow);
+        }
+    });
+    connect(worker_, &MotionControlWorker::torquePlotSamplesReady,
+            this, [this](const QVector<TorquePlotSample> &samples) {
+        constexpr qsizetype kMaximumPendingSamples = 20000;
+        pendingTorquePlotSamples_ += samples;
+        const qsizetype overflow =
+            pendingTorquePlotSamples_.size() - kMaximumPendingSamples;
+        if (overflow > 0) {
+            pendingTorquePlotSamples_.remove(0, overflow);
+        }
+    });
+}
+
+void MainWindow::onCdprLoadConfigurationClicked()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, QStringLiteral("加载CDPR配置"), QDir::currentPath(),
+        QStringLiteral("JSON配置 (*.json);;所有文件 (*)"));
+    if (!path.isEmpty()) {
+        emit loadCdprConfigurationRequested(path);
+    }
+}
+
+void MainWindow::onCdprCreateTemplateClicked()
+{
+    const QString path = QFileDialog::getSaveFileName(
+        this, QStringLiteral("生成CDPR配置模板"),
+        QDir::current().filePath(QStringLiteral("cdpr_configuration.json")),
+        QStringLiteral("JSON配置 (*.json)"));
+    if (!path.isEmpty()) {
+        emit writeCdprConfigurationTemplateRequested(path);
+    }
+}
+
+void MainWindow::updateCdprStatus(const CdprUiStatus &status)
+{
+    ui_->cdprConfigPathEdit->setText(status.configurationPath);
+    ui_->cdprStateValueLabel->setText(status.stateText);
+    ui_->cdprConfigIdValueLabel->setText(
+        status.configurationId.isEmpty() ? QStringLiteral("--")
+                                         : status.configurationId);
+    ui_->cdprOnlineAxesValueLabel->setText(
+        QStringLiteral("%1 / 8").arg(status.onlineAxisCount));
+    ui_->cdprSummaryEdit->setPlainText(status.summary);
+    ui_->cdprValidationEdit->setPlainText(
+        status.validationMessages.isEmpty()
+            ? (status.configurationValid
+                   ? QStringLiteral("配置校验通过。")
+                   : QStringLiteral("请加载配置文件。"))
+            : status.validationMessages.join(QStringLiteral("\n")));
+    ui_->cdprStateValueLabel->setStyleSheet(
+        status.configurationValid
+            ? QStringLiteral("QLabel { color: #2e7d32; font-weight: bold; }")
+            : QStringLiteral("QLabel { color: #c62828; font-weight: bold; }"));
+    ui_->cdprStartButton->setEnabled(status.controlStartAvailable);
+    ui_->cdprStopButton->setEnabled(false);
+
+    for (int row = 0; row < ui_->cdprAxisTable->rowCount(); ++row) {
+        QStringList values {
+            QString::number(row), QStringLiteral("--"), QStringLiteral("--"),
+            QStringLiteral("--"), QStringLiteral("--"),
+            QStringLiteral("否"), QStringLiteral("否")
+        };
+        if (row < status.axes.size()) {
+            const CdprAxisView &axis = status.axes.at(row);
+            values = {
+                QString::number(axis.cable),
+                QString::number(axis.axis),
+                axis.direction > 0 ? QStringLiteral("+1") : QStringLiteral("-1"),
+                axis.frameAnchor,
+                axis.platformAnchor,
+                axis.online ? QStringLiteral("是") : QStringLiteral("否"),
+                axis.enabled ? QStringLiteral("是") : QStringLiteral("否")
+            };
+        }
+        for (int column = 0; column < values.size(); ++column) {
+            QTableWidgetItem *item = ui_->cdprAxisTable->item(row, column);
+            if (item == nullptr) {
+                item = new QTableWidgetItem;
+                ui_->cdprAxisTable->setItem(row, column, item);
+            }
+            item->setText(values.at(column));
+        }
+    }
+    ui_->cdprAxisTable->resizeColumnsToContents();
+}
+
+ContiTestConfig MainWindow::collectConfig() const
+{
+    ContiTestConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.crdNo = static_cast<quint16>(ui_->crdSpin->value());
+    config.activeAxis = static_cast<quint16>(ui_->activeAxisCombo->currentText().toUInt());
+    config.holdAxis = static_cast<quint16>(ui_->holdAxisCombo->currentText().toUInt());
+    config.stage = ui_->stageCombo->currentIndex() == 0
+        ? TestStage::SingleActiveAxis : TestStage::DualAxis;
+    config.trajectoryPointMode = ui_->trajectoryPointModeCombo->currentIndex() == 0
+        ? TrajectoryPointMode::QuinticTimeLaw : TrajectoryPointMode::UniformDistance;
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
+    config.activeDeltaUnit = ui_->activeDeltaSpin->value();
+    config.holdDeltaUnit = ui_->holdDeltaSpin->value();
+    config.durationS = ui_->durationSpin->value();
+    config.busCycleUs = selectedBusCycleUs();
+    config.traceCycle = 1;
+    config.producerPeriodMs = ui_->producerPeriodSpin->value();
+    config.maxVectorVelocity = ui_->maxVelocitySpin->value();
+    config.accelerationTimeS = ui_->accelerationSpin->value();
+    config.decelerationTimeS = ui_->decelerationSpin->value();
+    config.sCurveTimeS = ui_->sCurveSpin->value();
+    config.speedRatio = ui_->speedRatioSpin->value();
+    config.lookaheadEnabled = ui_->lookaheadCheck->isChecked();
+    config.pathErrorUnit = ui_->pathErrorSpin->value();
+    config.preloadAllTrajectoryToCard = ui_->preloadAllTrajectoryCheck->isChecked();
+    config.timeSyncEnabled = ui_->timeSyncEnableCheck->isChecked();
+    config.startupPreloadMs = ui_->preloadSegmentsSpin->value();
+    config.targetBufferMs = ui_->targetBufferSpin->value();
+    config.lowBufferMs = ui_->lowBufferSpin->value();
+    config.criticalBufferMs = ui_->criticalBufferSpin->value();
+    config.executionDelayMs = ui_->executionDelaySpin->value();
+    config.ratioUpdatePeriodMs = ui_->ratioPeriodSpin->value();
+    config.ratioApiMinIntervalMs = ui_->ratioApiIntervalSpin->value();
+    config.ratioSafetyApiIntervalMs = ui_->ratioSafetyApiIntervalSpin->value();
+    config.ratioMin = ui_->ratioMinSpin->value();
+    config.ratioMax = ui_->speedRatioSpin->value();
+    config.phaseGainPerSecond = ui_->phaseGainSpin->value();
+    config.phaseDeadbandMs = ui_->phaseDeadbandSpin->value();
+    config.bufferGain = ui_->bufferGainSpin->value();
+    config.ratioDeadband = ui_->ratioDeadbandSpin->value();
+    config.ratioMaxStep = ui_->ratioStepSpin->value();
+    config.markOffset = ui_->markOffsetSpin->value();
+    return config;
+}
+
+SingleAxisJogConfig MainWindow::collectJogConfig() const
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis = static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt());
+    config.targetPositionUnit = ui_->jogTargetPositionSpin->value();
+    config.maxVelocityUnitPerSecond = ui_->jogVelocitySpin->value();
+    return config;
+}
+
+VelocityControlConfig MainWindow::collectVelocityConfig() const
+{
+    VelocityControlConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
+    config.trajectoryType = static_cast<VelocityTrajectoryType>(
+        ui_->velocityTrajectoryTypeCombo->currentIndex());
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
+    config.relativeDeltaDegree = ui_->velocityDeltaSpin->value();
+    config.sineAmplitudeDegree = ui_->velocitySineAmplitudeSpin->value();
+    config.sineFrequencyHz = ui_->velocitySineFrequencySpin->value();
+    config.chirpAmplitudeDegree = ui_->velocityChirpAmplitudeSpin->value();
+    config.chirpStartFrequencyHz = ui_->velocityChirpStartFrequencySpin->value();
+    config.chirpEndFrequencyHz = ui_->velocityChirpEndFrequencySpin->value();
+    config.durationS = ui_->velocityDurationSpin->value();
+    config.controlPeriodMs = ui_->velocityControlPeriodSpin->value();
+    config.pidEnabled = ui_->velocityPidEnableCheck->isChecked();
+    config.kp = ui_->velocityKpSpin->value();
+    config.ki = ui_->velocityKiSpin->value();
+    config.kd = ui_->velocityKdSpin->value();
+    config.integralLimitDegreeSecond = ui_->velocityIntegralLimitSpin->value();
+    config.maxPidCorrectionDegreePerSecond = ui_->velocityMaxCorrectionSpin->value();
+    config.velocityFeedforwardEnabled = ui_->velocityFeedforwardCheck->isChecked();
+    config.velocityFeedforwardGain = ui_->velocityFeedforwardGainSpin->value();
+    config.maxVelocityDegreePerSecond = ui_->velocityMaxSpeedSpin->value();
+    config.maxAccelerationDegreePerSecond2 = ui_->velocityMaxAccelerationSpin->value();
+    config.onlineChangeTimeS = ui_->velocityChangeTimeSpin->value();
+    config.startVelocityThresholdDegreePerSecond = ui_->velocityStartThresholdSpin->value();
+    config.positionToleranceDegree = ui_->velocityPositionToleranceSpin->value();
+    config.speedToleranceDegreePerSecond = ui_->velocitySpeedToleranceSpin->value();
+    config.stableDwellMs = ui_->velocityStableDwellSpin->value();
+    config.finishTimeoutMs = ui_->velocityFinishTimeoutSpin->value();
+    config.maxFollowingErrorDegree = ui_->velocityMaxFollowingErrorSpin->value();
+    config.traceTimeoutMs = ui_->velocityTraceTimeoutSpin->value();
+    return config;
+}
+
+TorqueTestConfig MainWindow::collectTorqueConfig() const
+{
+    TorqueTestConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis =
+        static_cast<quint16>(ui_->torqueAxisCombo->currentText().toUInt());
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
+    config.targetTorquePercent = ui_->torqueTargetSpin->value();
+    config.maximumCommandTorquePercent = ui_->torqueCommandLimitSpin->value();
+    config.maximumActualTorquePercent = ui_->torqueActualLimitSpin->value();
+    config.maximumTravelDegree = ui_->torqueTravelLimitSpin->value();
+    config.maximumSpeedDegreePerSecond = ui_->torqueSpeedLimitSpin->value();
+    config.monitorPeriodMs = ui_->torqueMonitorPeriodSpin->value();
+    config.traceTimeoutMs = ui_->torqueTraceTimeoutSpin->value();
+    config.maximumRunTimeMs = ui_->torqueRunTimeoutSpin->value();
+    config.hardwarePositionLimitEnabled =
+        ui_->torqueHardwareLimitCheck->isChecked();
+    config.maximumMotorSpeedRpm = ui_->torqueOd6080RawSpin->value();
+    return config;
+}
+
+void MainWindow::updateTorqueOutputSpeedEquivalent()
+{
+    const double motorRpm = ui_->torqueOd6080RawSpin->value();
+    const double outputRpm =
+        motorRpm / static_cast<double>(MotorUnit::kGearReductionRatio);
+    const double outputDegreePerSecond = outputRpm * 6.0;
+    ui_->torqueOutputSpeedEquivalentLabel->setText(
+        QStringLiteral("等效减速器输出轴上限：%1 rpm / %2 °/s（减速比 %3:1）")
+            .arg(outputRpm, 0, 'f', 3)
+            .arg(outputDegreePerSecond, 0, 'f', 3)
+            .arg(MotorUnit::kGearReductionRatio));
+}
+
+double MainWindow::selectedDegreesPerCardUnit() const
+{
+    switch (ui_->cardUnitDefinitionCombo->currentIndex()) {
+    case 1:
+        return 0.1;
+    case 2:
+        return 0.01;
+    case 3:
+        return ui_->cardCustomEquivalentSpin->value()
+            / MotorUnit::kPhysicalPulsesPerDegree;
+    default:
+        return 1.0;
+    }
+}
+
+void MainWindow::updateGlobalCardUnitUi()
+{
+    const bool custom = ui_->cardUnitDefinitionCombo->currentIndex() == 3;
+    const bool editable = ui_->cardUnitDefinitionCombo->isEnabled();
+    ui_->cardCustomEquivalentLabel->setEnabled(custom && editable);
+    ui_->cardCustomEquivalentSpin->setEnabled(custom && editable);
+
+    const double degreesPerCardUnit = selectedDegreesPerCardUnit();
+    const double pulsesPerCardUnit =
+        MotorUnit::pulsesPerCardUnit(degreesPerCardUnit);
+    ui_->equivValueLabel->setText(
+        QStringLiteral("%1 pulse/unit；1 unit=%2°；%3 pulse/rev")
+            .arg(pulsesPerCardUnit, 0, 'f', 6)
+            .arg(degreesPerCardUnit, 0, 'g', 8)
+            .arg(MotorUnit::kPulsesPerRevolution));
+}
+
+TraceDelayCalibrationConfig MainWindow::collectTraceDelayCalibrationConfig() const
+{
+    TraceDelayCalibrationConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis = static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt());
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
+    config.speedDegreePerSecond = {
+        ui_->traceDelaySpeed1Spin->value(),
+        ui_->traceDelaySpeed2Spin->value(),
+        ui_->traceDelaySpeed3Spin->value()
+    };
+    config.holdMs = ui_->traceDelayHoldSpin->value();
+    config.sampleWindowMs = ui_->traceDelaySampleWindowSpin->value();
+    config.restMs = ui_->traceDelayRestSpin->value();
+    config.onlineChangeTimeS = ui_->traceDelayChangeTimeSpin->value();
+    config.maximumSegmentTravelDegree = ui_->traceDelayTravelLimitSpin->value();
+    return config;
+}
+
+void MainWindow::onStageChanged(int index)
+{
+    const bool dualAxis = index == static_cast<int>(TestStage::DualAxis);
+    const bool uniformDistance = ui_->trajectoryPointModeCombo->currentIndex() == 1;
+    ui_->holdDeltaSpin->setEnabled(dualAxis);
+    ui_->holdDeltaLabel->setEnabled(dualAxis);
+    if (uniformDistance) {
+        ui_->stageHintLabel->setText(dualAxis
+            ? QStringLiteral("对照轨迹：两轴按同一线性比例产生等间距小线段，用于排查前瞻连接。")
+            : QStringLiteral("对照轨迹：主动轴产生等间距小线段；保持轴不产生位移。"));
+    } else {
+        ui_->stageHintLabel->setText(dualAxis
+            ? QStringLiteral("阶段二：两轴均按同一五次多项式比例运动。")
+            : QStringLiteral("阶段一：主动轴运动；保持轴只参与坐标系，不产生位移。"));
+    }
+}
+
+int MainWindow::selectedBusCycleUs() const
+{
+    return ui_->busCycleCombo->currentText().section(QLatin1Char(' '), 0, 0).toInt();
+}
+
+void MainWindow::normalizeProducerPeriodForBusCycle()
+{
+    const int busCycleUs = selectedBusCycleUs();
+    if (busCycleUs <= 0) {
+        return;
+    }
+    const int minimumMs = (busCycleUs + 999) / 1000;
+    ui_->producerPeriodSpin->setMinimum(minimumMs);
+    ui_->producerPeriodSpin->setSingleStep(busCycleUs >= 1000 ? minimumMs : 1);
+
+    const int requestedUs = ui_->producerPeriodSpin->value() * 1000;
+    const int alignedUs = qMax(busCycleUs,
+                                ((requestedUs + busCycleUs / 2) / busCycleUs) * busCycleUs);
+    const int alignedMs = (alignedUs + 999) / 1000;
+    if (alignedMs != ui_->producerPeriodSpin->value()) {
+        const QSignalBlocker blocker(ui_->producerPeriodSpin);
+        ui_->producerPeriodSpin->setValue(alignedMs);
+    }
+}
+
+void MainWindow::updateBusPeriodUi()
+{
+    const int selectedCycleUs = selectedBusCycleUs();
+    const bool boardReady = hasLatestStatus_ && latestStatus_.boardInitialized;
+    const int effectiveCycleUs = boardReady ? latestStatus_.busCycleUs : selectedCycleUs;
+    const int producerPeriodMs = ui_->producerPeriodSpin->value();
+    const bool aligned = effectiveCycleUs > 0
+        && (producerPeriodMs * 1000) % effectiveCycleUs == 0;
+
+    if (!boardReady) {
+        ui_->busCycleReadValueLabel->setText(QStringLiteral("待初始化"));
+        ui_->traceSampleValueLabel->setText(QStringLiteral("待初始化"));
+    }
+    ui_->contiPlanningAlignmentValueLabel->setText(aligned
+        ? QStringLiteral("%1 ms = %2 × %3 us")
+              .arg(producerPeriodMs)
+              .arg(producerPeriodMs * 1000 / effectiveCycleUs)
+              .arg(effectiveCycleUs)
+        : QStringLiteral("未与 %1 us 对齐").arg(effectiveCycleUs));
+}
+
+void MainWindow::onBusCycleSelectionChanged(int)
+{
+    normalizeProducerPeriodForBusCycle();
+    updateBusPeriodUi();
+}
+
+void MainWindow::onProducerPeriodChanged(int)
+{
+    normalizeProducerPeriodForBusCycle();
+    updateBusPeriodUi();
+}
+
+void MainWindow::onInitializeClicked()
+{
+    emit initializeBoardRequested(collectConfig());
+}
+
+void MainWindow::onCloseBoardClicked()
+{
+    emit closeBoardRequested();
+}
+
+void MainWindow::onEnableAxesClicked()
+{
+    emit enableAxesRequested(collectConfig());
+}
+
+void MainWindow::onDisableAxesClicked()
+{
+    emit disableAxesRequested(collectConfig());
+}
+
+void MainWindow::onEnableAllAxesClicked()
+{
+    emit enableAllAxesRequested();
+}
+
+void MainWindow::onDisableAllAxesClicked()
+{
+    emit disableAllAxesRequested();
+}
+
+void MainWindow::onStartClicked()
+{
+    emit startTestRequested(collectConfig());
+}
+
+void MainWindow::onStopClicked()
+{
+    emit stopTestRequested(false);
+}
+
+void MainWindow::onEmergencyStopClicked()
+{
+    emit stopTestRequested(true);
+}
+
+void MainWindow::onCopyLogClicked()
+{
+    const QString logText = ui_->logEdit->toPlainText();
+    if (logText.trimmed().isEmpty()) {
+        ui_->copyLogButton->setText(QStringLiteral("暂无日志"));
+    } else {
+        QApplication::clipboard()->setText(logText);
+        ui_->copyLogButton->setText(QStringLiteral("已复制"));
+    }
+    QTimer::singleShot(1200, this, [this] {
+        ui_->copyLogButton->setText(QStringLiteral("复制日志"));
+    });
+}
+
+void MainWindow::onClearLogClicked()
+{
+    ui_->logEdit->setPlainText(QStringLiteral("日志已清除。"));
+}
+
+void MainWindow::onEnableJogAxisClicked()
+{
+    emit enableJogAxisRequested(collectJogConfig());
+}
+
+void MainWindow::onDisableJogAxisClicked()
+{
+    emit disableJogAxisRequested(collectJogConfig());
+}
+
+void MainWindow::onSetJogAxisZeroClicked()
+{
+    emit setJogAxisZeroRequested(collectJogConfig());
+}
+
+void MainWindow::onStartPointMoveClicked()
+{
+    emit startPointMoveRequested(collectJogConfig());
+}
+
+void MainWindow::onStopPointMoveClicked()
+{
+    emit stopPointMoveRequested(false);
+}
+
+void MainWindow::onEmergencyStopPointMoveClicked()
+{
+    emit stopPointMoveRequested(true);
+}
+
+void MainWindow::onUseActualPositionClicked()
+{
+    // 相对点位模式下，该输入框是“本次移动距离”，不应填入当前位置。
+    ui_->jogTargetPositionSpin->setValue(0.0);
+}
+
+void MainWindow::onJogPositionDisplayModeChanged()
+{
+    if (hasLatestStatus_) {
+        updateStatus(latestStatus_);
+    }
+}
+
+void MainWindow::onStartRecordingClicked()
+{
+    emit startTelemetryRecordingRequested();
+}
+
+void MainWindow::onStopRecordingClicked()
+{
+    emit stopTelemetryRecordingRequested();
+}
+
+void MainWindow::onVelocityEnableAxisClicked()
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
+    emit enableJogAxisRequested(config);
+}
+
+void MainWindow::onVelocityDisableAxisClicked()
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis = static_cast<quint16>(ui_->velocityAxisCombo->currentText().toUInt());
+    emit disableJogAxisRequested(config);
+}
+
+void MainWindow::onVelocityStartClicked()
+{
+    emit startVelocityControlRequested(collectVelocityConfig());
+}
+
+void MainWindow::onVelocityStopClicked()
+{
+    emit stopVelocityControlRequested(false);
+}
+
+void MainWindow::onVelocityEmergencyStopClicked()
+{
+    emit stopVelocityControlRequested(true);
+}
+
+void MainWindow::onVelocityResetClicked()
+{
+    emit resetVelocityControllerRequested();
+}
+
+void MainWindow::onVelocityClearCurvesClicked()
+{
+    clearVelocityControlCharts();
+}
+
+void MainWindow::onTorqueEnableAxisClicked()
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis =
+        static_cast<quint16>(ui_->torqueAxisCombo->currentText().toUInt());
+    emit enableJogAxisRequested(config);
+}
+
+void MainWindow::onTorqueDisableAxisClicked()
+{
+    SingleAxisJogConfig config;
+    config.cardNo = static_cast<quint16>(ui_->cardSpin->value());
+    config.axis =
+        static_cast<quint16>(ui_->torqueAxisCombo->currentText().toUInt());
+    emit disableJogAxisRequested(config);
+}
+
+void MainWindow::onTorqueWriteOdClicked()
+{
+    emit writeTorqueVelocityLimitRequested(collectTorqueConfig());
+}
+
+void MainWindow::onTorqueStartClicked()
+{
+    emit startTorqueTestRequested(collectTorqueConfig());
+}
+
+void MainWindow::onTorqueUpdateClicked()
+{
+    emit updateTorqueCommandRequested(collectTorqueConfig());
+}
+
+void MainWindow::onTorqueStopClicked()
+{
+    emit stopTorqueTestRequested(false);
+}
+
+void MainWindow::onTorqueEmergencyStopClicked()
+{
+    emit stopTorqueTestRequested(true);
+}
+
+void MainWindow::onTorqueClearCurvesClicked()
+{
+    clearTorqueTestCharts();
+}
+
+void MainWindow::onTraceDelayStartClicked()
+{
+    emit startTraceDelayCalibrationRequested(collectTraceDelayCalibrationConfig());
+}
+
+void MainWindow::onTraceDelayStopClicked()
+{
+    emit stopTraceDelayCalibrationRequested(false);
+}
+
+void MainWindow::onTraceDelayEmergencyStopClicked()
+{
+    emit stopTraceDelayCalibrationRequested(true);
+}
+
+void MainWindow::onTraceDelayResetAxisClicked()
+{
+    emit resetTraceDelayCalibrationAxisRequested(
+        static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt()));
+}
+
+void MainWindow::appendLog(const QString &message)
+{
+    const QString time = QDateTime::currentDateTime().toString(QStringLiteral("HH:mm:ss.zzz"));
+    ui_->logEdit->appendPlainText(QStringLiteral("[%1] %2").arg(time, message));
+}
+
+void MainWindow::updateStatus(const ContiStatus &status)
+{
+    latestStatus_ = status;
+    hasLatestStatus_ = true;
+    const bool showAbsolutePosition = ui_->jogShowAbsoluteCheck->isChecked();
+    ui_->jogActualPositionLabel->setText(showAbsolutePosition
+        ? QStringLiteral("实际绝对位置（Trace）")
+        : QStringLiteral("实际相对位置（Trace）"));
+    ui_->stateValueLabel->setText(status.stateText);
+    ui_->contiRunStateValueLabel->setText(QString::number(status.runState));
+    ui_->contiMarkValueLabel->setText(QStringLiteral("%1 / %2").arg(status.currentMark).arg(status.pushedMark));
+    ui_->contiBufferValueLabel->setText(QString::number(qMax(0L, status.pushedMark - status.currentMark)));
+    ui_->contiSpaceValueLabel->setText(QString::number(status.remainSpace));
+    ui_->contiHostQueueValueLabel->setText(QString::number(status.hostQueueSize));
+    ui_->busCycleCombo->setEnabled(!status.boardInitialized);
+    ui_->cardUnitDefinitionCombo->setEnabled(!status.boardInitialized);
+    const bool customCardUnit = ui_->cardUnitDefinitionCombo->currentIndex() == 3;
+    ui_->cardCustomEquivalentLabel->setEnabled(
+        !status.boardInitialized && customCardUnit);
+    ui_->cardCustomEquivalentSpin->setEnabled(
+        !status.boardInitialized && customCardUnit);
+    ui_->readBusCycleButton->setEnabled(status.boardInitialized);
+    ui_->busCycleReadValueLabel->setText(status.boardInitialized
+        ? QStringLiteral("%1 us").arg(status.busCycleUs)
+        : QStringLiteral("待初始化"));
+    ui_->traceSampleValueLabel->setText(status.boardInitialized
+        ? QStringLiteral("%1 us").arg(status.traceSamplePeriodUs)
+        : QStringLiteral("待初始化"));
+    const bool planningAligned = status.busCycleUs > 0
+        && (status.producerPeriodMs * 1000) % status.busCycleUs == 0;
+    ui_->contiPlanningAlignmentValueLabel->setText(status.boardInitialized && planningAligned
+        ? QStringLiteral("%1 ms = %2 × %3 us")
+              .arg(status.producerPeriodMs)
+              .arg(status.producerPeriodMs * 1000 / status.busCycleUs)
+              .arg(status.busCycleUs)
+        : QStringLiteral("待初始化"));
+    ui_->contiExpectedPlanTimeValueLabel->setText(QStringLiteral("%1 / %2 ms")
+                                                 .arg(status.expectedPlanTimeS * 1000.0, 0, 'f', 1)
+                                                 .arg(status.currentPlanTimeS * 1000.0, 0, 'f', 1));
+    ui_->contiPhaseErrorValueLabel->setText(QStringLiteral("%1 ms")
+                                            .arg(status.phaseErrorMs, 0, 'f', 1));
+    ui_->contiBufferTimeValueLabel->setText(QStringLiteral("%1 ms")
+                                            .arg(status.bufferTimeMs, 0, 'f', 1));
+    ui_->contiRatioDiagValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 / %5")
+                                           .arg(status.ratioRef, 0, 'f', 3)
+                                           .arg(status.ratioPhase, 0, 'f', 3)
+                                           .arg(status.ratioBuffer, 0, 'f', 3)
+                                           .arg(status.ratioCommand, 0, 'f', 3)
+                                           .arg(status.ratioApplied, 0, 'f', 3));
+    ui_->contiRatioApiAgeValueLabel->setText(status.ratioLastApiAgoMs < 0
+                                             ? QStringLiteral("-- ms")
+                                              : QStringLiteral("%1 ms").arg(status.ratioLastApiAgoMs));
+    const int detectedAxisCount = qBound(0, status.detectedAxisCount, 8);
+    const int selectableAxisCount =
+        status.boardInitialized ? detectedAxisCount : 8;
+    bool jogAxisItemsMatch =
+        ui_->jogAxisCombo->count() == selectableAxisCount;
+    for (int axis = 0; jogAxisItemsMatch && axis < selectableAxisCount; ++axis) {
+        jogAxisItemsMatch =
+            ui_->jogAxisCombo->itemText(axis) == QString::number(axis);
+    }
+    if (!jogAxisItemsMatch) {
+        const QString selectedAxisText = ui_->jogAxisCombo->currentText();
+        const QSignalBlocker blocker(ui_->jogAxisCombo);
+        ui_->jogAxisCombo->clear();
+        for (int axis = 0; axis < selectableAxisCount; ++axis) {
+            ui_->jogAxisCombo->addItem(QString::number(axis));
+        }
+        const int restoredIndex =
+            ui_->jogAxisCombo->findText(selectedAxisText);
+        if (restoredIndex >= 0) {
+            ui_->jogAxisCombo->setCurrentIndex(restoredIndex);
+        } else if (ui_->jogAxisCombo->count() > 0) {
+            ui_->jogAxisCombo->setCurrentIndex(0);
+        }
+    }
+    if (!axisStatusRendered_
+        || lastAxisStatusBoardInitialized_ != status.boardInitialized
+        || lastAxisEnabledMask_ != status.enabledAxisMask
+        || lastDetectedAxisCount_ != detectedAxisCount) {
+        const QString unknownStyle = QStringLiteral(
+            "QLabel { color: white; background-color: #757575; border-radius: 4px; padding: 4px; }");
+        const QString enabledStyle = QStringLiteral(
+            "QLabel { color: white; background-color: #2e7d32; border-radius: 4px; padding: 4px; }");
+        const QString disabledStyle = QStringLiteral(
+            "QLabel { color: white; background-color: #c62828; border-radius: 4px; padding: 4px; }");
+        const QList<QLabel *> axisStateLabels {
+            ui_->axis0EnableStateLabel, ui_->axis1EnableStateLabel,
+            ui_->axis2EnableStateLabel, ui_->axis3EnableStateLabel,
+            ui_->axis4EnableStateLabel, ui_->axis5EnableStateLabel,
+            ui_->axis6EnableStateLabel, ui_->axis7EnableStateLabel
+        };
+        for (int axis = 0; axis < axisStateLabels.size(); ++axis) {
+            QLabel *label = axisStateLabels.at(axis);
+            if (!status.boardInitialized) {
+                label->setText(QStringLiteral("轴%1 未知").arg(axis));
+                label->setStyleSheet(unknownStyle);
+            } else if (axis >= detectedAxisCount) {
+                label->setText(QStringLiteral("轴%1 未连接").arg(axis));
+                label->setStyleSheet(unknownStyle);
+            } else if ((status.enabledAxisMask & static_cast<quint16>(1U << axis)) != 0U) {
+                label->setText(QStringLiteral("轴%1 使能").arg(axis));
+                label->setStyleSheet(enabledStyle);
+            } else {
+                label->setText(QStringLiteral("轴%1 失能").arg(axis));
+                label->setStyleSheet(disabledStyle);
+            }
+        }
+        axisStatusRendered_ = true;
+        lastAxisStatusBoardInitialized_ = status.boardInitialized;
+        lastAxisEnabledMask_ = status.enabledAxisMask;
+        lastDetectedAxisCount_ = detectedAxisCount;
+        ui_->axisEnableStatusGroup->setTitle(status.boardInitialized
+            ? QStringLiteral("总线轴使能状态（在线 %1 轴）").arg(detectedAxisCount)
+            : QStringLiteral("总线轴使能状态"));
+    }
+    ui_->enableAllAxesButton->setEnabled(status.boardInitialized && detectedAxisCount > 0);
+    ui_->disableAllAxesButton->setEnabled(status.boardInitialized && detectedAxisCount > 0);
+    const VelocityControlStatus &velocity = status.velocityControl;
+    ui_->velocityStateValueLabel->setText(QStringLiteral("%1；API=%2，耗时=%3 us")
+                                              .arg(velocity.stateText)
+                                              .arg(velocity.lastApiResult)
+                                              .arg(velocity.lastApiDurationUs));
+    ui_->velocityTimingValueLabel->setText(QStringLiteral("%1 s / %2 ms / %3 ms")
+                                               .arg(velocity.elapsedS, 0, 'f', 3)
+                                               .arg(velocity.controlDtMs, 0, 'f', 3)
+                                               .arg(velocity.maximumJitterMs, 0, 'f', 3));
+    const QString delayAlignedErrorText =
+        velocity.delayAlignedFollowingErrorValid
+        ? QStringLiteral("%1°（τ=%2 ms）")
+              .arg(velocity.delayAlignedFollowingErrorDegree, 0, 'f', 5)
+              .arg(velocity.delayCompensationMs, 0, 'f', 3)
+        : QStringLiteral("--（等待延迟历史帧）");
+    ui_->velocityPositionStatusValueLabel->setText(
+        QStringLiteral("%1 / %2 / %3 / %4 °；电机延迟对齐=%5")
+            .arg(velocity.referencePositionDegree, 0, 'f', 5)
+            .arg(velocity.cardCommandPositionDegree, 0, 'f', 5)
+            .arg(velocity.actualPositionDegree, 0, 'f', 5)
+            .arg(velocity.positionErrorDegree, 0, 'f', 5)
+            .arg(delayAlignedErrorText));
+    ui_->velocitySpeedStatusValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 °/s")
+                                                    .arg(velocity.referenceVelocityDegreePerSecond, 0, 'f', 5)
+                                                    .arg(velocity.commandVelocityDegreePerSecond, 0, 'f', 5)
+                                                    .arg(velocity.cardCommandVelocityDegreePerSecond, 0, 'f', 5)
+                                                    .arg(velocity.actualVelocityDegreePerSecond, 0, 'f', 5));
+    QStringList velocityFlags;
+    if (velocity.velocitySaturated) velocityFlags << QStringLiteral("速度饱和");
+    if (velocity.accelerationLimited) velocityFlags << QStringLiteral("加速度限幅");
+    if (velocity.integralFrozen) velocityFlags << QStringLiteral("积分冻结");
+    if (velocityFlags.isEmpty()) velocityFlags << QStringLiteral("无限幅");
+    ui_->velocityPidStatusValueLabel->setText(QStringLiteral("%1 / %2 / %3 / %4 / %5")
+                                                  .arg(velocity.feedforwardTermDegreePerSecond, 0, 'f', 5)
+                                                  .arg(velocity.pTermDegreePerSecond, 0, 'f', 5)
+                                                  .arg(velocity.iTermDegreePerSecond, 0, 'f', 5)
+                                                  .arg(velocity.dTermDegreePerSecond, 0, 'f', 5)
+                                                  .arg(velocityFlags.join(QStringLiteral("、"))));
+    ui_->velocityControlParameterGroup->setEnabled(!velocity.active);
+    ui_->velocityStartButton->setEnabled(status.boardInitialized && !velocity.active);
+    ui_->velocityEnableAxisButton->setEnabled(status.boardInitialized && !velocity.active);
+    ui_->velocityDisableAxisButton->setEnabled(status.boardInitialized && !velocity.active);
+    ui_->velocityResetButton->setEnabled(!velocity.active);
+    ui_->velocityStopButton->setEnabled(velocity.active);
+    ui_->velocityEmergencyStopButton->setEnabled(velocity.active);
+    const TorqueTestStatus &torque = status.torqueTest;
+    ui_->torqueStateValueLabel->setText(
+        QStringLiteral("%1；API=%2")
+            .arg(torque.stateText).arg(torque.lastApiResult));
+    ui_->torqueTimeValueLabel->setText(
+        QStringLiteral("%1 s / %2 us")
+            .arg(torque.elapsedS, 0, 'f', 3)
+            .arg(torque.lastApiDurationUs));
+    ui_->torqueValueValueLabel->setText(
+        QStringLiteral("%1 / %2%；raw=%3 / %4")
+            .arg(torque.commandTorquePercent, 0, 'f', 2)
+            .arg(torque.actualTorquePercent, 0, 'f', 2)
+            .arg(torque.commandTorqueRaw)
+            .arg(torque.actualTorqueRaw));
+    ui_->torqueMotionValueLabel->setText(
+        QStringLiteral("%1 / %2 / %3 °；%4 °/s")
+            .arg(torque.startPositionDegree, 0, 'f', 4)
+            .arg(torque.actualPositionDegree, 0, 'f', 4)
+            .arg(torque.positionLimitDegree, 0, 'f', 4)
+            .arg(torque.actualVelocityDegreePerSecond, 0, 'f', 4));
+    const double outputSpeedReadbackRpm =
+        torque.velocityLimitReadback
+        / static_cast<double>(MotorUnit::kGearReductionRatio);
+    ui_->torqueOdStatusValueLabel->setText(
+        torque.nodeAddress == 0
+        ? QStringLiteral("-- / --")
+        : QStringLiteral(
+              "从站 %1；6080=%2 motor rpm（输出轴=%3 rpm / %4 °/s）")
+              .arg(torque.nodeAddress)
+              .arg(torque.velocityLimitReadback)
+              .arg(outputSpeedReadbackRpm, 0, 'f', 3)
+              .arg(outputSpeedReadbackRpm * 6.0, 0, 'f', 3));
+    ui_->torqueParameterGroup->setEnabled(true);
+    ui_->torqueAxisCombo->setEnabled(!torque.active);
+    ui_->torqueCommandLimitSpin->setEnabled(!torque.active);
+    ui_->torqueMonitorPeriodSpin->setEnabled(!torque.active);
+    // 运行中只保留目标转矩可编辑，由“在线更新转矩”显式下发。
+    ui_->torqueTargetSpin->setEnabled(true);
+    ui_->torqueSafetyGroup->setEnabled(!torque.active);
+    ui_->torqueOdGroup->setEnabled(status.boardInitialized && !torque.active);
+    ui_->torqueEnableAxisButton->setEnabled(status.boardInitialized && !torque.active);
+    ui_->torqueDisableAxisButton->setEnabled(status.boardInitialized && !torque.active);
+    ui_->torqueStartButton->setEnabled(status.boardInitialized && !torque.active);
+    ui_->torqueUpdateButton->setEnabled(torque.active);
+    ui_->torqueStopButton->setEnabled(torque.active);
+    ui_->torqueEmergencyStopButton->setEnabled(torque.active);
+    const TraceDelayCalibrationStatus &traceDelay = status.traceDelayCalibration;
+    ui_->traceDelayCalibrationParameterGroup->setEnabled(!traceDelay.active);
+    ui_->traceDelayStartButton->setEnabled(status.boardInitialized && !traceDelay.active);
+    ui_->traceDelayStopButton->setEnabled(traceDelay.active);
+    ui_->traceDelayEmergencyStopButton->setEnabled(traceDelay.active);
+    ui_->traceDelayResetAxisButton->setEnabled(!traceDelay.active);
+    ui_->traceDelayPhaseValueLabel->setText(traceDelay.phaseText);
+    ui_->traceDelayProgressBar->setValue(
+        qBound(0, traceDelay.progressPercent, 100));
+    for (int row = 0; row < ui_->traceDelayResultTable->rowCount(); ++row) {
+        TraceDelayAxisResult result;
+        result.axis = static_cast<quint16>(row);
+        if (row < traceDelay.axisResults.size()) {
+            result = traceDelay.axisResults.at(row);
+        }
+        const QString statusText = result.detail.isEmpty()
+            ? (result.calibrated ? QStringLiteral("有效")
+                                 : QStringLiteral("待标定"))
+            : result.detail;
+        const QStringList values {
+            QString::number(result.axis),
+            QString::number(result.appliedDelayMs, 'f', 4),
+            result.measuredDelayMs == 0.0 && !result.calibrated
+                ? QStringLiteral("--")
+                : QString::number(result.measuredDelayMs, 'f', 4),
+            QString::number(result.staticOffsetDegree, 'f', 6),
+            result.rSquared == 0.0 && !result.calibrated
+                ? QStringLiteral("--")
+                : QString::number(result.rSquared, 'f', 5),
+            result.rmseDegree == 0.0 && !result.calibrated
+                ? QStringLiteral("--")
+                : QString::number(result.rmseDegree, 'f', 6),
+            result.pairSpreadMs == 0.0 && !result.calibrated
+                ? QStringLiteral("--")
+                : QString::number(result.pairSpreadMs, 'f', 4),
+            QString::number(result.lostFrameCount),
+            result.source,
+            statusText
+        };
+        for (int column = 0; column < values.size(); ++column) {
+            QTableWidgetItem *item =
+                ui_->traceDelayResultTable->item(row, column);
+            if (item == nullptr) {
+                item = new QTableWidgetItem;
+                ui_->traceDelayResultTable->setItem(row, column, item);
+            }
+            item->setText(values.at(column));
+            item->setToolTip(result.timestamp.isEmpty()
+                                 ? statusText
+                                 : QStringLiteral("%1；%2")
+                                       .arg(statusText, result.timestamp));
+        }
+    }
+    QString recordingStateText = QStringLiteral("未记录");
+    if (!status.recorder.errorText.isEmpty()) {
+        recordingStateText = QStringLiteral("记录错误：%1").arg(status.recorder.errorText);
+    } else if (status.manualTelemetryRecordingActive) {
+        recordingStateText = QStringLiteral("记录中（%1 ms Trace）")
+                                 .arg(status.traceSamplePeriodUs / 1000.0, 0, 'f', 1);
+    } else if (status.recorder.recording) {
+        recordingStateText = QStringLiteral("自动记录中");
+    }
+    ui_->recordingStateValueLabel->setText(recordingStateText);
+    ui_->startRecordingButton->setEnabled(status.boardInitialized && !status.recorder.recording);
+    ui_->stopRecordingButton->setEnabled(status.manualTelemetryRecordingActive);
+    const QString recordDirectory = status.recorder.outputDirectory.isEmpty()
+        ? QStringLiteral("尚未创建；开始记录后自动创建 records/run_*")
+        : status.recorder.outputDirectory;
+    ui_->recordingStateValueLabel->setToolTip(
+        QStringLiteral("输出目录：%1\n写入 / 队列 / 丢帧：%2 / %3 / %4")
+            .arg(recordDirectory)
+            .arg(status.recorder.writtenFrames)
+            .arg(status.recorder.queuedFrames)
+            .arg(status.recorder.droppedFrames));
+    const quint16 selectedAxis =
+        static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt());
+    const AxisFeedback *selectedFeedback = nullptr;
+    for (const AxisFeedback &feedback : status.axisFeedback) {
+        if (feedback.axis == selectedAxis) {
+            selectedFeedback = &feedback;
+            break;
+        }
+    }
+    const bool selectedAxisOnline =
+        status.boardInitialized && selectedAxis < detectedAxisCount;
+    const bool selectedAxisEnabled =
+        selectedAxisOnline
+        && (status.enabledAxisMask
+            & static_cast<quint16>(1U << selectedAxis)) != 0U;
+    ui_->selectedAxisStateValueLabel->setText(
+        !selectedAxisOnline
+            ? QStringLiteral("未连接")
+            : (selectedAxisEnabled ? QStringLiteral("已使能")
+                                   : QStringLiteral("已失能")));
+    ui_->selectedAxisTraceStateValueLabel->setText(
+        !status.boardInitialized
+            ? QStringLiteral("控制卡未初始化")
+            : QStringLiteral("%1；帧=%2；API=%3")
+                  .arg(status.traceStateText)
+                  .arg(status.traceFramesRead)
+                  .arg(status.traceLastApiResult));
+    if (selectedFeedback != nullptr) {
+        const AxisFeedback &feedback = *selectedFeedback;
+        const bool hasSoftwareZero = feedback.axis < static_cast<quint16>(status.softwareZeroValid.size())
+            && status.softwareZeroValid.at(feedback.axis);
+        const double softwareZero = hasSoftwareZero
+            ? status.softwareZeroUnit.value(feedback.axis) : 0.0;
+        const double displayedCommandPosition = showAbsolutePosition
+            ? feedback.commandPositionUnit : feedback.commandPositionUnit - softwareZero;
+        const double displayedActualPosition = showAbsolutePosition
+            ? feedback.encoderPositionUnit : feedback.encoderPositionUnit - softwareZero;
+        ui_->selectedAxisDriveStateValueLabel->setText(
+            QString::number(feedback.stateMachine));
+        ui_->selectedAxisErrorValueLabel->setText(
+            QString::number(feedback.axisErrorCode));
+        ui_->selectedAxisCommandVelocityValueLabel->setText(
+            feedback.traceSampleValid
+                ? QStringLiteral("%1 °/s")
+                      .arg(feedback.commandVelocityUnitPerSecond, 0, 'f', 4)
+                : QStringLiteral("--"));
+        ui_->selectedAxisActualVelocityValueLabel->setText(
+            feedback.traceSampleValid
+                ? QStringLiteral("%1 °/s")
+                      .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 4)
+                : QStringLiteral("--"));
+        ui_->selectedAxisCommandPositionValueLabel->setText(
+            feedback.traceSampleValid
+                ? QStringLiteral("%1 °")
+                      .arg(displayedCommandPosition, 0, 'f', 4)
+                : QStringLiteral("--"));
+        ui_->selectedAxisActualPositionValueLabel->setText(
+            feedback.traceSampleValid
+                ? QStringLiteral("%1 °")
+                      .arg(displayedActualPosition, 0, 'f', 4)
+                : QStringLiteral("--"));
+        ui_->selectedAxisDelayErrorValueLabel->setText(
+            feedback.delayCompensationValid
+                ? QStringLiteral("%1 °；τ=%2 ms（%3）")
+                      .arg(feedback.delayCompensatedFollowingErrorUnit, 0, 'f', 4)
+                      .arg(feedback.delayCompensationMs, 0, 'f', 3)
+                      .arg(feedback.delayCompensationSource)
+                : QStringLiteral("等待 %1 ms 历史帧")
+                      .arg(feedback.delayCompensationMs, 0, 'f', 3));
+        if (feedback.traceSampleValid) {
+            ui_->jogActualPositionSpin->setValue(displayedActualPosition);
+        }
+    } else {
+        ui_->selectedAxisDriveStateValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisErrorValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisCommandVelocityValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisActualVelocityValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisCommandPositionValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisActualPositionValueLabel->setText(QStringLiteral("--"));
+        ui_->selectedAxisDelayErrorValueLabel->setText(
+            QStringLiteral("等待所选轴 Trace"));
+    }
+}
+
+void MainWindow::initializeContiTrajectoryChart()
+{
+    contiTrajectoryChart_ = new QChart;
+    contiTrajectoryChart_->setTitle(QStringLiteral("主动轴：规划期望与 Trace 实际位置"));
+    contiTrajectoryChart_->legend()->setVisible(true);
+    contiTrajectoryTimeAxis_ = new QValueAxis(contiTrajectoryChart_);
+    contiTrajectoryTimeAxis_->setTitleText(QStringLiteral("Trace 时间 (s)"));
+    contiTrajectoryTimeAxis_->setTitleVisible(true);
+    contiTrajectoryTimeAxis_->setLabelsVisible(true);
+    contiTrajectoryTimeAxis_->setLabelFormat(QStringLiteral("%.1f"));
+    contiTrajectoryTimeAxis_->setTickCount(6);
+    contiTrajectoryTimeAxis_->setRange(0.0, 30.0);
+    contiTrajectoryValueAxis_ = new QValueAxis(contiTrajectoryChart_);
+    contiTrajectoryValueAxis_->setTitleText(QStringLiteral("位置 (°)"));
+    contiTrajectoryValueAxis_->setRange(-1.0, 1.0);
+    contiTrajectoryChart_->addAxis(contiTrajectoryTimeAxis_, Qt::AlignBottom);
+    contiTrajectoryChart_->addAxis(contiTrajectoryValueAxis_, Qt::AlignLeft);
+    ui_->contiTrajectoryChartView->setChart(contiTrajectoryChart_);
+    ui_->contiTrajectoryChartView->setRenderHint(QPainter::Antialiasing, false);
+    ui_->contiTrajectoryChartView->setAutomaticRange(0.0, 30.0, -1.0, 1.0);
+
+    contiExpectedTrajectorySeries_ = new QLineSeries(contiTrajectoryChart_);
+    contiExpectedTrajectorySeries_->setName(QStringLiteral("规划期望"));
+    contiExpectedTrajectorySeries_->setPen(QPen(QColor(0, 102, 204), 1.8));
+    contiTrajectoryChart_->addSeries(contiExpectedTrajectorySeries_);
+    contiExpectedTrajectorySeries_->attachAxis(contiTrajectoryTimeAxis_);
+    contiExpectedTrajectorySeries_->attachAxis(contiTrajectoryValueAxis_);
+    contiActualTrajectorySeries_ = new QLineSeries(contiTrajectoryChart_);
+    contiActualTrajectorySeries_->setName(QStringLiteral("Trace 实际"));
+    contiActualTrajectorySeries_->setPen(QPen(QColor(204, 51, 51), 1.5));
+    contiTrajectoryChart_->addSeries(contiActualTrajectorySeries_);
+    contiActualTrajectorySeries_->attachAxis(contiTrajectoryTimeAxis_);
+    contiActualTrajectorySeries_->attachAxis(contiTrajectoryValueAxis_);
+}
+
+void MainWindow::initializeUiRefreshTimer()
+{
+    uiRefreshTimer_ = new QTimer(this);
+    uiRefreshTimer_->setTimerType(Qt::PreciseTimer);
+    uiRefreshTimer_->setInterval(50);
+    connect(uiRefreshTimer_, &QTimer::timeout, this, &MainWindow::refreshUiAndCharts);
+    uiRefreshTimer_->start();
+}
+
+void MainWindow::refreshUiAndCharts()
+{
+    if (statusUiDirty_) {
+        statusUiDirty_ = false;
+        updateStatus(latestStatus_);
+    }
+    updateVelocityControlCharts();
+    updateTorqueTestCharts();
+    updateContiTrajectoryChart();
+}
+
+void MainWindow::initializeVelocityControlCharts()
+{
+    const auto createChart = [](const QString &title, const QString &valueTitle,
+                                 ZoomableChartView *view, QChart *&chart,
+                                 QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
+        chart = new QChart;
+        chart->setTitle(title);
+        chart->legend()->setVisible(true);
+        timeAxis = new QValueAxis(chart);
+        timeAxis->setTitleText(QStringLiteral("运行时间 (s)"));
+        timeAxis->setTitleVisible(true);
+        timeAxis->setLabelsVisible(true);
+        timeAxis->setLabelFormat(QStringLiteral("%.1f"));
+        timeAxis->setTickCount(6);
+        timeAxis->setRange(0.0, 5.0);
+        valueAxis = new QValueAxis(chart);
+        valueAxis->setTitleText(valueTitle);
+        valueAxis->setRange(-1.0, 1.0);
+        chart->addAxis(timeAxis, Qt::AlignBottom);
+        chart->addAxis(valueAxis, Qt::AlignLeft);
+        view->setChart(chart);
+        view->setRenderHint(QPainter::Antialiasing, false);
+        view->setAutomaticRange(0.0, 5.0, -1.0, 1.0);
+    };
+    createChart(QStringLiteral("位置跟踪：规划 / 板卡指令 / Trace实际"),
+                QStringLiteral("位置 (°)"), ui_->velocityPositionChartView,
+                velocityPositionChart_, velocityPositionTimeAxis_, velocityPositionValueAxis_);
+    createChart(QStringLiteral("位置误差：轨迹时间 / 延迟对齐 / 终点容差"),
+                QStringLiteral("误差 (°)"),
+                 ui_->velocityErrorChartView, velocityErrorChart_,
+                 velocityErrorTimeAxis_, velocityErrorValueAxis_);
+    createChart(QStringLiteral("速度跟踪：规划 / PID命令 / 板卡指令 / Trace实际"),
+                QStringLiteral("速度 (°/s)"), ui_->velocitySpeedChartView,
+                velocitySpeedChart_, velocitySpeedTimeAxis_, velocitySpeedValueAxis_);
+
+    const QColor blue(0, 102, 204);
+    const QColor purple(128, 64, 160);
+    const QColor red(204, 51, 51);
+    const QColor green(0, 153, 102);
+    const QStringList positionNames {QStringLiteral("规划位置"),
+                                     QStringLiteral("板卡指令位置"),
+                                     QStringLiteral("Trace实际位置")};
+    const QList<QColor> positionColors {blue, purple, red};
+    for (int index = 0; index < 3; ++index) {
+        velocityPositionSeries_[index] = new QLineSeries(velocityPositionChart_);
+        velocityPositionSeries_[index]->setName(positionNames.at(index));
+        velocityPositionSeries_[index]->setPen(QPen(positionColors.at(index), 1.5));
+        velocityPositionChart_->addSeries(velocityPositionSeries_[index]);
+        velocityPositionSeries_[index]->attachAxis(velocityPositionTimeAxis_);
+        velocityPositionSeries_[index]->attachAxis(velocityPositionValueAxis_);
+    }
+    const QStringList errorNames {QStringLiteral("轨迹时间误差"),
+                                  QStringLiteral("电机延迟对齐误差"),
+                                  QStringLiteral("正终点容差"),
+                                  QStringLiteral("负终点容差")};
+    const QList<QColor> errorColors {red, green,
+                                     QColor(140, 140, 140),
+                                     QColor(140, 140, 140)};
+    for (int index = 0; index < 4; ++index) {
+        velocityErrorSeries_[index] = new QLineSeries(velocityErrorChart_);
+        velocityErrorSeries_[index]->setName(errorNames.at(index));
+        velocityErrorSeries_[index]->setPen(
+            QPen(errorColors.at(index), index < 2 ? 1.6 : 1.0,
+                 index < 2 ? Qt::SolidLine : Qt::DashLine));
+        velocityErrorChart_->addSeries(velocityErrorSeries_[index]);
+        velocityErrorSeries_[index]->attachAxis(velocityErrorTimeAxis_);
+        velocityErrorSeries_[index]->attachAxis(velocityErrorValueAxis_);
+    }
+    const QStringList speedNames {QStringLiteral("规划速度"), QStringLiteral("PID命令速度"),
+                                  QStringLiteral("板卡指令速度"), QStringLiteral("Trace实际速度")};
+    const QList<QColor> speedColors {blue, green, purple, red};
+    for (int index = 0; index < 4; ++index) {
+        velocitySpeedSeries_[index] = new QLineSeries(velocitySpeedChart_);
+        velocitySpeedSeries_[index]->setName(speedNames.at(index));
+        velocitySpeedSeries_[index]->setPen(QPen(speedColors.at(index), 1.4));
+        velocitySpeedChart_->addSeries(velocitySpeedSeries_[index]);
+        velocitySpeedSeries_[index]->attachAxis(velocitySpeedTimeAxis_);
+        velocitySpeedSeries_[index]->attachAxis(velocitySpeedValueAxis_);
+    }
+}
+
+void MainWindow::initializeTorqueTestCharts()
+{
+    const auto createChart = [](const QString &title, const QString &valueTitle,
+                                ZoomableChartView *view, QChart *&chart,
+                                QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
+        chart = new QChart;
+        chart->setTitle(title);
+        chart->legend()->setVisible(true);
+        timeAxis = new QValueAxis(chart);
+        timeAxis->setTitleText(QStringLiteral("运行时间 (s)"));
+        timeAxis->setLabelFormat(QStringLiteral("%.2f"));
+        timeAxis->setTickCount(6);
+        timeAxis->setRange(0.0, 5.0);
+        valueAxis = new QValueAxis(chart);
+        valueAxis->setTitleText(valueTitle);
+        valueAxis->setRange(-1.0, 1.0);
+        chart->addAxis(timeAxis, Qt::AlignBottom);
+        chart->addAxis(valueAxis, Qt::AlignLeft);
+        view->setChart(chart);
+        view->setRenderHint(QPainter::Antialiasing, false);
+        view->setAutomaticRange(0.0, 5.0, -1.0, 1.0);
+    };
+    createChart(QStringLiteral("转矩：目标 / nmc_get_torque 实际"),
+                QStringLiteral("额定转矩百分比 (%)"), ui_->torqueValueChartView,
+                torqueValueChart_, torqueValueTimeAxis_, torqueValueAxis_);
+    torqueValueAxis_->setRange(-100.0, 100.0);
+    ui_->torqueValueChartView->setAutomaticRange(
+        0.0, 5.0, -100.0, 100.0);
+    createChart(QStringLiteral("安全监测：相对位置 / Trace实际速度"),
+                QStringLiteral("位置 (°) / 速度 (°/s)"),
+                ui_->torqueMotionChartView, torqueMotionChart_,
+                torqueMotionTimeAxis_, torqueMotionValueAxis_);
+
+    const QStringList torqueNames {QStringLiteral("目标转矩"),
+                                   QStringLiteral("实际转矩")};
+    const QStringList motionNames {QStringLiteral("相对位置"),
+                                   QStringLiteral("实际速度")};
+    const QList<QColor> colors {QColor(0, 102, 204), QColor(204, 51, 51)};
+    for (int index = 0; index < 2; ++index) {
+        torqueValueSeries_[index] = new QLineSeries(torqueValueChart_);
+        torqueValueSeries_[index]->setName(torqueNames.at(index));
+        torqueValueSeries_[index]->setPen(QPen(colors.at(index), 1.5));
+        torqueValueChart_->addSeries(torqueValueSeries_[index]);
+        torqueValueSeries_[index]->attachAxis(torqueValueTimeAxis_);
+        torqueValueSeries_[index]->attachAxis(torqueValueAxis_);
+
+        torqueMotionSeries_[index] = new QLineSeries(torqueMotionChart_);
+        torqueMotionSeries_[index]->setName(motionNames.at(index));
+        torqueMotionSeries_[index]->setPen(QPen(colors.at(index), 1.5));
+        torqueMotionChart_->addSeries(torqueMotionSeries_[index]);
+        torqueMotionSeries_[index]->attachAxis(torqueMotionTimeAxis_);
+        torqueMotionSeries_[index]->attachAxis(torqueMotionValueAxis_);
+    }
+}
+
+void MainWindow::clearVelocityControlCharts()
+{
+    for (QLineSeries *series : velocityPositionSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    for (QLineSeries *series : velocityErrorSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    for (QLineSeries *series : velocitySpeedSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    pendingVelocityPlotSamples_.clear();
+    velocityPlotBucket_.clear();
+    for (QList<QPointF> &points : velocityPositionDisplayPoints_) points.clear();
+    for (QList<QPointF> &points : velocityErrorDisplayPoints_) points.clear();
+    for (QList<QPointF> &points : velocitySpeedDisplayPoints_) points.clear();
+    velocityPlotBucketIndex_ = -1;
+    lastVelocityPlotTimeS_ = -1.0;
+    ui_->velocityPositionChartView->resetAutomaticRangeMode();
+    ui_->velocityErrorChartView->resetAutomaticRangeMode();
+    ui_->velocitySpeedChartView->resetAutomaticRangeMode();
+}
+
+void MainWindow::clearTorqueTestCharts()
+{
+    for (QLineSeries *series : torqueValueSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    for (QLineSeries *series : torqueMotionSeries_) {
+        if (series != nullptr) series->clear();
+    }
+    pendingTorquePlotSamples_.clear();
+    for (QList<QPointF> &points : torqueValueDisplayPoints_) points.clear();
+    for (QList<QPointF> &points : torqueMotionDisplayPoints_) points.clear();
+    lastTorquePlotTimeS_ = -1.0;
+    ui_->torqueValueChartView->resetAutomaticRangeMode();
+    ui_->torqueMotionChartView->resetAutomaticRangeMode();
+}
+
+void MainWindow::updateTorqueTestCharts()
+{
+    QVector<TorquePlotSample> samples;
+    samples.swap(pendingTorquePlotSamples_);
+    if (samples.isEmpty()) {
+        return;
+    }
+    const quint64 newestRunId = samples.constLast().runId;
+    if (newestRunId != lastTorqueRunId_) {
+        clearTorqueTestCharts();
+        lastTorqueRunId_ = newestRunId;
+    }
+    constexpr qsizetype kMaximumDisplayPoints = 10000;
+    for (const TorquePlotSample &sample : samples) {
+        if (sample.runId != newestRunId || sample.elapsedS <= lastTorquePlotTimeS_) {
+            continue;
+        }
+        torqueValueDisplayPoints_[0].append(
+            QPointF(sample.elapsedS, sample.commandTorquePercent));
+        torqueValueDisplayPoints_[1].append(
+            QPointF(sample.elapsedS, sample.actualTorquePercent));
+        torqueMotionDisplayPoints_[0].append(
+            QPointF(sample.elapsedS, sample.relativePositionDegree));
+        torqueMotionDisplayPoints_[1].append(
+            QPointF(sample.elapsedS, sample.actualVelocityDegreePerSecond));
+        lastTorquePlotTimeS_ = sample.elapsedS;
+    }
+    for (QList<QPointF> &points : torqueValueDisplayPoints_) {
+        const qsizetype overflow = points.size() - kMaximumDisplayPoints;
+        if (overflow > 0) points.remove(0, overflow);
+    }
+    for (QList<QPointF> &points : torqueMotionDisplayPoints_) {
+        const qsizetype overflow = points.size() - kMaximumDisplayPoints;
+        if (overflow > 0) points.remove(0, overflow);
+    }
+    for (int index = 0; index < 2; ++index) {
+        torqueValueSeries_[index]->replace(torqueValueDisplayPoints_[index]);
+        torqueMotionSeries_[index]->replace(torqueMotionDisplayPoints_[index]);
+    }
+    updateChartRanges(ui_->torqueValueChartView,
+                      {torqueValueSeries_[0], torqueValueSeries_[1]},
+                      lastTorquePlotTimeS_, 0.01);
+    updateChartRanges(ui_->torqueMotionChartView,
+                      {torqueMotionSeries_[0], torqueMotionSeries_[1]},
+                      lastTorquePlotTimeS_, 0.01);
+    ui_->torqueValueChartView->update();
+    ui_->torqueMotionChartView->update();
+}
+
+void MainWindow::updateVelocityControlCharts()
+{
+    QVector<VelocityPlotSample> samples;
+    samples.swap(pendingVelocityPlotSamples_);
+    const bool controlInactive = hasLatestStatus_ && !latestStatus_.velocityControl.active;
+    if (samples.isEmpty() && (velocityPlotBucket_.isEmpty() || !controlInactive)) {
+        return;
+    }
+
+    const quint64 newestRunId = samples.isEmpty() ? lastVelocityRunId_
+                                                   : samples.constLast().runId;
+    if (newestRunId != lastVelocityRunId_) {
+        clearVelocityControlCharts();
+        lastVelocityRunId_ = newestRunId;
+    }
+
+    constexpr double kDisplayBucketSeconds = 0.010;
+    constexpr double kDisplayHistorySeconds = 20.0;
+    constexpr qsizetype kMaximumDisplayPointsPerSeries = 4000;
+    bool displayChanged = false;
+
+    const auto appendExtrema = [this](QList<QPointF> &points, const auto &valueOf) {
+        const VelocityPlotSample *minimumSample = &velocityPlotBucket_.constFirst();
+        const VelocityPlotSample *maximumSample = minimumSample;
+        double minimumValue = valueOf(*minimumSample);
+        double maximumValue = minimumValue;
+        for (const VelocityPlotSample &sample : velocityPlotBucket_) {
+            const double value = valueOf(sample);
+            if (value < minimumValue) {
+                minimumValue = value;
+                minimumSample = &sample;
+            }
+            if (value > maximumValue) {
+                maximumValue = value;
+                maximumSample = &sample;
+            }
+        }
+        if (minimumSample == maximumSample || qFuzzyCompare(minimumValue, maximumValue)) {
+            const VelocityPlotSample &last = velocityPlotBucket_.constLast();
+            points.append(QPointF(last.elapsedS, valueOf(last)));
+            return;
+        }
+        if (minimumSample->elapsedS <= maximumSample->elapsedS) {
+            points.append(QPointF(minimumSample->elapsedS, minimumValue));
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+        } else {
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+            points.append(QPointF(minimumSample->elapsedS, minimumValue));
+        }
+    };
+    const auto appendValidExtrema = [this](QList<QPointF> &points,
+                                            const auto &valueOf,
+                                            const auto &isValid) {
+        const VelocityPlotSample *minimumSample = nullptr;
+        const VelocityPlotSample *maximumSample = nullptr;
+        double minimumValue = 0.0;
+        double maximumValue = 0.0;
+        for (const VelocityPlotSample &sample : velocityPlotBucket_) {
+            if (!isValid(sample)) {
+                continue;
+            }
+            const double value = valueOf(sample);
+            if (minimumSample == nullptr || value < minimumValue) {
+                minimumSample = &sample;
+                minimumValue = value;
+            }
+            if (maximumSample == nullptr || value > maximumValue) {
+                maximumSample = &sample;
+                maximumValue = value;
+            }
+        }
+        if (minimumSample == nullptr || maximumSample == nullptr) {
+            return;
+        }
+        if (minimumSample == maximumSample || qFuzzyCompare(minimumValue, maximumValue)) {
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+        } else if (minimumSample->elapsedS <= maximumSample->elapsedS) {
+            points.append(QPointF(minimumSample->elapsedS, minimumValue));
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+        } else {
+            points.append(QPointF(maximumSample->elapsedS, maximumValue));
+            points.append(QPointF(minimumSample->elapsedS, minimumValue));
+        }
+    };
+    const auto trimPoints = [kMaximumDisplayPointsPerSeries](QList<QPointF> &points,
+                                                             double cutoffTime) {
+        qsizetype removeCount = 0;
+        while (removeCount < points.size() && points.at(removeCount).x() < cutoffTime) {
+            ++removeCount;
+        }
+        if (removeCount > 0) {
+            points.remove(0, removeCount);
+        }
+        const qsizetype overflow = points.size() - kMaximumDisplayPointsPerSeries;
+        if (overflow > 0) {
+            points.remove(0, overflow);
+        }
+    };
+    const auto flushBucket = [this, &appendExtrema, &appendValidExtrema,
+                              &trimPoints, &displayChanged]() {
+        if (velocityPlotBucket_.isEmpty()) {
+            return;
+        }
+        const VelocityPlotSample &last = velocityPlotBucket_.constLast();
+        const double time = last.elapsedS;
+        velocityPositionDisplayPoints_[0].append(QPointF(time, last.referencePositionDegree));
+        velocityPositionDisplayPoints_[1].append(QPointF(time, last.cardCommandPositionDegree));
+        appendExtrema(velocityPositionDisplayPoints_[2],
+                      [](const VelocityPlotSample &sample) { return sample.actualPositionDegree; });
+        appendExtrema(velocityErrorDisplayPoints_[0],
+                      [](const VelocityPlotSample &sample) { return sample.positionErrorDegree; });
+        appendValidExtrema(
+            velocityErrorDisplayPoints_[1],
+            [](const VelocityPlotSample &sample) {
+                return sample.delayAlignedFollowingErrorDegree;
+            },
+            [](const VelocityPlotSample &sample) {
+                return sample.delayAlignedFollowingErrorValid;
+            });
+        velocityErrorDisplayPoints_[2].append(QPointF(time, last.positionToleranceDegree));
+        velocityErrorDisplayPoints_[3].append(QPointF(time, -last.positionToleranceDegree));
+        velocitySpeedDisplayPoints_[0].append(QPointF(time, last.referenceVelocityDegreePerSecond));
+        velocitySpeedDisplayPoints_[1].append(QPointF(time, last.commandVelocityDegreePerSecond));
+        velocitySpeedDisplayPoints_[2].append(QPointF(time, last.cardCommandVelocityDegreePerSecond));
+        appendExtrema(velocitySpeedDisplayPoints_[3],
+                      [](const VelocityPlotSample &sample) {
+            return sample.actualVelocityDegreePerSecond;
+        });
+
+        const double cutoffTime = qMax(0.0, time - kDisplayHistorySeconds);
+        for (QList<QPointF> &points : velocityPositionDisplayPoints_) trimPoints(points, cutoffTime);
+        for (QList<QPointF> &points : velocityErrorDisplayPoints_) trimPoints(points, cutoffTime);
+        for (QList<QPointF> &points : velocitySpeedDisplayPoints_) trimPoints(points, cutoffTime);
+        velocityPlotBucket_.clear();
+        velocityPlotBucketIndex_ = -1;
+        displayChanged = true;
+    };
+
+    for (const VelocityPlotSample &sample : samples) {
+        if (sample.runId != newestRunId || sample.elapsedS <= lastVelocityPlotTimeS_) {
+            continue;
+        }
+        const qint64 bucketIndex = static_cast<qint64>(
+            std::floor((sample.elapsedS + 1e-12) / kDisplayBucketSeconds));
+        if (velocityPlotBucketIndex_ >= 0 && bucketIndex != velocityPlotBucketIndex_) {
+            flushBucket();
+        }
+        if (velocityPlotBucketIndex_ < 0) {
+            velocityPlotBucketIndex_ = bucketIndex;
+        }
+        velocityPlotBucket_.push_back(sample);
+        lastVelocityPlotTimeS_ = sample.elapsedS;
+    }
+    if (controlInactive) {
+        flushBucket();
+    }
+    if (!displayChanged) {
+        return;
+    }
+
+    for (int index = 0; index < 3; ++index) {
+        velocityPositionSeries_[index]->replace(velocityPositionDisplayPoints_[index]);
+    }
+    for (int index = 0; index < 4; ++index) {
+        velocityErrorSeries_[index]->replace(velocityErrorDisplayPoints_[index]);
+    }
+    for (int index = 0; index < 4; ++index) {
+        velocitySpeedSeries_[index]->replace(velocitySpeedDisplayPoints_[index]);
+    }
+
+    double earliestTime = std::numeric_limits<double>::max();
+    double latestTime = 0.0;
+    const auto includeTimeRange = [&earliestTime, &latestTime](const QList<QPointF> &points) {
+        if (!points.isEmpty()) {
+            earliestTime = qMin(earliestTime, points.constFirst().x());
+            latestTime = qMax(latestTime, points.constLast().x());
+        }
+    };
+    for (const QList<QPointF> &points : velocityPositionDisplayPoints_) includeTimeRange(points);
+    for (const QList<QPointF> &points : velocityErrorDisplayPoints_) includeTimeRange(points);
+    for (const QList<QPointF> &points : velocitySpeedDisplayPoints_) includeTimeRange(points);
+    if (earliestTime > latestTime) {
+        return;
+    }
+    const double horizontalMinimum = earliestTime <= kDisplayBucketSeconds ? 0.0 : earliestTime;
+    const double horizontalMargin = qMax(0.05, (latestTime - horizontalMinimum) * 0.05);
+    const double horizontalMaximum = qMax(horizontalMinimum + 5.0, latestTime + horizontalMargin);
+    const auto fitAxes = [horizontalMinimum, horizontalMaximum](
+                             ZoomableChartView *view,
+                             const std::initializer_list<const QList<QPointF> *> &pointSets,
+                             double minimumSpan) {
+        double minimum = std::numeric_limits<double>::max();
+        double maximum = std::numeric_limits<double>::lowest();
+        for (const QList<QPointF> *points : pointSets) {
+            for (const QPointF &point : *points) {
+                minimum = qMin(minimum, point.y());
+                maximum = qMax(maximum, point.y());
+            }
+        }
+        if (minimum > maximum) return;
+        const double span = qMax(minimumSpan, maximum - minimum);
+        const double margin = span * 0.15;
+        view->setAutomaticRange(horizontalMinimum, horizontalMaximum,
+                                minimum - margin, maximum + margin);
+    };
+    fitAxes(ui_->velocityPositionChartView,
+            {&velocityPositionDisplayPoints_[0], &velocityPositionDisplayPoints_[1],
+             &velocityPositionDisplayPoints_[2]}, 0.1);
+    fitAxes(ui_->velocityErrorChartView,
+            {&velocityErrorDisplayPoints_[0], &velocityErrorDisplayPoints_[1],
+             &velocityErrorDisplayPoints_[2], &velocityErrorDisplayPoints_[3]}, 0.01);
+    fitAxes(ui_->velocitySpeedChartView,
+            {&velocitySpeedDisplayPoints_[0], &velocitySpeedDisplayPoints_[1],
+             &velocitySpeedDisplayPoints_[2], &velocitySpeedDisplayPoints_[3]}, 0.1);
+    ui_->velocityPositionChartView->update();
+    ui_->velocityErrorChartView->update();
+    ui_->velocitySpeedChartView->update();
+}
+
+void MainWindow::updateContiTrajectoryChart()
+{
+    if (!hasLatestStatus_ || !latestStatus_.trajectoryComparisonActive) {
+        return;
+    }
+    if (latestStatus_.trajectoryTraceStartTimeUs == 0) {
+        // 新一轮测试已启动但还没有取得其首个 Trace 帧，先清空上一次曲线。
+        if (contiTrajectoryTraceStartTimeUs_ != 0) {
+            contiExpectedTrajectorySeries_->clear();
+            contiActualTrajectorySeries_->clear();
+            contiTrajectoryTraceStartTimeUs_ = 0;
+            lastContiTrajectoryTraceSequence_ = 0;
+        }
+        return;
+    }
+    if (contiTrajectoryTraceStartTimeUs_ != latestStatus_.trajectoryTraceStartTimeUs
+        || latestStatus_.latestTraceSequence < lastContiTrajectoryTraceSequence_) {
+        contiExpectedTrajectorySeries_->clear();
+        contiActualTrajectorySeries_->clear();
+        contiTrajectoryTraceStartTimeUs_ = latestStatus_.trajectoryTraceStartTimeUs;
+        lastContiTrajectoryTraceSequence_ = 0;
+        ui_->contiTrajectoryChartView->resetAutomaticRangeMode();
+    }
+    if (latestStatus_.latestTraceSequence == 0
+        || latestStatus_.latestTraceSequence == lastContiTrajectoryTraceSequence_)
+    {
+        return;
+    }
+
+    const AxisFeedback *activeFeedback = nullptr;
+    for (const AxisFeedback &feedback : latestStatus_.axisFeedback) {
+        if (feedback.axis == latestStatus_.trajectoryActiveAxis && feedback.traceSampleValid) {
+            activeFeedback = &feedback;
+            break;
+        }
+    }
+    if (activeFeedback == nullptr || latestStatus_.latestTraceTimeUs < contiTrajectoryTraceStartTimeUs_) {
+        return;
+    }
+
+    const double timeSeconds = static_cast<double>(latestStatus_.latestTraceTimeUs
+                                                   - contiTrajectoryTraceStartTimeUs_) / 1000000.0;
+    contiExpectedTrajectorySeries_->setName(QStringLiteral("轴%1 规划期望")
+                                                  .arg(latestStatus_.trajectoryActiveAxis));
+    contiActualTrajectorySeries_->setName(QStringLiteral("轴%1 Trace 实际")
+                                                .arg(latestStatus_.trajectoryActiveAxis));
+    contiExpectedTrajectorySeries_->append(timeSeconds, latestStatus_.trajectoryExpectedActiveUnit);
+    contiActualTrajectorySeries_->append(timeSeconds, activeFeedback->encoderPositionUnit);
+    lastContiTrajectoryTraceSequence_ = latestStatus_.latestTraceSequence;
+    updateChartRanges(ui_->contiTrajectoryChartView,
+                      {contiExpectedTrajectorySeries_, contiActualTrajectorySeries_}, timeSeconds, 0.1);
+    ui_->contiTrajectoryChartView->update();
+}
+
+void MainWindow::updateChartRanges(ZoomableChartView *view,
+                                   const QList<QLineSeries *> &series, double timeSeconds,
+                                   double minimumSpan) const
+{
+    constexpr double kTimeWindowSeconds = 30.0;
+    const double left = qMax(0.0, timeSeconds - kTimeWindowSeconds);
+    double minimum = std::numeric_limits<double>::max();
+    double maximum = std::numeric_limits<double>::lowest();
+    for (QLineSeries *line : series) {
+        const QList<QPointF> points = line->points();
+        int removeCount = 0;
+        for (const QPointF &point : points) {
+            if (point.x() < left) {
+                ++removeCount;
+            } else {
+                minimum = qMin(minimum, point.y());
+                maximum = qMax(maximum, point.y());
+            }
+        }
+        if (removeCount > 0) {
+            line->removePoints(0, removeCount);
+        }
+    }
+    if (minimum > maximum) {
+        return;
+    }
+    const double span = qMax(minimumSpan, maximum - minimum);
+    const double margin = span * 0.15;
+    view->setAutomaticRange(left, qMax(kTimeWindowSeconds, timeSeconds),
+                            minimum - margin, maximum + margin);
+}

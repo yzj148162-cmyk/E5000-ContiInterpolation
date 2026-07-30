@@ -1,0 +1,182 @@
+{
+    "schema_version": 2,
+    "name": "G302八绳六自由度CDPR",
+    "parameters_confirmed": false,
+    "coordinate_convention": "世界坐标系与G302全局坐标系一致；末端位姿为[x,y,z,rx,ry,rz]，姿态按Rz*Ry*Rx；平台局部坐标系原点位于质心；长度单位m、角度单位rad",
+    "initial_platform_pose": [
+        0.0,
+        -0.8,
+        0.5166666666666667,
+        0.0,
+        0.0,
+        0.0
+    ],
+    "physical_platform": {
+        "mass_kg": 30.0,
+        "center_of_mass_m": [
+            0.0,
+            0.0,
+            0.0
+        ],
+        "inertia_kg_m2": [
+            0.23706666666666668,
+            0.0,
+            0.0,
+            0.0,
+            0.385,
+            0.0,
+            0.0,
+            0.0,
+            0.385
+        ]
+    },
+    "force_sensor": {
+        "origin_in_platform_m": [
+            0.0,
+            0.0,
+            0.2333333333333333
+        ],
+        "rotation_sensor_to_platform": [
+            1.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0,
+            0.0,
+            0.0,
+            0.0,
+            -1.0
+        ],
+        "sensor_sign": 1
+    },
+    "drum_safety": {
+        "diameter_m": 0.16,
+        "maximum_turns_from_initial": 6.5
+    },
+    "cables": [
+        {
+            "cable": 0,
+            "axis": 0,
+            "direction": 1,
+            "frame_anchor_m": [
+                1.06,
+                -1.36,
+                2.6
+            ],
+            "platform_anchor_m": [
+                -0.125,
+                -0.125,
+                0.08333333333333333
+            ]
+        },
+        {
+            "cable": 1,
+            "axis": 1,
+            "direction": 1,
+            "frame_anchor_m": [
+                1.36,
+                -1.06,
+                2.6
+            ],
+            "platform_anchor_m": [
+                0.125,
+                0.125,
+                0.3833333333333333
+            ]
+        },
+        {
+            "cable": 2,
+            "axis": 2,
+            "direction": 1,
+            "frame_anchor_m": [
+                1.36,
+                1.06,
+                2.6
+            ],
+            "platform_anchor_m": [
+                0.125,
+                -0.125,
+                0.08333333333333333
+            ]
+        },
+        {
+            "cable": 3,
+            "axis": 3,
+            "direction": 1,
+            "frame_anchor_m": [
+                1.06,
+                1.36,
+                2.6
+            ],
+            "platform_anchor_m": [
+                -0.125,
+                0.125,
+                0.3833333333333333
+            ]
+        },
+        {
+            "cable": 4,
+            "axis": 4,
+            "direction": 1,
+            "frame_anchor_m": [
+                -1.06,
+                1.36,
+                2.6
+            ],
+            "platform_anchor_m": [
+                0.125,
+                0.125,
+                0.08333333333333333
+            ]
+        },
+        {
+            "cable": 5,
+            "axis": 5,
+            "direction": 1,
+            "frame_anchor_m": [
+                -1.36,
+                1.06,
+                2.6
+            ],
+            "platform_anchor_m": [
+                -0.125,
+                -0.125,
+                0.3833333333333333
+            ]
+        },
+        {
+            "cable": 6,
+            "axis": 6,
+            "direction": 1,
+            "frame_anchor_m": [
+                -1.36,
+                -1.06,
+                2.6
+            ],
+            "platform_anchor_m": [
+                -0.125,
+                0.125,
+                0.08333333333333333
+            ]
+        },
+        {
+            "cable": 7,
+            "axis": 7,
+            "direction": 1,
+            "frame_anchor_m": [
+                -1.06,
+                -1.36,
+                2.6
+            ],
+            "platform_anchor_m": [
+                0.125,
+                -0.125,
+                0.3833333333333333
+            ]
+        }
+    ],
+    "control": {
+        "period_us": 1000,
+        "maximum_position_error_deg": 2.0
+    }
+}

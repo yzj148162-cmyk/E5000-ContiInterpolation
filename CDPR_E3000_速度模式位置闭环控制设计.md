@@ -10,9 +10,9 @@
 
 实施顺序为：先完成单轴闭环和跟随效果验证，再扩展到双轴，最后扩展到 8 轴。第一版不追求最短控制周期，先验证接口调用、方向切换、位置跟随、控制稳定性和安全停止是否可靠。
 
-程序中的 `E5000HardwareInterface`、`E5000ContiInterface` 和
-`E5000ContiInterpolation` 是最初 E5000 连续插补阶段形成的历史名称；当前速度闭环实机使用
-E3000，这些类名暂不重构，以避免仅为命名引入大范围代码变更。
+当前速度闭环实机使用 E3000。底层已改为卡型无关命名：
+`LeadshineMotionCard` 封装雷赛SDK，`MotionCardHardwareInterface` 提供独占硬件线程，
+应用数据目录使用 `CdprForceInteractionControl`。
 
 ## 2. 总体原则
 
@@ -282,7 +282,7 @@ PositionVelocityPid
 VelocityControlWorker
     轨迹状态机、控制周期、结束判定和日志组织
 
-E5000HardwareInterface扩展
+MotionCardHardwareInterface扩展
     配置速度曲线、启动vmove、在线变速、停止及Trace读取
 ```
 
