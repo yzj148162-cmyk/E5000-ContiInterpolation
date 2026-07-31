@@ -8,6 +8,7 @@
 #include <QMap>
 
 #include "common/ContiTypes.h"
+#include "cdpr/CdprControlTypes.h"
 #include "control/PositionVelocityPid.h"
 #include "control/TraceDelayCalibration.h"
 #include "hardware/MotionCardHardwareInterface.h"
@@ -50,6 +51,8 @@ public slots:
     void startTraceDelayCalibration(const TraceDelayCalibrationConfig &config);
     void stopTraceDelayCalibration(bool emergency);
     void resetTraceDelayCalibrationAxis(quint16 axis);
+    void startOfflinePvt(const CdprOfflinePvtPlan &plan);
+    void stopOfflinePvt(bool emergency);
     void startTelemetryRecording();
     void stopTelemetryRecording();
     void refreshBusCycle();
@@ -60,6 +63,7 @@ signals:
     void statusChanged(const ContiStatus &status);
     void velocityPlotSamplesReady(const QVector<VelocityPlotSample> &samples);
     void torquePlotSamplesReady(const QVector<TorquePlotSample> &samples);
+    void offlinePvtStatusChanged(const CdprOfflinePvtStatus &status);
 
 private slots:
     void produceNextPoint();
@@ -67,6 +71,7 @@ private slots:
     void runVelocityControlCycle();
     void runTorqueTestCycle();
     void runTraceDelayCalibrationCycle();
+    void monitorOfflinePvt();
 
 private:
     bool startAfterPreload();
@@ -117,6 +122,9 @@ private:
                                      bool emergency = false);
     void appendTraceDelayCalibrationFrames(const QVector<TraceTelemetryFrame> &frames);
     void resetTraceDelayHistory();
+    void finishOfflinePvt(const QString &message,
+                          CdprOfflinePvtRunState state,
+                          bool emergency = false);
     void applyTraceDelayCompensation(const QVector<TraceTelemetryFrame> &frames);
     void loadTraceDelayCalibrationResults();
     void saveTraceDelayCalibrationResults();
@@ -154,6 +162,7 @@ private:
     QTimer *velocityControlTimer_ = nullptr;
     QTimer *torqueTestTimer_ = nullptr;
     QTimer *traceDelayCalibrationTimer_ = nullptr;
+    QTimer *offlinePvtMonitorTimer_ = nullptr;
     ContiTestConfig config_;
     ContiFeedStatus lastFeedStatus_;
     bool boardInitialized_ = false;
@@ -173,6 +182,7 @@ private:
     bool traceDelayCalibrationActive_ = false;
     bool traceDelayMotionStarted_ = false;
     bool traceDelayAutoRecording_ = false;
+    bool offlinePvtActive_ = false;
     bool manualTelemetryRecording_ = false;
     quint64 velocityRunId_ = 0;
     VelocityControlConfig velocityConfig_;
@@ -228,6 +238,10 @@ private:
     quint64 lastTraceDelaySequence_ = 0;
     int savedCalibrationBusCycleUs_ = 0;
     int savedCalibrationTracePeriodUs_ = 0;
+    CdprOfflinePvtPlan offlinePvtPlan_;
+    CdprOfflinePvtStatus offlinePvtStatus_;
+    QVector<quint16> offlinePvtAxes_;
+    QElapsedTimer offlinePvtRunClock_;
     quint16 pointMoveAxis_ = 0;
     bool pointMoveDiagnosticPending_ = false;
     double pointMoveRequestedTargetUnit_ = 0.0;

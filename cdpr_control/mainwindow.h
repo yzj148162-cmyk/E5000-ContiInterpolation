@@ -72,6 +72,11 @@ signals:
     void clearCdprSimulatedWrenchRequested();
     void resetCdprDynamicsRequested();
     void advanceCdprDynamicsOnceRequested();
+    void prepareCdprOfflinePvtRequested(
+        const CdprOfflinePvtRequest &request);
+    void startCdprOfflinePvtRequested(
+        const CdprOfflinePvtPlan &plan);
+    void stopCdprOfflinePvtRequested(bool emergency);
 
 private slots:
     void onStageChanged(int index);
@@ -120,6 +125,8 @@ private slots:
     void onCdprLoadConfigurationClicked();
     void onCdprCreateTemplateClicked();
     void updateCdprStatus(const CdprUiStatus &status);
+    void updateCdprOfflinePvtPlan(const CdprOfflinePvtPlan &plan);
+    void updateCdprOfflinePvtStatus(const CdprOfflinePvtStatus &status);
     void appendLog(const QString &message);
     void updateStatus(const ContiStatus &status);
 
@@ -129,6 +136,8 @@ private:
     VelocityControlConfig collectVelocityConfig() const;
     TorqueTestConfig collectTorqueConfig() const;
     TraceDelayCalibrationConfig collectTraceDelayCalibrationConfig() const;
+    CdprOfflinePvtRequest collectCdprOfflinePvtRequest() const;
+    void invalidateCdprOfflinePvtPlan();
     void connectWorker();
     void initializeContiTrajectoryChart();
     void initializeUiRefreshTimer();
@@ -204,6 +213,8 @@ private:
     QList<QPointF> torqueMotionDisplayPoints_[2];
     quint64 lastTorqueRunId_ = 0;
     double lastTorquePlotTimeS_ = -1.0;
+    CdprOfflinePvtPlan cdprOfflinePvtPlan_;
+    CdprOfflinePvtStatus cdprOfflinePvtStatus_;
 };
 
 #endif // MAINWINDOW_H

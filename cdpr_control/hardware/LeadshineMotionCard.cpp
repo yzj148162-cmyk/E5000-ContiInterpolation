@@ -270,6 +270,90 @@ bool LeadshineMotionCard::changeVelocity(
                        errorMessage);
 }
 
+bool LeadshineMotionCard::loadPvtsTable(
+    WORD cardNo, WORD axis, const QVector<double> &timeS,
+    const QVector<double> &positionDegree, double degreesPerCardUnit,
+    double beginVelocityDegreePerSecond,
+    double endVelocityDegreePerSecond, QString &errorMessage) const
+{
+    if (timeS.size() < 2 || timeS.size() != positionDegree.size()
+        || degreesPerCardUnit <= 0.0) {
+        errorMessage = QStringLiteral(
+            "PVT装表参数无效：axis=%1，time=%2，position=%3，deg/unit=%4")
+                           .arg(axis)
+                           .arg(timeS.size())
+                           .arg(positionDegree.size())
+                           .arg(degreesPerCardUnit, 0, 'g', 10);
+        return false;
+    }
+
+    QVector<double> cardTime = timeS;
+    QVector<double> cardPosition;
+    cardPosition.reserve(positionDegree.size());
+    for (qsizetype index = 0; index < positionDegree.size(); ++index) {
+        if (!std::isfinite(cardTime[index])
+            || !std::isfinite(positionDegree[index])
+            || (index > 0 && cardTime[index] <= cardTime[index - 1])) {
+            errorMessage = QStringLiteral("轴%1的PVT表在点%2存在无效值或非递增时间。")
+                               .arg(axis)
+                               .arg(index);
+            return false;
+        }
+        cardPosition.append(
+            MotorUnit::degreesToCardUnits(positionDegree[index],
+                                          degreesPerCardUnit));
+    }
+    const double beginCardVelocity = MotorUnit::degreesToCardUnits(
+        beginVelocityDegreePerSecond, degreesPerCardUnit);
+    const double endCardVelocity = MotorUnit::degreesToCardUnits(
+        endVelocityDegreePerSecond, degreesPerCardUnit);
+    const short result = dmc_pvts_table_unit(
+        cardNo, axis, static_cast<DWORD>(cardTime.size()),
+        cardTime.data(), cardPosition.data(),
+        beginCardVelocity, endCardVelocity);
+    return checkResult(
+        result,
+        QStringLiteral("dmc_pvts_table_unit(axis=%1, count=%2)")
+            .arg(axis)
+            .arg(cardTime.size()),
+        errorMessage);
+}
+
+bool LeadshineMotionCard::startPvtMove(
+    WORD cardNo, const QVector<quint16> &axes,
+    QString &errorMessage) const
+{
+    if (axes.isEmpty()) {
+        errorMessage = QStringLiteral("PVT同步启动轴列表为空。");
+        return false;
+    }
+    QVector<WORD> sdkAxes;
+    sdkAxes.reserve(axes.size());
+    for (quint16 axis : axes) {
+        sdkAxes.append(static_cast<WORD>(axis));
+    }
+    return checkResult(
+        dmc_pvt_move(cardNo, static_cast<WORD>(sdkAxes.size()),
+                     sdkAxes.data()),
+        QStringLiteral("dmc_pvt_move(axisCount=%1)").arg(sdkAxes.size()),
+        errorMessage);
+}
+
+bool LeadshineMotionCard::readPvtRunIndex(
+    WORD cardNo, WORD axis, quint32 &index,
+    QString &errorMessage) const
+{
+    DWORD sdkIndex = 0;
+    if (!checkResult(dmc_pvt_get_run_index(cardNo, axis, &sdkIndex),
+                     QStringLiteral("dmc_pvt_get_run_index(axis=%1)")
+                         .arg(axis),
+                     errorMessage)) {
+        return false;
+    }
+    index = static_cast<quint32>(sdkIndex);
+    return true;
+}
+
 bool LeadshineMotionCard::startTorqueMove(
     WORD cardNo, WORD axis, int torqueRaw, WORD positionLimitValid,
     double positionLimitCardUnit, WORD positionMode, short &apiResult,

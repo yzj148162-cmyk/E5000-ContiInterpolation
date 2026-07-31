@@ -37,6 +37,16 @@ public:
                         double velocityDegreePerSecond,
                         short &apiResult,
                         QString &errorMessage);
+    bool startPvtMotion(
+        const QVector<quint16> &axes,
+        const QVector<double> &timeS,
+        const QVector<QVector<double>> &axisPositionDegree,
+        double degreesPerCardUnit,
+        QString &errorMessage);
+    bool readPvtMotionStatus(const QVector<quint16> &axes,
+                             int &minimumRunIndex,
+                             bool &allAxesDone,
+                             QString &errorMessage) const;
     bool startTorqueMove(const TorqueTestConfig &config, int torqueRaw,
                          double absolutePositionLimitDegree,
                          short &apiResult, QString &errorMessage);

@@ -4585,6 +4585,201 @@
                </layout>
               </widget>
              </item>
+           </layout>
+          </widget>
+           <widget class="QWidget" name="cdprOfflinePvtTab">
+            <attribute name="title">
+             <string>离线PVT位控</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="cdprOfflinePvtLayout">
+             <item>
+              <widget class="QGroupBox" name="cdprOfflinePvtTrajectoryGroup">
+               <property name="title">
+                <string>末端相对轨迹（五次多项式）</string>
+               </property>
+               <layout class="QGridLayout" name="cdprOfflinePvtTrajectoryLayout">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="cdprPvtTranslationLabel">
+                  <property name="text"><string>平移</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QDoubleSpinBox" name="cdprPvtDeltaXSpin">
+                  <property name="decimals"><number>6</number></property>
+                  <property name="minimum"><double>-10.000000000000000</double></property>
+                  <property name="maximum"><double>10.000000000000000</double></property>
+                  <property name="value"><double>0.020000000000000</double></property>
+                  <property name="prefix"><string>Δx=</string></property>
+                  <property name="suffix"><string> m</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QDoubleSpinBox" name="cdprPvtDeltaYSpin">
+                  <property name="decimals"><number>6</number></property>
+                  <property name="minimum"><double>-10.000000000000000</double></property>
+                  <property name="maximum"><double>10.000000000000000</double></property>
+                  <property name="prefix"><string>Δy=</string></property>
+                  <property name="suffix"><string> m</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QDoubleSpinBox" name="cdprPvtDeltaZSpin">
+                  <property name="decimals"><number>6</number></property>
+                  <property name="minimum"><double>-10.000000000000000</double></property>
+                  <property name="maximum"><double>10.000000000000000</double></property>
+                  <property name="prefix"><string>Δz=</string></property>
+                  <property name="suffix"><string> m</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="4">
+                 <widget class="QLabel" name="cdprPvtRotationLabel">
+                  <property name="text"><string>转角</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="5">
+                 <widget class="QDoubleSpinBox" name="cdprPvtDeltaRollSpin">
+                  <property name="decimals"><number>4</number></property>
+                  <property name="minimum"><double>-180.000000000000000</double></property>
+                  <property name="maximum"><double>180.000000000000000</double></property>
+                  <property name="prefix"><string>Δrx=</string></property>
+                  <property name="suffix"><string> °</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="6">
+                 <widget class="QDoubleSpinBox" name="cdprPvtDeltaPitchSpin">
+                  <property name="decimals"><number>4</number></property>
+                  <property name="minimum"><double>-180.000000000000000</double></property>
+                  <property name="maximum"><double>180.000000000000000</double></property>
+                  <property name="prefix"><string>Δry=</string></property>
+                  <property name="suffix"><string> °</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="7">
+                 <widget class="QDoubleSpinBox" name="cdprPvtDeltaYawSpin">
+                  <property name="decimals"><number>4</number></property>
+                  <property name="minimum"><double>-180.000000000000000</double></property>
+                  <property name="maximum"><double>180.000000000000000</double></property>
+                  <property name="prefix"><string>Δrz=</string></property>
+                  <property name="suffix"><string> °</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="cdprPvtTimingLabel">
+                  <property name="text"><string>时序</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QDoubleSpinBox" name="cdprPvtDurationSpin">
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.010000000000000</double></property>
+                  <property name="maximum"><double>600.000000000000000</double></property>
+                  <property name="value"><double>5.000000000000000</double></property>
+                  <property name="prefix"><string>轨迹时间=</string></property>
+                  <property name="suffix"><string> s</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="2">
+                 <widget class="QSpinBox" name="cdprPvtSamplePeriodSpin">
+                  <property name="minimum"><number>1</number></property>
+                  <property name="maximum"><number>1000</number></property>
+                  <property name="singleStep"><number>1</number></property>
+                  <property name="value"><number>10</number></property>
+                  <property name="prefix"><string>采样=</string></property>
+                  <property name="suffix"><string> ms</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="3">
+                 <widget class="QDoubleSpinBox" name="cdprPvtMaxAxisVelocitySpin">
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.001000000000000</double></property>
+                  <property name="maximum"><double>10000.000000000000000</double></property>
+                  <property name="value"><double>90.000000000000000</double></property>
+                  <property name="prefix"><string>轴速上限=</string></property>
+                  <property name="suffix"><string> °/s</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="4" colspan="4">
+                 <widget class="QLabel" name="cdprPvtWinchHintLabel">
+                  <property name="text"><string>虚拟绞盘：直径160 mm；收放绳方向读取配置文件（默认 +1）</string></property>
+                  <property name="wordWrap"><bool>true</bool></property>
+                 </widget>
+                </item>
+                <item row="2" column="0" colspan="8">
+                 <widget class="QLabel" name="cdprPvtModeHintLabel">
+                  <property name="text"><string>完整轨迹先离线生成并校验，再由8轴PVT表同步执行；与连续插补、点动、速度闭环、转矩和标定任务互斥。</string></property>
+                  <property name="wordWrap"><bool>true</bool></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="cdprOfflinePvtExecutionGroup">
+               <property name="title"><string>生成与执行</string></property>
+               <layout class="QGridLayout" name="cdprOfflinePvtExecutionLayout">
+                <item row="0" column="0">
+                 <widget class="QPushButton" name="cdprPvtGenerateButton">
+                  <property name="text"><string>生成并检查轨迹</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QPushButton" name="cdprPvtStartButton">
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="text"><string>开始8轴PVT</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QPushButton" name="cdprPvtStopButton">
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="text"><string>减速停止</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QPushButton" name="cdprPvtEmergencyStopButton">
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="text"><string>立即停止</string></property>
+                  <property name="styleSheet"><string notr="true">QPushButton { color: white; background-color: #c00024; font-weight: bold; }</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="4">
+                 <widget class="QProgressBar" name="cdprPvtProgressBar">
+                  <property name="value"><number>0</number></property>
+                  <property name="format"><string>%p%（%v/%m）</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="0" colspan="5">
+                 <widget class="QLabel" name="cdprPvtStatusLabel">
+                  <property name="text"><string>尚未生成轨迹。</string></property>
+                  <property name="wordWrap"><bool>true</bool></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="cdprOfflinePvtPreviewGroup">
+               <property name="title"><string>8轴轨迹摘要</string></property>
+               <layout class="QVBoxLayout" name="cdprOfflinePvtPreviewLayout">
+                <item>
+                 <widget class="QTableWidget" name="cdprPvtPreviewTable">
+                  <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
+                  <property name="alternatingRowColors"><bool>true</bool></property>
+                  <property name="rowCount"><number>8</number></property>
+                  <property name="columnCount"><number>8</number></property>
+                  <row/><row/><row/><row/><row/><row/><row/><row/>
+                  <column><property name="text"><string>绳索</string></property></column>
+                  <column><property name="text"><string>轴号</string></property></column>
+                  <column><property name="text"><string>方向</string></property></column>
+                  <column><property name="text"><string>初始绳长（m）</string></property></column>
+                  <column><property name="text"><string>终止绳长（m）</string></property></column>
+                  <column><property name="text"><string>绳长变化（m）</string></property></column>
+                  <column><property name="text"><string>轴终点（°）</string></property></column>
+                  <column><property name="text"><string>峰值轴速（°/s）</string></property></column>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
             </layout>
            </widget>
            <widget class="QWidget" name="cdprControlStatusTab">

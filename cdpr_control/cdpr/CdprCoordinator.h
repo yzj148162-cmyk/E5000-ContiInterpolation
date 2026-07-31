@@ -37,10 +37,12 @@ public slots:
     void clearSimulatedSensorWrench();
     void resetDynamics();
     void advanceDynamicsOnce();
+    void prepareOfflinePvt(const CdprOfflinePvtRequest &request);
 
 signals:
     void statusChanged(const CdprUiStatus &status);
     void logMessage(const QString &message);
+    void offlinePvtPlanReady(const CdprOfflinePvtPlan &plan);
 
 private:
     void rebuildInitialKinematics();

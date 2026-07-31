@@ -101,6 +101,7 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
     , velocityControlTimer_(new QTimer(this))
     , torqueTestTimer_(new QTimer(this))
     , traceDelayCalibrationTimer_(new QTimer(this))
+    , offlinePvtMonitorTimer_(new QTimer(this))
 {
     softwareZeroUnit_.fill(0.0, 8);
     softwareZeroValid_.fill(false, 8);
@@ -116,6 +117,8 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
     torqueTestTimer_->setInterval(20);
     traceDelayCalibrationTimer_->setTimerType(Qt::PreciseTimer);
     traceDelayCalibrationTimer_->setInterval(5);
+    offlinePvtMonitorTimer_->setTimerType(Qt::PreciseTimer);
+    offlinePvtMonitorTimer_->setInterval(20);
 
     connect(producerTimer_, &QTimer::timeout, this, &MotionControlWorker::produceNextPoint);
     connect(monitorTimer_, &QTimer::timeout, this, &MotionControlWorker::monitorContinuousRun);
@@ -126,6 +129,8 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
             this, &MotionControlWorker::runTorqueTestCycle);
     connect(traceDelayCalibrationTimer_, &QTimer::timeout,
             this, &MotionControlWorker::runTraceDelayCalibrationCycle);
+    connect(offlinePvtMonitorTimer_, &QTimer::timeout,
+            this, &MotionControlWorker::monitorOfflinePvt);
     loadTraceDelayCalibrationResults();
 }
 
@@ -350,6 +355,7 @@ void MotionControlWorker::shutdownHardware()
     velocityControlTimer_->stop();
     torqueTestTimer_->stop();
     traceDelayCalibrationTimer_->stop();
+    offlinePvtMonitorTimer_->stop();
     resetRunTimingState();
 
     if (!boardInitialized_) {
@@ -357,6 +363,8 @@ void MotionControlWorker::shutdownHardware()
         manualTelemetryRecording_ = false;
         traceDelayCalibrationActive_ = false;
         traceDelayStatus_.active = false;
+        offlinePvtActive_ = false;
+        offlinePvtStatus_.active = false;
         return;
     }
 
@@ -405,7 +413,8 @@ void MotionControlWorker::enableSelectedAxes(const ContiTestConfig &config)
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能切换轴使能。"));
         return;
     }
@@ -472,7 +481,8 @@ void MotionControlWorker::disableSelectedAxes(const ContiTestConfig &config)
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         stopTest(false);
     }
     if (config.cardNo != initializedCardNo_) {
@@ -508,7 +518,8 @@ void MotionControlWorker::enableAllDetectedAxes()
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能执行全局轴使能。"));
         return;
     }
@@ -602,7 +613,8 @@ void MotionControlWorker::startTest(const ContiTestConfig &config)
         return;
     }
     if (running_ || preparing_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("已有测试正在准备或运行。"));
         return;
     }
@@ -775,6 +787,10 @@ void MotionControlWorker::startTest(const ContiTestConfig &config)
 
 void MotionControlWorker::stopTest(bool emergency)
 {
+    if (offlinePvtActive_) {
+        stopOfflinePvt(emergency);
+        return;
+    }
     if (torqueTestActive_) {
         stopTorqueTest(emergency);
         return;
@@ -821,6 +837,174 @@ void MotionControlWorker::stopTest(bool emergency)
     resetRunTimingState();
     stateText_ = emergency ? QStringLiteral("已立即停止") : QStringLiteral("已减速停止");
     emit logMessage(stateText_);
+    publishStatus();
+}
+
+void MotionControlWorker::startOfflinePvt(const CdprOfflinePvtPlan &plan)
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("离线PVT启动失败：请先初始化控制卡。"));
+        return;
+    }
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
+        emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动离线PVT。"));
+        return;
+    }
+    if (!plan.valid || plan.timeS.size() < 2
+        || plan.request.degreesPerCardUnit <= 0.0
+        || !sameCardUnitDefinition(plan.request.degreesPerCardUnit,
+                                   config_.degreesPerCardUnit)) {
+        emit logMessage(QStringLiteral(
+            "离线PVT启动失败：轨迹无效，或板卡unit定义已变化；请重新生成轨迹。"));
+        return;
+    }
+    const int pvtSamplePeriodUs = plan.request.samplePeriodMs * 1000;
+    if (actualBusCycleUs_ <= 0
+        || pvtSamplePeriodUs < actualBusCycleUs_
+        || pvtSamplePeriodUs % actualBusCycleUs_ != 0) {
+        emit logMessage(QStringLiteral(
+            "离线PVT启动失败：采样周期%1 ms必须是不小于当前总线周期%2 us的整数倍。")
+                            .arg(plan.request.samplePeriodMs)
+                            .arg(actualBusCycleUs_));
+        return;
+    }
+
+    QSet<quint16> uniqueAxes;
+    QVector<quint16> axes;
+    QVector<QVector<double>> positions;
+    axes.reserve(kCdprCableCount);
+    positions.reserve(kCdprCableCount);
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const quint16 axis = plan.axes[static_cast<size_t>(cable)];
+        const QVector<double> &axisPositions =
+            plan.axisPositionDegree[static_cast<size_t>(cable)];
+        if (axis >= static_cast<quint16>(detectedAxes_.size())
+            || uniqueAxes.contains(axis)
+            || !enabledAxes_.contains(axis)
+            || axisPositions.size() != plan.timeS.size()) {
+            emit logMessage(QStringLiteral(
+                "离线PVT启动失败：绳%1映射轴%2无效、未使能、重复，或位置表点数不一致。")
+                                .arg(cable)
+                                .arg(axis));
+            return;
+        }
+        uniqueAxes.insert(axis);
+        axes.append(axis);
+        positions.append(axisPositions);
+    }
+    if (axes.size() != kCdprCableCount) {
+        emit logMessage(QStringLiteral("离线PVT首版要求8个不同且已使能的在线轴。"));
+        return;
+    }
+
+    QString error;
+    if (!card_.startPvtMotion(axes, plan.timeS, positions,
+                              plan.request.degreesPerCardUnit, error)) {
+        offlinePvtStatus_ = {};
+        offlinePvtStatus_.state = CdprOfflinePvtRunState::Fault;
+        offlinePvtStatus_.stateText =
+            QStringLiteral("PVT装表或同步启动失败");
+        emit offlinePvtStatusChanged(offlinePvtStatus_);
+        emit logMessage(QStringLiteral("离线PVT启动失败：%1").arg(error));
+        return;
+    }
+
+    offlinePvtPlan_ = plan;
+    offlinePvtAxes_ = axes;
+    offlinePvtActive_ = true;
+    offlinePvtStatus_ = {};
+    offlinePvtStatus_.state = CdprOfflinePvtRunState::Running;
+    offlinePvtStatus_.active = true;
+    offlinePvtStatus_.totalPointCount = plan.timeS.size();
+    offlinePvtStatus_.durationS = plan.timeS.constLast();
+    offlinePvtStatus_.stateText = QStringLiteral("8轴PVT运行中");
+    offlinePvtRunClock_.start();
+    offlinePvtMonitorTimer_->start();
+    stateText_ = QStringLiteral("离线PVT运行中");
+    emit logMessage(QStringLiteral(
+        "离线PVT已同步启动：8轴、%1点、轨迹时间%2 s；"
+        "各轴使用dmc_pvts_table_unit装表，dmc_pvt_move一次启动。")
+                        .arg(plan.timeS.size())
+                        .arg(plan.timeS.constLast(), 0, 'f', 3));
+    emit offlinePvtStatusChanged(offlinePvtStatus_);
+    publishStatus();
+}
+
+void MotionControlWorker::monitorOfflinePvt()
+{
+    if (!offlinePvtActive_) {
+        offlinePvtMonitorTimer_->stop();
+        return;
+    }
+    int runIndex = 0;
+    bool allDone = false;
+    QString error;
+    if (!card_.readPvtMotionStatus(offlinePvtAxes_, runIndex,
+                                   allDone, error)) {
+        finishOfflinePvt(QStringLiteral("PVT状态读取失败：%1").arg(error),
+                         CdprOfflinePvtRunState::Fault, true);
+        return;
+    }
+    offlinePvtStatus_.currentIndex =
+        qBound(0, runIndex, std::max(0, offlinePvtStatus_.totalPointCount - 1));
+    offlinePvtStatus_.elapsedS =
+        offlinePvtRunClock_.isValid()
+        ? offlinePvtRunClock_.elapsed() / 1000.0 : 0.0;
+    emit offlinePvtStatusChanged(offlinePvtStatus_);
+    if (allDone) {
+        finishOfflinePvt(QStringLiteral("离线PVT轨迹执行完成。"),
+                         CdprOfflinePvtRunState::Completed);
+    }
+}
+
+void MotionControlWorker::stopOfflinePvt(bool emergency)
+{
+    if (!offlinePvtActive_) {
+        emit logMessage(QStringLiteral("当前没有正在运行的离线PVT。"));
+        return;
+    }
+    finishOfflinePvt(
+        emergency ? QStringLiteral("离线PVT已立即停止。")
+                  : QStringLiteral("离线PVT已减速停止。"),
+        CdprOfflinePvtRunState::Stopped, emergency);
+}
+
+void MotionControlWorker::finishOfflinePvt(
+    const QString &message, CdprOfflinePvtRunState state, bool emergency)
+{
+    offlinePvtMonitorTimer_->stop();
+    if (offlinePvtActive_
+        && (state == CdprOfflinePvtRunState::Stopped
+            || state == CdprOfflinePvtRunState::Fault)) {
+        QStringList failures;
+        for (quint16 axis : offlinePvtAxes_) {
+            QString error;
+            if (!card_.stopAxis(initializedCardNo_, axis, emergency, error)) {
+                failures.append(
+                    QStringLiteral("轴%1：%2").arg(axis).arg(error));
+            }
+        }
+        if (!failures.isEmpty()) {
+            emit logMessage(QStringLiteral("PVT停止部分失败：%1")
+                                .arg(failures.join(QStringLiteral("；"))));
+        }
+    }
+    offlinePvtActive_ = false;
+    offlinePvtStatus_.active = false;
+    offlinePvtStatus_.state = state;
+    offlinePvtStatus_.elapsedS =
+        offlinePvtRunClock_.isValid()
+        ? offlinePvtRunClock_.elapsed() / 1000.0 : 0.0;
+    if (state == CdprOfflinePvtRunState::Completed) {
+        offlinePvtStatus_.currentIndex =
+            std::max(0, offlinePvtStatus_.totalPointCount - 1);
+    }
+    offlinePvtStatus_.stateText = message;
+    stateText_ = message;
+    emit offlinePvtStatusChanged(offlinePvtStatus_);
+    emit logMessage(message);
     publishStatus();
 }
 
@@ -890,7 +1074,8 @@ void MotionControlWorker::enableJogAxis(const SingleAxisJogConfig &config)
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("连续插补准备、运行或单轴点位运动期间不能切换点动测试轴。"));
         return;
     }
@@ -956,7 +1141,8 @@ void MotionControlWorker::disableJogAxis(const SingleAxisJogConfig &config)
         return;
     }
     if (running_ || preparing_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间不能失能点动测试轴。"));
         return;
     }
@@ -994,7 +1180,8 @@ void MotionControlWorker::setJogAxisZero(const SingleAxisJogConfig &config)
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能修改点动软件零位。"));
         return;
     }
@@ -1034,7 +1221,8 @@ void MotionControlWorker::startPointMove(const SingleAxisJogConfig &config)
         return;
     }
     if (running_ || preparing_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间禁止单轴点动。"));
         return;
     }
@@ -1194,7 +1382,8 @@ void MotionControlWorker::startVelocityControl(const VelocityControlConfig &requ
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动速度闭环。"));
         return;
     }
@@ -1969,7 +2158,8 @@ void MotionControlWorker::writeTorqueVelocityLimit(const TorqueTestConfig &confi
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("存在运动任务时禁止写入转矩模式速度限制。"));
         return;
     }
@@ -2007,7 +2197,8 @@ void MotionControlWorker::startTorqueTest(const TorqueTestConfig &requestedConfi
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动转矩测试。"));
         return;
     }
@@ -2451,7 +2642,8 @@ void MotionControlWorker::startTraceDelayCalibration(
         return;
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
-        || traceDelayCalibrationActive_ || torqueTestActive_) {
+        || traceDelayCalibrationActive_ || torqueTestActive_
+        || offlinePvtActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动 Trace 延迟标定。"));
         return;
     }
@@ -3211,6 +3403,7 @@ void MotionControlWorker::safelyStopAllMotionForShutdown()
     velocityControlTimer_->stop();
     torqueTestTimer_->stop();
     traceDelayCalibrationTimer_->stop();
+    offlinePvtMonitorTimer_->stop();
 
     if (listOpen_) {
         QString error;
@@ -3264,6 +3457,19 @@ void MotionControlWorker::safelyStopAllMotionForShutdown()
             card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, true, error);
         }
     }
+    if (offlinePvtActive_) {
+        for (quint16 axis : offlinePvtAxes_) {
+            QString error;
+            if (!card_.stopAxis(initializedCardNo_, axis, false, error)
+                || !waitForAxisStop(axis, kGracefulStopTimeoutMs)) {
+                emit logMessage(QStringLiteral(
+                    "离线PVT安全停机：轴%1减速停止未确认，改为立即停止。")
+                                    .arg(axis));
+                error.clear();
+                card_.stopAxis(initializedCardNo_, axis, true, error);
+            }
+        }
+    }
 
     listOpen_ = false;
     preparing_ = false;
@@ -3282,6 +3488,11 @@ void MotionControlWorker::safelyStopAllMotionForShutdown()
     traceDelayMotionStarted_ = false;
     traceDelayStatus_.active = false;
     traceDelayStatus_.phaseText = QStringLiteral("已安全停止");
+    offlinePvtActive_ = false;
+    offlinePvtStatus_.active = false;
+    offlinePvtStatus_.state = CdprOfflinePvtRunState::Stopped;
+    offlinePvtStatus_.stateText = QStringLiteral("已安全停止");
+    emit offlinePvtStatusChanged(offlinePvtStatus_);
     hostQueue_.clear();
     lastFeedStatus_ = {};
 }
@@ -3830,6 +4041,7 @@ void MotionControlWorker::enterError(const QString &message)
     velocityControlTimer_->stop();
     torqueTestTimer_->stop();
     traceDelayCalibrationTimer_->stop();
+    offlinePvtMonitorTimer_->stop();
     if (listOpen_) {
         QString ignored;
         card_.stop(config_, true, ignored);
@@ -3854,6 +4066,12 @@ void MotionControlWorker::enterError(const QString &message)
         QString ignored;
         card_.stopAxis(initializedCardNo_, traceDelayConfig_.axis, true, ignored);
     }
+    if (offlinePvtActive_ && boardInitialized_) {
+        for (quint16 axis : offlinePvtAxes_) {
+            QString ignored;
+            card_.stopAxis(initializedCardNo_, axis, true, ignored);
+        }
+    }
     listOpen_ = false;
     preparing_ = false;
     running_ = false;
@@ -3871,6 +4089,11 @@ void MotionControlWorker::enterError(const QString &message)
     traceDelayMotionStarted_ = false;
     traceDelayStatus_.active = false;
     traceDelayStatus_.phaseText = QStringLiteral("错误");
+    offlinePvtActive_ = false;
+    offlinePvtStatus_.active = false;
+    offlinePvtStatus_.state = CdprOfflinePvtRunState::Fault;
+    offlinePvtStatus_.stateText = QStringLiteral("错误");
+    emit offlinePvtStatusChanged(offlinePvtStatus_);
     if (velocityAutoRecording_) {
         telemetryRecorder_.stop();
         velocityAutoRecording_ = false;

@@ -3,7 +3,10 @@
 
 #include <array>
 
+#include <QMetaType>
+#include <QString>
 #include <QtGlobal>
+#include <QVector>
 
 constexpr int kCdprDofCount = 6;
 constexpr int kCdprCableCount = 8;
@@ -136,5 +139,58 @@ struct CdprRobotState
     quint32 safetyFlags = 0;
     bool safetyLatched = false;
 };
+
+// 离线PVT测试使用已知的完整末端轨迹。规划器输出角度制8轴表，
+// 运动线程只负责装表、同步启动和监控，不参与运动学计算。
+struct CdprOfflinePvtRequest
+{
+    CdprVector6 relativePose {};
+    double durationS = 5.0;
+    int samplePeriodMs = 10;
+    double winchRadiusM = 0.08;
+    double maximumAxisVelocityDegreePerSecond = 90.0;
+    double degreesPerCardUnit = 1.0;
+};
+
+struct CdprOfflinePvtPlan
+{
+    bool valid = false;
+    QString errorText;
+    QString summary;
+    CdprOfflinePvtRequest request;
+    QVector<double> timeS;
+    std::array<quint16, kCdprCableCount> axes {};
+    std::array<int, kCdprCableCount> directions {};
+    std::array<QVector<double>, kCdprCableCount> axisPositionDegree;
+    CdprCableState8 initialCables;
+    CdprCableState8 finalCables;
+    CdprVector8 finalAxisDisplacementDegree {};
+    CdprVector8 peakAxisVelocityDegreePerSecond {};
+};
+
+enum class CdprOfflinePvtRunState : quint8
+{
+    Idle = 0,
+    Ready,
+    Running,
+    Completed,
+    Stopped,
+    Fault
+};
+
+struct CdprOfflinePvtStatus
+{
+    CdprOfflinePvtRunState state = CdprOfflinePvtRunState::Idle;
+    bool active = false;
+    int currentIndex = 0;
+    int totalPointCount = 0;
+    double elapsedS = 0.0;
+    double durationS = 0.0;
+    QString stateText = QStringLiteral("未生成轨迹");
+};
+
+Q_DECLARE_METATYPE(CdprOfflinePvtRequest)
+Q_DECLARE_METATYPE(CdprOfflinePvtPlan)
+Q_DECLARE_METATYPE(CdprOfflinePvtStatus)
 
 #endif // CDPRCONTROLTYPES_H

@@ -7,6 +7,8 @@
 #include <QTimer>
 
 namespace {
+constexpr double kPi = 3.14159265358979323846;
+
 QString vectorText(const CdprVector3 &value)
 {
     return QStringLiteral("%1, %2, %3")
@@ -324,6 +326,179 @@ void CdprCoordinator::advanceDynamicsOnce()
                         .arg(result.iterations)
                         .arg(vector6Text(result.state.pose, 6)));
     publishStatus();
+}
+
+void CdprCoordinator::prepareOfflinePvt(
+    const CdprOfflinePvtRequest &request)
+{
+    CdprOfflinePvtPlan plan;
+    plan.request = request;
+
+    auto fail = [&](const QString &error) {
+        plan.valid = false;
+        plan.errorText = error;
+        plan.summary = QStringLiteral("轨迹生成失败：%1").arg(error);
+        emit logMessage(plan.summary);
+        emit offlinePvtPlanReady(plan);
+    };
+
+    if (!configurationLoaded_ || !kinematicsReady_ || !kinematics_) {
+        fail(QStringLiteral("请先加载并通过校验的CDPR结构配置。"));
+        return;
+    }
+    if (!std::isfinite(request.durationS) || request.durationS <= 0.0
+        || request.samplePeriodMs <= 0
+        || !std::isfinite(request.winchRadiusM)
+        || request.winchRadiusM <= 0.0
+        || !std::isfinite(request.maximumAxisVelocityDegreePerSecond)
+        || request.maximumAxisVelocityDegreePerSecond <= 0.0
+        || !std::isfinite(request.degreesPerCardUnit)
+        || request.degreesPerCardUnit <= 0.0) {
+        fail(QStringLiteral("轨迹时间、采样周期、绞盘半径、轴速度上限或板卡unit定义无效。"));
+        return;
+    }
+    for (double component : request.relativePose) {
+        if (!std::isfinite(component)) {
+            fail(QStringLiteral("相对位姿中存在非有限数值。"));
+            return;
+        }
+    }
+
+    const double samplePeriodS = request.samplePeriodMs / 1000.0;
+    const int intervalCount =
+        std::max(1, static_cast<int>(std::ceil(request.durationS
+                                               / samplePeriodS)));
+    const int pointCount = intervalCount + 1;
+    constexpr int kMaximumPvtPointCount = 5000;
+    if (pointCount > kMaximumPvtPointCount) {
+        fail(QStringLiteral("PVT点数%1超过首版上限%2；请增大采样周期或缩短轨迹时间。")
+                 .arg(pointCount)
+                 .arg(kMaximumPvtPointCount));
+        return;
+    }
+
+    CdprPlatformState6 startPlatform;
+    if (startupState_.valid && startupState_.initialPlatform.poseValid) {
+        startPlatform = startupState_.initialPlatform;
+    } else {
+        startPlatform.pose = presetInitialPose_;
+        startPlatform.poseValid = true;
+    }
+    startPlatform.twist = {};
+    startPlatform.acceleration = {};
+    startPlatform.twistValid = true;
+    startPlatform.accelerationValid = true;
+
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const CdprCableAxisConfig &mapping =
+            configuration_.cables[static_cast<size_t>(cable)];
+        plan.axes[static_cast<size_t>(cable)] =
+            static_cast<quint16>(mapping.axis);
+        plan.directions[static_cast<size_t>(cable)] = mapping.direction;
+        plan.axisPositionDegree[static_cast<size_t>(cable)].reserve(pointCount);
+    }
+    plan.timeS.reserve(pointCount);
+
+    const double maximumCableTravelM =
+        CdprConfigurationFile::maximumCableTravelM(configuration_);
+    CdprInverseKinematicsResult initialInverse;
+    CdprInverseKinematicsResult finalInverse;
+    CdprVector8 previousAxisDegree {};
+    bool previousValid = false;
+
+    for (int index = 0; index < pointCount; ++index) {
+        const double timeS = index == intervalCount
+            ? request.durationS
+            : index * samplePeriodS;
+        const double normalizedTime = qBound(0.0, timeS / request.durationS, 1.0);
+        const double u2 = normalizedTime * normalizedTime;
+        const double u3 = u2 * normalizedTime;
+        const double u4 = u3 * normalizedTime;
+        const double u5 = u4 * normalizedTime;
+        const double blend = 10.0 * u3 - 15.0 * u4 + 6.0 * u5;
+
+        CdprPlatformState6 platform = startPlatform;
+        for (int dof = 0; dof < kCdprDofCount; ++dof) {
+            platform.pose[static_cast<size_t>(dof)] =
+                startPlatform.pose[static_cast<size_t>(dof)]
+                + blend * request.relativePose[static_cast<size_t>(dof)];
+        }
+        const CdprInverseKinematicsResult inverse =
+            kinematics_->inverse(platform);
+        if (!inverse.valid) {
+            fail(QStringLiteral("第%1个轨迹点逆运动学失败：%2")
+                     .arg(index)
+                     .arg(inverse.errorText));
+            return;
+        }
+        if (index == 0) {
+            initialInverse = inverse;
+        }
+        if (index == intervalCount) {
+            finalInverse = inverse;
+        }
+
+        plan.timeS.append(timeS);
+        CdprVector8 currentAxisDegree {};
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            const size_t offset = static_cast<size_t>(cable);
+            const double cableDeltaM =
+                inverse.cables.lengthM[offset]
+                - initialInverse.cables.lengthM[offset];
+            if (std::abs(cableDeltaM) > maximumCableTravelM + 1.0e-9) {
+                fail(QStringLiteral(
+                    "绳%1相对启动绳长变化%2 m，超过绞盘±%3 m行程。")
+                         .arg(cable)
+                         .arg(cableDeltaM, 0, 'f', 6)
+                         .arg(maximumCableTravelM, 0, 'f', 6));
+                return;
+            }
+            const double axisDegree =
+                plan.directions[offset] * cableDeltaM / request.winchRadiusM
+                * 180.0 / kPi;
+            currentAxisDegree[offset] = axisDegree;
+            plan.axisPositionDegree[offset].append(axisDegree);
+            if (previousValid) {
+                const double dt = timeS - plan.timeS.at(index - 1);
+                const double velocity =
+                    std::abs(axisDegree - previousAxisDegree[offset]) / dt;
+                plan.peakAxisVelocityDegreePerSecond[offset] =
+                    std::max(plan.peakAxisVelocityDegreePerSecond[offset],
+                             velocity);
+            }
+        }
+        previousAxisDegree = currentAxisDegree;
+        previousValid = true;
+    }
+
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const size_t offset = static_cast<size_t>(cable);
+        if (plan.peakAxisVelocityDegreePerSecond[offset]
+            > request.maximumAxisVelocityDegreePerSecond + 1.0e-9) {
+            fail(QStringLiteral("轴%1峰值离散速度%2°/s超过上限%3°/s。")
+                     .arg(plan.axes[offset])
+                     .arg(plan.peakAxisVelocityDegreePerSecond[offset], 0, 'f', 3)
+                     .arg(request.maximumAxisVelocityDegreePerSecond, 0, 'f', 3));
+            return;
+        }
+        plan.finalAxisDisplacementDegree[offset] =
+            plan.axisPositionDegree[offset].constLast();
+    }
+
+    plan.initialCables = initialInverse.cables;
+    plan.finalCables = finalInverse.cables;
+    plan.valid = true;
+    plan.summary = QStringLiteral(
+        "离线PVT轨迹有效：%1点，%2 s，采样%3 ms；8轴最大峰值速度%4°/s。")
+                       .arg(pointCount)
+                       .arg(request.durationS, 0, 'f', 3)
+                       .arg(request.samplePeriodMs)
+                       .arg(*std::max_element(
+                                plan.peakAxisVelocityDegreePerSecond.begin(),
+                                plan.peakAxisVelocityDegreePerSecond.end()),
+                            0, 'f', 3);
+    emit logMessage(plan.summary);
+    emit offlinePvtPlanReady(plan);
 }
 
 bool CdprCoordinator::resetDynamicsFromSelectedPose(QString *errorText)

@@ -18,6 +18,9 @@ int main(int argc, char *argv[])
     qRegisterMetaType<QVector<TorquePlotSample>>("QVector<TorquePlotSample>");
     qRegisterMetaType<TraceDelayCalibrationConfig>("TraceDelayCalibrationConfig");
     qRegisterMetaType<CdprUiStatus>("CdprUiStatus");
+    qRegisterMetaType<CdprOfflinePvtRequest>("CdprOfflinePvtRequest");
+    qRegisterMetaType<CdprOfflinePvtPlan>("CdprOfflinePvtPlan");
+    qRegisterMetaType<CdprOfflinePvtStatus>("CdprOfflinePvtStatus");
 
     MainWindow window;
     window.show();

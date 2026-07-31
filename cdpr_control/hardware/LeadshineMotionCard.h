@@ -29,6 +29,17 @@ public:
                         double velocityDegreePerSecond,
                         short &apiResult,
                         QString &errorMessage) const;
+    bool loadPvtsTable(WORD cardNo, WORD axis,
+                       const QVector<double> &timeS,
+                       const QVector<double> &positionDegree,
+                       double degreesPerCardUnit,
+                       double beginVelocityDegreePerSecond,
+                       double endVelocityDegreePerSecond,
+                       QString &errorMessage) const;
+    bool startPvtMove(WORD cardNo, const QVector<quint16> &axes,
+                      QString &errorMessage) const;
+    bool readPvtRunIndex(WORD cardNo, WORD axis, quint32 &index,
+                         QString &errorMessage) const;
     bool startTorqueMove(WORD cardNo, WORD axis, int torqueRaw,
                          WORD positionLimitValid, double positionLimitCardUnit,
                          WORD positionMode, short &apiResult,

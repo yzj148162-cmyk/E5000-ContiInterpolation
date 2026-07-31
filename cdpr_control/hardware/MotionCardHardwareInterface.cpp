@@ -11,6 +11,7 @@
 
 #include <cmath>
 #include <algorithm>
+#include <limits>
 
 #include "hardware/LeadshineMotionCard.h"
 #include "hardware/RuntimeTraceSlaveReader.h"
@@ -584,6 +585,57 @@ bool MotionCardHardwareInterface::changeVelocity(
     return invokeHardware(backend_, [&] {
         return backend_->card_.changeVelocity(config, velocityDegreePerSecond,
                                                apiResult, error);
+    });
+}
+bool MotionCardHardwareInterface::startPvtMotion(
+    const QVector<quint16> &axes, const QVector<double> &timeS,
+    const QVector<QVector<double>> &axisPositionDegree,
+    double degreesPerCardUnit, QString &error)
+{
+    return invokeHardware(backend_, [&] {
+        if (axes.isEmpty() || axes.size() != axisPositionDegree.size()) {
+            error = QStringLiteral("PVT轴列表与位置表数量不一致。");
+            return false;
+        }
+        for (qsizetype index = 0; index < axes.size(); ++index) {
+            if (!backend_->card_.loadPvtsTable(
+                    backend_->cardNo_, axes[index], timeS,
+                    axisPositionDegree[index], degreesPerCardUnit,
+                    0.0, 0.0, error)) {
+                error = QStringLiteral("PVT装表在轴%1失败：%2")
+                            .arg(axes[index])
+                            .arg(error);
+                return false;
+            }
+        }
+        return backend_->card_.startPvtMove(backend_->cardNo_, axes, error);
+    });
+}
+bool MotionCardHardwareInterface::readPvtMotionStatus(
+    const QVector<quint16> &axes, int &minimumRunIndex,
+    bool &allAxesDone, QString &error) const
+{
+    return invokeHardware(backend_, [&] {
+        if (axes.isEmpty()) {
+            error = QStringLiteral("PVT状态读取轴列表为空。");
+            return false;
+        }
+        minimumRunIndex = std::numeric_limits<int>::max();
+        allAxesDone = true;
+        for (quint16 axis : axes) {
+            quint32 index = 0;
+            bool done = false;
+            if (!backend_->card_.readPvtRunIndex(
+                    backend_->cardNo_, axis, index, error)
+                || !backend_->card_.axisMotionDone(
+                    backend_->cardNo_, axis, done, error)) {
+                return false;
+            }
+            minimumRunIndex =
+                std::min(minimumRunIndex, static_cast<int>(index));
+            allAxesDone = allAxesDone && done;
+        }
+        return true;
     });
 }
 bool MotionCardHardwareInterface::startTorqueMove(

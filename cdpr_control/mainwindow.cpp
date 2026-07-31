@@ -38,6 +38,8 @@
 #include "widgets/ZoomableChartView.h"
 
 namespace {
+constexpr double kPi = 3.14159265358979323846;
+
 QString leadshineRuntimeDescription()
 {
 #ifdef Q_OS_WIN
@@ -148,9 +150,15 @@ void MainWindow::connectWorker()
     connect(ui_->busCycleCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, &MainWindow::onBusCycleSelectionChanged);
     connect(ui_->cardUnitDefinitionCombo, qOverload<int>(&QComboBox::currentIndexChanged),
-            this, [this](int) { updateGlobalCardUnitUi(); });
+            this, [this](int) {
+        updateGlobalCardUnitUi();
+        invalidateCdprOfflinePvtPlan();
+    });
     connect(ui_->cardCustomEquivalentSpin, qOverload<double>(&QDoubleSpinBox::valueChanged),
-            this, [this](double) { updateGlobalCardUnitUi(); });
+            this, [this](double) {
+        updateGlobalCardUnitUi();
+        invalidateCdprOfflinePvtPlan();
+    });
     updateGlobalCardUnitUi();
     connect(ui_->velocityTrajectoryTypeCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             ui_->velocityTrajectoryParameterStack, &QStackedWidget::setCurrentIndex);
@@ -241,9 +249,11 @@ void MainWindow::connectWorker()
     connect(ui_->cdprInitialPoseSourceCombo,
             qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int index) {
+        invalidateCdprOfflinePvtPlan();
         emit setCdprInitialPoseSourceRequested(index);
     });
     const auto publishPresetPose = [this] {
+        invalidateCdprOfflinePvtPlan();
         emit setCdprPresetInitialPoseRequested(
             ui_->cdprPresetXSpin->value(),
             ui_->cdprPresetYSpin->value(),
@@ -278,6 +288,7 @@ void MainWindow::connectWorker()
             this, [this] { emit disconnectCdprNokovRequested(); });
     connect(ui_->cdprCaptureInitialStateButton, &QPushButton::clicked,
             this, [this, publishPresetPose] {
+        invalidateCdprOfflinePvtPlan();
         publishPresetPose();
         emit captureCdprInitialStateRequested();
     });
@@ -312,6 +323,37 @@ void MainWindow::connectWorker()
             this, [this] { emit resetCdprDynamicsRequested(); });
     connect(ui_->cdprAdvanceDynamicsButton, &QPushButton::clicked,
             this, [this] { emit advanceCdprDynamicsOnceRequested(); });
+    connect(ui_->cdprPvtGenerateButton, &QPushButton::clicked,
+            this, [this] {
+        emit prepareCdprOfflinePvtRequested(
+            collectCdprOfflinePvtRequest());
+    });
+    connect(ui_->cdprPvtStartButton, &QPushButton::clicked,
+            this, [this] {
+        if (!cdprOfflinePvtPlan_.valid) {
+            appendLog(QStringLiteral("请先生成并通过校验的离线PVT轨迹。"));
+            return;
+        }
+        emit startCdprOfflinePvtRequested(cdprOfflinePvtPlan_);
+    });
+    connect(ui_->cdprPvtStopButton, &QPushButton::clicked,
+            this, [this] { emit stopCdprOfflinePvtRequested(false); });
+    connect(ui_->cdprPvtEmergencyStopButton, &QPushButton::clicked,
+            this, [this] { emit stopCdprOfflinePvtRequested(true); });
+    const auto invalidatePvt = [this] { invalidateCdprOfflinePvtPlan(); };
+    const QList<QDoubleSpinBox *> pvtDoubleControls {
+        ui_->cdprPvtDeltaXSpin, ui_->cdprPvtDeltaYSpin,
+        ui_->cdprPvtDeltaZSpin, ui_->cdprPvtDeltaRollSpin,
+        ui_->cdprPvtDeltaPitchSpin, ui_->cdprPvtDeltaYawSpin,
+        ui_->cdprPvtDurationSpin, ui_->cdprPvtMaxAxisVelocitySpin
+    };
+    for (QDoubleSpinBox *control : pvtDoubleControls) {
+        connect(control, qOverload<double>(&QDoubleSpinBox::valueChanged),
+                this, [invalidatePvt](double) { invalidatePvt(); });
+    }
+    connect(ui_->cdprPvtSamplePeriodSpin,
+            qOverload<int>(&QSpinBox::valueChanged),
+            this, [invalidatePvt](int) { invalidatePvt(); });
 
     connect(this, &MainWindow::initializeBoardRequested, worker_, &MotionControlWorker::initializeBoard);
     connect(this, &MainWindow::closeBoardRequested, worker_, &MotionControlWorker::closeBoard);
@@ -378,6 +420,16 @@ void MainWindow::connectWorker()
             cdprCoordinator_, &CdprCoordinator::resetDynamics);
     connect(this, &MainWindow::advanceCdprDynamicsOnceRequested,
             cdprCoordinator_, &CdprCoordinator::advanceDynamicsOnce);
+    connect(this, &MainWindow::prepareCdprOfflinePvtRequested,
+            cdprCoordinator_, &CdprCoordinator::prepareOfflinePvt);
+    connect(cdprCoordinator_, &CdprCoordinator::offlinePvtPlanReady,
+            this, &MainWindow::updateCdprOfflinePvtPlan);
+    connect(this, &MainWindow::startCdprOfflinePvtRequested,
+            worker_, &MotionControlWorker::startOfflinePvt);
+    connect(this, &MainWindow::stopCdprOfflinePvtRequested,
+            worker_, &MotionControlWorker::stopOfflinePvt);
+    connect(worker_, &MotionControlWorker::offlinePvtStatusChanged,
+            this, &MainWindow::updateCdprOfflinePvtStatus);
     connect(ui_->readBusCycleButton, &QPushButton::clicked,
             this, [this] { emit refreshBusCycleRequested(); });
     connect(worker_, &MotionControlWorker::logMessage, this, &MainWindow::appendLog);
@@ -419,6 +471,7 @@ void MainWindow::onCdprLoadConfigurationClicked()
         this, QStringLiteral("加载CDPR配置"), QDir::currentPath(),
         QStringLiteral("JSON配置 (*.json);;所有文件 (*)"));
     if (!path.isEmpty()) {
+        invalidateCdprOfflinePvtPlan();
         emit loadCdprConfigurationRequested(path);
     }
 }
@@ -566,6 +619,117 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
         }
     }
     ui_->cdprAxisTable->resizeColumnsToContents();
+}
+
+CdprOfflinePvtRequest MainWindow::collectCdprOfflinePvtRequest() const
+{
+    CdprOfflinePvtRequest request;
+    request.relativePose = {
+        ui_->cdprPvtDeltaXSpin->value(),
+        ui_->cdprPvtDeltaYSpin->value(),
+        ui_->cdprPvtDeltaZSpin->value(),
+        ui_->cdprPvtDeltaRollSpin->value() * kPi / 180.0,
+        ui_->cdprPvtDeltaPitchSpin->value() * kPi / 180.0,
+        ui_->cdprPvtDeltaYawSpin->value() * kPi / 180.0
+    };
+    request.durationS = ui_->cdprPvtDurationSpin->value();
+    request.samplePeriodMs = ui_->cdprPvtSamplePeriodSpin->value();
+    request.winchRadiusM = 0.08;
+    request.maximumAxisVelocityDegreePerSecond =
+        ui_->cdprPvtMaxAxisVelocitySpin->value();
+    request.degreesPerCardUnit = selectedDegreesPerCardUnit();
+    return request;
+}
+
+void MainWindow::invalidateCdprOfflinePvtPlan()
+{
+    if (cdprOfflinePvtStatus_.active) {
+        cdprOfflinePvtPlan_.valid = false;
+        ui_->cdprPvtStartButton->setEnabled(false);
+        return;
+    }
+    cdprOfflinePvtPlan_ = {};
+    ui_->cdprPvtStartButton->setEnabled(false);
+    ui_->cdprPvtStatusLabel->setText(
+        QStringLiteral("参数已变化，请重新生成并检查轨迹。"));
+    ui_->cdprPvtProgressBar->setRange(0, 1);
+    ui_->cdprPvtProgressBar->setValue(0);
+}
+
+void MainWindow::updateCdprOfflinePvtPlan(
+    const CdprOfflinePvtPlan &plan)
+{
+    cdprOfflinePvtPlan_ = plan;
+    ui_->cdprPvtStatusLabel->setText(plan.summary);
+    ui_->cdprPvtStartButton->setEnabled(plan.valid
+                                        && !cdprOfflinePvtStatus_.active);
+    ui_->cdprPvtProgressBar->setRange(
+        0, std::max(1, static_cast<int>(plan.timeS.size()) - 1));
+    ui_->cdprPvtProgressBar->setValue(0);
+
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const size_t offset = static_cast<size_t>(cable);
+        QStringList values {
+            QString::number(cable),
+            plan.valid ? QString::number(plan.axes[offset])
+                       : QStringLiteral("--"),
+            plan.valid
+                ? (plan.directions[offset] > 0
+                       ? QStringLiteral("+1") : QStringLiteral("-1"))
+                : QStringLiteral("--"),
+            plan.valid
+                ? QString::number(plan.initialCables.lengthM[offset], 'f', 6)
+                : QStringLiteral("--"),
+            plan.valid
+                ? QString::number(plan.finalCables.lengthM[offset], 'f', 6)
+                : QStringLiteral("--"),
+            plan.valid
+                ? QString::number(
+                      plan.finalCables.lengthM[offset]
+                          - plan.initialCables.lengthM[offset],
+                      'f', 6)
+                : QStringLiteral("--"),
+            plan.valid
+                ? QString::number(
+                      plan.finalAxisDisplacementDegree[offset], 'f', 4)
+                : QStringLiteral("--"),
+            plan.valid
+                ? QString::number(
+                      plan.peakAxisVelocityDegreePerSecond[offset], 'f', 4)
+                : QStringLiteral("--")
+        };
+        for (int column = 0; column < values.size(); ++column) {
+            QTableWidgetItem *item =
+                ui_->cdprPvtPreviewTable->item(cable, column);
+            if (item == nullptr) {
+                item = new QTableWidgetItem;
+                ui_->cdprPvtPreviewTable->setItem(cable, column, item);
+            }
+            item->setText(values.at(column));
+        }
+    }
+    ui_->cdprPvtPreviewTable->resizeColumnsToContents();
+}
+
+void MainWindow::updateCdprOfflinePvtStatus(
+    const CdprOfflinePvtStatus &status)
+{
+    cdprOfflinePvtStatus_ = status;
+    ui_->cdprPvtProgressBar->setRange(
+        0, std::max(1, status.totalPointCount - 1));
+    ui_->cdprPvtProgressBar->setValue(status.currentIndex);
+    ui_->cdprPvtStatusLabel->setText(
+        QStringLiteral("%1；进度%2/%3，主机计时%4/%5 s")
+            .arg(status.stateText)
+            .arg(status.currentIndex)
+            .arg(std::max(0, status.totalPointCount - 1))
+            .arg(status.elapsedS, 0, 'f', 3)
+            .arg(status.durationS, 0, 'f', 3));
+    ui_->cdprPvtGenerateButton->setEnabled(!status.active);
+    ui_->cdprPvtStartButton->setEnabled(
+        !status.active && cdprOfflinePvtPlan_.valid);
+    ui_->cdprPvtStopButton->setEnabled(status.active);
+    ui_->cdprPvtEmergencyStopButton->setEnabled(status.active);
 }
 
 ContiTestConfig MainWindow::collectConfig() const
