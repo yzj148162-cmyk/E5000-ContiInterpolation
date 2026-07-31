@@ -215,6 +215,7 @@ private:
     double lastTorquePlotTimeS_ = -1.0;
     CdprOfflinePvtPlan cdprOfflinePvtPlan_;
     CdprOfflinePvtStatus cdprOfflinePvtStatus_;
+    bool cdprAllMappedAxesEnabled_ = false;
 };
 
 #endif // MAINWINDOW_H

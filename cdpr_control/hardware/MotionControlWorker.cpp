@@ -155,19 +155,67 @@ void MotionControlWorker::initializeBoard(const ContiTestConfig &config)
         enterError(error);
         return;
     }
+
+    const auto rollbackInitialization = [this] {
+        QString closeError;
+        card_.closeBoard(closeError);
+        boardInitialized_ = false;
+        ethercatOperational_ = false;
+        controllerWorkMode_ = 0;
+        ethercatMasterState_ = 0;
+        detectedBoardCount_ = 0;
+        actualBusCycleUs_ = 0;
+        detectedAxes_.clear();
+    };
+
+    quint16 controllerWorkMode = 0;
+    if (!card_.readControllerWorkMode(controllerWorkMode, error)) {
+        rollbackInitialization();
+        enterError(QStringLiteral("读取控制卡工作模式失败：%1").arg(error));
+        return;
+    }
+    if (controllerWorkMode != 1U) {
+        rollbackInitialization();
+        enterError(QStringLiteral(
+            "控制卡当前处于仿真模式（workMode=%1），并非 EtherCAT 总线模式；"
+            "请先在雷赛官方软件中完成总线连接。")
+                       .arg(controllerWorkMode));
+        return;
+    }
+
+    quint16 busErrorCode = 0;
+    quint32 masterState = 0;
+    if (!card_.readEthercatBusState(busErrorCode, masterState, error)) {
+        rollbackInitialization();
+        enterError(QStringLiteral("读取 EtherCAT 连接状态失败：%1").arg(error));
+        return;
+    }
+    if (busErrorCode != 0U) {
+        rollbackInitialization();
+        enterError(QStringLiteral(
+            "EtherCAT 总线未就绪：总线错误码=%1；"
+            "Qt 程序不会主动连接总线，请先在雷赛官方软件中处理。")
+                       .arg(busErrorCode));
+        return;
+    }
+    if (masterState != 8U) {
+        rollbackInitialization();
+        enterError(QStringLiteral(
+            "EtherCAT 主站未进入 OP 状态：当前状态=%1，要求状态=8（OP）；"
+            "请先在雷赛官方软件中完成总线连接。")
+                       .arg(masterState));
+        return;
+    }
+
     int actualBusCycleUs = 0;
     if (!card_.setBusCycle(config.busCycleUs, error)
         || !card_.readBusCycle(actualBusCycleUs, error)) {
-        QString closeError;
-        card_.closeBoard(closeError);
-        detectedBoardCount_ = 0;
+        rollbackInitialization();
         enterError(QStringLiteral("EtherCAT 总线周期配置/读取失败：%1").arg(error));
         return;
     }
     if (actualBusCycleUs != config.busCycleUs) {
-        QString closeError;
-        card_.closeBoard(closeError);
-        detectedBoardCount_ = 0;
+        rollbackInitialization();
         enterError(QStringLiteral("EtherCAT 总线周期读回值=%1 us，与设置值=%2 us 不一致；已关闭控制卡。")
                        .arg(actualBusCycleUs)
                        .arg(config.busCycleUs));
@@ -176,18 +224,12 @@ void MotionControlWorker::initializeBoard(const ContiTestConfig &config)
 
     quint16 detectedSlaveCount = 0;
     if (!card_.readEthercatSlaveCount(detectedSlaveCount, error)) {
-        QString closeError;
-        card_.closeBoard(closeError);
-        detectedBoardCount_ = 0;
-        actualBusCycleUs_ = 0;
+        rollbackInitialization();
         enterError(QStringLiteral("读取 EtherCAT 在线从站数量失败：%1").arg(error));
         return;
     }
     if (detectedSlaveCount == 0 || detectedSlaveCount > 8) {
-        QString closeError;
-        card_.closeBoard(closeError);
-        detectedBoardCount_ = 0;
-        actualBusCycleUs_ = 0;
+        rollbackInitialization();
         enterError(QStringLiteral("EtherCAT 在线从站数量为 %1；当前程序仅支持 1 至 8 个单轴伺服从站。")
                        .arg(detectedSlaveCount));
         return;
@@ -197,17 +239,24 @@ void MotionControlWorker::initializeBoard(const ContiTestConfig &config)
     for (quint16 axis = 0; axis < detectedSlaveCount; ++axis) {
         detectedAxes_.push_back(axis);
     }
+    QVector<quint16> initializationTraceAxes {config.activeAxis};
+    const bool dualAxisStage = config.stage == TestStage::DualAxis;
+    if (dualAxisStage && config.holdAxis != config.activeAxis) {
+        initializationTraceAxes.append(config.holdAxis);
+    }
     if (!detectedAxes_.contains(config.activeAxis)
-        || !detectedAxes_.contains(config.holdAxis)) {
-        QString closeError;
-        card_.closeBoard(closeError);
-        detectedBoardCount_ = 0;
-        actualBusCycleUs_ = 0;
-        detectedAxes_.clear();
-        enterError(QStringLiteral("当前插补测试轴 %1、%2 超出在线轴范围 0-%3；已关闭控制卡。")
-                       .arg(config.activeAxis)
-                       .arg(config.holdAxis)
-                       .arg(detectedSlaveCount - 1));
+        || (dualAxisStage && !detectedAxes_.contains(config.holdAxis))) {
+        rollbackInitialization();
+        enterError(dualAxisStage
+                       ? QStringLiteral(
+                             "当前双轴测试所选轴 %1、%2 超出在线轴范围 0-%3；已关闭控制卡。")
+                             .arg(config.activeAxis)
+                             .arg(config.holdAxis)
+                             .arg(detectedSlaveCount - 1)
+                       : QStringLiteral(
+                             "当前单轴测试所选轴 %1 超出在线轴范围 0-%2；已关闭控制卡。")
+                             .arg(config.activeAxis)
+                             .arg(detectedSlaveCount - 1));
         return;
     }
     config_ = config;
@@ -215,21 +264,13 @@ void MotionControlWorker::initializeBoard(const ContiTestConfig &config)
     actualBusCycleUs_ = actualBusCycleUs;
     validateLoadedTraceDelayTiming();
     if (!configureBaseAxes(config_)) {
-        QString closeError;
-        card_.closeBoard(closeError);
-        detectedBoardCount_ = 0;
-        actualBusCycleUs_ = 0;
-        detectedAxes_.clear();
+        rollbackInitialization();
         enterError(QStringLiteral("基础轴配置失败，已关闭控制卡。"));
         return;
     }
-    if (!configureFeedbackTrace({config_.activeAxis, config_.holdAxis},
+    if (!configureFeedbackTrace(initializationTraceAxes,
                                 config_.degreesPerCardUnit, error)) {
-        QString closeError;
-        card_.closeBoard(closeError);
-        detectedBoardCount_ = 0;
-        actualBusCycleUs_ = 0;
-        detectedAxes_.clear();
+        rollbackInitialization();
         enterError(QStringLiteral("位置 Trace 配置失败：%1").arg(error));
         return;
     }
@@ -247,15 +288,20 @@ void MotionControlWorker::initializeBoard(const ContiTestConfig &config)
     traceActualVelocityDegreePerSecond_ = 0.0;
     vectorSpeedReadFailureLogged_ = false;
     boardInitialized_ = true;
+    ethercatOperational_ = true;
+    controllerWorkMode_ = controllerWorkMode;
+    ethercatMasterState_ = masterState;
     initializedCardNo_ = config.cardNo;
-    stateText_ = QStringLiteral("控制卡已初始化");
+    stateText_ = QStringLiteral("控制卡已初始化，总线 OP");
     feedbackTimer_->start();
     emit logMessage(QStringLiteral("EtherCAT 总线周期已设置并读回：%1 us；Trace=%2 us（每总线周期采样一次）；轨迹规划=%3 ms（%4 个总线周期）。")
                         .arg(actualBusCycleUs_)
                         .arg(card_.traceSamplePeriodUs())
                         .arg(config_.producerPeriodMs)
                         .arg(config_.producerPeriodMs * 1000 / actualBusCycleUs_));
-    emit logMessage(QStringLiteral("控制卡初始化成功：检测到 %1 张卡、%2 个 EtherCAT 伺服轴（轴号 0-%3）；全部在线轴已设置为 %4 pulse/unit（1 unit=%5°）；Trace 仍按 %6 pulse/deg 换算。")
+    emit logMessage(QStringLiteral("控制卡初始化成功：工作模式=EtherCAT，主站状态=8（OP），总线错误码=0；"
+                                   "检测到 %1 张卡、%2 个 EtherCAT 伺服轴（轴号 0-%3）；"
+                                   "全部在线轴已设置为 %4 pulse/unit（1 unit=%5°）；Trace 仍按 %6 pulse/deg 换算。")
                         .arg(detectedBoardCount_)
                         .arg(detectedAxes_.size())
                         .arg(detectedAxes_.size() - 1)
@@ -398,6 +444,9 @@ void MotionControlWorker::shutdownHardware()
         return;
     }
     boardInitialized_ = false;
+    ethercatOperational_ = false;
+    controllerWorkMode_ = 0;
+    ethercatMasterState_ = 0;
     detectedBoardCount_ = 0;
     actualBusCycleUs_ = 0;
     detectedAxes_.clear();
@@ -4127,6 +4176,9 @@ void MotionControlWorker::publishStatus()
 {
     ContiStatus status;
     status.boardInitialized = boardInitialized_;
+    status.ethercatOperational = ethercatOperational_;
+    status.controllerWorkMode = controllerWorkMode_;
+    status.ethercatMasterState = ethercatMasterState_;
     for (const quint16 axis : enabledAxes_) {
         if (axis < 8U) {
             status.enabledAxisMask |= static_cast<quint16>(1U << axis);

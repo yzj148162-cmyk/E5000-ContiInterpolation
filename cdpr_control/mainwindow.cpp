@@ -489,6 +489,11 @@ void MainWindow::onCdprCreateTemplateClicked()
 
 void MainWindow::updateCdprStatus(const CdprUiStatus &status)
 {
+    cdprAllMappedAxesEnabled_ = status.allMappedAxesEnabled;
+    ui_->cdprPvtStartButton->setEnabled(
+        !cdprOfflinePvtStatus_.active
+        && cdprOfflinePvtPlan_.valid
+        && cdprAllMappedAxesEnabled_);
     ui_->cdprConfigPathEdit->setText(status.configurationPath);
     ui_->cdprStateValueLabel->setText(status.stateText);
     ui_->cdprConfigIdValueLabel->setText(
@@ -504,7 +509,7 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
                    : QStringLiteral("请加载配置文件。"))
             : status.validationMessages.join(QStringLiteral("\n")));
     ui_->cdprStateValueLabel->setStyleSheet(
-        status.configurationValid && status.kinematicsReady
+        status.hardwareReady
             ? QStringLiteral("QLabel { color: #2e7d32; font-weight: bold; }")
             : QStringLiteral("QLabel { color: #c62828; font-weight: bold; }"));
     ui_->cdprStartButton->setEnabled(status.controlStartAvailable);
@@ -662,7 +667,8 @@ void MainWindow::updateCdprOfflinePvtPlan(
     cdprOfflinePvtPlan_ = plan;
     ui_->cdprPvtStatusLabel->setText(plan.summary);
     ui_->cdprPvtStartButton->setEnabled(plan.valid
-                                        && !cdprOfflinePvtStatus_.active);
+                                        && !cdprOfflinePvtStatus_.active
+                                        && cdprAllMappedAxesEnabled_);
     ui_->cdprPvtProgressBar->setRange(
         0, std::max(1, static_cast<int>(plan.timeS.size()) - 1));
     ui_->cdprPvtProgressBar->setValue(0);
@@ -727,7 +733,8 @@ void MainWindow::updateCdprOfflinePvtStatus(
             .arg(status.durationS, 0, 'f', 3));
     ui_->cdprPvtGenerateButton->setEnabled(!status.active);
     ui_->cdprPvtStartButton->setEnabled(
-        !status.active && cdprOfflinePvtPlan_.valid);
+        !status.active && cdprOfflinePvtPlan_.valid
+        && cdprAllMappedAxesEnabled_);
     ui_->cdprPvtStopButton->setEnabled(status.active);
     ui_->cdprPvtEmergencyStopButton->setEnabled(status.active);
 }

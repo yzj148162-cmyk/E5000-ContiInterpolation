@@ -12,6 +12,11 @@ class LeadshineMotionCard
 public:
     bool initializeBoard(WORD requestedCardNo, short &boardCount, QString &errorMessage) const;
     bool closeBoard(QString &errorMessage) const;
+    bool readControllerWorkMode(WORD cardNo, WORD &workMode,
+                                QString &errorMessage) const;
+    bool readEthercatBusState(WORD cardNo, WORD portNo,
+                              WORD &busErrorCode, quint32 &masterState,
+                              QString &errorMessage) const;
     bool readEthercatSlaveCount(WORD cardNo, WORD portNo, WORD &slaveCount,
                                 QString &errorMessage) const;
     bool setAxisEquivalent(WORD cardNo, WORD axis, double pulsePerUnit, QString &errorMessage) const;

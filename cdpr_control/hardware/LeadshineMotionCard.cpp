@@ -47,6 +47,40 @@ bool LeadshineMotionCard::closeBoard(QString &errorMessage) const
     return checkResult(dmc_board_close(), QStringLiteral("dmc_board_close"), errorMessage);
 }
 
+bool LeadshineMotionCard::readControllerWorkMode(WORD cardNo,
+                                                  WORD &workMode,
+                                                  QString &errorMessage) const
+{
+    workMode = 0;
+    return checkResult(nmc_get_controller_workmode(cardNo, &workMode),
+                       QStringLiteral("nmc_get_controller_workmode"),
+                       errorMessage);
+}
+
+bool LeadshineMotionCard::readEthercatBusState(WORD cardNo,
+                                                WORD portNo,
+                                                WORD &busErrorCode,
+                                                quint32 &masterState,
+                                                QString &errorMessage) const
+{
+    busErrorCode = 0;
+    masterState = 0;
+    if (!checkResult(nmc_get_errcode(cardNo, portNo, &busErrorCode),
+                     QStringLiteral("nmc_get_errcode(port=%1)").arg(portNo),
+                     errorMessage)) {
+        return false;
+    }
+
+    uint32 state = 0;
+    if (!checkResult(nmc_get_master_state(cardNo, &state),
+                     QStringLiteral("nmc_get_master_state"),
+                     errorMessage)) {
+        return false;
+    }
+    masterState = static_cast<quint32>(state);
+    return true;
+}
+
 bool LeadshineMotionCard::readEthercatSlaveCount(WORD cardNo, WORD portNo,
                                                   WORD &slaveCount,
                                                   QString &errorMessage) const

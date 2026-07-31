@@ -258,6 +258,28 @@ public:
         return true;
     }
 
+    bool readControllerWorkMode(quint16 &workMode, QString &error) const
+    {
+        WORD value = 0;
+        if (!card_.readControllerWorkMode(cardNo_, value, error)) {
+            return false;
+        }
+        workMode = value;
+        return true;
+    }
+
+    bool readEthercatBusState(quint16 &busErrorCode, quint32 &masterState,
+                              QString &error) const
+    {
+        WORD errorCode = 0;
+        if (!card_.readEthercatBusState(cardNo_, kEthercatPort,
+                                        errorCode, masterState, error)) {
+            return false;
+        }
+        busErrorCode = errorCode;
+        return true;
+    }
+
     bool readEthercatSlaveCount(quint16 &slaveCount, QString &error) const
     {
         WORD count = 0;
@@ -520,6 +542,16 @@ bool MotionCardHardwareInterface::setBusCycle(int cycleUs, QString &error)
 { return invokeHardware(backend_, [&] { return backend_->setBusCycle(cycleUs, error); }); }
 bool MotionCardHardwareInterface::readBusCycle(int &cycleUs, QString &error) const
 { return invokeHardware(backend_, [&] { return backend_->readBusCycle(cycleUs, error); }); }
+bool MotionCardHardwareInterface::readControllerWorkMode(quint16 &workMode, QString &error) const
+{ return invokeHardware(backend_, [&] { return backend_->readControllerWorkMode(workMode, error); }); }
+bool MotionCardHardwareInterface::readEthercatBusState(quint16 &busErrorCode,
+                                                        quint32 &masterState,
+                                                        QString &error) const
+{
+    return invokeHardware(backend_, [&] {
+        return backend_->readEthercatBusState(busErrorCode, masterState, error);
+    });
+}
 bool MotionCardHardwareInterface::readEthercatSlaveCount(quint16 &slaveCount, QString &error) const
 { return invokeHardware(backend_, [&] { return backend_->readEthercatSlaveCount(slaveCount, error); }); }
 bool MotionCardHardwareInterface::configureTrace(const QVector<quint16> &axes, int samplePeriodUs,

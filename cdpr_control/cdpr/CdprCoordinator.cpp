@@ -100,11 +100,13 @@ void CdprCoordinator::updateHardwareStatus(const ContiStatus &status)
 {
     const int boundedAxisCount = qBound(0, status.detectedAxisCount, 8);
     if (boardInitialized_ == status.boardInitialized
+        && ethercatOperational_ == status.ethercatOperational
         && detectedAxisCount_ == boundedAxisCount
         && enabledAxisMask_ == status.enabledAxisMask) {
         return;
     }
     boardInitialized_ = status.boardInitialized;
+    ethercatOperational_ = status.ethercatOperational;
     detectedAxisCount_ = boundedAxisCount;
     enabledAxisMask_ = status.enabledAxisMask;
     publishStatus();
@@ -684,6 +686,7 @@ void CdprCoordinator::publishStatus()
     }
     status.onlineAxisCount = detectedAxisCount_;
     status.boardInitialized = boardInitialized_;
+    status.ethercatOperational = ethercatOperational_;
     status.kinematicsReady = kinematicsReady_;
     status.dynamicsReady =
         dynamics_.configured() && dynamics_.initialized()
@@ -732,6 +735,29 @@ void CdprCoordinator::publishStatus()
     }
     status.controlStartAvailable = false;
 
+    quint16 mappedAxisMask = 0;
+    bool allMappedAxesOnline =
+        status.configurationValid
+        && boardInitialized_
+        && ethercatOperational_
+        && configuration_.cables.size() == 8;
+    if (allMappedAxesOnline) {
+        for (const CdprCableAxisConfig &cable : configuration_.cables) {
+            if (cable.axis < 0 || cable.axis >= detectedAxisCount_
+                || cable.axis >= 8
+                || (mappedAxisMask
+                    & static_cast<quint16>(1U << cable.axis)) != 0U) {
+                allMappedAxesOnline = false;
+                break;
+            }
+            mappedAxisMask |= static_cast<quint16>(1U << cable.axis);
+        }
+    }
+    status.hardwareReady = allMappedAxesOnline;
+    status.allMappedAxesEnabled =
+        allMappedAxesOnline
+        && (enabledAxisMask_ & mappedAxisMask) == mappedAxisMask;
+
     if (!configurationLoaded_) {
         status.stateText = QStringLiteral("未加载配置");
     } else if (!status.configurationValid) {
@@ -740,16 +766,19 @@ void CdprCoordinator::publishStatus()
         status.stateText = QStringLiteral("运动学自检未通过");
     } else if (!status.dynamicsReady) {
         status.stateText = QStringLiteral("动力学模块未就绪");
-    } else if (!boardInitialized_) {
+    } else if (!boardInitialized_ || !ethercatOperational_) {
         status.stateText =
-            QStringLiteral("配置与运动学有效，等待控制卡初始化");
-    } else if (detectedAxisCount_ < 8) {
+            QStringLiteral("配置有效，等待控制卡与EtherCAT总线就绪");
+    } else if (!status.hardwareReady) {
         status.stateText =
-            QStringLiteral("配置有效，在线轴不足8个（%1/8）")
+            QStringLiteral("配置有效，CDPR整机硬件未就绪（在线%1/8）")
                 .arg(detectedAxisCount_);
+    } else if (!status.allMappedAxesEnabled) {
+        status.stateText =
+            QStringLiteral("CDPR整机硬件就绪（8/8），电机未全部使能");
     } else {
         status.stateText =
-            QStringLiteral("数学骨架就绪，8轴运动控制尚未接入");
+            QStringLiteral("CDPR整机硬件就绪，8轴已全部使能");
     }
 
     if (configurationLoaded_) {
@@ -761,7 +790,7 @@ void CdprCoordinator::publishStatus()
             axis.direction = cable.direction;
             axis.frameAnchor = vectorText(cable.frameAnchorM);
             axis.platformAnchor = vectorText(cable.platformAnchorM);
-            axis.online = boardInitialized_
+            axis.online = boardInitialized_ && ethercatOperational_
                 && cable.axis >= 0 && cable.axis < detectedAxisCount_;
             axis.enabled = axis.online
                 && (enabledAxisMask_

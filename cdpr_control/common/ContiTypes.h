@@ -452,6 +452,9 @@ struct TelemetryRecorderStatus
 struct ContiStatus
 {
     bool boardInitialized = false;
+    bool ethercatOperational = false;
+    quint16 controllerWorkMode = 0;
+    quint32 ethercatMasterState = 0;
     quint16 enabledAxisMask = 0;
     int detectedAxisCount = 0;
     int detectedBoardCount = 0;

@@ -166,6 +166,9 @@ private:
     ContiTestConfig config_;
     ContiFeedStatus lastFeedStatus_;
     bool boardInitialized_ = false;
+    bool ethercatOperational_ = false;
+    quint16 controllerWorkMode_ = 0;
+    quint32 ethercatMasterState_ = 0;
     short detectedBoardCount_ = 0;
     quint16 initializedCardNo_ = 0;
     int actualBusCycleUs_ = 0;

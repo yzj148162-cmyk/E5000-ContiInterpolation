@@ -20,6 +20,9 @@ public:
     bool closeBoard(QString &errorMessage);
     bool setBusCycle(int cycleUs, QString &errorMessage);
     bool readBusCycle(int &cycleUs, QString &errorMessage) const;
+    bool readControllerWorkMode(quint16 &workMode, QString &errorMessage) const;
+    bool readEthercatBusState(quint16 &busErrorCode, quint32 &masterState,
+                              QString &errorMessage) const;
     bool readEthercatSlaveCount(quint16 &slaveCount, QString &errorMessage) const;
 
     bool configureTrace(const QVector<quint16> &axes, int samplePeriodUs, int traceBaseCycleUs,

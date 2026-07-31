@@ -89,6 +89,9 @@ struct CdprUiStatus
     QVector<CdprAxisView> axes;
     int onlineAxisCount = 0;
     bool boardInitialized = false;
+    bool ethercatOperational = false;
+    bool hardwareReady = false;
+    bool allMappedAxesEnabled = false;
     bool kinematicsReady = false;
     bool dynamicsReady = false;
     bool initialPoseReady = false;

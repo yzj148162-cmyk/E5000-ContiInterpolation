@@ -74,6 +74,7 @@ private:
     bool configurationLoaded_ = false;
     bool kinematicsReady_ = false;
     bool boardInitialized_ = false;
+    bool ethercatOperational_ = false;
     int detectedAxisCount_ = 0;
     quint16 enabledAxisMask_ = 0;
     quint64 previewSequence_ = 0;
