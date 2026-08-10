@@ -37,7 +37,7 @@ struct CdprForceSensorConfig
     std::array<double, 6> channelBias {};
 };
 
-struct CdprDrumSafetyConfig
+struct CdprWinchSafetyConfig
 {
     double diameterM = 0.16;
     double maximumTurnsFromInitial = 6.5;
@@ -53,7 +53,7 @@ struct CdprConfiguration
     std::array<double, 6> presetInitialPlatformPose {};
     CdprRigidBodyConfig physicalPlatform;
     CdprForceSensorConfig forceSensor;
-    CdprDrumSafetyConfig drumSafety;
+    CdprWinchSafetyConfig winchSafety;
     std::array<CdprCableAxisConfig, 8> cables {};
     std::array<double, 8> referenceCableLengthsM {};
     int controlPeriodUs = 1000;

@@ -168,7 +168,7 @@ QJsonObject toJson(const CdprConfiguration &configuration)
         });
     }
     return {
-        {QStringLiteral("schema_version"), 3},
+        {QStringLiteral("schema_version"), 4},
         {QStringLiteral("name"), configuration.name},
         {QStringLiteral("parameters_confirmed"), configuration.parametersConfirmed},
         {QStringLiteral("coordinate_convention"), configuration.coordinateConvention},
@@ -176,10 +176,10 @@ QJsonObject toJson(const CdprConfiguration &configuration)
          writeArray(configuration.presetInitialPlatformPose)},
         {QStringLiteral("physical_platform"), writeRigidBody(configuration.physicalPlatform)},
         {QStringLiteral("force_sensor"), writeForceSensor(configuration.forceSensor)},
-        {QStringLiteral("drum_safety"), QJsonObject {
-             {QStringLiteral("diameter_m"), configuration.drumSafety.diameterM},
+        {QStringLiteral("winch_safety"), QJsonObject {
+             {QStringLiteral("diameter_m"), configuration.winchSafety.diameterM},
              {QStringLiteral("maximum_turns_from_initial"),
-              configuration.drumSafety.maximumTurnsFromInitial}
+              configuration.winchSafety.maximumTurnsFromInitial}
          }},
         {QStringLiteral("cables"), cables},
         {QStringLiteral("control"), QJsonObject {
@@ -213,9 +213,9 @@ bool CdprConfigurationFile::load(const QString &path,
     const QJsonObject root = document.object();
     const int schemaVersion =
         root.value(QStringLiteral("schema_version")).toInt();
-    if (schemaVersion != 2 && schemaVersion != 3) {
+    if (schemaVersion != 4) {
         errors.append(QStringLiteral(
-            "不支持的schema_version，仅支持版本2或3；请重新生成配置模板。"));
+            "不支持的schema_version，仅支持版本4；请重新生成配置模板。"));
         return false;
     }
 
@@ -225,21 +225,18 @@ bool CdprConfigurationFile::load(const QString &path,
         root.value(QStringLiteral("parameters_confirmed")).toBool();
     result.coordinateConvention =
         root.value(QStringLiteral("coordinate_convention")).toString();
-    result.presetInitialPlatformPose = schemaVersion >= 3
-        ? readArray<6>(
-              root.value(QStringLiteral("preset_initial_platform_pose")))
-        : readArray<6>(
-              root.value(QStringLiteral("initial_platform_pose")));
+    result.presetInitialPlatformPose = readArray<6>(
+        root.value(QStringLiteral("preset_initial_platform_pose")));
     result.physicalPlatform =
         readRigidBody(root.value(QStringLiteral("physical_platform")).toObject());
     result.forceSensor =
         readForceSensor(root.value(QStringLiteral("force_sensor")).toObject());
-    const QJsonObject drumSafety =
-        root.value(QStringLiteral("drum_safety")).toObject();
-    result.drumSafety.diameterM =
-        drumSafety.value(QStringLiteral("diameter_m")).toDouble();
-    result.drumSafety.maximumTurnsFromInitial =
-        drumSafety.value(QStringLiteral("maximum_turns_from_initial")).toDouble();
+    const QJsonObject winchSafety =
+        root.value(QStringLiteral("winch_safety")).toObject();
+    result.winchSafety.diameterM =
+        winchSafety.value(QStringLiteral("diameter_m")).toDouble();
+    result.winchSafety.maximumTurnsFromInitial =
+        winchSafety.value(QStringLiteral("maximum_turns_from_initial")).toDouble();
     const QJsonArray cables = root.value(QStringLiteral("cables")).toArray();
     if (cables.size() != 8) {
         errors.append(QStringLiteral("cables必须且只能包含8项。"));
@@ -278,8 +275,8 @@ bool CdprConfigurationFile::writeTemplate(const QString &path, QString &error)
     configuration.forceSensor.rotationSensorToPlatform =
         {1, 0, 0, 0, 1, 0, 0, 0, 1};
     configuration.forceSensor.wrenchReactionSign = 1;
-    configuration.drumSafety.diameterM = 0.16;
-    configuration.drumSafety.maximumTurnsFromInitial = 6.5;
+    configuration.winchSafety.diameterM = 0.16;
+    configuration.winchSafety.maximumTurnsFromInitial = 6.5;
     const std::array<CdprVector3, 8> signs {{
         {-1, -1, -1}, {-1, -1, 1}, {-1, 1, -1}, {-1, 1, 1},
         {1, -1, -1}, {1, -1, 1}, {1, 1, -1}, {1, 1, 1}
@@ -365,13 +362,13 @@ QStringList CdprConfigurationFile::validate(
     if (configuration.maximumPositionErrorDegree <= 0.0) {
         errors.append(QStringLiteral("最大位置误差必须大于0。"));
     }
-    if (!std::isfinite(configuration.drumSafety.diameterM)
-        || configuration.drumSafety.diameterM <= 0.0) {
-        errors.append(QStringLiteral("卷筒直径必须大于0。"));
+    if (!std::isfinite(configuration.winchSafety.diameterM)
+        || configuration.winchSafety.diameterM <= 0.0) {
+        errors.append(QStringLiteral("绞盘直径必须大于0。"));
     }
-    if (!std::isfinite(configuration.drumSafety.maximumTurnsFromInitial)
-        || configuration.drumSafety.maximumTurnsFromInitial <= 0.0) {
-        errors.append(QStringLiteral("卷筒相对初始位置的最大圈数必须大于0。"));
+    if (!std::isfinite(configuration.winchSafety.maximumTurnsFromInitial)
+        || configuration.winchSafety.maximumTurnsFromInitial <= 0.0) {
+        errors.append(QStringLiteral("绞盘相对初始位置的最大圈数必须大于0。"));
     }
 
     QSet<int> axes;
@@ -418,7 +415,7 @@ QString CdprConfigurationFile::summary(
     return QStringLiteral(
         "名称：%1\n坐标约定：%2\n动平台质量：%3 kg\n"
         "控制周期：%4 us\n最大位置误差：%5°\n"
-        "卷筒：直径%6 mm，初始位置双向最多%7圈（%8 m）\n"
+        "绞盘：直径%6 mm，初始位置双向最多%7圈（%8 m）\n"
         "预设启动位姿逆解参考绳长：%9\n"
         "F/T作用/反作用符号：%10\n"
         "绳0出绳点示例：%11；平台点：%12")
@@ -426,8 +423,8 @@ QString CdprConfigurationFile::summary(
         .arg(configuration.physicalPlatform.massKg, 0, 'f', 4)
         .arg(configuration.controlPeriodUs)
         .arg(configuration.maximumPositionErrorDegree, 0, 'f', 4)
-        .arg(configuration.drumSafety.diameterM * 1000.0, 0, 'f', 1)
-        .arg(configuration.drumSafety.maximumTurnsFromInitial, 0, 'f', 2)
+        .arg(configuration.winchSafety.diameterM * 1000.0, 0, 'f', 1)
+        .arg(configuration.winchSafety.maximumTurnsFromInitial, 0, 'f', 2)
         .arg(maximumCableTravelM(configuration), 0, 'f', 4)
         .arg([&configuration] {
             QStringList values;
@@ -455,8 +452,8 @@ std::array<double, 8> CdprConfigurationFile::calculateInitialCableLengths(
 double CdprConfigurationFile::maximumCableTravelM(
     const CdprConfiguration &configuration)
 {
-    return 3.14159265358979323846 * configuration.drumSafety.diameterM
-        * configuration.drumSafety.maximumTurnsFromInitial;
+    return 3.14159265358979323846 * configuration.winchSafety.diameterM
+        * configuration.winchSafety.maximumTurnsFromInitial;
 }
 
 bool CdprConfigurationFile::cableTravelWithinLimit(
