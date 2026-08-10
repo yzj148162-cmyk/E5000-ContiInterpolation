@@ -1197,7 +1197,7 @@ void MotionControlWorker::startCdprVelocityControl(
     cdprVelocityAxisStarted_.fill(false);
     cdprVelocityDirection_.fill(0);
     cdprVelocityLastTraceTimeUs_.fill(0);
-    cdprVelocityStartTraceTimeUs_.fill(0);
+    cdprVelocityStartTraceSequence_ = 0;
     for (PositionVelocityPid &pid : cdprVelocityPids_) {
         pid.reset();
     }
@@ -1235,6 +1235,20 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         cdprVelocityLastTraceSequence_ = latestTraceSequence_;
         cdprVelocityTraceFreshClock_.restart();
     }
+    // 读取层会一次带回多个连续 Trace 帧，因此控制周期之间最新帧序号跳变是正常的；
+    // 真正的本地队列丢帧、缓冲覆盖或读取异常会使 timingReliable 失效。
+    if (!traceReadDiagnostics_.timingReliable) {
+        finishCdprVelocityControl(
+            QStringLiteral(
+                "八轴速度闭环 Trace 时间轴不可信：卡侧有效/剩余=%1/%2，"
+                "历史最低剩余=%3，本地丢帧=%4。")
+                .arg(traceReadDiagnostics_.validFrames)
+                .arg(traceReadDiagnostics_.freeFrames)
+                .arg(traceReadDiagnostics_.minimumFreeFrames)
+                .arg(traceReadDiagnostics_.locallyDroppedSamples),
+            true);
+        return;
+    }
     if (cdprVelocityTraceFreshClock_.elapsed() > cdprVelocityConfig_.traceTimeoutMs) {
         finishCdprVelocityControl(QStringLiteral("八轴速度闭环 Trace 超时：%1 ms 未收到新帧。")
                                       .arg(cdprVelocityConfig_.traceTimeoutMs), true);
@@ -1242,6 +1256,7 @@ void MotionControlWorker::runCdprVelocityControlCycle()
     }
     if (!cdprVelocityRunClock_.isValid()) {
         quint16 axisMask = 0;
+        quint64 startTraceSequence = 0;
         for (int cable = 0; cable < kCdprCableCount; ++cable) {
             const quint16 axis = cdprVelocityPlan_.axes[static_cast<size_t>(cable)];
             if (axis >= latestAxisFeedback_.size()
@@ -1250,14 +1265,26 @@ void MotionControlWorker::runCdprVelocityControlCycle()
             }
             cdprVelocityStartPositionDegree_[static_cast<size_t>(cable)] =
                 latestAxisFeedback_.at(axis).encoderPositionUnit;
-            cdprVelocityStartTraceTimeUs_[static_cast<size_t>(cable)] =
-                latestAxisFeedback_.at(axis).traceTimeUs;
+            const quint64 axisTraceSequence =
+                latestAxisFeedback_.at(axis).traceSequence;
+            if (cable == 0) {
+                startTraceSequence = axisTraceSequence;
+            } else if (axisTraceSequence != startTraceSequence) {
+                finishCdprVelocityControl(
+                    QStringLiteral("八轴速度闭环启动失败：八轴反馈未处于同一 Trace 帧。"),
+                    true);
+                return;
+            }
             axisMask |= static_cast<quint16>(1U << axis);
         }
         cdprVelocityStatus_.activeAxisMask = axisMask;
+        cdprVelocityStartTraceSequence_ = startTraceSequence;
         cdprVelocityRunClock_.start();
         cdprVelocityStatus_.stateText = QStringLiteral("八轴速度闭环运行中");
-        emit logMessage(QStringLiteral("八轴速度闭环已取得同一 Trace 帧的八轴起点，开始按轨迹时间执行。"));
+        emit logMessage(QStringLiteral(
+            "八轴速度闭环已取得同一 Trace 首帧：序号=%1。主机运行时钟自此刻启动；"
+            "Trace 反馈仅按帧序号×总线周期映射到该起点，用于延迟对齐跟随误差。")
+                            .arg(cdprVelocityStartTraceSequence_));
     }
     const double elapsedS = cdprVelocityRunClock_.elapsed() / 1000.0;
     VelocityControlConfig pidConfig;
@@ -1299,26 +1326,44 @@ void MotionControlWorker::runCdprVelocityControlCycle()
             finishCdprVelocityControl(QStringLiteral("八轴速度闭环轨迹引用失败。"), true);
             return;
         }
-        Q_UNUSED(currentReferenceDelta);
-        const double traceElapsedS = feedback.traceTimeUs
-                > cdprVelocityStartTraceTimeUs_[index]
-            ? (feedback.traceTimeUs - cdprVelocityStartTraceTimeUs_[index]) / 1000000.0
-            : 0.0;
-        double feedbackReferenceDelta = 0.0;
-        double feedbackReferenceVelocity = 0.0;
-        if (!cdprVelocityReference(traceElapsedS, cable, feedbackReferenceDelta,
-                                   feedbackReferenceVelocity)) {
-            finishCdprVelocityControl(QStringLiteral("八轴速度闭环 Trace 时间引用失败。"), true);
+        const double controlExpectedPosition =
+            cdprVelocityStartPositionDegree_[index] + currentReferenceDelta;
+        // PID 与指令均以主机控制时刻的规划状态计算。Trace 只提供最新实际反馈。
+        const double controlError = controlExpectedPosition - feedback.encoderPositionUnit;
+
+        if (feedback.traceSequence < cdprVelocityStartTraceSequence_) {
+            finishCdprVelocityControl(
+                QStringLiteral("八轴速度闭环 Trace 帧序号倒退，无法进行时间对齐。"), true);
             return;
         }
-        const double expectedPosition = cdprVelocityStartPositionDegree_[index]
-            + feedbackReferenceDelta;
-        const double trackingError = expectedPosition - feedback.encoderPositionUnit;
+        // 用启动时建立的“主机时刻 <-> Trace 帧序号”锚点，将该反馈帧映射为
+        // 主机运行时间；标定延迟只在跟随误差和其保护中扣除，不参与 PID 指令。
+        const double traceFrameElapsedS =
+            static_cast<double>(feedback.traceSequence - cdprVelocityStartTraceSequence_)
+            * std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
+        const double delayS = axis < static_cast<quint16>(traceDelayAxisResults_.size())
+            ? std::max(0.0, traceDelayAxisResults_.at(axis).appliedDelayMs) / 1000.0
+            : 0.0;
+        const double alignedReferenceTimeS = std::max(0.0, traceFrameElapsedS - delayS);
+        double alignedReferenceDelta = 0.0;
+        double ignoredAlignedReferenceVelocity = 0.0;
+        if (!cdprVelocityReference(alignedReferenceTimeS, cable, alignedReferenceDelta,
+                                   ignoredAlignedReferenceVelocity)) {
+            finishCdprVelocityControl(
+                QStringLiteral("八轴速度闭环延迟对齐参考查询失败。"), true);
+            return;
+        }
+        const double alignedExpectedPosition =
+            cdprVelocityStartPositionDegree_[index] + alignedReferenceDelta;
+        const double trackingError = alignedExpectedPosition - feedback.encoderPositionUnit;
         maximumError = std::max(maximumError, std::abs(trackingError));
         if (std::abs(trackingError) > cdprVelocityConfig_.maxFollowingErrorDegree) {
-            finishCdprVelocityControl(QStringLiteral("八轴速度闭环：轴 %1 规划位置-Trace实际位置误差=%2°，超过 %3°。")
+            finishCdprVelocityControl(QStringLiteral(
+                "八轴速度闭环：轴 %1 延迟对齐跟随误差=规划位置(t-τ)-Trace实际位置(t)=%2°，"
+                "超过 %3°（τ=%4 ms）。")
                                           .arg(axis).arg(trackingError, 0, 'f', 4)
-                                          .arg(cdprVelocityConfig_.maxFollowingErrorDegree, 0, 'f', 4), true);
+                                          .arg(cdprVelocityConfig_.maxFollowingErrorDegree, 0, 'f', 4)
+                                          .arg(delayS * 1000.0, 0, 'f', 3), true);
             return;
         }
         double feedbackDt = std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
@@ -1331,8 +1376,8 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         }
         pidConfig.axis = axis;
         const PositionVelocityPidOutput output = cdprVelocityPids_[index].update(
-            pidConfig, trackingError, currentReferenceVelocity,
-            feedbackReferenceVelocity,
+            pidConfig, controlError, currentReferenceVelocity,
+            currentReferenceVelocity,
             feedback.actualVelocityUnitPerSecond, commandDt, feedbackDt, traceFresh);
         QString error;
         short apiResult = 0;

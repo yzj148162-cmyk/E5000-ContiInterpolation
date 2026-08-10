@@ -267,11 +267,13 @@ private:
     std::array<int, kCdprCableCount> cdprVelocityDirection_ {};
     std::array<bool, kCdprCableCount> cdprVelocityAxisStarted_ {};
     std::array<quint64, kCdprCableCount> cdprVelocityLastTraceTimeUs_ {};
-    std::array<quint64, kCdprCableCount> cdprVelocityStartTraceTimeUs_ {};
     QElapsedTimer cdprVelocityRunClock_;
     QElapsedTimer cdprVelocityCycleClock_;
     QElapsedTimer cdprVelocityTraceFreshClock_;
     quint64 cdprVelocityLastTraceSequence_ = 0;
+    // 八轴控制以 cdprVelocityRunClock_ 的主机单调时间推进。首帧序号只用于
+    // 将 Trace 相对时间映射回该主机运行起点，以计算延迟对齐跟随误差。
+    quint64 cdprVelocityStartTraceSequence_ = 0;
     quint64 cdprVelocityRunId_ = 0;
     quint16 pointMoveAxis_ = 0;
     bool pointMoveDiagnosticPending_ = false;
