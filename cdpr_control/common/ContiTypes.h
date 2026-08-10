@@ -420,19 +420,20 @@ struct TraceReadDiagnostics
     quint64 locallyDroppedSamples = 0;
 };
 
-// 阶段 A 只记录当前 Trace 中的两个测试轴。位置保存为原始脉冲，时间由
-// traceSequence 和 tracePeriodUs 重建；不以主机收到批量数据的时刻替代采样时刻。
+// Trace 原始帧最多保存八轴。位置保存为原始脉冲，时间由 traceSequence 和
+// tracePeriodUs 重建；不以主机收到批量数据的时刻替代采样时刻。
 struct TraceTelemetryFrame
 {
+    static constexpr int kMaximumAxisCount = 8;
     quint64 traceSequence = 0;
     quint64 traceTimeUs = 0;
-    quint16 axes[2] {0, 0};
-    qint32 commandPulse[2] {0, 0};
-    qint32 actualPulse[2] {0, 0};
-    qint32 commandVelocityPulsePerSecond[2] {0, 0};
-    qint32 actualVelocityPulsePerSecond[2] {0, 0};
-    quint16 axisState[2] {0, 0};
-    quint16 axisError[2] {0, 0};
+    quint16 axes[kMaximumAxisCount] {};
+    qint32 commandPulse[kMaximumAxisCount] {};
+    qint32 actualPulse[kMaximumAxisCount] {};
+    qint32 commandVelocityPulsePerSecond[kMaximumAxisCount] {};
+    qint32 actualVelocityPulsePerSecond[kMaximumAxisCount] {};
+    quint16 axisState[kMaximumAxisCount] {};
+    quint16 axisError[kMaximumAxisCount] {};
     quint8 axisCount = 0;
     quint8 validAxisMask = 0;
     qint32 currentMark = -1;

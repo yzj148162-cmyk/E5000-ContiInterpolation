@@ -456,7 +456,9 @@ public:
             frame.traceSequence = sample.sequence;
             frame.traceTimeUs = (sample.sequence > 0 ? sample.sequence - 1 : 0)
                 * static_cast<quint64>(traceSamplePeriodUs_);
-            frame.axisCount = static_cast<quint8>(std::min(2, static_cast<int>(traceAxes_.size())));
+            frame.axisCount = static_cast<quint8>(std::min(
+                TraceTelemetryFrame::kMaximumAxisCount,
+                static_cast<int>(traceAxes_.size())));
             for (int index = 0; index < frame.axisCount; ++index) {
                 const quint16 axis = traceAxes_.at(index);
                 const AxisFeedback &feedback = latestAxisFeedback_.at(axis);

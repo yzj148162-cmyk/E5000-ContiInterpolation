@@ -12,6 +12,8 @@
 #include <QJsonObject>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QSaveFile>
+#include <QTextStream>
 
 #include <algorithm>
 #include <cmath>
@@ -354,9 +356,11 @@ void MotionControlWorker::startTelemetryRecording()
         emit logMessage(QStringLiteral("请先初始化控制卡，再开始 Trace 数据记录。"));
         return;
     }
-    if (traceAxes_.size() != 2) {
-        emit logMessage(QStringLiteral("阶段 A 仅支持两个测试轴的同帧 Trace 记录；当前 Trace 轴数为 %1。")
-                            .arg(traceAxes_.size()));
+    if (traceAxes_.isEmpty()
+        || traceAxes_.size() > TraceTelemetryFrame::kMaximumAxisCount) {
+        emit logMessage(QStringLiteral("Trace 记录轴数无效：当前=%1，支持范围为 1-%2 轴。")
+                            .arg(traceAxes_.size())
+                            .arg(TraceTelemetryFrame::kMaximumAxisCount));
         return;
     }
     TelemetryRunMetadata metadata;
@@ -964,8 +968,22 @@ void MotionControlWorker::startOfflinePvt(const CdprOfflinePvtPlan &plan)
     }
 
     QString error;
+    if (telemetryRecorder_.status().recording) {
+        stopTelemetryRecording();
+    }
+    if (!configureFeedbackTrace(axes, plan.request.degreesPerCardUnit, error)) {
+        emit logMessage(QStringLiteral("离线PVT启动失败：八轴 Trace 配置失败：%1").arg(error));
+        return;
+    }
+    if (!beginCdprRunRecording(plan, QStringLiteral("离线PVT"), error)) {
+        emit logMessage(QStringLiteral("离线PVT启动失败：运行记录初始化失败：%1").arg(error));
+        return;
+    }
+    offlinePvtAutoRecording_ = true;
     if (!card_.startPvtMotion(axes, plan.timeS, positions,
                               plan.request.degreesPerCardUnit, error)) {
+        finishCdprRunRecording(QStringLiteral("cdpr_offline_pvt_start_failed: %1").arg(error),
+                               offlinePvtAutoRecording_);
         offlinePvtStatus_ = {};
         offlinePvtStatus_.state = CdprOfflinePvtRunState::Fault;
         offlinePvtStatus_.stateText =
@@ -1000,6 +1018,20 @@ void MotionControlWorker::monitorOfflinePvt()
 {
     if (!offlinePvtActive_) {
         offlinePvtMonitorTimer_->stop();
+        return;
+    }
+    if (!pollTraceFeedback()) {
+        finishOfflinePvt(QStringLiteral("离线PVT Trace 读取失败：%1").arg(traceStateText_),
+                         CdprOfflinePvtRunState::Fault, true);
+        return;
+    }
+    if (!traceReadDiagnostics_.timingReliable) {
+        finishOfflinePvt(QStringLiteral(
+            "离线PVT Trace 时间轴不可信：卡侧有效/剩余=%1/%2，本地丢帧=%3。")
+                         .arg(traceReadDiagnostics_.validFrames)
+                         .arg(traceReadDiagnostics_.freeFrames)
+                         .arg(traceReadDiagnostics_.locallyDroppedSamples),
+                         CdprOfflinePvtRunState::Fault, true);
         return;
     }
     int runIndex = 0;
@@ -1067,6 +1099,12 @@ void MotionControlWorker::finishOfflinePvt(
     }
     offlinePvtStatus_.stateText = message;
     stateText_ = message;
+    finishCdprRunRecording(
+        QStringLiteral("cdpr_offline_pvt_finished state=%1 emergency=%2 message=%3")
+            .arg(static_cast<int>(state))
+            .arg(emergency ? 1 : 0)
+            .arg(message),
+        offlinePvtAutoRecording_);
     emit offlinePvtStatusChanged(offlinePvtStatus_);
     emit logMessage(message);
     publishStatus();
@@ -1187,6 +1225,11 @@ void MotionControlWorker::startCdprVelocityControl(
         enterError(QStringLiteral("八轴速度闭环 Trace 配置失败：%1").arg(error));
         return;
     }
+    if (!beginCdprRunRecording(plan, QStringLiteral("八轴实时速度闭环"), error)) {
+        emit logMessage(QStringLiteral("八轴速度闭环启动失败：运行记录初始化失败：%1").arg(error));
+        return;
+    }
+    cdprVelocityAutoRecording_ = true;
     cdprVelocityPlan_ = plan;
     cdprVelocityConfig_ = config;
     cdprVelocityStatus_ = {};
@@ -1285,6 +1328,10 @@ void MotionControlWorker::runCdprVelocityControlCycle()
             "八轴速度闭环已取得同一 Trace 首帧：序号=%1。主机运行时钟自此刻启动；"
             "Trace 反馈仅按帧序号×总线周期映射到该起点，用于延迟对齐跟随误差。")
                             .arg(cdprVelocityStartTraceSequence_));
+        telemetryRecorder_.appendEvent(QStringLiteral(
+            "cdpr_velocity_control_time_anchor trace_sequence=%1 control_period_ms=%2")
+            .arg(cdprVelocityStartTraceSequence_)
+            .arg(cdprVelocityConfig_.controlPeriodMs));
     }
     const double elapsedS = cdprVelocityRunClock_.elapsed() / 1000.0;
     VelocityControlConfig pidConfig;
@@ -1450,9 +1497,117 @@ void MotionControlWorker::finishCdprVelocityControl(const QString &message, bool
     cdprVelocityStatus_.stateText = emergency ? QStringLiteral("八轴闭环异常停止")
                                                : QStringLiteral("八轴闭环已完成");
     stateText_ = cdprVelocityStatus_.stateText;
+    finishCdprRunRecording(
+        QStringLiteral("cdpr_velocity_control_finished emergency=%1 message=%2")
+            .arg(emergency ? 1 : 0)
+            .arg(message),
+        cdprVelocityAutoRecording_);
     emit logMessage(emergency ? QStringLiteral("错误：%1").arg(message) : message);
     emit cdprVelocityControlStatusChanged(cdprVelocityStatus_);
     publishStatus();
+}
+
+bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
+                                                 const QString &mode,
+                                                 QString &errorMessage)
+{
+    if (plan.timeS.size() < 2) {
+        errorMessage = QStringLiteral("期望轨迹为空，无法创建 CDPR 运行记录。");
+        return false;
+    }
+    QVector<quint16> axes;
+    axes.reserve(kCdprCableCount);
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        axes.append(plan.axes[static_cast<size_t>(cable)]);
+    }
+    TelemetryRunMetadata metadata;
+    metadata.cardNo = initializedCardNo_;
+    metadata.axes = axes;
+    metadata.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    metadata.degreesPerCardUnit = plan.request.degreesPerCardUnit;
+    metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
+                                .filePath(QStringLiteral("records"));
+    metadata.description = QStringLiteral("CDPR %1：八轴 Trace 原始反馈；"
+                                          "期望轨迹见 expected_trajectory.csv。")
+                               .arg(mode);
+    if (!telemetryRecorder_.start(metadata, errorMessage)) {
+        return false;
+    }
+    const QString directory = telemetryRecorder_.status().outputDirectory;
+    if (!exportCdprExpectedTrajectory(plan, directory, errorMessage)) {
+        telemetryRecorder_.appendEvent(
+            QStringLiteral("cdpr_expected_trajectory_export_failed: %1").arg(errorMessage));
+        telemetryRecorder_.stop();
+        return false;
+    }
+    telemetryRecorder_.appendEvent(QStringLiteral(
+        "cdpr_run_recording_started mode=%1 planned_points=%2 trace_period_us=%3")
+        .arg(mode)
+        .arg(plan.timeS.size())
+        .arg(metadata.traceSamplePeriodUs));
+    emit logMessage(QStringLiteral("CDPR %1 运行记录已创建：%2；"
+                                   "已保存完整期望轨迹与八轴原始 Trace 反馈。")
+                        .arg(mode, directory));
+    return true;
+}
+
+bool MotionControlWorker::exportCdprExpectedTrajectory(const CdprOfflinePvtPlan &plan,
+                                                        const QString &directory,
+                                                        QString &errorMessage) const
+{
+    if (directory.isEmpty()) {
+        errorMessage = QStringLiteral("运行记录目录为空。");
+        return false;
+    }
+    QSaveFile file(QDir(directory).filePath(QStringLiteral("expected_trajectory.csv")));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        errorMessage = QStringLiteral("无法创建期望轨迹文件：%1").arg(file.errorString());
+        return false;
+    }
+    QTextStream stream(&file);
+    stream.setRealNumberNotation(QTextStream::FixedNotation);
+    stream.setRealNumberPrecision(9);
+    stream << "time_s";
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        stream << ",axis" << plan.axes[static_cast<size_t>(cable)]
+               << "_planned_position_deg";
+    }
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        stream << ",axis" << plan.axes[static_cast<size_t>(cable)]
+               << "_planned_velocity_deg_per_s";
+    }
+    stream << '\n';
+    for (qsizetype point = 0; point < plan.timeS.size(); ++point) {
+        stream << plan.timeS.at(point);
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            stream << ',' << plan.axisPositionDegree[static_cast<size_t>(cable)].at(point);
+        }
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            stream << ',' << plan.axisVelocityDegreePerSecond[static_cast<size_t>(cable)].at(point);
+        }
+        stream << '\n';
+    }
+    if (!file.commit()) {
+        errorMessage = QStringLiteral("提交期望轨迹文件失败：%1").arg(file.errorString());
+        return false;
+    }
+    return true;
+}
+
+void MotionControlWorker::finishCdprRunRecording(const QString &eventText,
+                                                  bool &autoRecordingFlag)
+{
+    if (!autoRecordingFlag) {
+        return;
+    }
+    telemetryRecorder_.appendEvent(eventText);
+    telemetryRecorder_.stop();
+    const TelemetryRecorderStatus result = telemetryRecorder_.status();
+    emit logMessage(QStringLiteral("CDPR 运行记录已停止：写入 %1 帧，丢弃 %2 帧，目录=%3。")
+                        .arg(result.writtenFrames)
+                        .arg(result.droppedFrames)
+                        .arg(result.outputDirectory));
+    autoRecordingFlag = false;
 }
 
 void MotionControlWorker::refreshFeedback()
@@ -4549,6 +4704,10 @@ void MotionControlWorker::enterError(const QString &message)
         telemetryRecorder_.stop();
         traceDelayAutoRecording_ = false;
     }
+    finishCdprRunRecording(QStringLiteral("cdpr_run_aborted: %1").arg(message),
+                           offlinePvtAutoRecording_);
+    finishCdprRunRecording(QStringLiteral("cdpr_run_aborted: %1").arg(message),
+                           cdprVelocityAutoRecording_);
     trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
     lastFeedStatus_ = {};

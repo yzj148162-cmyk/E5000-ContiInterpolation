@@ -137,6 +137,13 @@ private:
                                double &positionDegree,
                                double &velocityDegreePerSecond) const;
     void finishCdprVelocityControl(const QString &message, bool emergency);
+    bool beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
+                               const QString &mode,
+                               QString &errorMessage);
+    bool exportCdprExpectedTrajectory(const CdprOfflinePvtPlan &plan,
+                                      const QString &directory,
+                                      QString &errorMessage) const;
+    void finishCdprRunRecording(const QString &eventText, bool &autoRecordingFlag);
     void applyTraceDelayCompensation(const QVector<TraceTelemetryFrame> &frames);
     void loadTraceDelayCalibrationResults();
     void saveTraceDelayCalibrationResults();
@@ -259,6 +266,7 @@ private:
     CdprOfflinePvtStatus offlinePvtStatus_;
     QVector<quint16> offlinePvtAxes_;
     QElapsedTimer offlinePvtRunClock_;
+    bool offlinePvtAutoRecording_ = false;
     CdprOfflinePvtPlan cdprVelocityPlan_;
     CdprVelocityControlConfig cdprVelocityConfig_;
     CdprVelocityControlStatus cdprVelocityStatus_;
@@ -275,6 +283,7 @@ private:
     // 将 Trace 相对时间映射回该主机运行起点，以计算延迟对齐跟随误差。
     quint64 cdprVelocityStartTraceSequence_ = 0;
     quint64 cdprVelocityRunId_ = 0;
+    bool cdprVelocityAutoRecording_ = false;
     quint16 pointMoveAxis_ = 0;
     bool pointMoveDiagnosticPending_ = false;
     double pointMoveRequestedTargetUnit_ = 0.0;
