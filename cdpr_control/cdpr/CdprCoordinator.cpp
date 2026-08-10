@@ -398,6 +398,7 @@ void CdprCoordinator::prepareOfflinePvt(
             static_cast<quint16>(mapping.axis);
         plan.directions[static_cast<size_t>(cable)] = mapping.direction;
         plan.axisPositionDegree[static_cast<size_t>(cable)].reserve(pointCount);
+        plan.axisVelocityDegreePerSecond[static_cast<size_t>(cable)].reserve(pointCount);
     }
     plan.timeS.reserve(pointCount);
 
@@ -475,6 +476,25 @@ void CdprCoordinator::prepareOfflinePvt(
 
     for (int cable = 0; cable < kCdprCableCount; ++cable) {
         const size_t offset = static_cast<size_t>(cable);
+        const QVector<double> &position = plan.axisPositionDegree[offset];
+        QVector<double> &velocity = plan.axisVelocityDegreePerSecond[offset];
+        for (int index = 0; index < position.size(); ++index) {
+            double value = 0.0;
+            if (index > 0 && index + 1 < position.size()) {
+                const double dt = plan.timeS.at(index + 1) - plan.timeS.at(index - 1);
+                value = dt > 0.0
+                    ? (position.at(index + 1) - position.at(index - 1)) / dt : 0.0;
+            } else if (index + 1 < position.size()) {
+                const double dt = plan.timeS.at(index + 1) - plan.timeS.at(index);
+                value = dt > 0.0
+                    ? (position.at(index + 1) - position.at(index)) / dt : 0.0;
+            } else if (index > 0) {
+                const double dt = plan.timeS.at(index) - plan.timeS.at(index - 1);
+                value = dt > 0.0
+                    ? (position.at(index) - position.at(index - 1)) / dt : 0.0;
+            }
+            velocity.append(value);
+        }
         if (plan.peakAxisVelocityDegreePerSecond[offset]
             > request.maximumAxisVelocityDegreePerSecond + 1.0e-9) {
             fail(QStringLiteral("轴%1峰值离散速度%2°/s超过上限%3°/s。")

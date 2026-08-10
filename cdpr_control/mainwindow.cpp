@@ -354,6 +354,27 @@ void MainWindow::connectWorker()
     connect(ui_->cdprPvtSamplePeriodSpin,
             qOverload<int>(&QSpinBox::valueChanged),
             this, [invalidatePvt](int) { invalidatePvt(); });
+    connect(ui_->cdprRtPrepareButton, &QPushButton::clicked, this, [this] {
+        const int periodMs = ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt();
+        ui_->cdprPvtSamplePeriodSpin->setValue(periodMs);
+        emit prepareCdprOfflinePvtRequested(collectCdprOfflinePvtRequest());
+    });
+    connect(ui_->cdprRtPeriodCombo, qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int) {
+        ui_->cdprRtStartButton->setEnabled(false);
+        ui_->cdprRtStatusLabel->setText(
+            QStringLiteral("控制周期已改变；请按该周期重新生成八轴轨迹。"));
+    });
+    connect(ui_->cdprRtStartButton, &QPushButton::clicked, this, [this] {
+        if (!cdprOfflinePvtPlan_.valid) {
+            appendLog(QStringLiteral("请先按所选控制周期生成并通过校验的八轴轨迹。"));
+            return;
+        }
+        emit startCdprVelocityControlRequested(cdprOfflinePvtPlan_,
+                                               collectCdprVelocityControlConfig());
+    });
+    connect(ui_->cdprRtStopButton, &QPushButton::clicked,
+            this, [this] { emit stopCdprVelocityControlRequested(false); });
 
     connect(this, &MainWindow::initializeBoardRequested, worker_, &MotionControlWorker::initializeBoard);
     connect(this, &MainWindow::closeBoardRequested, worker_, &MotionControlWorker::closeBoard);
@@ -430,6 +451,12 @@ void MainWindow::connectWorker()
             worker_, &MotionControlWorker::stopOfflinePvt);
     connect(worker_, &MotionControlWorker::offlinePvtStatusChanged,
             this, &MainWindow::updateCdprOfflinePvtStatus);
+    connect(this, &MainWindow::startCdprVelocityControlRequested,
+            worker_, &MotionControlWorker::startCdprVelocityControl);
+    connect(this, &MainWindow::stopCdprVelocityControlRequested,
+            worker_, &MotionControlWorker::stopCdprVelocityControl);
+    connect(worker_, &MotionControlWorker::cdprVelocityControlStatusChanged,
+            this, &MainWindow::updateCdprVelocityControlStatus);
     connect(ui_->readBusCycleButton, &QPushButton::clicked,
             this, [this] { emit refreshBusCycleRequested(); });
     connect(worker_, &MotionControlWorker::logMessage, this, &MainWindow::appendLog);
@@ -492,6 +519,10 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
     cdprAllMappedAxesEnabled_ = status.allMappedAxesEnabled;
     ui_->cdprPvtStartButton->setEnabled(
         !cdprOfflinePvtStatus_.active
+        && cdprOfflinePvtPlan_.valid
+        && cdprAllMappedAxesEnabled_);
+    ui_->cdprRtStartButton->setEnabled(
+        !cdprVelocityControlStatus_.active
         && cdprOfflinePvtPlan_.valid
         && cdprAllMappedAxesEnabled_);
     ui_->cdprConfigPathEdit->setText(status.configurationPath);
@@ -646,6 +677,24 @@ CdprOfflinePvtRequest MainWindow::collectCdprOfflinePvtRequest() const
     return request;
 }
 
+CdprVelocityControlConfig MainWindow::collectCdprVelocityControlConfig() const
+{
+    CdprVelocityControlConfig config;
+    config.controlPeriodMs = ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt();
+    config.degreesPerCardUnit = selectedDegreesPerCardUnit();
+    config.pidEnabled = ui_->cdprRtPidEnableCheck->isChecked();
+    config.velocityFeedforwardEnabled = ui_->cdprRtFeedforwardCheck->isChecked();
+    config.velocityFeedforwardGain = ui_->cdprRtFeedforwardGainSpin->value();
+    config.kp = ui_->cdprRtKpSpin->value();
+    config.ki = ui_->cdprRtKiSpin->value();
+    config.kd = ui_->cdprRtKdSpin->value();
+    config.maxVelocityDegreePerSecond = ui_->cdprRtMaxVelocitySpin->value();
+    config.maxAccelerationDegreePerSecond2 = ui_->cdprRtMaxAccelerationSpin->value();
+    config.onlineChangeTimeS = ui_->cdprRtOnlineChangeSpin->value();
+    config.maxFollowingErrorDegree = ui_->cdprRtMaxErrorSpin->value();
+    return config;
+}
+
 void MainWindow::invalidateCdprOfflinePvtPlan()
 {
     if (cdprOfflinePvtStatus_.active) {
@@ -655,6 +704,7 @@ void MainWindow::invalidateCdprOfflinePvtPlan()
     }
     cdprOfflinePvtPlan_ = {};
     ui_->cdprPvtStartButton->setEnabled(false);
+    ui_->cdprRtStartButton->setEnabled(false);
     ui_->cdprPvtStatusLabel->setText(
         QStringLiteral("参数已变化，请重新生成并检查轨迹。"));
     ui_->cdprPvtProgressBar->setRange(0, 1);
@@ -669,6 +719,15 @@ void MainWindow::updateCdprOfflinePvtPlan(
     ui_->cdprPvtStartButton->setEnabled(plan.valid
                                         && !cdprOfflinePvtStatus_.active
                                         && cdprAllMappedAxesEnabled_);
+    const int selectedPeriodMs = ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt();
+    ui_->cdprRtStartButton->setEnabled(plan.valid
+                                       && !cdprVelocityControlStatus_.active
+                                       && cdprAllMappedAxesEnabled_
+                                       && plan.request.samplePeriodMs == selectedPeriodMs);
+    ui_->cdprRtStatusLabel->setText(plan.valid
+        ? QStringLiteral("轨迹已生成：%1 ms 采样。可启动八轴实时速度闭环。")
+              .arg(plan.request.samplePeriodMs)
+        : QStringLiteral("轨迹校验失败：%1").arg(plan.errorText));
     ui_->cdprPvtProgressBar->setRange(
         0, std::max(1, static_cast<int>(plan.timeS.size()) - 1));
     ui_->cdprPvtProgressBar->setValue(0);
@@ -737,6 +796,23 @@ void MainWindow::updateCdprOfflinePvtStatus(
         && cdprAllMappedAxesEnabled_);
     ui_->cdprPvtStopButton->setEnabled(status.active);
     ui_->cdprPvtEmergencyStopButton->setEnabled(status.active);
+}
+
+void MainWindow::updateCdprVelocityControlStatus(
+    const CdprVelocityControlStatus &status)
+{
+    cdprVelocityControlStatus_ = status;
+    ui_->cdprRtStatusLabel->setText(
+        QStringLiteral("%1；t=%2 s，周期=%3 ms，最大调用耗时=%4 ms，最大轨迹误差=%5°")
+            .arg(status.stateText)
+            .arg(status.elapsedS, 0, 'f', 3)
+            .arg(status.controlDtMs, 0, 'f', 3)
+            .arg(status.maximumCycleMs, 0, 'f', 3)
+            .arg(status.maximumTrackingErrorDegree, 0, 'f', 4));
+    ui_->cdprRtPrepareButton->setEnabled(!status.active);
+    ui_->cdprRtStartButton->setEnabled(!status.active && cdprOfflinePvtPlan_.valid
+                                       && cdprAllMappedAxesEnabled_);
+    ui_->cdprRtStopButton->setEnabled(status.active);
 }
 
 ContiTestConfig MainWindow::collectConfig() const

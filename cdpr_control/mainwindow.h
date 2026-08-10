@@ -77,6 +77,9 @@ signals:
     void startCdprOfflinePvtRequested(
         const CdprOfflinePvtPlan &plan);
     void stopCdprOfflinePvtRequested(bool emergency);
+    void startCdprVelocityControlRequested(const CdprOfflinePvtPlan &plan,
+                                           const CdprVelocityControlConfig &config);
+    void stopCdprVelocityControlRequested(bool emergency);
 
 private slots:
     void onStageChanged(int index);
@@ -127,6 +130,7 @@ private slots:
     void updateCdprStatus(const CdprUiStatus &status);
     void updateCdprOfflinePvtPlan(const CdprOfflinePvtPlan &plan);
     void updateCdprOfflinePvtStatus(const CdprOfflinePvtStatus &status);
+    void updateCdprVelocityControlStatus(const CdprVelocityControlStatus &status);
     void appendLog(const QString &message);
     void updateStatus(const ContiStatus &status);
 
@@ -137,6 +141,7 @@ private:
     TorqueTestConfig collectTorqueConfig() const;
     TraceDelayCalibrationConfig collectTraceDelayCalibrationConfig() const;
     CdprOfflinePvtRequest collectCdprOfflinePvtRequest() const;
+    CdprVelocityControlConfig collectCdprVelocityControlConfig() const;
     void invalidateCdprOfflinePvtPlan();
     void connectWorker();
     void initializeContiTrajectoryChart();
@@ -215,6 +220,7 @@ private:
     double lastTorquePlotTimeS_ = -1.0;
     CdprOfflinePvtPlan cdprOfflinePvtPlan_;
     CdprOfflinePvtStatus cdprOfflinePvtStatus_;
+    CdprVelocityControlStatus cdprVelocityControlStatus_;
     bool cdprAllMappedAxesEnabled_ = false;
 };
 

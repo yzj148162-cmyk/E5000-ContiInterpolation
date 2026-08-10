@@ -102,6 +102,7 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
     , torqueTestTimer_(new QTimer(this))
     , traceDelayCalibrationTimer_(new QTimer(this))
     , offlinePvtMonitorTimer_(new QTimer(this))
+    , cdprVelocityControlTimer_(new QTimer(this))
 {
     softwareZeroUnit_.fill(0.0, 8);
     softwareZeroValid_.fill(false, 8);
@@ -119,6 +120,8 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
     traceDelayCalibrationTimer_->setInterval(5);
     offlinePvtMonitorTimer_->setTimerType(Qt::PreciseTimer);
     offlinePvtMonitorTimer_->setInterval(20);
+    cdprVelocityControlTimer_->setTimerType(Qt::PreciseTimer);
+    cdprVelocityControlTimer_->setInterval(1);
 
     connect(producerTimer_, &QTimer::timeout, this, &MotionControlWorker::produceNextPoint);
     connect(monitorTimer_, &QTimer::timeout, this, &MotionControlWorker::monitorContinuousRun);
@@ -131,6 +134,8 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
             this, &MotionControlWorker::runTraceDelayCalibrationCycle);
     connect(offlinePvtMonitorTimer_, &QTimer::timeout,
             this, &MotionControlWorker::monitorOfflinePvt);
+    connect(cdprVelocityControlTimer_, &QTimer::timeout,
+            this, &MotionControlWorker::runCdprVelocityControlCycle);
     loadTraceDelayCalibrationResults();
 }
 
@@ -402,6 +407,7 @@ void MotionControlWorker::shutdownHardware()
     torqueTestTimer_->stop();
     traceDelayCalibrationTimer_->stop();
     offlinePvtMonitorTimer_->stop();
+    cdprVelocityControlTimer_->stop();
     resetRunTimingState();
 
     if (!boardInitialized_) {
@@ -411,6 +417,8 @@ void MotionControlWorker::shutdownHardware()
         traceDelayStatus_.active = false;
         offlinePvtActive_ = false;
         offlinePvtStatus_.active = false;
+        cdprVelocityControlActive_ = false;
+        cdprVelocityStatus_.active = false;
         return;
     }
 
@@ -463,7 +471,7 @@ void MotionControlWorker::enableSelectedAxes(const ContiTestConfig &config)
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能切换轴使能。"));
         return;
     }
@@ -531,7 +539,7 @@ void MotionControlWorker::disableSelectedAxes(const ContiTestConfig &config)
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_) {
         stopTest(false);
     }
     if (config.cardNo != initializedCardNo_) {
@@ -617,6 +625,9 @@ void MotionControlWorker::disableAllDetectedAxes()
     if (velocityControlActive_) {
         emit logMessage(QStringLiteral("全局失能前正在停止速度闭环。"));
         finishVelocityControl(QStringLiteral("速度闭环已因全局失能而减速停止"), false);
+    }
+    if (cdprVelocityControlActive_) {
+        finishCdprVelocityControl(QStringLiteral("CDPR八轴速度闭环已因全局失能而减速停止"), false);
     }
     if (traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("全局失能前正在停止 Trace 延迟标定。"));
@@ -840,6 +851,10 @@ void MotionControlWorker::stopTest(bool emergency)
         stopOfflinePvt(emergency);
         return;
     }
+    if (cdprVelocityControlActive_) {
+        stopCdprVelocityControl(emergency);
+        return;
+    }
     if (torqueTestActive_) {
         stopTorqueTest(emergency);
         return;
@@ -1054,6 +1069,344 @@ void MotionControlWorker::finishOfflinePvt(
     stateText_ = message;
     emit offlinePvtStatusChanged(offlinePvtStatus_);
     emit logMessage(message);
+    publishStatus();
+}
+
+bool MotionControlWorker::validateCdprVelocityControl(
+    const CdprOfflinePvtPlan &plan, const CdprVelocityControlConfig &config,
+    QString &errorMessage) const
+{
+    static const QSet<int> supportedPeriods {1, 2, 5, 10};
+    if (!plan.valid || plan.timeS.size() < 2
+        || !supportedPeriods.contains(config.controlPeriodMs)) {
+        errorMessage = QStringLiteral("八轴速度闭环启动失败：轨迹无效，或控制周期只能为 1/2/5/10 ms。");
+        return false;
+    }
+    if (actualBusCycleUs_ <= 0
+        || (config.controlPeriodMs * 1000) % actualBusCycleUs_ != 0
+        || plan.request.samplePeriodMs != config.controlPeriodMs) {
+        errorMessage = QStringLiteral("八轴速度闭环启动失败：控制周期 %1 ms 必须为总线周期 %2 us 的整数倍，且须重新按该周期生成轨迹。")
+                           .arg(config.controlPeriodMs).arg(actualBusCycleUs_);
+        return false;
+    }
+    if (!sameCardUnitDefinition(config.degreesPerCardUnit,
+                                plan.request.degreesPerCardUnit)
+        || !sameCardUnitDefinition(config.degreesPerCardUnit,
+                                   config_.degreesPerCardUnit)
+        || config.maxVelocityDegreePerSecond <= 0.0
+        || config.maxAccelerationDegreePerSecond2 <= 0.0
+        || config.onlineChangeTimeS < 0.001
+        || config.maxFollowingErrorDegree <= 0.0
+        || config.traceTimeoutMs <= 0) {
+        errorMessage = QStringLiteral("八轴速度闭环启动失败：板卡 unit 或闭环参数无效。");
+        return false;
+    }
+    QSet<quint16> axes;
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const size_t index = static_cast<size_t>(cable);
+        const quint16 axis = plan.axes[index];
+        if (!detectedAxes_.contains(axis) || !enabledAxes_.contains(axis)
+            || axes.contains(axis)
+            || plan.axisPositionDegree[index].size() != plan.timeS.size()
+            || plan.axisVelocityDegreePerSecond[index].size() != plan.timeS.size()) {
+            errorMessage = QStringLiteral("八轴速度闭环启动失败：绳 %1 映射轴无效、未使能、重复或轨迹表不完整。")
+                               .arg(cable);
+            return false;
+        }
+        axes.insert(axis);
+    }
+    return true;
+}
+
+bool MotionControlWorker::cdprVelocityReference(
+    double elapsedS, int cable, double &positionDegree,
+    double &velocityDegreePerSecond) const
+{
+    if (cable < 0 || cable >= kCdprCableCount
+        || cdprVelocityPlan_.timeS.size() < 2) {
+        return false;
+    }
+    const size_t index = static_cast<size_t>(cable);
+    const QVector<double> &positions = cdprVelocityPlan_.axisPositionDegree[index];
+    const QVector<double> &velocities = cdprVelocityPlan_.axisVelocityDegreePerSecond[index];
+    if (positions.size() != cdprVelocityPlan_.timeS.size()
+        || velocities.size() != cdprVelocityPlan_.timeS.size()) {
+        return false;
+    }
+    const double clamped = std::clamp(elapsedS, 0.0,
+                                      cdprVelocityPlan_.timeS.constLast());
+    auto upper = std::upper_bound(cdprVelocityPlan_.timeS.cbegin(),
+                                  cdprVelocityPlan_.timeS.cend(), clamped);
+    int right = static_cast<int>(upper - cdprVelocityPlan_.timeS.cbegin());
+    right = qBound(1, right, cdprVelocityPlan_.timeS.size() - 1);
+    const int left = right - 1;
+    const double t0 = cdprVelocityPlan_.timeS.at(left);
+    const double t1 = cdprVelocityPlan_.timeS.at(right);
+    const double ratio = t1 > t0 ? (clamped - t0) / (t1 - t0) : 0.0;
+    positionDegree = positions.at(left) + ratio * (positions.at(right) - positions.at(left));
+    velocityDegreePerSecond = velocities.at(left)
+        + ratio * (velocities.at(right) - velocities.at(left));
+    return true;
+}
+
+void MotionControlWorker::startCdprVelocityControl(
+    const CdprOfflinePvtPlan &plan, const CdprVelocityControlConfig &config)
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("八轴速度闭环启动失败：请先初始化控制卡。"));
+        return;
+    }
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || torqueTestActive_ || traceDelayCalibrationActive_ || offlinePvtActive_
+        || cdprVelocityControlActive_) {
+        emit logMessage(QStringLiteral("已有运动或标定正在运行，不能启动八轴速度闭环。"));
+        return;
+    }
+    QString error;
+    if (!validateCdprVelocityControl(plan, config, error)) {
+        emit logMessage(error);
+        return;
+    }
+    if (telemetryRecorder_.status().recording) {
+        stopTelemetryRecording();
+    }
+    QVector<quint16> axes;
+    axes.reserve(kCdprCableCount);
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const quint16 axis = plan.axes[static_cast<size_t>(cable)];
+        if (!card_.setAxisEquivalent(initializedCardNo_, axis,
+                                     MotorUnit::pulsesPerCardUnit(config.degreesPerCardUnit),
+                                     error)) {
+            enterError(QStringLiteral("八轴速度闭环：轴 %1 脉冲当量设置失败：%2")
+                           .arg(axis).arg(error));
+            return;
+        }
+        axes.append(axis);
+    }
+    if (!configureFeedbackTrace(axes, config.degreesPerCardUnit, error)) {
+        enterError(QStringLiteral("八轴速度闭环 Trace 配置失败：%1").arg(error));
+        return;
+    }
+    cdprVelocityPlan_ = plan;
+    cdprVelocityConfig_ = config;
+    cdprVelocityStatus_ = {};
+    cdprVelocityStatus_.active = true;
+    cdprVelocityStatus_.runId = ++cdprVelocityRunId_;
+    cdprVelocityStatus_.stateText = QStringLiteral("等待八轴 Trace 首帧");
+    cdprVelocityControlActive_ = true;
+    cdprVelocityAxisStarted_.fill(false);
+    cdprVelocityDirection_.fill(0);
+    cdprVelocityLastTraceTimeUs_.fill(0);
+    cdprVelocityStartTraceTimeUs_.fill(0);
+    for (PositionVelocityPid &pid : cdprVelocityPids_) {
+        pid.reset();
+    }
+    cdprVelocityLastTraceSequence_ = latestTraceSequence_;
+    cdprVelocityRunClock_.invalidate();
+    cdprVelocityCycleClock_.invalidate();
+    cdprVelocityTraceFreshClock_.start();
+    feedbackTimer_->stop();
+    cdprVelocityControlTimer_->setInterval(config.controlPeriodMs);
+    cdprVelocityControlTimer_->start();
+    stateText_ = QStringLiteral("八轴速度闭环等待 Trace");
+    emit logMessage(QStringLiteral("八轴实时速度闭环已准备：控制周期=%1 ms，轨迹时长=%2 s；"
+                                   "每周期读取一次八轴 Trace，并以八个独立 PID 状态在线调用 dmc_change_speed_unit。")
+                        .arg(config.controlPeriodMs)
+                        .arg(plan.timeS.constLast(), 0, 'f', 3));
+    emit cdprVelocityControlStatusChanged(cdprVelocityStatus_);
+    publishStatus();
+}
+
+void MotionControlWorker::runCdprVelocityControlCycle()
+{
+    if (!cdprVelocityControlActive_) {
+        cdprVelocityControlTimer_->stop();
+        return;
+    }
+    const double commandDt = cdprVelocityCycleClock_.isValid()
+        ? std::max(0.000001, cdprVelocityCycleClock_.restart() / 1000.0)
+        : (cdprVelocityCycleClock_.start(), cdprVelocityConfig_.controlPeriodMs / 1000.0);
+    if (!pollTraceFeedback()) {
+        finishCdprVelocityControl(QStringLiteral("八轴速度闭环 Trace 读取失败：%1").arg(traceStateText_), true);
+        return;
+    }
+    const bool traceFresh = latestTraceSequence_ != cdprVelocityLastTraceSequence_;
+    if (traceFresh) {
+        cdprVelocityLastTraceSequence_ = latestTraceSequence_;
+        cdprVelocityTraceFreshClock_.restart();
+    }
+    if (cdprVelocityTraceFreshClock_.elapsed() > cdprVelocityConfig_.traceTimeoutMs) {
+        finishCdprVelocityControl(QStringLiteral("八轴速度闭环 Trace 超时：%1 ms 未收到新帧。")
+                                      .arg(cdprVelocityConfig_.traceTimeoutMs), true);
+        return;
+    }
+    if (!cdprVelocityRunClock_.isValid()) {
+        quint16 axisMask = 0;
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            const quint16 axis = cdprVelocityPlan_.axes[static_cast<size_t>(cable)];
+            if (axis >= latestAxisFeedback_.size()
+                || !latestAxisFeedback_.at(axis).traceSampleValid) {
+                return;
+            }
+            cdprVelocityStartPositionDegree_[static_cast<size_t>(cable)] =
+                latestAxisFeedback_.at(axis).encoderPositionUnit;
+            cdprVelocityStartTraceTimeUs_[static_cast<size_t>(cable)] =
+                latestAxisFeedback_.at(axis).traceTimeUs;
+            axisMask |= static_cast<quint16>(1U << axis);
+        }
+        cdprVelocityStatus_.activeAxisMask = axisMask;
+        cdprVelocityRunClock_.start();
+        cdprVelocityStatus_.stateText = QStringLiteral("八轴速度闭环运行中");
+        emit logMessage(QStringLiteral("八轴速度闭环已取得同一 Trace 帧的八轴起点，开始按轨迹时间执行。"));
+    }
+    const double elapsedS = cdprVelocityRunClock_.elapsed() / 1000.0;
+    VelocityControlConfig pidConfig;
+    pidConfig.cardNo = initializedCardNo_;
+    pidConfig.degreesPerCardUnit = cdprVelocityConfig_.degreesPerCardUnit;
+    pidConfig.pidEnabled = cdprVelocityConfig_.pidEnabled;
+    pidConfig.velocityFeedforwardEnabled = cdprVelocityConfig_.velocityFeedforwardEnabled;
+    pidConfig.velocityFeedforwardGain = cdprVelocityConfig_.velocityFeedforwardGain;
+    pidConfig.kp = cdprVelocityConfig_.kp;
+    pidConfig.ki = cdprVelocityConfig_.ki;
+    pidConfig.kd = cdprVelocityConfig_.kd;
+    pidConfig.integralLimitDegreeSecond = cdprVelocityConfig_.integralLimitDegreeSecond;
+    pidConfig.maxPidCorrectionDegreePerSecond = cdprVelocityConfig_.maxPidCorrectionDegreePerSecond;
+    pidConfig.maxVelocityDegreePerSecond = cdprVelocityConfig_.maxVelocityDegreePerSecond;
+    pidConfig.maxAccelerationDegreePerSecond2 = cdprVelocityConfig_.maxAccelerationDegreePerSecond2;
+    pidConfig.onlineChangeTimeS = cdprVelocityConfig_.onlineChangeTimeS;
+    pidConfig.startVelocityThresholdDegreePerSecond = cdprVelocityConfig_.startVelocityThresholdDegreePerSecond;
+
+    double maximumError = 0.0;
+    QElapsedTimer apiClock;
+    apiClock.start();
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const size_t index = static_cast<size_t>(cable);
+        const quint16 axis = cdprVelocityPlan_.axes[index];
+        if (axis >= latestAxisFeedback_.size()) {
+            finishCdprVelocityControl(QStringLiteral("八轴速度闭环反馈轴索引越界。"), true);
+            return;
+        }
+        const AxisFeedback &feedback = latestAxisFeedback_.at(axis);
+        if (!feedback.traceSampleValid || feedback.stateMachine != 4 || feedback.axisErrorCode != 0) {
+            finishCdprVelocityControl(QStringLiteral("八轴速度闭环：轴 %1 状态异常，状态机=%2，错误码=%3。")
+                                          .arg(axis).arg(feedback.stateMachine).arg(feedback.axisErrorCode), true);
+            return;
+        }
+        double currentReferenceDelta = 0.0;
+        double currentReferenceVelocity = 0.0;
+        if (!cdprVelocityReference(elapsedS, cable, currentReferenceDelta,
+                                   currentReferenceVelocity)) {
+            finishCdprVelocityControl(QStringLiteral("八轴速度闭环轨迹引用失败。"), true);
+            return;
+        }
+        Q_UNUSED(currentReferenceDelta);
+        const double traceElapsedS = feedback.traceTimeUs
+                > cdprVelocityStartTraceTimeUs_[index]
+            ? (feedback.traceTimeUs - cdprVelocityStartTraceTimeUs_[index]) / 1000000.0
+            : 0.0;
+        double feedbackReferenceDelta = 0.0;
+        double feedbackReferenceVelocity = 0.0;
+        if (!cdprVelocityReference(traceElapsedS, cable, feedbackReferenceDelta,
+                                   feedbackReferenceVelocity)) {
+            finishCdprVelocityControl(QStringLiteral("八轴速度闭环 Trace 时间引用失败。"), true);
+            return;
+        }
+        const double expectedPosition = cdprVelocityStartPositionDegree_[index]
+            + feedbackReferenceDelta;
+        const double trackingError = expectedPosition - feedback.encoderPositionUnit;
+        maximumError = std::max(maximumError, std::abs(trackingError));
+        if (std::abs(trackingError) > cdprVelocityConfig_.maxFollowingErrorDegree) {
+            finishCdprVelocityControl(QStringLiteral("八轴速度闭环：轴 %1 规划位置-Trace实际位置误差=%2°，超过 %3°。")
+                                          .arg(axis).arg(trackingError, 0, 'f', 4)
+                                          .arg(cdprVelocityConfig_.maxFollowingErrorDegree, 0, 'f', 4), true);
+            return;
+        }
+        double feedbackDt = std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
+        if (traceFresh && cdprVelocityLastTraceTimeUs_[index] != 0
+            && feedback.traceTimeUs > cdprVelocityLastTraceTimeUs_[index]) {
+            feedbackDt = (feedback.traceTimeUs - cdprVelocityLastTraceTimeUs_[index]) / 1000000.0;
+        }
+        if (traceFresh) {
+            cdprVelocityLastTraceTimeUs_[index] = feedback.traceTimeUs;
+        }
+        pidConfig.axis = axis;
+        const PositionVelocityPidOutput output = cdprVelocityPids_[index].update(
+            pidConfig, trackingError, currentReferenceVelocity,
+            feedbackReferenceVelocity,
+            feedback.actualVelocityUnitPerSecond, commandDt, feedbackDt, traceFresh);
+        QString error;
+        short apiResult = 0;
+        bool ok = true;
+        if (!cdprVelocityAxisStarted_[index]) {
+            if (std::abs(output.commandVelocity)
+                >= cdprVelocityConfig_.startVelocityThresholdDegreePerSecond) {
+                ok = card_.startVelocityMove(pidConfig, output.commandVelocity, error);
+                cdprVelocityAxisStarted_[index] = ok;
+                cdprVelocityDirection_[index] = output.commandVelocity >= 0.0 ? 1 : -1;
+            }
+        } else {
+            ok = card_.changeVelocity(pidConfig, output.commandVelocity, apiResult, error);
+        }
+        if (!ok) {
+            finishCdprVelocityControl(QStringLiteral("八轴速度闭环：轴 %1 速度命令失败：%2")
+                                          .arg(axis).arg(error), true);
+            return;
+        }
+    }
+    cdprVelocityStatus_.active = true;
+    cdprVelocityStatus_.motionStarted = std::any_of(cdprVelocityAxisStarted_.cbegin(),
+                                                      cdprVelocityAxisStarted_.cend(),
+                                                      [](bool started) { return started; });
+    cdprVelocityStatus_.elapsedS = elapsedS;
+    cdprVelocityStatus_.controlDtMs = commandDt * 1000.0;
+    cdprVelocityStatus_.maximumCycleMs = std::max(cdprVelocityStatus_.maximumCycleMs,
+                                                   apiClock.nsecsElapsed() / 1000000.0);
+    cdprVelocityStatus_.maximumTrackingErrorDegree = std::max(
+        cdprVelocityStatus_.maximumTrackingErrorDegree, maximumError);
+    cdprVelocityStatus_.stateText = elapsedS < cdprVelocityPlan_.timeS.constLast()
+        ? QStringLiteral("八轴速度闭环运行中") : QStringLiteral("八轴终点收敛中");
+    if (elapsedS > cdprVelocityPlan_.timeS.constLast() + 1.0) {
+        finishCdprVelocityControl(QStringLiteral("八轴速度闭环轨迹结束，已执行 1 s 终点收敛。"), false);
+        return;
+    }
+    emit cdprVelocityControlStatusChanged(cdprVelocityStatus_);
+    publishStatus();
+}
+
+void MotionControlWorker::stopCdprVelocityControl(bool emergency)
+{
+    if (cdprVelocityControlActive_) {
+        finishCdprVelocityControl(emergency ? QStringLiteral("八轴速度闭环已立即停止。")
+                                            : QStringLiteral("八轴速度闭环已减速停止。"), emergency);
+    }
+}
+
+void MotionControlWorker::finishCdprVelocityControl(const QString &message, bool emergency)
+{
+    cdprVelocityControlTimer_->stop();
+    if (boardInitialized_) {
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            const size_t index = static_cast<size_t>(cable);
+            if (!cdprVelocityAxisStarted_[index]) {
+                continue;
+            }
+            QString error;
+            card_.stopAxis(initializedCardNo_, cdprVelocityPlan_.axes[index], emergency, error);
+            if (!error.isEmpty()) {
+                emit logMessage(QStringLiteral("八轴速度闭环停止轴 %1 失败：%2")
+                                    .arg(cdprVelocityPlan_.axes[index]).arg(error));
+            }
+        }
+    }
+    cdprVelocityControlActive_ = false;
+    cdprVelocityAxisStarted_.fill(false);
+    cdprVelocityStatus_.active = false;
+    cdprVelocityStatus_.motionStarted = false;
+    cdprVelocityStatus_.stateText = emergency ? QStringLiteral("八轴闭环异常停止")
+                                               : QStringLiteral("八轴闭环已完成");
+    stateText_ = cdprVelocityStatus_.stateText;
+    emit logMessage(emergency ? QStringLiteral("错误：%1").arg(message) : message);
+    emit cdprVelocityControlStatusChanged(cdprVelocityStatus_);
     publishStatus();
 }
 

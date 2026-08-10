@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1440</width>
+    <width>1549</width>
     <height>820</height>
    </rect>
   </property>
@@ -529,7 +529,7 @@
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>781</width>
+              <width>967</width>
               <height>1063</height>
              </rect>
             </property>
@@ -2420,7 +2420,7 @@
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>911</width>
+              <width>967</width>
               <height>1256</height>
              </rect>
             </property>
@@ -3555,8 +3555,8 @@
              <rect>
               <x>0</x>
               <y>0</y>
-              <width>781</width>
-              <height>1097</height>
+              <width>967</width>
+              <height>1082</height>
              </rect>
             </property>
             <layout class="QVBoxLayout" name="torqueTestContentLayout">
@@ -4392,60 +4392,124 @@
                 </item>
                 <item row="2" column="1">
                  <widget class="QDoubleSpinBox" name="cdprPresetXSpin">
-                  <property name="decimals"><number>6</number></property>
-                  <property name="minimum"><double>-100.000000000000000</double></property>
-                  <property name="maximum"><double>100.000000000000000</double></property>
-                  <property name="prefix"><string>x=</string></property>
-                  <property name="suffix"><string> m</string></property>
+                  <property name="prefix">
+                   <string>x=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> m</string>
+                  </property>
+                  <property name="decimals">
+                   <number>6</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-100.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>100.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="2" column="2">
                  <widget class="QDoubleSpinBox" name="cdprPresetYSpin">
-                  <property name="decimals"><number>6</number></property>
-                  <property name="minimum"><double>-100.000000000000000</double></property>
-                  <property name="maximum"><double>100.000000000000000</double></property>
-                  <property name="value"><double>-0.800000000000000</double></property>
-                  <property name="prefix"><string>y=</string></property>
-                  <property name="suffix"><string> m</string></property>
+                  <property name="prefix">
+                   <string>y=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> m</string>
+                  </property>
+                  <property name="decimals">
+                   <number>6</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-100.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>100.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>-0.800000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="2" column="3">
                  <widget class="QDoubleSpinBox" name="cdprPresetZSpin">
-                  <property name="decimals"><number>6</number></property>
-                  <property name="minimum"><double>-100.000000000000000</double></property>
-                  <property name="maximum"><double>100.000000000000000</double></property>
-                  <property name="value"><double>0.516667000000000</double></property>
-                  <property name="prefix"><string>z=</string></property>
-                  <property name="suffix"><string> m</string></property>
+                  <property name="prefix">
+                   <string>z=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> m</string>
+                  </property>
+                  <property name="decimals">
+                   <number>6</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-100.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>100.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>0.516667000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="2" column="4">
                  <widget class="QDoubleSpinBox" name="cdprPresetRollSpin">
-                  <property name="decimals"><number>6</number></property>
-                  <property name="minimum"><double>-6.283185000000000</double></property>
-                  <property name="maximum"><double>6.283185000000000</double></property>
-                  <property name="prefix"><string>rx=</string></property>
-                  <property name="suffix"><string> rad</string></property>
+                  <property name="prefix">
+                   <string>rx=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> rad</string>
+                  </property>
+                  <property name="decimals">
+                   <number>6</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-6.283185000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>6.283185000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="2" column="5">
                  <layout class="QHBoxLayout" name="cdprPresetAngleLayout">
                   <item>
                    <widget class="QDoubleSpinBox" name="cdprPresetPitchSpin">
-                    <property name="decimals"><number>6</number></property>
-                    <property name="minimum"><double>-6.283185000000000</double></property>
-                    <property name="maximum"><double>6.283185000000000</double></property>
-                    <property name="prefix"><string>ry=</string></property>
-                    <property name="suffix"><string> rad</string></property>
+                    <property name="prefix">
+                     <string>ry=</string>
+                    </property>
+                    <property name="suffix">
+                     <string> rad</string>
+                    </property>
+                    <property name="decimals">
+                     <number>6</number>
+                    </property>
+                    <property name="minimum">
+                     <double>-6.283185000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>6.283185000000000</double>
+                    </property>
                    </widget>
                   </item>
                   <item>
                    <widget class="QDoubleSpinBox" name="cdprPresetYawSpin">
-                    <property name="decimals"><number>6</number></property>
-                    <property name="minimum"><double>-6.283185000000000</double></property>
-                    <property name="maximum"><double>6.283185000000000</double></property>
-                    <property name="prefix"><string>rz=</string></property>
-                    <property name="suffix"><string> rad</string></property>
+                    <property name="prefix">
+                     <string>rz=</string>
+                    </property>
+                    <property name="suffix">
+                     <string> rad</string>
+                    </property>
+                    <property name="decimals">
+                     <number>6</number>
+                    </property>
+                    <property name="minimum">
+                     <double>-6.283185000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>6.283185000000000</double>
+                    </property>
                    </widget>
                   </item>
                  </layout>
@@ -4462,7 +4526,9 @@
                   <property name="text">
                    <string>Nokov目前只采集标记点；几何位姿重建留空。编码器启动基准尚未接入，因此不会开放实机控制。</string>
                   </property>
-                  <property name="wordWrap"><bool>true</bool></property>
+                  <property name="wordWrap">
+                   <bool>true</bool>
+                  </property>
                  </widget>
                 </item>
                 <item row="4" column="0" colspan="6">
@@ -4470,13 +4536,35 @@
                   <property name="editTriggers">
                    <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
                   </property>
-                  <property name="alternatingRowColors"><bool>true</bool></property>
-                  <property name="rowCount"><number>0</number></property>
-                  <property name="columnCount"><number>4</number></property>
-                  <column><property name="text"><string>ID</string></property></column>
-                  <column><property name="text"><string>X（m）</string></property></column>
-                  <column><property name="text"><string>Y（m）</string></property></column>
-                  <column><property name="text"><string>Z（m）</string></property></column>
+                  <property name="alternatingRowColors">
+                   <bool>true</bool>
+                  </property>
+                  <property name="rowCount">
+                   <number>0</number>
+                  </property>
+                  <property name="columnCount">
+                   <number>4</number>
+                  </property>
+                  <column>
+                   <property name="text">
+                    <string>ID</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>X（m）</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>Y（m）</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>Z（m）</string>
+                   </property>
+                  </column>
                  </widget>
                 </item>
                </layout>
@@ -4490,103 +4578,183 @@
                <layout class="QGridLayout" name="cdprForceInputLayout">
                 <item row="0" column="0">
                  <widget class="QLabel" name="cdprForceInputSourceLabel">
-                  <property name="text"><string>来源</string></property>
+                  <property name="text">
+                   <string>来源</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="1">
                  <widget class="QComboBox" name="cdprForceInputSourceCombo">
-                  <item><property name="text"><string>模拟F/T</string></property></item>
-                  <item><property name="text"><string>Trace F/T（待配置）</string></property></item>
+                  <item>
+                   <property name="text">
+                    <string>模拟F/T</string>
+                   </property>
+                  </item>
+                  <item>
+                   <property name="text">
+                    <string>Trace F/T（待配置）</string>
+                   </property>
+                  </item>
                  </widget>
                 </item>
                 <item row="0" column="2" colspan="4">
                  <widget class="QLabel" name="cdprTraceFtStatusLabel">
-                  <property name="text"><string>Trace F/T对象类型待配置</string></property>
+                  <property name="text">
+                   <string>Trace F/T对象类型待配置</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="0">
                  <widget class="QLabel" name="cdprSimulatedForceLabel">
-                  <property name="text"><string>传感器坐标系模拟量</string></property>
+                  <property name="text">
+                   <string>传感器坐标系模拟量</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="1">
                  <widget class="QDoubleSpinBox" name="cdprForceFxSpin">
-                  <property name="decimals"><number>3</number></property>
-                  <property name="minimum"><double>-10000.000000000000000</double></property>
-                  <property name="maximum"><double>10000.000000000000000</double></property>
-                  <property name="prefix"><string>Fx=</string></property>
-                  <property name="suffix"><string> N</string></property>
+                  <property name="prefix">
+                   <string>Fx=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> N</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-10000.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10000.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="2">
                  <widget class="QDoubleSpinBox" name="cdprForceFySpin">
-                  <property name="decimals"><number>3</number></property>
-                  <property name="minimum"><double>-10000.000000000000000</double></property>
-                  <property name="maximum"><double>10000.000000000000000</double></property>
-                  <property name="prefix"><string>Fy=</string></property>
-                  <property name="suffix"><string> N</string></property>
+                  <property name="prefix">
+                   <string>Fy=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> N</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-10000.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10000.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="3">
                  <widget class="QDoubleSpinBox" name="cdprForceFzSpin">
-                  <property name="decimals"><number>3</number></property>
-                  <property name="minimum"><double>-10000.000000000000000</double></property>
-                  <property name="maximum"><double>10000.000000000000000</double></property>
-                  <property name="prefix"><string>Fz=</string></property>
-                  <property name="suffix"><string> N</string></property>
+                  <property name="prefix">
+                   <string>Fz=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> N</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-10000.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10000.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="4">
                  <widget class="QDoubleSpinBox" name="cdprForceMxSpin">
-                  <property name="decimals"><number>3</number></property>
-                  <property name="minimum"><double>-10000.000000000000000</double></property>
-                  <property name="maximum"><double>10000.000000000000000</double></property>
-                  <property name="prefix"><string>Mx=</string></property>
-                  <property name="suffix"><string> N·m</string></property>
+                  <property name="prefix">
+                   <string>Mx=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> N·m</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-10000.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10000.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="5">
                  <layout class="QHBoxLayout" name="cdprSimulatedMomentLayout">
                   <item>
                    <widget class="QDoubleSpinBox" name="cdprForceMySpin">
-                    <property name="decimals"><number>3</number></property>
-                    <property name="minimum"><double>-10000.000000000000000</double></property>
-                    <property name="maximum"><double>10000.000000000000000</double></property>
-                    <property name="prefix"><string>My=</string></property>
-                    <property name="suffix"><string> N·m</string></property>
+                    <property name="prefix">
+                     <string>My=</string>
+                    </property>
+                    <property name="suffix">
+                     <string> N·m</string>
+                    </property>
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="minimum">
+                     <double>-10000.000000000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>10000.000000000000000</double>
+                    </property>
                    </widget>
                   </item>
                   <item>
                    <widget class="QDoubleSpinBox" name="cdprForceMzSpin">
-                    <property name="decimals"><number>3</number></property>
-                    <property name="minimum"><double>-10000.000000000000000</double></property>
-                    <property name="maximum"><double>10000.000000000000000</double></property>
-                    <property name="prefix"><string>Mz=</string></property>
-                    <property name="suffix"><string> N·m</string></property>
+                    <property name="prefix">
+                     <string>Mz=</string>
+                    </property>
+                    <property name="suffix">
+                     <string> N·m</string>
+                    </property>
+                    <property name="decimals">
+                     <number>3</number>
+                    </property>
+                    <property name="minimum">
+                     <double>-10000.000000000000000</double>
+                    </property>
+                    <property name="maximum">
+                     <double>10000.000000000000000</double>
+                    </property>
                    </widget>
                   </item>
                  </layout>
                 </item>
                 <item row="2" column="0">
                  <widget class="QPushButton" name="cdprApplySimulatedWrenchButton">
-                  <property name="text"><string>应用模拟输入</string></property>
+                  <property name="text">
+                   <string>应用模拟输入</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="2" column="1">
                  <widget class="QPushButton" name="cdprClearSimulatedWrenchButton">
-                  <property name="text"><string>模拟输入清零</string></property>
+                  <property name="text">
+                   <string>模拟输入清零</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="2" column="2" colspan="4">
                  <widget class="QLabel" name="cdprPlatformWrenchValueLabel">
-                  <property name="text"><string>平台质心力旋量：--</string></property>
+                  <property name="text">
+                   <string>平台质心力旋量：--</string>
+                  </property>
                  </widget>
                 </item>
                </layout>
               </widget>
              </item>
-           </layout>
-          </widget>
+            </layout>
+           </widget>
            <widget class="QWidget" name="cdprOfflinePvtTab">
             <attribute name="title">
              <string>离线PVT位控</string>
@@ -4600,114 +4768,226 @@
                <layout class="QGridLayout" name="cdprOfflinePvtTrajectoryLayout">
                 <item row="0" column="0">
                  <widget class="QLabel" name="cdprPvtTranslationLabel">
-                  <property name="text"><string>平移</string></property>
+                  <property name="text">
+                   <string>平移</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="1">
                  <widget class="QDoubleSpinBox" name="cdprPvtDeltaXSpin">
-                  <property name="decimals"><number>6</number></property>
-                  <property name="minimum"><double>-10.000000000000000</double></property>
-                  <property name="maximum"><double>10.000000000000000</double></property>
-                  <property name="value"><double>0.020000000000000</double></property>
-                  <property name="prefix"><string>Δx=</string></property>
-                  <property name="suffix"><string> m</string></property>
+                  <property name="prefix">
+                   <string>Δx=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> m</string>
+                  </property>
+                  <property name="decimals">
+                   <number>6</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-10.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>0.020000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="2">
                  <widget class="QDoubleSpinBox" name="cdprPvtDeltaYSpin">
-                  <property name="decimals"><number>6</number></property>
-                  <property name="minimum"><double>-10.000000000000000</double></property>
-                  <property name="maximum"><double>10.000000000000000</double></property>
-                  <property name="prefix"><string>Δy=</string></property>
-                  <property name="suffix"><string> m</string></property>
+                  <property name="prefix">
+                   <string>Δy=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> m</string>
+                  </property>
+                  <property name="decimals">
+                   <number>6</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-10.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="3">
                  <widget class="QDoubleSpinBox" name="cdprPvtDeltaZSpin">
-                  <property name="decimals"><number>6</number></property>
-                  <property name="minimum"><double>-10.000000000000000</double></property>
-                  <property name="maximum"><double>10.000000000000000</double></property>
-                  <property name="prefix"><string>Δz=</string></property>
-                  <property name="suffix"><string> m</string></property>
+                  <property name="prefix">
+                   <string>Δz=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> m</string>
+                  </property>
+                  <property name="decimals">
+                   <number>6</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-10.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="4">
                  <widget class="QLabel" name="cdprPvtRotationLabel">
-                  <property name="text"><string>转角</string></property>
+                  <property name="text">
+                   <string>转角</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="5">
                  <widget class="QDoubleSpinBox" name="cdprPvtDeltaRollSpin">
-                  <property name="decimals"><number>4</number></property>
-                  <property name="minimum"><double>-180.000000000000000</double></property>
-                  <property name="maximum"><double>180.000000000000000</double></property>
-                  <property name="prefix"><string>Δrx=</string></property>
-                  <property name="suffix"><string> °</string></property>
+                  <property name="prefix">
+                   <string>Δrx=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> °</string>
+                  </property>
+                  <property name="decimals">
+                   <number>4</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-180.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>180.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="6">
                  <widget class="QDoubleSpinBox" name="cdprPvtDeltaPitchSpin">
-                  <property name="decimals"><number>4</number></property>
-                  <property name="minimum"><double>-180.000000000000000</double></property>
-                  <property name="maximum"><double>180.000000000000000</double></property>
-                  <property name="prefix"><string>Δry=</string></property>
-                  <property name="suffix"><string> °</string></property>
+                  <property name="prefix">
+                   <string>Δry=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> °</string>
+                  </property>
+                  <property name="decimals">
+                   <number>4</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-180.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>180.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="7">
                  <widget class="QDoubleSpinBox" name="cdprPvtDeltaYawSpin">
-                  <property name="decimals"><number>4</number></property>
-                  <property name="minimum"><double>-180.000000000000000</double></property>
-                  <property name="maximum"><double>180.000000000000000</double></property>
-                  <property name="prefix"><string>Δrz=</string></property>
-                  <property name="suffix"><string> °</string></property>
+                  <property name="prefix">
+                   <string>Δrz=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> °</string>
+                  </property>
+                  <property name="decimals">
+                   <number>4</number>
+                  </property>
+                  <property name="minimum">
+                   <double>-180.000000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>180.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="0">
                  <widget class="QLabel" name="cdprPvtTimingLabel">
-                  <property name="text"><string>时序</string></property>
+                  <property name="text">
+                   <string>时序</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="1">
                  <widget class="QDoubleSpinBox" name="cdprPvtDurationSpin">
-                  <property name="decimals"><number>3</number></property>
-                  <property name="minimum"><double>0.010000000000000</double></property>
-                  <property name="maximum"><double>600.000000000000000</double></property>
-                  <property name="value"><double>5.000000000000000</double></property>
-                  <property name="prefix"><string>轨迹时间=</string></property>
-                  <property name="suffix"><string> s</string></property>
+                  <property name="prefix">
+                   <string>轨迹时间=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.010000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>600.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>5.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="2">
                  <widget class="QSpinBox" name="cdprPvtSamplePeriodSpin">
-                  <property name="minimum"><number>1</number></property>
-                  <property name="maximum"><number>1000</number></property>
-                  <property name="singleStep"><number>1</number></property>
-                  <property name="value"><number>10</number></property>
-                  <property name="prefix"><string>采样=</string></property>
-                  <property name="suffix"><string> ms</string></property>
+                  <property name="suffix">
+                   <string> ms</string>
+                  </property>
+                  <property name="prefix">
+                   <string>采样=</string>
+                  </property>
+                  <property name="minimum">
+                   <number>1</number>
+                  </property>
+                  <property name="maximum">
+                   <number>1000</number>
+                  </property>
+                  <property name="singleStep">
+                   <number>1</number>
+                  </property>
+                  <property name="value">
+                   <number>10</number>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="3">
                  <widget class="QDoubleSpinBox" name="cdprPvtMaxAxisVelocitySpin">
-                  <property name="decimals"><number>3</number></property>
-                  <property name="minimum"><double>0.001000000000000</double></property>
-                  <property name="maximum"><double>10000.000000000000000</double></property>
-                  <property name="value"><double>90.000000000000000</double></property>
-                  <property name="prefix"><string>轴速上限=</string></property>
-                  <property name="suffix"><string> °/s</string></property>
+                  <property name="prefix">
+                   <string>轴速上限=</string>
+                  </property>
+                  <property name="suffix">
+                   <string> °/s</string>
+                  </property>
+                  <property name="decimals">
+                   <number>3</number>
+                  </property>
+                  <property name="minimum">
+                   <double>0.001000000000000</double>
+                  </property>
+                  <property name="maximum">
+                   <double>10000.000000000000000</double>
+                  </property>
+                  <property name="value">
+                   <double>90.000000000000000</double>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="4" colspan="4">
                  <widget class="QLabel" name="cdprPvtWinchHintLabel">
-                  <property name="text"><string>虚拟绞盘：直径160 mm；收放绳方向读取配置文件（默认 +1）</string></property>
-                  <property name="wordWrap"><bool>true</bool></property>
+                  <property name="text">
+                   <string>虚拟绞盘：直径160 mm；收放绳方向读取配置文件（默认 +1）</string>
+                  </property>
+                  <property name="wordWrap">
+                   <bool>true</bool>
+                  </property>
                  </widget>
                 </item>
                 <item row="2" column="0" colspan="8">
                  <widget class="QLabel" name="cdprPvtModeHintLabel">
-                  <property name="text"><string>完整轨迹先离线生成并校验，再由8轴PVT表同步执行；与连续插补、点动、速度闭环、转矩和标定任务互斥。</string></property>
-                  <property name="wordWrap"><bool>true</bool></property>
+                  <property name="text">
+                   <string>完整轨迹先离线生成并校验，再由8轴PVT表同步执行；与连续插补、点动、速度闭环、转矩和标定任务互斥。</string>
+                  </property>
+                  <property name="wordWrap">
+                   <bool>true</bool>
+                  </property>
                  </widget>
                 </item>
                </layout>
@@ -4715,42 +4995,130 @@
              </item>
              <item>
               <widget class="QGroupBox" name="cdprOfflinePvtExecutionGroup">
-               <property name="title"><string>生成与执行</string></property>
+               <property name="title">
+                <string>生成与执行</string>
+               </property>
                <layout class="QGridLayout" name="cdprOfflinePvtExecutionLayout">
                 <item row="0" column="0">
                  <widget class="QPushButton" name="cdprPvtGenerateButton">
-                  <property name="text"><string>生成并检查轨迹</string></property>
+                  <property name="text">
+                   <string>生成并检查轨迹</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="1">
                  <widget class="QPushButton" name="cdprPvtStartButton">
-                  <property name="enabled"><bool>false</bool></property>
-                  <property name="text"><string>开始8轴PVT</string></property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="text">
+                   <string>开始8轴PVT</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="2">
                  <widget class="QPushButton" name="cdprPvtStopButton">
-                  <property name="enabled"><bool>false</bool></property>
-                  <property name="text"><string>减速停止</string></property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="text">
+                   <string>减速停止</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="3">
                  <widget class="QPushButton" name="cdprPvtEmergencyStopButton">
-                  <property name="enabled"><bool>false</bool></property>
-                  <property name="text"><string>立即停止</string></property>
-                  <property name="styleSheet"><string notr="true">QPushButton { color: white; background-color: #c00024; font-weight: bold; }</string></property>
+                  <property name="enabled">
+                   <bool>false</bool>
+                  </property>
+                  <property name="styleSheet">
+                   <string notr="true">QPushButton { color: white; background-color: #c00024; font-weight: bold; }</string>
+                  </property>
+                  <property name="text">
+                   <string>立即停止</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="4">
                  <widget class="QProgressBar" name="cdprPvtProgressBar">
-                  <property name="value"><number>0</number></property>
-                  <property name="format"><string>%p%（%v/%m）</string></property>
+                  <property name="value">
+                   <number>0</number>
+                  </property>
+                  <property name="format">
+                   <string>%p%（%v/%m）</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="0" colspan="5">
                  <widget class="QLabel" name="cdprPvtStatusLabel">
-                  <property name="text"><string>尚未生成轨迹。</string></property>
-                  <property name="wordWrap"><bool>true</bool></property>
+                  <property name="text">
+                   <string>尚未生成轨迹。</string>
+                  </property>
+                  <property name="wordWrap">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item row="2" column="0" colspan="5">
+                 <widget class="QGroupBox" name="cdprRealtimeVelocityGroup">
+                  <property name="title">
+                   <string>8轴实时速度闭环（末端轨迹 → 逆运动学 → 在线变速）</string>
+                  </property>
+                  <layout class="QGridLayout" name="cdprRealtimeVelocityLayout">
+                   <item row="0" column="0">
+                    <widget class="QLabel" name="cdprRtPeriodLabel"><property name="text"><string>控制周期</string></property></widget>
+                   </item>
+                   <item row="0" column="1">
+                    <widget class="QComboBox" name="cdprRtPeriodCombo">
+                     <item><property name="text"><string>1 ms</string></property></item>
+                     <item><property name="text"><string>2 ms</string></property></item>
+                     <item><property name="text"><string>5 ms</string></property></item>
+                     <item><property name="text"><string>10 ms</string></property></item>
+                    </widget>
+                   </item>
+                   <item row="0" column="2">
+                    <widget class="QCheckBox" name="cdprRtFeedforwardCheck"><property name="text"><string>速度前馈</string></property><property name="checked"><bool>true</bool></property></widget>
+                   </item>
+                   <item row="0" column="3">
+                    <widget class="QDoubleSpinBox" name="cdprRtFeedforwardGainSpin"><property name="prefix"><string>增益=</string></property><property name="decimals"><number>3</number></property><property name="maximum"><double>10.000000000000000</double></property><property name="value"><double>1.000000000000000</double></property></widget>
+                   </item>
+                   <item row="0" column="4">
+                    <widget class="QCheckBox" name="cdprRtPidEnableCheck"><property name="text"><string>启用 PID</string></property><property name="checked"><bool>true</bool></property></widget>
+                   </item>
+                   <item row="1" column="0">
+                    <widget class="QDoubleSpinBox" name="cdprRtKpSpin"><property name="prefix"><string>Kp=</string></property><property name="decimals"><number>5</number></property><property name="maximum"><double>1000.000000000000000</double></property></widget>
+                   </item>
+                   <item row="1" column="1">
+                    <widget class="QDoubleSpinBox" name="cdprRtKiSpin"><property name="prefix"><string>Ki=</string></property><property name="decimals"><number>5</number></property><property name="maximum"><double>1000.000000000000000</double></property></widget>
+                   </item>
+                   <item row="1" column="2">
+                    <widget class="QDoubleSpinBox" name="cdprRtKdSpin"><property name="prefix"><string>Kd=</string></property><property name="decimals"><number>5</number></property><property name="maximum"><double>1000.000000000000000</double></property></widget>
+                   </item>
+                   <item row="1" column="3">
+                    <widget class="QDoubleSpinBox" name="cdprRtMaxVelocitySpin"><property name="prefix"><string>速度上限=</string></property><property name="suffix"><string> °/s</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property><property name="value"><double>720.000000000000000</double></property></widget>
+                   </item>
+                   <item row="1" column="4">
+                    <widget class="QDoubleSpinBox" name="cdprRtMaxAccelerationSpin"><property name="prefix"><string>加速度上限=</string></property><property name="suffix"><string> °/s²</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>100000.000000000000000</double></property><property name="value"><double>2000.000000000000000</double></property></widget>
+                   </item>
+                   <item row="2" column="0">
+                    <widget class="QDoubleSpinBox" name="cdprRtOnlineChangeSpin"><property name="prefix"><string>在线变速=</string></property><property name="suffix"><string> s</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>10.000000000000000</double></property><property name="value"><double>0.001000000000000</double></property></widget>
+                   </item>
+                   <item row="2" column="1">
+                    <widget class="QDoubleSpinBox" name="cdprRtMaxErrorSpin"><property name="prefix"><string>最大跟随误差=</string></property><property name="suffix"><string> °</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>1000.000000000000000</double></property><property name="value"><double>2.000000000000000</double></property></widget>
+                   </item>
+                   <item row="2" column="2">
+                    <widget class="QPushButton" name="cdprRtPrepareButton"><property name="text"><string>按周期生成轨迹</string></property></widget>
+                   </item>
+                   <item row="2" column="3">
+                    <widget class="QPushButton" name="cdprRtStartButton"><property name="enabled"><bool>false</bool></property><property name="text"><string>开始8轴闭环</string></property></widget>
+                   </item>
+                   <item row="2" column="4">
+                    <widget class="QPushButton" name="cdprRtStopButton"><property name="enabled"><bool>false</bool></property><property name="text"><string>减速停止</string></property></widget>
+                   </item>
+                   <item row="3" column="0" colspan="5">
+                    <widget class="QLabel" name="cdprRtStatusLabel"><property name="text"><string>先按所选控制周期生成并校验八轴轨迹，再启动在线速度闭环。</string></property><property name="wordWrap"><bool>true</bool></property></widget>
+                   </item>
+                  </layout>
                  </widget>
                 </item>
                </layout>
@@ -4758,23 +5126,72 @@
              </item>
              <item>
               <widget class="QGroupBox" name="cdprOfflinePvtPreviewGroup">
-               <property name="title"><string>8轴轨迹摘要</string></property>
+               <property name="title">
+                <string>8轴轨迹摘要</string>
+               </property>
                <layout class="QVBoxLayout" name="cdprOfflinePvtPreviewLayout">
                 <item>
                  <widget class="QTableWidget" name="cdprPvtPreviewTable">
-                  <property name="editTriggers"><set>QAbstractItemView::EditTrigger::NoEditTriggers</set></property>
-                  <property name="alternatingRowColors"><bool>true</bool></property>
-                  <property name="rowCount"><number>8</number></property>
-                  <property name="columnCount"><number>8</number></property>
-                  <row/><row/><row/><row/><row/><row/><row/><row/>
-                  <column><property name="text"><string>绳索</string></property></column>
-                  <column><property name="text"><string>轴号</string></property></column>
-                  <column><property name="text"><string>方向</string></property></column>
-                  <column><property name="text"><string>初始绳长（m）</string></property></column>
-                  <column><property name="text"><string>终止绳长（m）</string></property></column>
-                  <column><property name="text"><string>绳长变化（m）</string></property></column>
-                  <column><property name="text"><string>轴终点（°）</string></property></column>
-                  <column><property name="text"><string>峰值轴速（°/s）</string></property></column>
+                  <property name="editTriggers">
+                   <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
+                  </property>
+                  <property name="alternatingRowColors">
+                   <bool>true</bool>
+                  </property>
+                  <property name="rowCount">
+                   <number>8</number>
+                  </property>
+                  <property name="columnCount">
+                   <number>8</number>
+                  </property>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <column>
+                   <property name="text">
+                    <string>绳索</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>轴号</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>方向</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>初始绳长（m）</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>终止绳长（m）</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>绳长变化（m）</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>轴终点（°）</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>峰值轴速（°/s）</string>
+                   </property>
+                  </column>
                  </widget>
                 </item>
                </layout>
@@ -4789,11 +5206,15 @@
             <layout class="QVBoxLayout" name="cdprControlStatusLayout">
              <item>
               <widget class="QGroupBox" name="cdprReadinessGroup">
-               <property name="title"><string>就绪链</string></property>
+               <property name="title">
+                <string>就绪链</string>
+               </property>
                <layout class="QVBoxLayout" name="cdprReadinessLayout">
                 <item>
                  <widget class="QLabel" name="cdprReadinessValueLabel">
-                  <property name="text"><string>配置×｜运动学×｜初始位姿×｜外力输入×｜Newmark×｜8轴实机链×</string></property>
+                  <property name="text">
+                   <string>配置×｜运动学×｜初始位姿×｜外力输入×｜Newmark×｜8轴实机链×</string>
+                  </property>
                  </widget>
                 </item>
                </layout>
@@ -4801,32 +5222,46 @@
              </item>
              <item>
               <widget class="QGroupBox" name="cdprDynamicsGroup">
-               <property name="title"><string>Newmark-β软件验证</string></property>
+               <property name="title">
+                <string>Newmark-β软件验证</string>
+               </property>
                <layout class="QGridLayout" name="cdprDynamicsLayout">
                 <item row="0" column="0">
                  <widget class="QLabel" name="cdprDynamicsParametersLabel">
-                  <property name="text"><string>β=0.25，γ=0.5，dt使用JSON控制周期；纯惯性，无回中刚度、阻尼和重力项。</string></property>
+                  <property name="text">
+                   <string>β=0.25，γ=0.5，dt使用JSON控制周期；纯惯性，无回中刚度、阻尼和重力项。</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="1">
                  <widget class="QPushButton" name="cdprResetDynamicsButton">
-                  <property name="text"><string>重置动力学</string></property>
+                  <property name="text">
+                   <string>重置动力学</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="0" column="2">
                  <widget class="QPushButton" name="cdprAdvanceDynamicsButton">
-                  <property name="text"><string>单步计算</string></property>
+                  <property name="text">
+                   <string>单步计算</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="1" column="0" colspan="3">
                  <widget class="QLabel" name="cdprDynamicsStatusValueLabel">
-                  <property name="text"><string>未配置</string></property>
+                  <property name="text">
+                   <string>未配置</string>
+                  </property>
                  </widget>
                 </item>
                 <item row="2" column="0" colspan="3">
                  <widget class="QLabel" name="cdprDesiredPlatformValueLabel">
-                  <property name="text"><string>期望平台状态：--</string></property>
-                  <property name="wordWrap"><bool>true</bool></property>
+                  <property name="text">
+                   <string>期望平台状态：--</string>
+                  </property>
+                  <property name="wordWrap">
+                   <bool>true</bool>
+                  </property>
                  </widget>
                 </item>
                </layout>
@@ -4834,8 +5269,15 @@
              </item>
              <item>
               <spacer name="cdprControlStatusSpacer">
-               <property name="orientation"><enum>Qt::Orientation::Vertical</enum></property>
-               <property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property>
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
               </spacer>
              </item>
             </layout>
@@ -4856,17 +5298,58 @@
                   <property name="editTriggers">
                    <set>QAbstractItemView::EditTrigger::NoEditTriggers</set>
                   </property>
-                  <property name="alternatingRowColors"><bool>true</bool></property>
-                  <property name="rowCount"><number>8</number></property>
-                  <property name="columnCount"><number>7</number></property>
-                  <row/><row/><row/><row/><row/><row/><row/><row/>
-                  <column><property name="text"><string>绳索</string></property></column>
-                  <column><property name="text"><string>轴号</string></property></column>
-                  <column><property name="text"><string>方向</string></property></column>
-                  <column><property name="text"><string>出绳点 W（m）</string></property></column>
-                  <column><property name="text"><string>平台点 B（m）</string></property></column>
-                  <column><property name="text"><string>在线</string></property></column>
-                  <column><property name="text"><string>使能</string></property></column>
+                  <property name="alternatingRowColors">
+                   <bool>true</bool>
+                  </property>
+                  <property name="rowCount">
+                   <number>8</number>
+                  </property>
+                  <property name="columnCount">
+                   <number>7</number>
+                  </property>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <row/>
+                  <column>
+                   <property name="text">
+                    <string>绳索</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>轴号</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>方向</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>出绳点 W（m）</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>平台点 B（m）</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>在线</string>
+                   </property>
+                  </column>
+                  <column>
+                   <property name="text">
+                    <string>使能</string>
+                   </property>
+                  </column>
                  </widget>
                 </item>
                </layout>

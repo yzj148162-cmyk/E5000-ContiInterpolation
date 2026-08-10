@@ -162,10 +162,48 @@ struct CdprOfflinePvtPlan
     std::array<quint16, kCdprCableCount> axes {};
     std::array<int, kCdprCableCount> directions {};
     std::array<QVector<double>, kCdprCableCount> axisPositionDegree;
+    // 与位置表同一时间轴的解析速度。离线 PVT 不使用该字段，
+    // 但八轴实时速度闭环直接以它作为速度前馈。
+    std::array<QVector<double>, kCdprCableCount> axisVelocityDegreePerSecond;
     CdprCableState8 initialCables;
     CdprCableState8 finalCables;
     CdprVector8 finalAxisDisplacementDegree {};
     CdprVector8 peakAxisVelocityDegreePerSecond {};
+};
+
+// 八轴实时速度模式位置闭环。轨迹仍由 CDPR 运动学预检生成；执行阶段不装 PVT
+// 表，而是在每个控制周期针对八根轴在线更新速度命令。
+struct CdprVelocityControlConfig
+{
+    int controlPeriodMs = 1;
+    double degreesPerCardUnit = 1.0;
+    bool pidEnabled = true;
+    bool velocityFeedforwardEnabled = true;
+    double velocityFeedforwardGain = 1.0;
+    double kp = 0.0;
+    double ki = 0.0;
+    double kd = 0.0;
+    double integralLimitDegreeSecond = 10.0;
+    double maxPidCorrectionDegreePerSecond = 20.0;
+    double maxVelocityDegreePerSecond = 720.0;
+    double maxAccelerationDegreePerSecond2 = 2000.0;
+    double onlineChangeTimeS = 0.001;
+    double startVelocityThresholdDegreePerSecond = 0.001;
+    double maxFollowingErrorDegree = 2.0;
+    int traceTimeoutMs = 100;
+};
+
+struct CdprVelocityControlStatus
+{
+    bool active = false;
+    bool motionStarted = false;
+    quint64 runId = 0;
+    double elapsedS = 0.0;
+    double controlDtMs = 0.0;
+    double maximumCycleMs = 0.0;
+    quint16 activeAxisMask = 0;
+    double maximumTrackingErrorDegree = 0.0;
+    QString stateText = QStringLiteral("未运行");
 };
 
 enum class CdprOfflinePvtRunState : quint8
@@ -192,5 +230,7 @@ struct CdprOfflinePvtStatus
 Q_DECLARE_METATYPE(CdprOfflinePvtRequest)
 Q_DECLARE_METATYPE(CdprOfflinePvtPlan)
 Q_DECLARE_METATYPE(CdprOfflinePvtStatus)
+Q_DECLARE_METATYPE(CdprVelocityControlConfig)
+Q_DECLARE_METATYPE(CdprVelocityControlStatus)
 
 #endif // CDPRCONTROLTYPES_H
