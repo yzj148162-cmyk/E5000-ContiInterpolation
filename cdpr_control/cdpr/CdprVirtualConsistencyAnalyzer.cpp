@@ -20,6 +20,12 @@
 
 namespace {
 constexpr double kPi = 3.14159265358979323846;
+// The eight independently measured cable lengths are generally not exactly
+// compatible with one six-DOF pose. Keep every finite least-squares solution,
+// and classify its largest cable residual using strict (10 nm) and engineering
+// (0.01 mm) quality thresholds instead of discarding the whole Trace frame.
+constexpr double kStrictCableResidualToleranceM = 1.0e-8;
+constexpr double kEngineeringCableResidualToleranceM = 1.0e-5;
 
 struct ExpectedTrajectory
 {
@@ -312,13 +318,79 @@ bool findPvtStartSequence(const QVector<TraceTelemetryFrame> &frames,
     if (seedIndex < 0 || tracePeriodUs <= 0) {
         return false;
     }
-    const int before = std::max(0, seedIndex - 8);
-    const int after = std::min(static_cast<int>(frames.size()) - 1,
-                               seedIndex + std::max(40, 100000 / tracePeriodUs));
-    double bestSse = std::numeric_limits<double>::infinity();
-    int bestCount = 0;
-    int bestIndex = -1;
+
+    // dmc_pvt_move() returning on the host is not the hardware start instant.
+    // Locate the first type05 pulse change, then subtract the planned time at
+    // which the first half-pulse displacement is expected.  This gives a
+    // robust centre for the detailed curve-matching window even when the card
+    // starts hundreds of milliseconds after the host request.
+    const TraceTelemetryFrame &seedFrame = frames.at(seedIndex);
+    int commandMovementIndex = -1;
+    for (int frameIndex = seedIndex + 1; frameIndex < frames.size(); ++frameIndex) {
+        const TraceTelemetryFrame &frame = frames.at(frameIndex);
+        if (!frameHasMappedAxes(frame, configuration)) {
+            continue;
+        }
+        bool changed = false;
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            const quint16 axis = static_cast<quint16>(
+                configuration.cables[static_cast<size_t>(cable)].axis);
+            const int seedAxisIndex = axisIndex(seedFrame, axis);
+            const int frameAxisIndex = axisIndex(frame, axis);
+            if (seedAxisIndex >= 0 && frameAxisIndex >= 0
+                && frame.commandPulse[frameAxisIndex]
+                    != seedFrame.commandPulse[seedAxisIndex]) {
+                changed = true;
+                break;
+            }
+        }
+        if (changed) {
+            commandMovementIndex = frameIndex;
+            break;
+        }
+    }
+    if (commandMovementIndex < 0) {
+        return false;
+    }
+
+    int plannedMovementPoint = -1;
+    const double halfPulseDegree = 0.5 / MotorUnit::kPhysicalPulsesPerDegree;
+    for (int point = 0; point < trajectory.timeS.size(); ++point) {
+        bool changed = false;
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            if (std::abs(trajectory.positionDegree[static_cast<size_t>(cable)].at(point))
+                >= halfPulseDegree) {
+                changed = true;
+                break;
+            }
+        }
+        if (changed) {
+            plannedMovementPoint = point;
+            break;
+        }
+    }
+    if (plannedMovementPoint < 0) {
+        return false;
+    }
+
     const double periodS = tracePeriodUs / 1000000.0;
+    const qint64 plannedMovementFrames = static_cast<qint64>(std::llround(
+        trajectory.timeS.at(plannedMovementPoint) / periodS));
+    const quint64 movementSequence = frames.at(commandMovementIndex).traceSequence;
+    const quint64 estimatedStartSequence = movementSequence
+        > static_cast<quint64>(std::max<qint64>(0, plannedMovementFrames))
+        ? movementSequence - static_cast<quint64>(plannedMovementFrames)
+        : seedSequence;
+    const int estimatedStartIndex = closestFrameIndex(frames, estimatedStartSequence);
+    const int searchRadius = std::max(40, 100000 / tracePeriodUs);
+    const int before = std::max(std::max(0, seedIndex - 8),
+                                estimatedStartIndex - searchRadius);
+    const int after = std::min(static_cast<int>(frames.size()) - 1,
+                               estimatedStartIndex + searchRadius);
+    double bestMeanSse = std::numeric_limits<double>::infinity();
+    int bestIndex = -1;
+    const int minimumComparedFrames = std::max(
+        10, static_cast<int>(trajectory.timeS.constLast() / periodS * 0.8));
     for (int candidate = before; candidate <= after; ++candidate) {
         if (!frameHasMappedAxes(frames.at(candidate), configuration)) {
             continue;
@@ -351,9 +423,11 @@ bool findPvtStartSequence(const QVector<TraceTelemetryFrame> &frames,
                 ++count;
             }
         }
-        if (count >= kCdprCableCount * 10 && sse < bestSse) {
-            bestSse = sse;
-            bestCount = count;
+        const double meanSse = count > 0 ? sse / static_cast<double>(count)
+                                         : std::numeric_limits<double>::infinity();
+        if (count >= kCdprCableCount * minimumComparedFrames
+            && meanSse < bestMeanSse) {
+            bestMeanSse = meanSse;
             bestIndex = candidate;
         }
     }
@@ -361,7 +435,7 @@ bool findPvtStartSequence(const QVector<TraceTelemetryFrame> &frames,
         return false;
     }
     sequence = frames.at(bestIndex).traceSequence;
-    rmseDegree = std::sqrt(bestSse / bestCount);
+    rmseDegree = std::sqrt(bestMeanSse);
     return true;
 }
 
@@ -546,7 +620,9 @@ CdprVirtualConsistencyAnalysisResult CdprVirtualConsistencyAnalyzer::analyze(
     QTextStream csv(&csvFile);
     csv.setRealNumberNotation(QTextStream::FixedNotation);
     csv.setRealNumberPrecision(9);
-    csv << "trace_sequence,trace_run_time_s,planned_time_s,fk_valid,fk_rms_residual_m,"
+    csv << "trace_sequence,trace_run_time_s,planned_time_s,fk_solution_valid,"
+           "fk_engineering_residual,fk_strict_residual,"
+           "fk_rms_residual_m,fk_max_residual_m,"
            "plan_x_m,plan_y_m,plan_z_m,plan_roll_rad,plan_pitch_rad,plan_yaw_rad,"
            "virtual_x_m,virtual_y_m,virtual_z_m,virtual_roll_rad,virtual_pitch_rad,virtual_yaw_rad,"
            "translation_error_mm,orientation_error_deg";
@@ -575,6 +651,7 @@ CdprVirtualConsistencyAnalysisResult CdprVirtualConsistencyAnalyzer::analyze(
                                  plannedPosition, plannedVelocity)) {
             continue;
         }
+        ++result.eligibleFrameCount;
         CdprVector8 actualLengths = initialInverse.cables.lengthM;
         std::array<double, kCdprCableCount> actualDegrees {};
         for (int cable = 0; cable < kCdprCableCount; ++cable) {
@@ -587,13 +664,43 @@ CdprVirtualConsistencyAnalysisResult CdprVirtualConsistencyAnalyzer::analyze(
                 * actualDegrees[static_cast<size_t>(cable)] * kPi / 180.0;
         }
         const CdprVector6 guess = previousPoseValid ? previousPose : plannedPose;
+        // Keep the FK solver's strict stopping criterion so that it still
+        // searches for the best pose.  Residual thresholds below classify the
+        // result; they do not erase a finite least-squares solution.
         const CdprForwardKinematicsResult forward = kinematics.forward(actualLengths, guess);
+        const bool solutionValid = forward.valid
+            && std::all_of(forward.pose.cbegin(), forward.pose.cend(),
+                           [](double value) { return std::isfinite(value); })
+            && std::isfinite(forward.rmsResidualM)
+            && std::isfinite(forward.maximumResidualM)
+            && forward.rmsResidualM >= 0.0
+            && forward.maximumResidualM >= 0.0;
+        const bool engineeringResidual = solutionValid
+            && forward.maximumResidualM <= kEngineeringCableResidualToleranceM;
+        const bool strictResidual = solutionValid
+            && forward.maximumResidualM <= kStrictCableResidualToleranceM;
+        if (engineeringResidual) {
+            ++result.engineeringResidualFrameCount;
+        }
+        if (strictResidual) {
+            ++result.strictResidualFrameCount;
+        }
+        if (!solutionValid) {
+            ++result.rejectedFrameCount;
+        }
+        if (solutionValid) {
+            result.maximumSolvedCableResidualUm = std::max(
+                result.maximumSolvedCableResidualUm,
+                forward.maximumResidualM * 1.0e6);
+        }
         csv << frame.traceSequence << ',' << traceRunTimeS << ',' << plannedTimeS << ','
-            << (forward.valid && forward.converged ? 1 : 0) << ',' << forward.rmsResidualM;
+            << (solutionValid ? 1 : 0) << ',' << (engineeringResidual ? 1 : 0) << ','
+            << (strictResidual ? 1 : 0) << ','
+            << forward.rmsResidualM << ',' << forward.maximumResidualM;
         for (double value : plannedPose) {
             csv << ',' << value;
         }
-        if (forward.valid && forward.converged) {
+        if (solutionValid) {
             double translationSquared = 0.0;
             for (int index = 0; index < 3; ++index) {
                 const double delta = forward.pose[static_cast<size_t>(index)]
@@ -623,7 +730,7 @@ CdprVirtualConsistencyAnalysisResult CdprVirtualConsistencyAnalyzer::analyze(
                 << ',' << actualLengths[static_cast<size_t>(cable)];
         }
         csv << '\n';
-        if (forward.valid && forward.converged) {
+        if (solutionValid) {
             ++result.analyzedFrameCount;
         }
     }
@@ -639,7 +746,20 @@ CdprVirtualConsistencyAnalysisResult CdprVirtualConsistencyAnalyzer::analyze(
     QJsonObject summary;
     summary.insert(QStringLiteral("mode"), mode);
     summary.insert(QStringLiteral("inputFrameCount"), static_cast<double>(result.inputFrameCount));
+    summary.insert(QStringLiteral("eligibleFrameCount"), static_cast<double>(result.eligibleFrameCount));
     summary.insert(QStringLiteral("analyzedFrameCount"), static_cast<double>(result.analyzedFrameCount));
+    summary.insert(QStringLiteral("engineeringAcceptedFrameCount"),
+                   static_cast<double>(result.engineeringResidualFrameCount));
+    summary.insert(QStringLiteral("strictResidualFrameCount"),
+                   static_cast<double>(result.strictResidualFrameCount));
+    summary.insert(QStringLiteral("rejectedFrameCount"),
+                   static_cast<double>(result.rejectedFrameCount));
+    summary.insert(QStringLiteral("engineeringCableResidualToleranceM"),
+                   kEngineeringCableResidualToleranceM);
+    summary.insert(QStringLiteral("strictCableResidualToleranceM"),
+                   kStrictCableResidualToleranceM);
+    summary.insert(QStringLiteral("maximumSolvedCableResidualUm"),
+                   result.maximumSolvedCableResidualUm);
     summary.insert(QStringLiteral("sequenceGapCount"), static_cast<double>(result.sequenceGapCount));
     summary.insert(QStringLiteral("startTraceSequence"), static_cast<double>(result.startTraceSequence));
     summary.insert(QStringLiteral("pvtAnchorCommandRmseDegree"), pvtAnchorRmse);
@@ -659,12 +779,18 @@ CdprVirtualConsistencyAnalysisResult CdprVirtualConsistencyAnalyzer::analyze(
     }
     result.success = true;
     result.outputDirectory = analysisDirectory;
-    result.summary = QStringLiteral("虚拟运动学一致性分析完成：%1帧，平移RMS=%2 mm，最大=%3 mm，"
-                                    "姿态最大=%4°，全局延迟=%5 ms，Trace序号断裂=%6。")
+    result.summary = QStringLiteral("虚拟运动学一致性分析完成：数值有效=%1/%2帧，"
+                                    "工程残差达标=%3帧，严格残差达标=%4帧，"
+                                    "平移RMS=%5 mm，最大=%6 mm，姿态最大=%7°，"
+                                    "最大绳长残差=%8 μm，全局延迟=%9 ms，Trace序号断裂=%10。")
                          .arg(result.analyzedFrameCount)
+                         .arg(result.eligibleFrameCount)
+                         .arg(result.engineeringResidualFrameCount)
+                         .arg(result.strictResidualFrameCount)
                          .arg(result.rmsTranslationErrorMm, 0, 'f', 4)
                          .arg(result.maximumTranslationErrorMm, 0, 'f', 4)
                          .arg(result.maximumOrientationErrorDegree, 0, 'f', 4)
+                         .arg(result.maximumSolvedCableResidualUm, 0, 'f', 3)
                          .arg(result.globalDelayMs, 0, 'f', 3)
                          .arg(result.sequenceGapCount);
     return result;

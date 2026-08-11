@@ -11,10 +11,15 @@ struct CdprVirtualConsistencyAnalysisResult
     QString summary;
     QString errorText;
     quint64 inputFrameCount = 0;
+    quint64 eligibleFrameCount = 0;
     quint64 analyzedFrameCount = 0;
+    quint64 engineeringResidualFrameCount = 0;
+    quint64 strictResidualFrameCount = 0;
+    quint64 rejectedFrameCount = 0;
     quint64 sequenceGapCount = 0;
     quint64 startTraceSequence = 0;
     double globalDelayMs = 0.0;
+    double maximumSolvedCableResidualUm = 0.0;
     double maximumTranslationErrorMm = 0.0;
     double rmsTranslationErrorMm = 0.0;
     double maximumOrientationErrorDegree = 0.0;
