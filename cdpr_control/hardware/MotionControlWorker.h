@@ -274,6 +274,8 @@ private:
     QVector<quint16> offlinePvtAxes_;
     QElapsedTimer offlinePvtRunClock_;
     bool offlinePvtAutoRecording_ = false;
+    bool offlinePvtTraceAvailable_ = false;
+    bool offlinePvtTraceWarningReported_ = false;
     quint64 offlinePvtStartRequestPreTraceSequence_ = 0;
     CdprOfflinePvtPlan cdprVelocityPlan_;
     CdprVelocityControlConfig cdprVelocityConfig_;

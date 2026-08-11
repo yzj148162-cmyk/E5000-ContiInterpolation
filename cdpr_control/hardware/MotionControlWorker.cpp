@@ -98,16 +98,30 @@ int traceFrameAxisIndex(const TraceTelemetryFrame &frame, quint16 axis)
 
 QString traceLayoutDiagnosticText(const TraceReadDiagnostics &diagnostics)
 {
+    const QString productionRatio = diagnostics.productionRateDiagnosticValid
+        ? QString::number(diagnostics.logicalToHostTimeRatio, 'f', 4)
+        : QStringLiteral("统计中");
+    const QString readSequenceRange = diagnostics.lastReadFrames > 0
+        ? QStringLiteral("%1~%2")
+              .arg(diagnostics.lastReadFirstSequence)
+              .arg(diagnostics.lastReadLastSequence)
+        : QStringLiteral("无新增帧");
     return QStringLiteral(
         "对象=%1，板卡对象总字节=%2，固定帧宽=%3，帧头=%4，硬件序号=%5，"
-        "Trace/主机时间比=%6，配置读回差异=%7")
+        "产帧/主机时间比=%6（仅诊断，估算产帧=%7），序号缺口=%8，"
+        "本次读取=%9帧/%10字节，序号=%11，配置读回差异=%12")
         .arg(diagnostics.objectTotalNum)
         .arg(diagnostics.objectTotalBytes)
         .arg(diagnostics.frameBytes)
         .arg(diagnostics.frameHeaderBytes)
         .arg(diagnostics.hardwareSequenceAvailable
                  ? QStringLiteral("有") : QStringLiteral("无"))
-        .arg(diagnostics.logicalToHostTimeRatio, 0, 'f', 4)
+        .arg(productionRatio)
+        .arg(diagnostics.estimatedGeneratedFrames)
+        .arg(diagnostics.sequenceGapFrames)
+        .arg(diagnostics.lastReadFrames)
+        .arg(diagnostics.lastReadBytes)
+        .arg(readSequenceRange)
         .arg(diagnostics.configReadbackMismatchCount);
 }
 }
@@ -999,9 +1013,15 @@ void MotionControlWorker::startOfflinePvt(const CdprOfflinePvtPlan &plan)
     if (telemetryRecorder_.status().recording) {
         stopTelemetryRecording();
     }
-    if (!configureFeedbackTrace(axes, plan.request.degreesPerCardUnit, error)) {
-        emit logMessage(QStringLiteral("离线PVT启动失败：八轴 Trace 配置失败：%1").arg(error));
-        return;
+    offlinePvtTraceWarningReported_ = false;
+    offlinePvtTraceAvailable_ =
+        configureFeedbackTrace(axes, plan.request.degreesPerCardUnit, error);
+    if (!offlinePvtTraceAvailable_) {
+        offlinePvtTraceWarningReported_ = true;
+        emit logMessage(QStringLiteral(
+            "警告：离线PVT的八轴Trace配置失败：%1。PVT仍可由板卡独立执行，"
+            "但本次反馈记录和虚拟运动学一致性分析可能无效。")
+                            .arg(error));
     }
     if (!beginCdprRunRecording(plan, QStringLiteral("离线PVT"), error)) {
         emit logMessage(QStringLiteral("离线PVT启动失败：运行记录初始化失败：%1").arg(error));
@@ -1010,14 +1030,16 @@ void MotionControlWorker::startOfflinePvt(const CdprOfflinePvtPlan &plan)
     offlinePvtAutoRecording_ = true;
     // 该帧是PVT调用前的Trace基准。板卡实际进入PVT的帧仍由运行结束后的
     // type05指令位置与规划表匹配得到，不能把主机调用返回时间当成硬件时刻。
-    if (!pollTraceFeedback()) {
-        finishCdprRunRecording(QStringLiteral("cdpr_offline_pvt_prestart_trace_failed: %1")
-                                   .arg(traceStateText_), offlinePvtAutoRecording_);
-        emit logMessage(QStringLiteral("离线PVT启动失败：启动前Trace读取失败：%1")
+    offlinePvtStartRequestPreTraceSequence_ = 0;
+    if (offlinePvtTraceAvailable_ && !pollTraceFeedback()) {
+        offlinePvtTraceWarningReported_ = true;
+        emit logMessage(QStringLiteral(
+            "警告：离线PVT启动前Trace读取失败：%1。PVT继续启动，"
+            "本次PVT/Trace锚点记为无效。")
                             .arg(traceStateText_));
-        return;
+    } else if (offlinePvtTraceAvailable_) {
+        offlinePvtStartRequestPreTraceSequence_ = latestTraceSequence_;
     }
-    offlinePvtStartRequestPreTraceSequence_ = latestTraceSequence_;
     updateCdprRunContext(QStringLiteral("pvt_start_request_pre_trace_sequence"),
                           static_cast<double>(offlinePvtStartRequestPreTraceSequence_));
     if (!card_.startPvtMotion(axes, plan.timeS, positions,
@@ -1060,20 +1082,18 @@ void MotionControlWorker::monitorOfflinePvt()
         offlinePvtMonitorTimer_->stop();
         return;
     }
-    if (!pollTraceFeedback()) {
-        finishOfflinePvt(QStringLiteral("离线PVT Trace 读取失败：%1").arg(traceStateText_),
-                         CdprOfflinePvtRunState::Fault, true);
-        return;
-    }
-    if (!traceReadDiagnostics_.timingReliable) {
-        finishOfflinePvt(QStringLiteral(
-            "离线PVT Trace 时间轴不可信：卡侧有效/剩余=%1/%2，本地丢帧=%3；%4。")
-                         .arg(traceReadDiagnostics_.validFrames)
-                         .arg(traceReadDiagnostics_.freeFrames)
-                         .arg(traceReadDiagnostics_.locallyDroppedSamples)
-                         .arg(traceLayoutDiagnosticText(traceReadDiagnostics_)),
-                         CdprOfflinePvtRunState::Fault, true);
-        return;
+    if (offlinePvtTraceAvailable_) {
+        const bool tracePollOk = pollTraceFeedback();
+        if ((!tracePollOk || !traceReadDiagnostics_.timingReliable)
+            && !offlinePvtTraceWarningReported_) {
+            offlinePvtTraceWarningReported_ = true;
+            emit logMessage(QStringLiteral(
+                "警告：离线PVT运行期间Trace诊断异常：%1；%2。"
+                "板卡PVT不会因此停止，但本次反馈记录和一致性分析应标记为不可信。")
+                                .arg(tracePollOk ? traceStateText_
+                                                 : QStringLiteral("读取失败：%1").arg(traceStateText_))
+                                .arg(traceLayoutDiagnosticText(traceReadDiagnostics_)));
+        }
     }
     int runIndex = 0;
     bool allDone = false;
@@ -1129,6 +1149,8 @@ void MotionControlWorker::finishOfflinePvt(
         }
     }
     offlinePvtActive_ = false;
+    offlinePvtTraceAvailable_ = false;
+    offlinePvtTraceWarningReported_ = false;
     offlinePvtStatus_.active = false;
     offlinePvtStatus_.state = state;
     offlinePvtStatus_.elapsedS =
@@ -2491,7 +2513,10 @@ void MotionControlWorker::runVelocityControlCycle()
         publishStatus();
         return;
     }
-    const double trajectoryTimeError = velocityFeedbackPositionErrorDegree_;
+    // PID和在线速度命令使用主机当前控制时刻的规划状态。Trace帧时刻的规划误差
+    // 只用于同时间轴绘图；标定延迟只用于诊断和最大跟随误差保护。
+    const double controlPositionError = referencePosition - feedback.encoderPositionUnit;
+    const double feedbackTimeTrajectoryError = velocityFeedbackPositionErrorDegree_;
     const bool followingErrorProtectionValid =
         velocityBatchAlignedTrackingErrorValid_;
     const double followingErrorForProtection =
@@ -2509,15 +2534,15 @@ void MotionControlWorker::runVelocityControlCycle()
                 .arg(followingErrorForProtection, 0, 'f', 6)
                 .arg(velocityConfig_.maxFollowingErrorDegree, 0, 'f', 6)
                 .arg(feedback.delayCompensationMs, 0, 'f', 4)
-                .arg(trajectoryTimeError, 0, 'f', 6)
+                .arg(controlPositionError, 0, 'f', 6)
                 .arg(feedback.delayCompensatedFollowingErrorUnit, 0, 'f', 6),
             true);
         return;
     }
 
     const PositionVelocityPidOutput output = velocityPid_.update(
-        velocityConfig_, trajectoryTimeError, referenceVelocity,
-        velocityFeedbackReferenceVelocityDegreePerSecond_,
+        velocityConfig_, controlPositionError, referenceVelocity,
+        referenceVelocity,
         feedback.actualVelocityUnitPerSecond, commandDtSeconds,
         velocityFeedbackDtSeconds_, traceFeedbackFresh);
     QElapsedTimer apiClock;
@@ -2563,7 +2588,7 @@ void MotionControlWorker::runVelocityControlCycle()
     velocityStatus_.feedbackElapsedS = velocityFeedbackElapsedS_;
     velocityStatus_.cardCommandPositionDegree = feedback.commandPositionUnit;
     velocityStatus_.actualPositionDegree = feedback.encoderPositionUnit;
-    velocityStatus_.positionErrorDegree = trajectoryTimeError;
+    velocityStatus_.positionErrorDegree = controlPositionError;
     velocityStatus_.delayAlignedFollowingErrorDegree =
         feedback.delayCompensatedFollowingErrorUnit;
     velocityStatus_.delayCompensationMs = feedback.delayCompensationMs;
@@ -2591,7 +2616,7 @@ void MotionControlWorker::runVelocityControlCycle()
         ? QStringLiteral("闭环运行中") : QStringLiteral("终点稳态确认中");
 
     const bool terminalStable = velocityFeedbackElapsedS_ >= velocityConfig_.durationS
-        && std::abs(trajectoryTimeError) <= velocityConfig_.positionToleranceDegree
+        && std::abs(controlPositionError) <= velocityConfig_.positionToleranceDegree
         && std::abs(feedback.actualVelocityUnitPerSecond)
                <= velocityConfig_.speedToleranceDegreePerSecond;
     if (terminalStable) {
@@ -2600,7 +2625,7 @@ void MotionControlWorker::runVelocityControlCycle()
         }
         if (velocityCompletionClock_.elapsed() >= velocityConfig_.stableDwellMs) {
             finishVelocityControl(QStringLiteral("速度闭环轨迹完成：终点误差=%1°，实际速度=%2°/s。")
-                                      .arg(trajectoryTimeError, 0, 'f', 6)
+                                      .arg(controlPositionError, 0, 'f', 6)
                                       .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 6));
             return;
         }
@@ -2610,7 +2635,7 @@ void MotionControlWorker::runVelocityControlCycle()
     if (elapsedS * 1000.0 > velocityConfig_.durationS * 1000.0
         + velocityConfig_.finishTimeoutMs) {
         finishVelocityControl(QStringLiteral("速度闭环终点确认超时：误差=%1°，实际速度=%2°/s。")
-                                  .arg(trajectoryTimeError, 0, 'f', 6)
+                                  .arg(controlPositionError, 0, 'f', 6)
                                   .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 6), true);
         return;
     }
@@ -2630,17 +2655,18 @@ void MotionControlWorker::runVelocityControlCycle()
             : QStringLiteral("无效");
         emit logMessage(QStringLiteral(
                             "速度闭环：控制/反馈时刻=%1/%2 s，"
-                            "位置 ref_now/ref_frame/act/同帧误差=%3/%4/%5/%6°，"
-                            "保护用延迟对齐轨迹误差=%7，"
-                            "电机延迟对齐误差=%8；"
-                            "速度 ref_now/ref_frame/cmd/card/act=%9/%10/%11/%12/%13°/s，"
-                            "Trace帧=%14，卡侧有效/剩余=%15/%16，API=%17 us。")
+                            "位置 ref_now/ref_frame/act/PID误差/帧时刻误差=%3/%4/%5/%6/%7°，"
+                            "保护用延迟对齐轨迹误差=%8，"
+                            "电机延迟对齐误差=%9；"
+                            "速度 ref_now/ref_frame/cmd/card/act=%10/%11/%12/%13/%14°/s，"
+                            "Trace帧=%15，卡侧有效/剩余=%16/%17，API=%18 us。")
                             .arg(elapsedS, 0, 'f', 3)
                             .arg(velocityFeedbackElapsedS_, 0, 'f', 3)
                             .arg(referencePosition, 0, 'f', 4)
                             .arg(velocityFeedbackReferencePositionDegree_, 0, 'f', 4)
                             .arg(feedback.encoderPositionUnit, 0, 'f', 4)
-                            .arg(trajectoryTimeError, 0, 'f', 4)
+                            .arg(controlPositionError, 0, 'f', 4)
+                            .arg(feedbackTimeTrajectoryError, 0, 'f', 4)
                             .arg(alignedTrackingErrorText)
                             .arg(alignedMotorErrorText)
                             .arg(referenceVelocity, 0, 'f', 4)

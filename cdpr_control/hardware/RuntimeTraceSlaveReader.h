@@ -60,6 +60,13 @@ public:
     int frameHeaderBytes() const { return frameHeaderBytes_; }
     bool hardwareSequenceAvailable() const { return hardwareSequenceAvailable_; }
     double logicalToHostTimeRatio() const { return logicalToHostTimeRatio_; }
+    bool productionRateDiagnosticValid() const { return productionRateDiagnosticValid_; }
+    quint64 estimatedGeneratedFrames() const { return estimatedGeneratedFrames_; }
+    quint64 sequenceGapFrames() const { return sequenceGapFrames_; }
+    int lastReadBytes() const { return lastReadBytes_; }
+    int lastReadFrames() const { return lastReadFrames_; }
+    quint64 lastReadFirstSequence() const { return lastReadFirstSequence_; }
+    quint64 lastReadLastSequence() const { return lastReadLastSequence_; }
     int configReadbackMismatchCount() const { return configReadbackMismatchCount_; }
 
 private:
@@ -71,7 +78,7 @@ private:
     FrameLayout resolveLayout(int objectTotalBytes, int objectTotalNum) const;
     quint64 decodeSequence(const unsigned char *frameData,
                            bool hasSequenceHeader);
-    void updateTimingConsistency();
+    void updateProductionRateDiagnostic(int currentValidFrames);
     int outputIndex(int objectIndex) const;
     void ensureValues();
     void updateBufferDiagnostics(int validFrames, int freeFrames);
@@ -98,8 +105,17 @@ private:
     quint64 firstLogicalSequence_ = 0;
     quint64 lastLogicalSequence_ = 0;
     double logicalToHostTimeRatio_ = 1.0;
+    bool productionRateDiagnosticValid_ = false;
+    qint64 productionBalanceBaseline_ = -1;
+    quint64 cumulativeConsumedFrames_ = 0;
+    quint64 estimatedGeneratedFrames_ = 0;
+    quint64 sequenceGapFrames_ = 0;
+    int lastReadBytes_ = 0;
+    int lastReadFrames_ = 0;
+    quint64 lastReadFirstSequence_ = 0;
+    quint64 lastReadLastSequence_ = 0;
     int configReadbackMismatchCount_ = 0;
-    QElapsedTimer timingClock_;
+    QElapsedTimer productionRateClock_;
     std::vector<double> values_;
     std::deque<Sample> samples_;
     quint64 nextSequence_ = 1;

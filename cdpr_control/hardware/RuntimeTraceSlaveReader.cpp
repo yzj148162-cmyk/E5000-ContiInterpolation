@@ -137,7 +137,16 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
     firstLogicalSequence_ = 0;
     lastLogicalSequence_ = 0;
     logicalToHostTimeRatio_ = 1.0;
-    timingClock_.invalidate();
+    productionRateDiagnosticValid_ = false;
+    productionBalanceBaseline_ = -1;
+    cumulativeConsumedFrames_ = 0;
+    estimatedGeneratedFrames_ = 0;
+    sequenceGapFrames_ = 0;
+    lastReadBytes_ = 0;
+    lastReadFrames_ = 0;
+    lastReadFirstSequence_ = 0;
+    lastReadLastSequence_ = 0;
+    productionRateClock_.invalidate();
     failureReason_.clear();
     nextSequence_ = 1;
     std::this_thread::sleep_for(std::chrono::milliseconds(std::max(2, config_.samplePeriodUs / 1000 + 1)));
@@ -169,9 +178,18 @@ void RuntimeTraceSlaveReader::reset()
     firstLogicalSequence_ = 0;
     lastLogicalSequence_ = 0;
     logicalToHostTimeRatio_ = 1.0;
+    productionRateDiagnosticValid_ = false;
+    productionBalanceBaseline_ = -1;
+    cumulativeConsumedFrames_ = 0;
+    estimatedGeneratedFrames_ = 0;
+    sequenceGapFrames_ = 0;
+    lastReadBytes_ = 0;
+    lastReadFrames_ = 0;
+    lastReadFirstSequence_ = 0;
+    lastReadLastSequence_ = 0;
     configReadbackMismatchCount_ = 0;
     failureReason_.clear();
-    timingClock_.invalidate();
+    productionRateClock_.invalidate();
     values_.clear();
     samples_.clear();
     nextSequence_ = 1;
@@ -219,11 +237,21 @@ quint64 RuntimeTraceSlaveReader::decodeSequence(
     const quint32 increment = rawSequence - lastHardwareSequence_;
     if (increment == 0 || increment > 1000000U) {
         timingReliable_ = false;
+        failureReason_ = QStringLiteral(
+            "Trace硬件帧序号重复或倒退：上一原始序号=%1，当前=%2")
+            .arg(lastHardwareSequence_)
+            .arg(rawSequence);
         return nextSequence_++;
     }
     if (increment != 1U) {
         // 保留硬件帧间隙，使逻辑时间不会因漏帧而被压短；同时标记时间轴不可信。
         timingReliable_ = false;
+        sequenceGapFrames_ += static_cast<quint64>(increment - 1U);
+        failureReason_ = QStringLiteral(
+            "Trace硬件帧序号断裂：上一原始序号=%1，当前=%2，缺少=%3帧")
+            .arg(lastHardwareSequence_)
+            .arg(rawSequence)
+            .arg(increment - 1U);
     }
     lastHardwareSequence_ = rawSequence;
     const quint64 sequence = static_cast<quint64>(rawSequence - firstHardwareSequence_) + 1U;
@@ -231,27 +259,33 @@ quint64 RuntimeTraceSlaveReader::decodeSequence(
     return sequence;
 }
 
-void RuntimeTraceSlaveReader::updateTimingConsistency()
+void RuntimeTraceSlaveReader::updateProductionRateDiagnostic(int currentValidFrames)
 {
-    if (firstLogicalSequence_ == 0 || lastLogicalSequence_ <= firstLogicalSequence_
-        || !timingClock_.isValid()) {
+    const qint64 balance = static_cast<qint64>(cumulativeConsumedFrames_)
+        + std::max(0, currentValidFrames);
+    if (productionBalanceBaseline_ < 0) {
+        productionBalanceBaseline_ = balance;
+        productionRateClock_.start();
+        productionRateDiagnosticValid_ = false;
+        logicalToHostTimeRatio_ = 1.0;
         return;
     }
-    const qint64 hostElapsedUs = timingClock_.nsecsElapsed() / 1000;
-    const quint64 logicalElapsedUs =
-        (lastLogicalSequence_ - firstLogicalSequence_)
-        * static_cast<quint64>(config_.samplePeriodUs);
-    if (hostElapsedUs <= 0) {
+    if (!productionRateClock_.isValid()) {
+        productionRateClock_.start();
+        productionBalanceBaseline_ = balance;
         return;
     }
-    logicalToHostTimeRatio_ = static_cast<double>(logicalElapsedUs)
+    const qint64 hostElapsedUs = productionRateClock_.nsecsElapsed() / 1000;
+    const qint64 generatedFrames = balance - productionBalanceBaseline_;
+    if (hostElapsedUs < 500000 || generatedFrames < 0) {
+        return;
+    }
+    estimatedGeneratedFrames_ = static_cast<quint64>(generatedFrames);
+    logicalToHostTimeRatio_ =
+        static_cast<double>(estimatedGeneratedFrames_)
+        * static_cast<double>(config_.samplePeriodUs)
         / static_cast<double>(hostElapsedUs);
-    // 等待至少 0.5 s，避开首次批量读取的固定偏差。超过 20% 说明帧布局、
-    // 硬件序号或采样周期假设至少有一项不成立，不能继续用于时间对齐保护。
-    if (hostElapsedUs >= 500000
-        && (logicalToHostTimeRatio_ < 0.8 || logicalToHostTimeRatio_ > 1.2)) {
-        timingReliable_ = false;
-    }
+    productionRateDiagnosticValid_ = true;
 }
 
 int RuntimeTraceSlaveReader::readTraceCached()
@@ -260,6 +294,10 @@ int RuntimeTraceSlaveReader::readTraceCached()
         failureReason_ = QStringLiteral("Trace尚未配置");
         return -1;
     }
+    lastReadBytes_ = 0;
+    lastReadFrames_ = 0;
+    lastReadFirstSequence_ = 0;
+    lastReadLastSequence_ = 0;
     int validNum = 0, freeNum = 0, objectTotalBytes = 0, objectTotalNum = 0;
     lastResult_ = dmc_trace_get_state(static_cast<WORD>(config_.cardNo), &validNum, &freeNum,
                                       &objectTotalBytes, &objectTotalNum);
@@ -270,6 +308,7 @@ int RuntimeTraceSlaveReader::readTraceCached()
         return everRead_ ? 0 : -1;
     }
     updateBufferDiagnostics(validNum, freeNum);
+    updateProductionRateDiagnostic(validNum);
     if (validNum <= 0) {
         return everRead_ ? 0 : -1;
     }
@@ -324,6 +363,13 @@ int RuntimeTraceSlaveReader::readTraceCached()
                 const ObjectConfig &object = config_.objects[objectIndex];
                 const int bytes = std::max(1, object.valueBytes);
                 if (offset + bytes > layout.frameBytes) {
+                    timingReliable_ = false;
+                    failureReason_ = QStringLiteral(
+                        "Trace对象越过固定帧边界：对象=%1，偏移=%2，字节数=%3，帧宽=%4")
+                        .arg(objectIndex)
+                        .arg(offset)
+                        .arg(bytes)
+                        .arg(layout.frameBytes);
                     return total > 0 ? total : -1;
                 }
                 const int output = outputIndex(objectIndex);
@@ -334,17 +380,26 @@ int RuntimeTraceSlaveReader::readTraceCached()
             const quint64 sequence = decodeSequence(frameData, layout.hasSequenceHeader);
             if (firstLogicalSequence_ == 0) {
                 firstLogicalSequence_ = sequence;
-                timingClock_.start();
             }
             lastLogicalSequence_ = sequence;
+            if (lastReadFirstSequence_ == 0) {
+                lastReadFirstSequence_ = sequence;
+            }
+            lastReadLastSequence_ = sequence;
             samples_.push_back({sequence, values_});
             while (static_cast<int>(samples_.size()) > config_.maxQueuedSamples) {
                 samples_.pop_front();
                 ++locallyDroppedSamples_;
                 timingReliable_ = false;
+                failureReason_ = QStringLiteral(
+                    "Trace本地待处理队列溢出：累计丢弃=%1帧")
+                    .arg(locallyDroppedSamples_);
             }
         }
         total += completeFrames;
+        lastReadBytes_ += readBytes;
+        lastReadFrames_ += completeFrames;
+        cumulativeConsumedFrames_ += static_cast<quint64>(completeFrames);
         lastResult_ = dmc_trace_get_state(static_cast<WORD>(config_.cardNo), &validNum, &freeNum,
                                           &objectTotalBytes, &objectTotalNum);
         if (lastResult_ != 0) {
@@ -358,13 +413,9 @@ int RuntimeTraceSlaveReader::readTraceCached()
             break;
         }
     }
-    updateTimingConsistency();
+    updateProductionRateDiagnostic(validNum);
     if (timingReliable_) {
         failureReason_.clear();
-    } else if (failureReason_.isEmpty()) {
-        failureReason_ = QStringLiteral(
-            "Trace时间轴自检失败：Trace/主机时间比=%1")
-            .arg(logicalToHostTimeRatio_, 0, 'f', 4);
     }
     everRead_ = everRead_ || total > 0;
     return total;
@@ -385,6 +436,7 @@ void RuntimeTraceSlaveReader::updateBufferDiagnostics(int validFrames, int freeF
     // 重建逻辑时间；一旦卡侧无剩余空间，就无法证明期间没有覆盖旧帧。
     if (lastFreeFrames_ == 0) {
         timingReliable_ = false;
+        failureReason_ = QStringLiteral("Trace卡侧缓冲区剩余空间为0，存在覆盖风险");
     }
 }
 

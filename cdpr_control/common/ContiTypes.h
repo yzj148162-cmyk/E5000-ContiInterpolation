@@ -408,8 +408,9 @@ struct AxisFeedback
 };
 
 // Trace API没有为每帧返回绝对硬件时间戳，traceTimeUs由硬件帧头序号（若有）
-// 和固定采样周期重建；同时与主机单调时钟做比例自检。帧布局、序号连续性、
-// 卡侧缓冲或本地队列任一项异常时，timingReliable保持为false直到重新配置Trace。
+// 和固定采样周期重建。timingReliable只表示帧契约、序号、卡侧缓冲和本地队列
+// 是否可靠；产帧/主机时间比使用“累计消费帧+当前卡侧有效帧”的队列守恒估算，
+// 仅作诊断，不参与运动急停。
 struct TraceReadDiagnostics
 {
     bool timingReliable = true;
@@ -424,6 +425,13 @@ struct TraceReadDiagnostics
     int frameHeaderBytes = 0;
     bool hardwareSequenceAvailable = false;
     double logicalToHostTimeRatio = 1.0;
+    bool productionRateDiagnosticValid = false;
+    quint64 estimatedGeneratedFrames = 0;
+    quint64 sequenceGapFrames = 0;
+    int lastReadBytes = 0;
+    int lastReadFrames = 0;
+    quint64 lastReadFirstSequence = 0;
+    quint64 lastReadLastSequence = 0;
     int configReadbackMismatchCount = 0;
 };
 

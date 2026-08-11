@@ -436,14 +436,15 @@ public:
                     feedback.traceSampleValid = true;
                 }
             }
+            const QString reliabilityText = feedbackTrace_.timingReliable()
+                ? QStringLiteral("可信")
+                : QStringLiteral("不可信（%1）").arg(feedbackTrace_.failureReason());
             traceStateText_ = QStringLiteral(
                                   "Trace 正常：本次读取 %1 帧，卡侧有效/剩余=%2/%3，时间轴=%4")
                                   .arg(traceFramesRead_)
                                   .arg(feedbackTrace_.lastValidFrames())
                                   .arg(feedbackTrace_.lastFreeFrames())
-                                  .arg(feedbackTrace_.timingReliable()
-                                           ? QStringLiteral("可信")
-                                           : QStringLiteral("不可信"));
+                                  .arg(reliabilityText);
         }
         for (const quint16 axis : traceAxes_) {
             AxisFeedback state;
@@ -853,6 +854,18 @@ TraceReadDiagnostics MotionCardHardwareInterface::traceReadDiagnostics() const
             backend_->feedbackTrace_.hardwareSequenceAvailable();
         diagnostics.logicalToHostTimeRatio =
             backend_->feedbackTrace_.logicalToHostTimeRatio();
+        diagnostics.productionRateDiagnosticValid =
+            backend_->feedbackTrace_.productionRateDiagnosticValid();
+        diagnostics.estimatedGeneratedFrames =
+            backend_->feedbackTrace_.estimatedGeneratedFrames();
+        diagnostics.sequenceGapFrames =
+            backend_->feedbackTrace_.sequenceGapFrames();
+        diagnostics.lastReadBytes = backend_->feedbackTrace_.lastReadBytes();
+        diagnostics.lastReadFrames = backend_->feedbackTrace_.lastReadFrames();
+        diagnostics.lastReadFirstSequence =
+            backend_->feedbackTrace_.lastReadFirstSequence();
+        diagnostics.lastReadLastSequence =
+            backend_->feedbackTrace_.lastReadLastSequence();
         diagnostics.configReadbackMismatchCount =
             backend_->feedbackTrace_.configReadbackMismatchCount();
         return diagnostics;
