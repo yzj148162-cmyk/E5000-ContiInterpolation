@@ -100,14 +100,15 @@ QString traceLayoutDiagnosticText(const TraceReadDiagnostics &diagnostics)
 {
     return QStringLiteral(
         "对象=%1，板卡对象总字节=%2，固定帧宽=%3，帧头=%4，硬件序号=%5，"
-        "Trace/主机时间比=%6")
+        "Trace/主机时间比=%6，配置读回差异=%7")
         .arg(diagnostics.objectTotalNum)
         .arg(diagnostics.objectTotalBytes)
         .arg(diagnostics.frameBytes)
         .arg(diagnostics.frameHeaderBytes)
         .arg(diagnostics.hardwareSequenceAvailable
                  ? QStringLiteral("有") : QStringLiteral("无"))
-        .arg(diagnostics.logicalToHostTimeRatio, 0, 'f', 4);
+        .arg(diagnostics.logicalToHostTimeRatio, 0, 'f', 4)
+        .arg(diagnostics.configReadbackMismatchCount);
 }
 }
 

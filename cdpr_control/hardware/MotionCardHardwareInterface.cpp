@@ -370,7 +370,10 @@ public:
                       1.0 / MotorUnit::kPhysicalPulsesPerDegree);
         }
         if (!feedbackTrace_.configure(traceConfig)) {
-            error = QStringLiteral("dmc_trace_* 返回码=%1").arg(feedbackTrace_.lastApiResult());
+            error = feedbackTrace_.failureReason().isEmpty()
+                ? QStringLiteral("dmc_trace_* 返回码=%1")
+                      .arg(feedbackTrace_.lastApiResult())
+                : feedbackTrace_.failureReason();
             traceStateText_ = QStringLiteral("Trace 配置失败");
             return false;
         }
@@ -396,8 +399,10 @@ public:
         serviceFeedQueue();
         traceFramesRead_ = feedbackTrace_.readTraceCached();
         if (traceFramesRead_ < 0) {
-            traceStateText_ = QStringLiteral("Trace 读取失败，API 返回码=%1")
-                                  .arg(feedbackTrace_.lastApiResult());
+            traceStateText_ = feedbackTrace_.failureReason().isEmpty()
+                ? QStringLiteral("Trace 读取失败，API 返回码=%1")
+                      .arg(feedbackTrace_.lastApiResult())
+                : feedbackTrace_.failureReason();
             error = traceStateText_;
             return false;
         }
@@ -848,6 +853,8 @@ TraceReadDiagnostics MotionCardHardwareInterface::traceReadDiagnostics() const
             backend_->feedbackTrace_.hardwareSequenceAvailable();
         diagnostics.logicalToHostTimeRatio =
             backend_->feedbackTrace_.logicalToHostTimeRatio();
+        diagnostics.configReadbackMismatchCount =
+            backend_->feedbackTrace_.configReadbackMismatchCount();
         return diagnostics;
     });
 }

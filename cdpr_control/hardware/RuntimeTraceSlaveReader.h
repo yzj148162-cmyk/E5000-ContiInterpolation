@@ -5,6 +5,7 @@
 #include <vector>
 
 #include <QElapsedTimer>
+#include <QString>
 #include <QtGlobal>
 
 // 从 trace_slave_read_extract 迁入：只负责同一张控制卡的 Trace 配置、批量取帧和解码。
@@ -46,6 +47,7 @@ public:
     bool isConfigured() const { return configured_; }
     bool hasEverRead() const { return everRead_; }
     short lastApiResult() const { return lastResult_; }
+    QString failureReason() const { return failureReason_; }
     bool timingReliable() const { return timingReliable_; }
     int lastValidFrames() const { return lastValidFrames_; }
     int lastFreeFrames() const { return lastFreeFrames_; }
@@ -58,6 +60,7 @@ public:
     int frameHeaderBytes() const { return frameHeaderBytes_; }
     bool hardwareSequenceAvailable() const { return hardwareSequenceAvailable_; }
     double logicalToHostTimeRatio() const { return logicalToHostTimeRatio_; }
+    int configReadbackMismatchCount() const { return configReadbackMismatchCount_; }
 
 private:
     struct FrameLayout {
@@ -78,6 +81,7 @@ private:
     bool everRead_ = false;
     bool timingReliable_ = true;
     short lastResult_ = 0;
+    QString failureReason_;
     int lastValidFrames_ = 0;
     int lastFreeFrames_ = 0;
     int maximumValidFrames_ = 0;
@@ -94,6 +98,7 @@ private:
     quint64 firstLogicalSequence_ = 0;
     quint64 lastLogicalSequence_ = 0;
     double logicalToHostTimeRatio_ = 1.0;
+    int configReadbackMismatchCount_ = 0;
     QElapsedTimer timingClock_;
     std::vector<double> values_;
     std::deque<Sample> samples_;

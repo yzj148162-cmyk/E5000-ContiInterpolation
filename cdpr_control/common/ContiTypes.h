@@ -424,6 +424,7 @@ struct TraceReadDiagnostics
     int frameHeaderBytes = 0;
     bool hardwareSequenceAvailable = false;
     double logicalToHostTimeRatio = 1.0;
+    int configReadbackMismatchCount = 0;
 };
 
 // Trace 原始帧最多保存八轴。位置保存为原始脉冲，时间由 traceSequence 和

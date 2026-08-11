@@ -50,9 +50,11 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
     config_.maxQueuedSamples = std::max(1, config_.maxQueuedSamples);
     ensureValues();
     if (config_.objects.empty()) {
+        failureReason_ = QStringLiteral("Trace配置对象为空");
         return false;
     }
     if (config_.samplePeriodUs % config_.traceBaseCycleUs != 0) {
+        failureReason_ = QStringLiteral("Trace采样周期不是基础周期的整数倍");
         return false;
     }
 
@@ -60,48 +62,60 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
     lastResult_ = dmc_trace_data_stop(cardNo);
     lastResult_ = dmc_trace_data_reset(cardNo);
     if (lastResult_ != 0) {
+        failureReason_ = QStringLiteral("dmc_trace_data_reset失败，错误码=%1")
+                             .arg(lastResult_);
         return false;
     }
     const short cycle = static_cast<short>(config_.samplePeriodUs / config_.traceBaseCycleUs);
     lastResult_ = dmc_trace_set_config(cardNo, cycle, 0, 0, 0, 0, 0, 0);
     if (lastResult_ != 0) {
+        failureReason_ = QStringLiteral("dmc_trace_set_config失败，错误码=%1")
+                             .arg(lastResult_);
         return false;
     }
     lastResult_ = dmc_trace_reset_config_object(cardNo);
     if (lastResult_ != 0) {
+        failureReason_ = QStringLiteral("dmc_trace_reset_config_object失败，错误码=%1")
+                             .arg(lastResult_);
         return false;
     }
-    for (const ObjectConfig &object : config_.objects) {
+    for (int index = 0; index < static_cast<int>(config_.objects.size()); ++index) {
+        const ObjectConfig &object = config_.objects[static_cast<std::size_t>(index)];
         lastResult_ = dmc_trace_add_config_object(cardNo, object.dataType, object.dataIndex,
                                                    object.dataSubIndex, object.slaveId,
                                                    object.apiDataBytes);
         if (lastResult_ != 0) {
             dmc_trace_data_stop(cardNo);
+            failureReason_ = QStringLiteral(
+                "dmc_trace_add_config_object失败：对象=%1，错误码=%2")
+                .arg(index).arg(lastResult_);
             return false;
         }
     }
-    // 配置后逐项读回，防止对象顺序、索引或板卡接受的配置与软件假设不一致。
+    // 配置后逐项读回只做诊断。部分运行库会对无关字段归一化，不能将这些
+    // 表达差异误判成配置失败；真正的固定帧契约在启动后由get_state校验。
     for (int index = 0; index < static_cast<int>(config_.objects.size()); ++index) {
         short dataType = 0;
         int dataIndex = 0;
         int dataSubIndex = 0;
         short slaveId = 0;
         short dataBytes = 0;
-        lastResult_ = dmc_trace_get_config_object(
+        const short readbackResult = dmc_trace_get_config_object(
             cardNo, static_cast<short>(index), &dataType, &dataIndex,
             &dataSubIndex, &slaveId, &dataBytes);
         const ObjectConfig &expected = config_.objects[static_cast<std::size_t>(index)];
-        if (lastResult_ != 0 || dataType != expected.dataType
+        if (readbackResult != 0 || dataType != expected.dataType
             || dataIndex != expected.dataIndex
             || dataSubIndex != expected.dataSubIndex
             || slaveId != expected.slaveId
             || (dataBytes > 0 && dataBytes != expected.valueBytes)) {
-            dmc_trace_data_stop(cardNo);
-            return false;
+            ++configReadbackMismatchCount_;
         }
     }
     lastResult_ = dmc_trace_data_start(cardNo);
     if (lastResult_ != 0) {
+        failureReason_ = QStringLiteral("dmc_trace_data_start失败，错误码=%1")
+                             .arg(lastResult_);
         return false;
     }
     configured_ = true;
@@ -124,6 +138,7 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
     lastLogicalSequence_ = 0;
     logicalToHostTimeRatio_ = 1.0;
     timingClock_.invalidate();
+    failureReason_.clear();
     nextSequence_ = 1;
     std::this_thread::sleep_for(std::chrono::milliseconds(std::max(2, config_.samplePeriodUs / 1000 + 1)));
     return true;
@@ -154,6 +169,8 @@ void RuntimeTraceSlaveReader::reset()
     firstLogicalSequence_ = 0;
     lastLogicalSequence_ = 0;
     logicalToHostTimeRatio_ = 1.0;
+    configReadbackMismatchCount_ = 0;
+    failureReason_.clear();
     timingClock_.invalidate();
     values_.clear();
     samples_.clear();
@@ -240,6 +257,7 @@ void RuntimeTraceSlaveReader::updateTimingConsistency()
 int RuntimeTraceSlaveReader::readTraceCached()
 {
     if (!configured_) {
+        failureReason_ = QStringLiteral("Trace尚未配置");
         return -1;
     }
     int validNum = 0, freeNum = 0, objectTotalBytes = 0, objectTotalNum = 0;
@@ -247,6 +265,8 @@ int RuntimeTraceSlaveReader::readTraceCached()
                                       &objectTotalBytes, &objectTotalNum);
     if (lastResult_ != 0) {
         timingReliable_ = false;
+        failureReason_ = QStringLiteral("dmc_trace_get_state失败，错误码=%1")
+                             .arg(lastResult_);
         return everRead_ ? 0 : -1;
     }
     updateBufferDiagnostics(validNum, freeNum);
@@ -258,6 +278,17 @@ int RuntimeTraceSlaveReader::readTraceCached()
     const FrameLayout layout = resolveLayout(objectTotalBytes, objectTotalNum);
     if (layout.frameBytes <= 0) {
         timingReliable_ = false;
+        int expectedValueBytes = 0;
+        for (const ObjectConfig &object : config_.objects) {
+            expectedValueBytes += std::max(1, object.valueBytes);
+        }
+        failureReason_ = QStringLiteral(
+            "Trace固定帧契约不成立：板卡对象数=%1，期望=%2，"
+            "板卡对象总字节=%3，期望数据至少=%4")
+            .arg(objectTotalNum)
+            .arg(config_.objects.size())
+            .arg(objectTotalBytes)
+            .arg(expectedValueBytes);
         return -1;
     }
     frameBytes_ = layout.frameBytes;
@@ -271,10 +302,18 @@ int RuntimeTraceSlaveReader::readTraceCached()
         lastResult_ = dmc_trace_get_data(static_cast<WORD>(config_.cardNo), bufferSize, buffer.data(), &readBytes);
         if (lastResult_ != 0 || readBytes < layout.frameBytes) {
             timingReliable_ = false;
+            failureReason_ = lastResult_ != 0
+                ? QStringLiteral("dmc_trace_get_data失败，错误码=%1").arg(lastResult_)
+                : QStringLiteral("Trace返回数据不足一帧：返回=%1字节，固定帧宽=%2字节")
+                      .arg(readBytes).arg(layout.frameBytes);
             return total > 0 ? total : (everRead_ ? 0 : -1);
         }
         if (readBytes % layout.frameBytes != 0) {
             timingReliable_ = false;
+            failureReason_ = QStringLiteral(
+                "Trace返回非整帧数据：返回=%1字节，固定帧宽=%2字节，余数=%3")
+                .arg(readBytes).arg(layout.frameBytes)
+                .arg(readBytes % layout.frameBytes);
         }
         const int completeFrames = readBytes / layout.frameBytes;
         for (int frame = 0; frame < completeFrames; ++frame) {
@@ -310,6 +349,8 @@ int RuntimeTraceSlaveReader::readTraceCached()
                                           &objectTotalBytes, &objectTotalNum);
         if (lastResult_ != 0) {
             timingReliable_ = false;
+            failureReason_ = QStringLiteral("补读后dmc_trace_get_state失败，错误码=%1")
+                                 .arg(lastResult_);
             break;
         }
         updateBufferDiagnostics(validNum, freeNum);
@@ -318,6 +359,13 @@ int RuntimeTraceSlaveReader::readTraceCached()
         }
     }
     updateTimingConsistency();
+    if (timingReliable_) {
+        failureReason_.clear();
+    } else if (failureReason_.isEmpty()) {
+        failureReason_ = QStringLiteral(
+            "Trace时间轴自检失败：Trace/主机时间比=%1")
+            .arg(logicalToHostTimeRatio_, 0, 'f', 4);
+    }
     everRead_ = everRead_ || total > 0;
     return total;
 }

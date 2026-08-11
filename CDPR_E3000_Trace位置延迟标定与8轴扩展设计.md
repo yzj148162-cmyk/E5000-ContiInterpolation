@@ -40,8 +40,8 @@ e_control(t) = q_reference(t) - q_actual(t)
 
 1. `dmc_trace_add_config_object` 的 `data_bytes` 对现有采集类型固定传 `0`，
    由板卡按对象类型自动匹配；
-2. 配置后用 `dmc_trace_get_config_object` 逐项读回并核对类型、索引、子索引、
-   从站号及有效对象字节数；
+2. 配置后用 `dmc_trace_get_config_object` 逐项读回作为诊断；某些运行库会对
+   无关字段做归一化，读回表达差异只记录、不阻断启动；
 3. 用 `dmc_trace_get_state` 返回的 `object_total_num` 和
    `object_total_bytes` 校验对象总数并确定一帧总字节数；
 4. `dmc_trace_get_data` 的 `byte_size` 必须能被固定帧宽整除，不再枚举
@@ -52,7 +52,9 @@ e_control(t) = q_reference(t) - q_actual(t)
    都将本次Trace时间轴锁存为不可信并停止依赖它的运动。
 
 日志必须输出对象总数、板卡对象总字节数、固定帧宽、帧头字节数、硬件序号
-是否可用以及Trace/主机时间比。这样能够区分“读得慢”与“拆帧过多”两类问题。
+是否可用、配置读回差异数以及Trace/主机时间比。真正的阻断条件是启动后的
+对象总数、固定帧宽和完整帧契约不成立，而不是读回字段的表示不同。这样能够
+区分“读回表达差异”“读得慢”与“拆帧过多”三类问题。
 
 原始 type03/04/05/06 帧仍由异步记录器完整保存，任何延迟补偿都不覆盖原始数据。
 
