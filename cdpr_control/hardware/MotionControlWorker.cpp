@@ -1293,6 +1293,20 @@ void MotionControlWorker::startCdprVelocityControl(
         return;
     }
     cdprVelocityAutoRecording_ = true;
+    // 轨迹CSV和配置快照的同步导出可能耗时超过1 s。导出期间Trace已经开始采样，
+    // 若直接使用随后读到的首批数据，会把启动前积压帧误当成实时反馈。记录准备
+    // 完成后再次配置Trace，以硬件reset/start清空积压，再建立运行时间锚点。
+    if (!configureFeedbackTrace(axes, config.degreesPerCardUnit, error, true)) {
+        finishCdprRunRecording(
+            QStringLiteral("cdpr_velocity_trace_resync_failed: %1").arg(error),
+            cdprVelocityAutoRecording_);
+        emit logMessage(QStringLiteral(
+            "八轴速度闭环启动失败：记录准备后的Trace复位失败：%1").arg(error));
+        return;
+    }
+    emit logMessage(QStringLiteral(
+        "八轴速度闭环：运行记录准备完成后已重新复位Trace，启动前积压帧已清除；"
+        "将以复位后的新鲜同帧反馈建立时间锚点。"));
     cdprVelocityPlan_ = plan;
     cdprVelocityConfig_ = config;
     cdprVelocityStatus_ = {};
@@ -1301,9 +1315,11 @@ void MotionControlWorker::startCdprVelocityControl(
     cdprVelocityStatus_.stateText = QStringLiteral("等待八轴 Trace 首帧");
     cdprVelocityControlActive_ = true;
     cdprVelocityAxisStarted_.fill(false);
+    cdprVelocityCommandStartTraceSequence_.fill(0);
     cdprVelocityDirection_.fill(0);
     cdprVelocityLastTraceTimeUs_.fill(0);
     cdprVelocityStartTraceSequence_ = 0;
+    cdprVelocityProtectionArmedLogged_ = false;
     for (PositionVelocityPid &pid : cdprVelocityPids_) {
         pid.reset();
     }
@@ -1470,14 +1486,40 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         const double alignedExpectedPosition =
             cdprVelocityStartPositionDegree_[index] + alignedReferenceDelta;
         const double trackingError = alignedExpectedPosition - feedback.encoderPositionUnit;
-        maximumError = std::max(maximumError, std::abs(trackingError));
-        if (std::abs(trackingError) > cdprVelocityConfig_.maxFollowingErrorDegree) {
+        // 启动运动命令前，以及运动命令下发后尚未收到新Trace帧时，当前反馈仍可能
+        // 表示静止阶段，不能据此触发轨迹跟随保护。每轴至少取得一帧命令后的反馈
+        // 才独立启用保护。
+        const bool followingProtectionArmed = cdprVelocityAxisStarted_[index]
+            && cdprVelocityCommandStartTraceSequence_[index] > 0
+            && feedback.traceSequence
+                   > cdprVelocityCommandStartTraceSequence_[index];
+        if (followingProtectionArmed) {
+            maximumError = std::max(maximumError, std::abs(trackingError));
+        }
+        if (followingProtectionArmed
+            && std::abs(trackingError) > cdprVelocityConfig_.maxFollowingErrorDegree) {
             finishCdprVelocityControl(QStringLiteral(
                 "八轴速度闭环：轴 %1 延迟对齐跟随误差=规划位置(t-τ)-Trace实际位置(t)=%2°，"
-                "超过 %3°（τ=%4 ms）。")
+                "超过 %3°（τ=%4 ms）；主机时刻=%5 s，Trace序号/相对时刻=%6/%7 s，"
+                "对齐规划时刻=%8 s，起点/对齐规划/板卡指令/Trace实际=%9/%10/%11/%12°，"
+                "Trace指令/实际速度=%13/%14°/s，命令起始Trace序号=%15，"
+                "卡侧有效/剩余=%16/%17。")
                                           .arg(axis).arg(trackingError, 0, 'f', 4)
                                           .arg(cdprVelocityConfig_.maxFollowingErrorDegree, 0, 'f', 4)
-                                          .arg(delayS * 1000.0, 0, 'f', 3), true);
+                                          .arg(delayS * 1000.0, 0, 'f', 3)
+                                          .arg(elapsedS, 0, 'f', 6)
+                                          .arg(feedback.traceSequence)
+                                          .arg(traceFrameElapsedS, 0, 'f', 6)
+                                          .arg(alignedReferenceTimeS, 0, 'f', 6)
+                                          .arg(cdprVelocityStartPositionDegree_[index], 0, 'f', 6)
+                                          .arg(alignedExpectedPosition, 0, 'f', 6)
+                                          .arg(feedback.commandPositionUnit, 0, 'f', 6)
+                                          .arg(feedback.encoderPositionUnit, 0, 'f', 6)
+                                          .arg(feedback.commandVelocityUnitPerSecond, 0, 'f', 6)
+                                          .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 6)
+                                          .arg(cdprVelocityCommandStartTraceSequence_[index])
+                                          .arg(traceReadDiagnostics_.validFrames)
+                                          .arg(traceReadDiagnostics_.freeFrames), true);
             return;
         }
         double feedbackDt = std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
@@ -1502,6 +1544,10 @@ void MotionControlWorker::runCdprVelocityControlCycle()
                 ok = card_.startVelocityMove(pidConfig, output.commandVelocity, error);
                 cdprVelocityAxisStarted_[index] = ok;
                 cdprVelocityDirection_[index] = output.commandVelocity >= 0.0 ? 1 : -1;
+                if (ok) {
+                    cdprVelocityCommandStartTraceSequence_[index] =
+                        feedback.traceSequence;
+                }
             }
         } else {
             ok = card_.changeVelocity(pidConfig, output.commandVelocity, apiResult, error);
@@ -1516,6 +1562,45 @@ void MotionControlWorker::runCdprVelocityControlCycle()
     cdprVelocityStatus_.motionStarted = std::any_of(cdprVelocityAxisStarted_.cbegin(),
                                                       cdprVelocityAxisStarted_.cend(),
                                                       [](bool started) { return started; });
+    if (!cdprVelocityProtectionArmedLogged_) {
+        bool anyAxisStarted = false;
+        bool allAxesStarted = true;
+        bool allStartedAxesHavePostCommandFeedback = true;
+        quint64 latestCommandStartSequence = 0;
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            const size_t index = static_cast<size_t>(cable);
+            if (!cdprVelocityAxisStarted_[index]) {
+                allAxesStarted = false;
+                continue;
+            }
+            anyAxisStarted = true;
+            latestCommandStartSequence = std::max(
+                latestCommandStartSequence,
+                cdprVelocityCommandStartTraceSequence_[index]);
+            const quint16 axis = cdprVelocityPlan_.axes[index];
+            allStartedAxesHavePostCommandFeedback =
+                allStartedAxesHavePostCommandFeedback
+                && axis < latestAxisFeedback_.size()
+                && latestAxisFeedback_.at(axis).traceSequence
+                       > cdprVelocityCommandStartTraceSequence_[index];
+        }
+        if (anyAxisStarted && allAxesStarted
+            && allStartedAxesHavePostCommandFeedback) {
+            cdprVelocityProtectionArmedLogged_ = true;
+            emit logMessage(QStringLiteral(
+                "八轴速度闭环：已收到运动命令下发后的新鲜Trace反馈，"
+                "延迟对齐跟随误差保护现已启用；最近命令起始Trace序号=%1，当前=%2。")
+                                .arg(latestCommandStartSequence)
+                                .arg(latestTraceSequence_));
+            telemetryRecorder_.appendEvent(QStringLiteral(
+                "cdpr_velocity_following_protection_armed command_sequence=%1 trace_sequence=%2")
+                .arg(latestCommandStartSequence)
+                .arg(latestTraceSequence_));
+            updateCdprRunContext(
+                QStringLiteral("following_protection_armed_trace_sequence"),
+                static_cast<double>(latestTraceSequence_));
+        }
+    }
     cdprVelocityStatus_.elapsedS = elapsedS;
     cdprVelocityStatus_.controlDtMs = commandDt * 1000.0;
     cdprVelocityStatus_.maximumCycleMs = std::max(cdprVelocityStatus_.maximumCycleMs,
@@ -1559,6 +1644,8 @@ void MotionControlWorker::finishCdprVelocityControl(const QString &message, bool
     }
     cdprVelocityControlActive_ = false;
     cdprVelocityAxisStarted_.fill(false);
+    cdprVelocityCommandStartTraceSequence_.fill(0);
+    cdprVelocityProtectionArmedLogged_ = false;
     cdprVelocityStatus_.active = false;
     cdprVelocityStatus_.motionStarted = false;
     cdprVelocityStatus_.stateText = emergency ? QStringLiteral("八轴闭环异常停止")
@@ -5120,9 +5207,15 @@ void MotionControlWorker::refreshAxisStates()
 
 bool MotionControlWorker::configureFeedbackTrace(const QVector<quint16> &axes,
                                          double degreesPerCardUnit,
-                                         QString &errorMessage)
+                                         QString &errorMessage,
+                                         bool allowEmptyActiveRecording)
 {
-    if (telemetryRecorder_.status().recording) {
+    const TelemetryRecorderStatus recorderStatus = telemetryRecorder_.status();
+    const bool emptyPreparedRecording = allowEmptyActiveRecording
+        && recorderStatus.recording
+        && recorderStatus.queuedFrames == 0
+        && recorderStatus.writtenFrames == 0;
+    if (recorderStatus.recording && !emptyPreparedRecording) {
         errorMessage = QStringLiteral("Trace 数据记录进行中，不能切换测试轴或重配 Trace；请先停止记录。");
         return false;
     }
@@ -5144,6 +5237,8 @@ bool MotionControlWorker::configureFeedbackTrace(const QVector<quint16> &axes,
     traceFramesRead_ = card_.traceFramesRead();
     traceStateText_ = card_.traceStateText();
     traceReadDiagnostics_ = card_.traceReadDiagnostics();
+    latestTraceSequence_ = 0;
+    latestTraceTimeUs_ = 0;
     QVector<TraceTelemetryFrame> frames = card_.takeTraceTelemetryFrames();
     if (!frames.isEmpty()) {
         const long currentMark = listOpen_ ? card_.currentMark(config_) : -1;

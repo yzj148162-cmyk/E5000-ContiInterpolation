@@ -99,7 +99,8 @@ private:
     void publishStatus();
     bool configureBaseAxes(const ContiTestConfig &config);
     bool configureFeedbackTrace(const QVector<quint16> &axes, double degreesPerCardUnit,
-                                QString &errorMessage);
+                                QString &errorMessage,
+                                bool allowEmptyActiveRecording = false);
     bool pollTraceFeedback();
     void updateTraceVelocityDiagnostics(const QVector<TraceTelemetryFrame> &frames);
     void refreshAxisStates();
@@ -284,6 +285,7 @@ private:
     std::array<double, kCdprCableCount> cdprVelocityStartPositionDegree_ {};
     std::array<int, kCdprCableCount> cdprVelocityDirection_ {};
     std::array<bool, kCdprCableCount> cdprVelocityAxisStarted_ {};
+    std::array<quint64, kCdprCableCount> cdprVelocityCommandStartTraceSequence_ {};
     std::array<quint64, kCdprCableCount> cdprVelocityLastTraceTimeUs_ {};
     QElapsedTimer cdprVelocityRunClock_;
     QElapsedTimer cdprVelocityCycleClock_;
@@ -292,6 +294,7 @@ private:
     // 八轴控制以 cdprVelocityRunClock_ 的主机单调时间推进。首帧序号只用于
     // 将 Trace 相对时间映射回该主机运行起点，以计算延迟对齐跟随误差。
     quint64 cdprVelocityStartTraceSequence_ = 0;
+    bool cdprVelocityProtectionArmedLogged_ = false;
     quint64 cdprVelocityRunId_ = 0;
     bool cdprVelocityAutoRecording_ = false;
     QString cdprRunRecordDirectory_;
