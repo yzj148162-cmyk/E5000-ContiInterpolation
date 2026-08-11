@@ -140,8 +140,8 @@ struct CdprRobotState
     bool safetyLatched = false;
 };
 
-// 离线PVT测试使用已知的完整末端轨迹。规划器输出角度制8轴表，
-// 运动线程只负责装表、同步启动和监控，不参与运动学计算。
+// 已知末端测试轨迹的公共请求。离线PVT和八轴实时速度闭环分别调用独立
+// 生成入口；只有离线PVT入口受板卡装表点数策略限制。
 struct CdprOfflinePvtRequest
 {
     CdprVector6 relativePose {};
@@ -152,6 +152,8 @@ struct CdprOfflinePvtRequest
     double degreesPerCardUnit = 1.0;
 };
 
+// 公共参考轨迹数据结构。离线PVT将其装入板卡表，八轴速度闭环只在主机端
+// 按控制周期查询它，不向PVT表装点，因此不继承PVT点数上限。
 struct CdprOfflinePvtPlan
 {
     bool valid = false;

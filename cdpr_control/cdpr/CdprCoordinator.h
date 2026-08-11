@@ -38,17 +38,21 @@ public slots:
     void resetDynamics();
     void advanceDynamicsOnce();
     void prepareOfflinePvt(const CdprOfflinePvtRequest &request);
+    void prepareVelocityTrajectory(const CdprOfflinePvtRequest &request);
 
 signals:
     void statusChanged(const CdprUiStatus &status);
     void logMessage(const QString &message);
     void offlinePvtPlanReady(const CdprOfflinePvtPlan &plan);
+    void velocityTrajectoryReady(const CdprOfflinePvtPlan &plan);
 
 private:
     void rebuildInitialKinematics();
     bool resetDynamicsFromSelectedPose(QString *errorText = nullptr);
     CdprWrenchTransformResult currentPlatformWrench(
         const CdprFrameStamp &stamp) const;
+    void prepareReferenceTrajectory(const CdprOfflinePvtRequest &request,
+                                    bool enforcePvtPointLimit);
     void publishStatus();
 
     CdprConfiguration configuration_;

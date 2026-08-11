@@ -356,21 +356,23 @@ void MainWindow::connectWorker()
             this, [invalidatePvt](int) { invalidatePvt(); });
     connect(ui_->cdprRtPrepareButton, &QPushButton::clicked, this, [this] {
         const int periodMs = ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt();
-        ui_->cdprPvtSamplePeriodSpin->setValue(periodMs);
-        emit prepareCdprOfflinePvtRequested(collectCdprOfflinePvtRequest());
+        CdprOfflinePvtRequest request = collectCdprOfflinePvtRequest();
+        request.samplePeriodMs = periodMs;
+        emit prepareCdprVelocityTrajectoryRequested(request);
     });
     connect(ui_->cdprRtPeriodCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int) {
+        cdprVelocityPlan_ = {};
         ui_->cdprRtStartButton->setEnabled(false);
         ui_->cdprRtStatusLabel->setText(
             QStringLiteral("控制周期已改变；请按该周期重新生成八轴轨迹。"));
     });
     connect(ui_->cdprRtStartButton, &QPushButton::clicked, this, [this] {
-        if (!cdprOfflinePvtPlan_.valid) {
+        if (!cdprVelocityPlan_.valid) {
             appendLog(QStringLiteral("请先按所选控制周期生成并通过校验的八轴轨迹。"));
             return;
         }
-        emit startCdprVelocityControlRequested(cdprOfflinePvtPlan_,
+        emit startCdprVelocityControlRequested(cdprVelocityPlan_,
                                                collectCdprVelocityControlConfig());
     });
     connect(ui_->cdprRtStopButton, &QPushButton::clicked,
@@ -443,8 +445,12 @@ void MainWindow::connectWorker()
             cdprCoordinator_, &CdprCoordinator::advanceDynamicsOnce);
     connect(this, &MainWindow::prepareCdprOfflinePvtRequested,
             cdprCoordinator_, &CdprCoordinator::prepareOfflinePvt);
+    connect(this, &MainWindow::prepareCdprVelocityTrajectoryRequested,
+            cdprCoordinator_, &CdprCoordinator::prepareVelocityTrajectory);
     connect(cdprCoordinator_, &CdprCoordinator::offlinePvtPlanReady,
             this, &MainWindow::updateCdprOfflinePvtPlan);
+    connect(cdprCoordinator_, &CdprCoordinator::velocityTrajectoryReady,
+            this, &MainWindow::updateCdprVelocityTrajectory);
     connect(this, &MainWindow::startCdprOfflinePvtRequested,
             worker_, &MotionControlWorker::startOfflinePvt);
     connect(this, &MainWindow::stopCdprOfflinePvtRequested,
@@ -523,7 +529,9 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
         && cdprAllMappedAxesEnabled_);
     ui_->cdprRtStartButton->setEnabled(
         !cdprVelocityControlStatus_.active
-        && cdprOfflinePvtPlan_.valid
+        && cdprVelocityPlan_.valid
+        && cdprVelocityPlan_.request.samplePeriodMs
+            == ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt()
         && cdprAllMappedAxesEnabled_);
     ui_->cdprConfigPathEdit->setText(status.configurationPath);
     ui_->cdprStateValueLabel->setText(status.stateText);
@@ -699,10 +707,13 @@ void MainWindow::invalidateCdprOfflinePvtPlan()
 {
     if (cdprOfflinePvtStatus_.active) {
         cdprOfflinePvtPlan_.valid = false;
+        cdprVelocityPlan_.valid = false;
         ui_->cdprPvtStartButton->setEnabled(false);
+        ui_->cdprRtStartButton->setEnabled(false);
         return;
     }
     cdprOfflinePvtPlan_ = {};
+    cdprVelocityPlan_ = {};
     ui_->cdprPvtStartButton->setEnabled(false);
     ui_->cdprRtStartButton->setEnabled(false);
     ui_->cdprPvtStatusLabel->setText(
@@ -719,15 +730,6 @@ void MainWindow::updateCdprOfflinePvtPlan(
     ui_->cdprPvtStartButton->setEnabled(plan.valid
                                         && !cdprOfflinePvtStatus_.active
                                         && cdprAllMappedAxesEnabled_);
-    const int selectedPeriodMs = ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt();
-    ui_->cdprRtStartButton->setEnabled(plan.valid
-                                       && !cdprVelocityControlStatus_.active
-                                       && cdprAllMappedAxesEnabled_
-                                       && plan.request.samplePeriodMs == selectedPeriodMs);
-    ui_->cdprRtStatusLabel->setText(plan.valid
-        ? QStringLiteral("轨迹已生成：%1 ms 采样。可启动八轴实时速度闭环。")
-              .arg(plan.request.samplePeriodMs)
-        : QStringLiteral("轨迹校验失败：%1").arg(plan.errorText));
     ui_->cdprPvtProgressBar->setRange(
         0, std::max(1, static_cast<int>(plan.timeS.size()) - 1));
     ui_->cdprPvtProgressBar->setValue(0);
@@ -776,6 +778,31 @@ void MainWindow::updateCdprOfflinePvtPlan(
     ui_->cdprPvtPreviewTable->resizeColumnsToContents();
 }
 
+void MainWindow::updateCdprVelocityTrajectory(
+    const CdprOfflinePvtPlan &plan)
+{
+    cdprVelocityPlan_ = plan;
+    const int selectedPeriodMs =
+        ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt();
+    const bool periodMatches = plan.request.samplePeriodMs == selectedPeriodMs;
+    ui_->cdprRtStartButton->setEnabled(
+        plan.valid && periodMatches
+        && !cdprVelocityControlStatus_.active
+        && cdprAllMappedAxesEnabled_);
+    if (!plan.valid) {
+        ui_->cdprRtStatusLabel->setText(
+            QStringLiteral("参考轨迹校验失败：%1").arg(plan.errorText));
+    } else if (!periodMatches) {
+        ui_->cdprRtStatusLabel->setText(
+            QStringLiteral("参考轨迹周期与当前控制周期不一致，请重新生成。"));
+    } else {
+        ui_->cdprRtStatusLabel->setText(
+            QStringLiteral("参考轨迹已生成：%1点，%2 ms控制周期；可启动八轴速度闭环。")
+                .arg(plan.timeS.size())
+                .arg(plan.request.samplePeriodMs));
+    }
+}
+
 void MainWindow::updateCdprOfflinePvtStatus(
     const CdprOfflinePvtStatus &status)
 {
@@ -810,8 +837,11 @@ void MainWindow::updateCdprVelocityControlStatus(
             .arg(status.maximumCycleMs, 0, 'f', 3)
             .arg(status.maximumTrackingErrorDegree, 0, 'f', 4));
     ui_->cdprRtPrepareButton->setEnabled(!status.active);
-    ui_->cdprRtStartButton->setEnabled(!status.active && cdprOfflinePvtPlan_.valid
-                                       && cdprAllMappedAxesEnabled_);
+    ui_->cdprRtStartButton->setEnabled(
+        !status.active && cdprVelocityPlan_.valid
+        && cdprVelocityPlan_.request.samplePeriodMs
+            == ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt()
+        && cdprAllMappedAxesEnabled_);
     ui_->cdprRtStopButton->setEnabled(status.active);
 }
 

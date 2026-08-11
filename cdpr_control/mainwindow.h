@@ -74,6 +74,8 @@ signals:
     void advanceCdprDynamicsOnceRequested();
     void prepareCdprOfflinePvtRequested(
         const CdprOfflinePvtRequest &request);
+    void prepareCdprVelocityTrajectoryRequested(
+        const CdprOfflinePvtRequest &request);
     void startCdprOfflinePvtRequested(
         const CdprOfflinePvtPlan &plan);
     void stopCdprOfflinePvtRequested(bool emergency);
@@ -129,6 +131,7 @@ private slots:
     void onCdprCreateTemplateClicked();
     void updateCdprStatus(const CdprUiStatus &status);
     void updateCdprOfflinePvtPlan(const CdprOfflinePvtPlan &plan);
+    void updateCdprVelocityTrajectory(const CdprOfflinePvtPlan &plan);
     void updateCdprOfflinePvtStatus(const CdprOfflinePvtStatus &status);
     void updateCdprVelocityControlStatus(const CdprVelocityControlStatus &status);
     void appendLog(const QString &message);
@@ -219,6 +222,7 @@ private:
     quint64 lastTorqueRunId_ = 0;
     double lastTorquePlotTimeS_ = -1.0;
     CdprOfflinePvtPlan cdprOfflinePvtPlan_;
+    CdprOfflinePvtPlan cdprVelocityPlan_;
     CdprOfflinePvtStatus cdprOfflinePvtStatus_;
     CdprVelocityControlStatus cdprVelocityControlStatus_;
     bool cdprAllMappedAxesEnabled_ = false;

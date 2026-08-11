@@ -333,15 +333,37 @@ void CdprCoordinator::advanceDynamicsOnce()
 void CdprCoordinator::prepareOfflinePvt(
     const CdprOfflinePvtRequest &request)
 {
+    prepareReferenceTrajectory(request, true);
+}
+
+void CdprCoordinator::prepareVelocityTrajectory(
+    const CdprOfflinePvtRequest &request)
+{
+    prepareReferenceTrajectory(request, false);
+}
+
+void CdprCoordinator::prepareReferenceTrajectory(
+    const CdprOfflinePvtRequest &request, bool enforcePvtPointLimit)
+{
     CdprOfflinePvtPlan plan;
     plan.request = request;
+
+    const auto publishPlan = [&](const CdprOfflinePvtPlan &result) {
+        if (enforcePvtPointLimit) {
+            emit offlinePvtPlanReady(result);
+        } else {
+            emit velocityTrajectoryReady(result);
+        }
+    };
 
     auto fail = [&](const QString &error) {
         plan.valid = false;
         plan.errorText = error;
-        plan.summary = QStringLiteral("轨迹生成失败：%1").arg(error);
+        plan.summary = enforcePvtPointLimit
+            ? QStringLiteral("离线PVT轨迹生成失败：%1").arg(error)
+            : QStringLiteral("速度闭环参考轨迹生成失败：%1").arg(error);
         emit logMessage(plan.summary);
-        emit offlinePvtPlanReady(plan);
+        publishPlan(plan);
     };
 
     if (!configurationLoaded_ || !kinematicsReady_ || !kinematics_) {
@@ -374,7 +396,7 @@ void CdprCoordinator::prepareOfflinePvt(
                                                / samplePeriodS)));
     const int pointCount = intervalCount + 1;
     constexpr int kMaximumPvtPointCount = 5000;
-    if (pointCount > kMaximumPvtPointCount) {
+    if (enforcePvtPointLimit && pointCount > kMaximumPvtPointCount) {
         fail(QStringLiteral("PVT点数%1超过首版上限%2；请增大采样周期或缩短轨迹时间。")
                  .arg(pointCount)
                  .arg(kMaximumPvtPointCount));
@@ -513,8 +535,11 @@ void CdprCoordinator::prepareOfflinePvt(
     plan.initialCables = initialInverse.cables;
     plan.finalCables = finalInverse.cables;
     plan.valid = true;
-    plan.summary = QStringLiteral(
-        "离线PVT轨迹有效：%1点，%2 s，采样%3 ms；8轴最大峰值速度%4°/s。")
+    plan.summary = (enforcePvtPointLimit
+        ? QStringLiteral(
+              "离线PVT轨迹有效：%1点，%2 s，采样%3 ms；8轴最大峰值速度%4°/s。")
+        : QStringLiteral(
+              "速度闭环参考轨迹有效：%1点，%2 s，控制周期%3 ms；8轴最大峰值速度%4°/s。"))
                        .arg(pointCount)
                        .arg(request.durationS, 0, 'f', 3)
                        .arg(request.samplePeriodMs)
@@ -523,7 +548,7 @@ void CdprCoordinator::prepareOfflinePvt(
                                 plan.peakAxisVelocityDegreePerSecond.end()),
                             0, 'f', 3);
     emit logMessage(plan.summary);
-    emit offlinePvtPlanReady(plan);
+    publishPlan(plan);
 }
 
 bool CdprCoordinator::resetDynamicsFromSelectedPose(QString *errorText)
