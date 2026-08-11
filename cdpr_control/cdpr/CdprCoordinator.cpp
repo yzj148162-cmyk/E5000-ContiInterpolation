@@ -348,6 +348,8 @@ void CdprCoordinator::prepareOfflinePvt(
         fail(QStringLiteral("请先加载并通过校验的CDPR结构配置。"));
         return;
     }
+    plan.configurationSnapshotJson =
+        CdprConfigurationFile::serialize(configuration_);
     if (!std::isfinite(request.durationS) || request.durationS <= 0.0
         || request.samplePeriodMs <= 0
         || !std::isfinite(request.winchRadiusM)
@@ -442,6 +444,7 @@ void CdprCoordinator::prepareOfflinePvt(
         }
 
         plan.timeS.append(timeS);
+        plan.platformPose.append(platform.pose);
         CdprVector8 currentAxisDegree {};
         for (int cable = 0; cable < kCdprCableCount; ++cable) {
             const size_t offset = static_cast<size_t>(cable);

@@ -1,4 +1,4 @@
-QT += core gui widgets charts
+QT += core gui widgets charts concurrent
 
 CONFIG += c++17
 
@@ -17,6 +17,7 @@ SOURCES += \
     cdpr/CdprDynamics.cpp \
     cdpr/CdprForceInput.cpp \
     cdpr/CdprKinematics.cpp \
+    cdpr/CdprVirtualConsistencyAnalyzer.cpp \
     cdpr/NokovMarkerProvider.cpp \
     control/PositionVelocityPid.cpp \
     control/TraceDelayCalibration.cpp \
@@ -35,6 +36,7 @@ HEADERS += \
     cdpr/CdprDynamics.h \
     cdpr/CdprForceInput.h \
     cdpr/CdprKinematics.h \
+    cdpr/CdprVirtualConsistencyAnalyzer.h \
     cdpr/NokovMarkerProvider.h \
     common/ContiTypes.h \
     control/PositionVelocityPid.h \

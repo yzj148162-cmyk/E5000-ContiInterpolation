@@ -159,6 +159,12 @@ struct CdprOfflinePvtPlan
     QString summary;
     CdprOfflinePvtRequest request;
     QVector<double> timeS;
+    // 与timeS严格同一时间轴的末端期望位姿。离线虚拟运动学分析直接
+    // 使用它，避免在运行结束后依赖已变化的UI或配置重新生成轨迹。
+    QVector<CdprVector6> platformPose;
+    // 本次规划所用结构配置的完整JSON快照。运行记录会原样写入
+    // configuration_snapshot.json，保证旧记录可独立复算。
+    QString configurationSnapshotJson;
     std::array<quint16, kCdprCableCount> axes {};
     std::array<int, kCdprCableCount> directions {};
     std::array<QVector<double>, kCdprCableCount> axisPositionDegree;

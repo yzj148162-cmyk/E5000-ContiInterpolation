@@ -264,6 +264,12 @@ bool CdprConfigurationFile::load(const QString &path,
     return true;
 }
 
+QString CdprConfigurationFile::serialize(const CdprConfiguration &configuration)
+{
+    return QString::fromUtf8(QJsonDocument(toJson(configuration)).toJson(
+        QJsonDocument::Indented));
+}
+
 bool CdprConfigurationFile::writeTemplate(const QString &path, QString &error)
 {
     CdprConfiguration configuration;

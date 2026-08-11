@@ -1,5 +1,7 @@
 #include "hardware/MotionControlWorker.h"
 
+#include <QtConcurrent/QtConcurrentRun>
+
 #include <QTimer>
 #include <QThread>
 #include <QCoreApplication>
@@ -105,6 +107,7 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
     , traceDelayCalibrationTimer_(new QTimer(this))
     , offlinePvtMonitorTimer_(new QTimer(this))
     , cdprVelocityControlTimer_(new QTimer(this))
+    , cdprAnalysisWatcher_(new QFutureWatcher<CdprVirtualConsistencyAnalysisResult>(this))
 {
     softwareZeroUnit_.fill(0.0, 8);
     softwareZeroValid_.fill(false, 8);
@@ -138,6 +141,16 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
             this, &MotionControlWorker::monitorOfflinePvt);
     connect(cdprVelocityControlTimer_, &QTimer::timeout,
             this, &MotionControlWorker::runCdprVelocityControlCycle);
+    connect(cdprAnalysisWatcher_, &QFutureWatcher<CdprVirtualConsistencyAnalysisResult>::finished,
+            this, [this] {
+                const CdprVirtualConsistencyAnalysisResult analysis =
+                    cdprAnalysisWatcher_->result();
+                emit logMessage(analysis.success
+                    ? analysis.summary + QStringLiteral(" 输出目录=%1。")
+                        .arg(analysis.outputDirectory)
+                    : QStringLiteral("虚拟运动学一致性分析未完成：%1")
+                        .arg(analysis.errorText));
+            });
     loadTraceDelayCalibrationResults();
 }
 
@@ -980,6 +993,18 @@ void MotionControlWorker::startOfflinePvt(const CdprOfflinePvtPlan &plan)
         return;
     }
     offlinePvtAutoRecording_ = true;
+    // 该帧是PVT调用前的Trace基准。板卡实际进入PVT的帧仍由运行结束后的
+    // type05指令位置与规划表匹配得到，不能把主机调用返回时间当成硬件时刻。
+    if (!pollTraceFeedback()) {
+        finishCdprRunRecording(QStringLiteral("cdpr_offline_pvt_prestart_trace_failed: %1")
+                                   .arg(traceStateText_), offlinePvtAutoRecording_);
+        emit logMessage(QStringLiteral("离线PVT启动失败：启动前Trace读取失败：%1")
+                            .arg(traceStateText_));
+        return;
+    }
+    offlinePvtStartRequestPreTraceSequence_ = latestTraceSequence_;
+    updateCdprRunContext(QStringLiteral("pvt_start_request_pre_trace_sequence"),
+                          static_cast<double>(offlinePvtStartRequestPreTraceSequence_));
     if (!card_.startPvtMotion(axes, plan.timeS, positions,
                               plan.request.degreesPerCardUnit, error)) {
         finishCdprRunRecording(QStringLiteral("cdpr_offline_pvt_start_failed: %1").arg(error),
@@ -1332,6 +1357,8 @@ void MotionControlWorker::runCdprVelocityControlCycle()
             "cdpr_velocity_control_time_anchor trace_sequence=%1 control_period_ms=%2")
             .arg(cdprVelocityStartTraceSequence_)
             .arg(cdprVelocityConfig_.controlPeriodMs));
+        updateCdprRunContext(QStringLiteral("velocity_start_trace_sequence"),
+                              static_cast<double>(cdprVelocityStartTraceSequence_));
     }
     const double elapsedS = cdprVelocityRunClock_.elapsed() / 1000.0;
     VelocityControlConfig pidConfig;
@@ -1511,7 +1538,8 @@ bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
                                                  const QString &mode,
                                                  QString &errorMessage)
 {
-    if (plan.timeS.size() < 2) {
+    if (plan.timeS.size() < 2 || plan.platformPose.size() != plan.timeS.size()
+        || plan.configurationSnapshotJson.trimmed().isEmpty()) {
         errorMessage = QStringLiteral("期望轨迹为空，无法创建 CDPR 运行记录。");
         return false;
     }
@@ -1538,6 +1566,47 @@ bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
         telemetryRecorder_.appendEvent(
             QStringLiteral("cdpr_expected_trajectory_export_failed: %1").arg(errorMessage));
         telemetryRecorder_.stop();
+        return false;
+    }
+    QSaveFile configurationFile(
+        QDir(directory).filePath(QStringLiteral("configuration_snapshot.json")));
+    if (!configurationFile.open(QIODevice::WriteOnly | QIODevice::Text)
+        || configurationFile.write(plan.configurationSnapshotJson.toUtf8()) < 0
+        || !configurationFile.commit()) {
+        errorMessage = QStringLiteral("无法写入CDPR配置快照：%1")
+                           .arg(configurationFile.errorString());
+        telemetryRecorder_.appendEvent(
+            QStringLiteral("cdpr_configuration_snapshot_export_failed: %1").arg(errorMessage));
+        telemetryRecorder_.stop();
+        return false;
+    }
+    cdprRunRecordDirectory_ = directory;
+    cdprRunContext_ = QJsonObject {
+        {QStringLiteral("mode"), mode == QStringLiteral("离线PVT")
+             ? QStringLiteral("offline_pvt") : QStringLiteral("velocity_control")},
+        {QStringLiteral("trace_period_us"), metadata.traceSamplePeriodUs},
+        {QStringLiteral("degrees_per_card_unit"), plan.request.degreesPerCardUnit},
+        {QStringLiteral("winch_radius_m"), plan.request.winchRadiusM},
+        {QStringLiteral("pvt_start_request_pre_trace_sequence"), 0.0},
+        {QStringLiteral("velocity_start_trace_sequence"), 0.0}
+    };
+    QJsonArray calibrations;
+    for (const TraceDelayAxisResult &calibration : traceDelayAxisResults_) {
+        calibrations.append(QJsonObject {
+            {QStringLiteral("axis"), calibration.axis},
+            {QStringLiteral("calibrated"), calibration.calibrated},
+            {QStringLiteral("applied_delay_ms"), calibration.appliedDelayMs},
+            {QStringLiteral("measured_delay_ms"), calibration.measuredDelayMs},
+            {QStringLiteral("r_squared"), calibration.rSquared}
+        });
+    }
+    cdprRunContext_.insert(QStringLiteral("trace_delay_calibration"), calibrations);
+    if (!writeCdprRunContext(errorMessage)) {
+        telemetryRecorder_.appendEvent(
+            QStringLiteral("cdpr_run_context_export_failed: %1").arg(errorMessage));
+        telemetryRecorder_.stop();
+        cdprRunRecordDirectory_.clear();
+        cdprRunContext_ = {};
         return false;
     }
     telemetryRecorder_.appendEvent(QStringLiteral(
@@ -1568,6 +1637,8 @@ bool MotionControlWorker::exportCdprExpectedTrajectory(const CdprOfflinePvtPlan 
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
     stream << "time_s";
+    stream << ",platform_x_m,platform_y_m,platform_z_m"
+              ",platform_roll_rad,platform_pitch_rad,platform_yaw_rad";
     for (int cable = 0; cable < kCdprCableCount; ++cable) {
         stream << ",axis" << plan.axes[static_cast<size_t>(cable)]
                << "_planned_position_deg";
@@ -1579,6 +1650,9 @@ bool MotionControlWorker::exportCdprExpectedTrajectory(const CdprOfflinePvtPlan 
     stream << '\n';
     for (qsizetype point = 0; point < plan.timeS.size(); ++point) {
         stream << plan.timeS.at(point);
+        for (double value : plan.platformPose.at(point)) {
+            stream << ',' << value;
+        }
         for (int cable = 0; cable < kCdprCableCount; ++cable) {
             stream << ',' << plan.axisPositionDegree[static_cast<size_t>(cable)].at(point);
         }
@@ -1592,6 +1666,48 @@ bool MotionControlWorker::exportCdprExpectedTrajectory(const CdprOfflinePvtPlan 
         return false;
     }
     return true;
+}
+
+bool MotionControlWorker::writeCdprRunContext(QString &errorMessage)
+{
+    if (cdprRunRecordDirectory_.isEmpty()) {
+        errorMessage = QStringLiteral("CDPR运行记录目录为空。");
+        return false;
+    }
+    QSaveFile file(QDir(cdprRunRecordDirectory_).filePath(QStringLiteral("run_context.json")));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
+        || file.write(QJsonDocument(cdprRunContext_).toJson(QJsonDocument::Indented)) < 0
+        || !file.commit()) {
+        errorMessage = QStringLiteral("无法写入CDPR运行上下文：%1").arg(file.errorString());
+        return false;
+    }
+    return true;
+}
+
+void MotionControlWorker::updateCdprRunContext(const QString &key, const QJsonValue &value)
+{
+    if (cdprRunRecordDirectory_.isEmpty()) {
+        return;
+    }
+    cdprRunContext_.insert(key, value);
+    QString error;
+    if (!writeCdprRunContext(error)) {
+        emit logMessage(QStringLiteral("CDPR运行记录上下文更新失败：%1").arg(error));
+    }
+}
+
+void MotionControlWorker::startCdprVirtualConsistencyAnalysis(const QString &directory)
+{
+    if (directory.isEmpty()) {
+        return;
+    }
+    if (cdprAnalysisWatcher_->isRunning()) {
+        emit logMessage(QStringLiteral("上一份CDPR离线一致性分析仍在执行，本次记录仅保存原始数据。"));
+        return;
+    }
+    emit logMessage(QStringLiteral("CDPR运行结束：正在后台执行八轴虚拟运动学一致性分析。"));
+    cdprAnalysisWatcher_->setFuture(QtConcurrent::run(
+        [directory] { return CdprVirtualConsistencyAnalyzer::analyze(directory); }));
 }
 
 void MotionControlWorker::finishCdprRunRecording(const QString &eventText,
@@ -1608,6 +1724,12 @@ void MotionControlWorker::finishCdprRunRecording(const QString &eventText,
                         .arg(result.droppedFrames)
                         .arg(result.outputDirectory));
     autoRecordingFlag = false;
+    const QString analysisDirectory = cdprRunRecordDirectory_;
+    cdprRunRecordDirectory_.clear();
+    cdprRunContext_ = {};
+    if (result.writtenFrames > 0) {
+        startCdprVirtualConsistencyAnalysis(analysisDirectory);
+    }
 }
 
 void MotionControlWorker::refreshFeedback()

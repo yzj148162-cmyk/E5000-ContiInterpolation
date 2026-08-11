@@ -117,6 +117,8 @@ class CdprConfigurationFile
 public:
     static bool load(const QString &path, CdprConfiguration &configuration,
                      QStringList &errors);
+    // 写入运行记录配置快照。该快照与配置文件格式一致，可被load()直接读回。
+    static QString serialize(const CdprConfiguration &configuration);
     static bool writeTemplate(const QString &path, QString &error);
     static QStringList validate(const CdprConfiguration &configuration);
     static QString identifier(const CdprConfiguration &configuration);

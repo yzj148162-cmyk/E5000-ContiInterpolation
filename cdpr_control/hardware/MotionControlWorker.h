@@ -5,10 +5,14 @@
 #include <QSet>
 #include <QObject>
 #include <QElapsedTimer>
+#include <QFutureWatcher>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QMap>
 
 #include "common/ContiTypes.h"
 #include "cdpr/CdprControlTypes.h"
+#include "cdpr/CdprVirtualConsistencyAnalyzer.h"
 #include "control/PositionVelocityPid.h"
 #include "control/TraceDelayCalibration.h"
 #include "hardware/MotionCardHardwareInterface.h"
@@ -143,6 +147,9 @@ private:
     bool exportCdprExpectedTrajectory(const CdprOfflinePvtPlan &plan,
                                       const QString &directory,
                                       QString &errorMessage) const;
+    bool writeCdprRunContext(QString &errorMessage);
+    void updateCdprRunContext(const QString &key, const QJsonValue &value);
+    void startCdprVirtualConsistencyAnalysis(const QString &directory);
     void finishCdprRunRecording(const QString &eventText, bool &autoRecordingFlag);
     void applyTraceDelayCompensation(const QVector<TraceTelemetryFrame> &frames);
     void loadTraceDelayCalibrationResults();
@@ -267,6 +274,7 @@ private:
     QVector<quint16> offlinePvtAxes_;
     QElapsedTimer offlinePvtRunClock_;
     bool offlinePvtAutoRecording_ = false;
+    quint64 offlinePvtStartRequestPreTraceSequence_ = 0;
     CdprOfflinePvtPlan cdprVelocityPlan_;
     CdprVelocityControlConfig cdprVelocityConfig_;
     CdprVelocityControlStatus cdprVelocityStatus_;
@@ -284,6 +292,9 @@ private:
     quint64 cdprVelocityStartTraceSequence_ = 0;
     quint64 cdprVelocityRunId_ = 0;
     bool cdprVelocityAutoRecording_ = false;
+    QString cdprRunRecordDirectory_;
+    QJsonObject cdprRunContext_;
+    QFutureWatcher<CdprVirtualConsistencyAnalysisResult> *cdprAnalysisWatcher_ = nullptr;
     quint16 pointMoveAxis_ = 0;
     bool pointMoveDiagnosticPending_ = false;
     double pointMoveRequestedTargetUnit_ = 0.0;
