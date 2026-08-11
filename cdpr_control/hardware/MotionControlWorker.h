@@ -152,6 +152,7 @@ private:
     void updateCdprRunContext(const QString &key, const QJsonValue &value);
     void startCdprVirtualConsistencyAnalysis(const QString &directory);
     void finishCdprRunRecording(const QString &eventText, bool &autoRecordingFlag);
+    QString cdprVelocityPerformanceSummary(const QString &prefix) const;
     void applyTraceDelayCompensation(const QVector<TraceTelemetryFrame> &frames);
     void loadTraceDelayCalibrationResults();
     void saveTraceDelayCalibrationResults();
@@ -290,11 +291,14 @@ private:
     QElapsedTimer cdprVelocityRunClock_;
     QElapsedTimer cdprVelocityCycleClock_;
     QElapsedTimer cdprVelocityTraceFreshClock_;
+    QElapsedTimer cdprVelocityStatusPublishClock_;
+    QElapsedTimer cdprVelocityPerformanceLogClock_;
     quint64 cdprVelocityLastTraceSequence_ = 0;
     // 八轴控制以 cdprVelocityRunClock_ 的主机单调时间推进。首帧序号只用于
     // 将 Trace 相对时间映射回该主机运行起点，以计算延迟对齐跟随误差。
     quint64 cdprVelocityStartTraceSequence_ = 0;
     bool cdprVelocityProtectionArmedLogged_ = false;
+    quint64 cdprVelocitySchedulingSampleCount_ = 0;
     quint64 cdprVelocityRunId_ = 0;
     bool cdprVelocityAutoRecording_ = false;
     QString cdprRunRecordDirectory_;

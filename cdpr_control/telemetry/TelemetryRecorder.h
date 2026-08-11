@@ -2,6 +2,7 @@
 #define TELEMETRYRECORDER_H
 
 #include <atomic>
+#include <array>
 
 #include <QMutex>
 #include <QString>
@@ -11,6 +12,23 @@
 
 class QThread;
 class TelemetryWriterWorker;
+
+struct ControlCycleTimingSample
+{
+    quint64 runId = 0;
+    quint64 cycleIndex = 0;
+    quint64 hostElapsedUs = 0;
+    quint32 targetPeriodUs = 0;
+    quint32 schedulingIntervalUs = 0;
+    quint32 tracePollUs = 0;
+    quint32 calculationUs = 0;
+    quint32 apiTotalUs = 0;
+    quint32 fullCycleUs = 0;
+    std::array<quint32, 8> axisApiUs {};
+    quint16 slowestAxis = 0;
+    quint16 traceFramesRead = 0;
+    quint32 estimatedMissedCycles = 0;
+};
 
 struct TelemetryRunMetadata
 {
@@ -35,6 +53,7 @@ public:
     bool start(const TelemetryRunMetadata &metadata, QString &errorMessage);
     void stop();
     void pushFrames(const QVector<TraceTelemetryFrame> &frames);
+    void pushControlCycleTiming(const ControlCycleTimingSample &sample);
     void appendEvent(const QString &eventText);
     TelemetryRecorderStatus status() const;
 
@@ -42,9 +61,11 @@ private:
     friend class TelemetryWriterWorker;
 
     int takeBatch(QVector<TraceTelemetryFrame> &batch, int maximum);
+    int takeTimingBatch(QVector<ControlCycleTimingSample> &batch, int maximum);
     void setWriterError(const QString &errorText);
     void setOutputDirectory(const QString &directory);
     void addWrittenFrames(quint64 count);
+    void addWrittenTimingSamples(quint64 count);
 
     static constexpr quint32 kRingCapacity = 32768;
     QVector<TraceTelemetryFrame> ring_;
@@ -52,6 +73,12 @@ private:
     std::atomic<quint32> readIndex_ {0};
     std::atomic<quint64> writtenFrames_ {0};
     std::atomic<quint64> droppedFrames_ {0};
+    static constexpr quint32 kTimingRingCapacity = 32768;
+    QVector<ControlCycleTimingSample> timingRing_;
+    std::atomic<quint32> timingWriteIndex_ {0};
+    std::atomic<quint32> timingReadIndex_ {0};
+    std::atomic<quint64> writtenTimingSamples_ {0};
+    std::atomic<quint64> droppedTimingSamples_ {0};
     std::atomic_bool recording_ {false};
     quint64 firstRecordedTraceTimeUs_ = 0;
     bool hasFirstRecordedTraceTime_ = false;

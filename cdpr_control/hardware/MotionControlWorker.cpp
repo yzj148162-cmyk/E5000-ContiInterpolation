@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 constexpr int kStopPollIntervalMs = 10;
@@ -436,9 +437,13 @@ void MotionControlWorker::stopTelemetryRecording()
     telemetryRecorder_.stop();
     manualTelemetryRecording_ = false;
     const TelemetryRecorderStatus after = telemetryRecorder_.status();
-    emit logMessage(QStringLiteral("Trace 数据记录已停止：写入 %1 帧，丢弃 %2 帧。")
+    emit logMessage(QStringLiteral(
+                        "Trace 数据记录已停止：写入 %1 帧，丢弃 %2 帧；"
+                        "周期耗时写入 %3 条，丢弃 %4 条。")
                         .arg(after.writtenFrames)
-                        .arg(after.droppedFrames));
+                        .arg(after.droppedFrames)
+                        .arg(after.writtenTimingSamples)
+                        .arg(after.droppedTimingSamples));
     publishStatus();
 }
 
@@ -1320,6 +1325,7 @@ void MotionControlWorker::startCdprVelocityControl(
     cdprVelocityLastTraceTimeUs_.fill(0);
     cdprVelocityStartTraceSequence_ = 0;
     cdprVelocityProtectionArmedLogged_ = false;
+    cdprVelocitySchedulingSampleCount_ = 0;
     for (PositionVelocityPid &pid : cdprVelocityPids_) {
         pid.reset();
     }
@@ -1327,6 +1333,8 @@ void MotionControlWorker::startCdprVelocityControl(
     cdprVelocityRunClock_.invalidate();
     cdprVelocityCycleClock_.invalidate();
     cdprVelocityTraceFreshClock_.start();
+    cdprVelocityStatusPublishClock_.start();
+    cdprVelocityPerformanceLogClock_.start();
     feedbackTimer_->stop();
     cdprVelocityControlTimer_->setInterval(config.controlPeriodMs);
     cdprVelocityControlTimer_->start();
@@ -1345,13 +1353,26 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         cdprVelocityControlTimer_->stop();
         return;
     }
-    const double commandDt = cdprVelocityCycleClock_.isValid()
-        ? std::max(0.000001, cdprVelocityCycleClock_.restart() / 1000.0)
-        : (cdprVelocityCycleClock_.start(), cdprVelocityConfig_.controlPeriodMs / 1000.0);
+    QElapsedTimer fullCycleClock;
+    fullCycleClock.start();
+    const bool schedulingIntervalValid = cdprVelocityCycleClock_.isValid();
+    const qint64 schedulingIntervalNs = schedulingIntervalValid
+        ? cdprVelocityCycleClock_.nsecsElapsed()
+        : static_cast<qint64>(cdprVelocityConfig_.controlPeriodMs) * 1000000LL;
+    if (schedulingIntervalValid) {
+        cdprVelocityCycleClock_.restart();
+    } else {
+        cdprVelocityCycleClock_.start();
+    }
+    const double commandDt = std::max(0.000001,
+        static_cast<double>(schedulingIntervalNs) / 1000000000.0);
+    QElapsedTimer tracePollClock;
+    tracePollClock.start();
     if (!pollTraceFeedback()) {
         finishCdprVelocityControl(QStringLiteral("八轴速度闭环 Trace 读取失败：%1").arg(traceStateText_), true);
         return;
     }
+    const qint64 tracePollNs = tracePollClock.nsecsElapsed();
     const bool traceFresh = latestTraceSequence_ != cdprVelocityLastTraceSequence_;
     if (traceFresh) {
         cdprVelocityLastTraceSequence_ = latestTraceSequence_;
@@ -1434,8 +1455,12 @@ void MotionControlWorker::runCdprVelocityControlCycle()
     pidConfig.startVelocityThresholdDegreePerSecond = cdprVelocityConfig_.startVelocityThresholdDegreePerSecond;
 
     double maximumError = 0.0;
-    QElapsedTimer apiClock;
-    apiClock.start();
+    QElapsedTimer calculationAndApiClock;
+    calculationAndApiClock.start();
+    qint64 apiTotalNs = 0;
+    std::array<quint32, kCdprCableCount> axisApiUs {};
+    int currentSlowestAxis = -1;
+    qint64 currentSlowestAxisApiNs = 0;
     for (int cable = 0; cable < kCdprCableCount; ++cable) {
         const size_t index = static_cast<size_t>(cable);
         const quint16 axis = cdprVelocityPlan_.axes[index];
@@ -1538,10 +1563,14 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         QString error;
         short apiResult = 0;
         bool ok = true;
+        qint64 axisApiNs = 0;
         if (!cdprVelocityAxisStarted_[index]) {
             if (std::abs(output.commandVelocity)
                 >= cdprVelocityConfig_.startVelocityThresholdDegreePerSecond) {
+                QElapsedTimer axisApiClock;
+                axisApiClock.start();
                 ok = card_.startVelocityMove(pidConfig, output.commandVelocity, error);
+                axisApiNs = axisApiClock.nsecsElapsed();
                 cdprVelocityAxisStarted_[index] = ok;
                 cdprVelocityDirection_[index] = output.commandVelocity >= 0.0 ? 1 : -1;
                 if (ok) {
@@ -1550,7 +1579,17 @@ void MotionControlWorker::runCdprVelocityControlCycle()
                 }
             }
         } else {
+            QElapsedTimer axisApiClock;
+            axisApiClock.start();
             ok = card_.changeVelocity(pidConfig, output.commandVelocity, apiResult, error);
+            axisApiNs = axisApiClock.nsecsElapsed();
+        }
+        apiTotalNs += axisApiNs;
+        axisApiUs[index] = static_cast<quint32>(std::clamp<qint64>(
+            (axisApiNs + 500LL) / 1000LL, 0, std::numeric_limits<quint32>::max()));
+        if (axisApiNs > currentSlowestAxisApiNs) {
+            currentSlowestAxisApiNs = axisApiNs;
+            currentSlowestAxis = axis;
         }
         if (!ok) {
             finishCdprVelocityControl(QStringLiteral("八轴速度闭环：轴 %1 速度命令失败：%2")
@@ -1558,6 +1597,8 @@ void MotionControlWorker::runCdprVelocityControlCycle()
             return;
         }
     }
+    const qint64 calculationAndApiNs = calculationAndApiClock.nsecsElapsed();
+    const qint64 calculationNs = std::max<qint64>(0, calculationAndApiNs - apiTotalNs);
     cdprVelocityStatus_.active = true;
     cdprVelocityStatus_.motionStarted = std::any_of(cdprVelocityAxisStarted_.cbegin(),
                                                       cdprVelocityAxisStarted_.cend(),
@@ -1603,8 +1644,92 @@ void MotionControlWorker::runCdprVelocityControlCycle()
     }
     cdprVelocityStatus_.elapsedS = elapsedS;
     cdprVelocityStatus_.controlDtMs = commandDt * 1000.0;
-    cdprVelocityStatus_.maximumCycleMs = std::max(cdprVelocityStatus_.maximumCycleMs,
-                                                   apiClock.nsecsElapsed() / 1000000.0);
+    const qint64 fullCycleNs = fullCycleClock.nsecsElapsed();
+    const double schedulingIntervalMs = schedulingIntervalNs / 1000000.0;
+    const double tracePollMs = tracePollNs / 1000000.0;
+    const double calculationMs = calculationNs / 1000000.0;
+    const double apiTotalMs = apiTotalNs / 1000000.0;
+    const double fullCycleMs = fullCycleNs / 1000000.0;
+    const quint64 sampleCount = ++cdprVelocityStatus_.timingSampleCount;
+    if (schedulingIntervalValid) {
+        const double intervalCount = static_cast<double>(
+            ++cdprVelocitySchedulingSampleCount_);
+        cdprVelocityStatus_.averageControlDtMs +=
+            (schedulingIntervalMs - cdprVelocityStatus_.averageControlDtMs)
+            / intervalCount;
+        cdprVelocityStatus_.maximumControlDtMs = std::max(
+            cdprVelocityStatus_.maximumControlDtMs, schedulingIntervalMs);
+    }
+    const double count = static_cast<double>(sampleCount);
+    cdprVelocityStatus_.currentFullCycleMs = fullCycleMs;
+    cdprVelocityStatus_.averageFullCycleMs +=
+        (fullCycleMs - cdprVelocityStatus_.averageFullCycleMs) / count;
+    cdprVelocityStatus_.maximumFullCycleMs = std::max(
+        cdprVelocityStatus_.maximumFullCycleMs, fullCycleMs);
+    cdprVelocityStatus_.averageTracePollMs +=
+        (tracePollMs - cdprVelocityStatus_.averageTracePollMs) / count;
+    cdprVelocityStatus_.maximumTracePollMs = std::max(
+        cdprVelocityStatus_.maximumTracePollMs, tracePollMs);
+    cdprVelocityStatus_.averageCalculationMs +=
+        (calculationMs - cdprVelocityStatus_.averageCalculationMs) / count;
+    cdprVelocityStatus_.maximumCalculationMs = std::max(
+        cdprVelocityStatus_.maximumCalculationMs, calculationMs);
+    cdprVelocityStatus_.averageApiTotalMs +=
+        (apiTotalMs - cdprVelocityStatus_.averageApiTotalMs) / count;
+    cdprVelocityStatus_.maximumApiTotalMs = std::max(
+        cdprVelocityStatus_.maximumApiTotalMs, apiTotalMs);
+    if (currentSlowestAxisApiNs / 1000000.0
+        > cdprVelocityStatus_.maximumSingleAxisApiMs) {
+        cdprVelocityStatus_.maximumSingleAxisApiMs =
+            currentSlowestAxisApiNs / 1000000.0;
+        cdprVelocityStatus_.slowestAxis = currentSlowestAxis;
+    }
+    cdprVelocityStatus_.latestTraceFramesRead = traceFramesRead_;
+    const qint64 targetPeriodNs =
+        static_cast<qint64>(cdprVelocityConfig_.controlPeriodMs) * 1000000LL;
+    if (fullCycleNs > targetPeriodNs) {
+        ++cdprVelocityStatus_.executionOverrunCount;
+    }
+    quint32 missedCycles = 0;
+    if (schedulingIntervalValid) {
+        if (schedulingIntervalNs * 2LL > targetPeriodNs * 3LL) {
+            ++cdprVelocityStatus_.schedulingOverrunCount;
+        }
+        const qint64 elapsedPeriods = std::max<qint64>(
+            1, qRound64(static_cast<double>(schedulingIntervalNs)
+                        / static_cast<double>(targetPeriodNs)));
+        missedCycles = static_cast<quint32>(std::min<qint64>(
+            elapsedPeriods - 1LL, std::numeric_limits<quint32>::max()));
+        cdprVelocityStatus_.estimatedMissedCycles += missedCycles;
+    }
+    ControlCycleTimingSample timingSample;
+    timingSample.runId = cdprVelocityStatus_.runId;
+    timingSample.cycleIndex = sampleCount;
+    timingSample.hostElapsedUs = static_cast<quint64>(
+        std::max<qint64>(0, qRound64(elapsedS * 1000000.0)));
+    timingSample.targetPeriodUs = static_cast<quint32>(
+        cdprVelocityConfig_.controlPeriodMs * 1000);
+    timingSample.schedulingIntervalUs = schedulingIntervalValid
+        ? static_cast<quint32>(std::clamp<qint64>(
+              (schedulingIntervalNs + 500LL) / 1000LL, 0,
+              std::numeric_limits<quint32>::max()))
+        : 0;
+    timingSample.tracePollUs = static_cast<quint32>(std::clamp<qint64>(
+        (tracePollNs + 500LL) / 1000LL, 0, std::numeric_limits<quint32>::max()));
+    timingSample.calculationUs = static_cast<quint32>(std::clamp<qint64>(
+        (calculationNs + 500LL) / 1000LL, 0, std::numeric_limits<quint32>::max()));
+    timingSample.apiTotalUs = static_cast<quint32>(std::clamp<qint64>(
+        (apiTotalNs + 500LL) / 1000LL, 0, std::numeric_limits<quint32>::max()));
+    timingSample.fullCycleUs = static_cast<quint32>(std::clamp<qint64>(
+        (fullCycleNs + 500LL) / 1000LL, 0, std::numeric_limits<quint32>::max()));
+    timingSample.axisApiUs = axisApiUs;
+    timingSample.slowestAxis = static_cast<quint16>(
+        std::max(0, currentSlowestAxis));
+    timingSample.traceFramesRead = static_cast<quint16>(
+        std::clamp(traceFramesRead_, 0,
+                   static_cast<int>(std::numeric_limits<quint16>::max())));
+    timingSample.estimatedMissedCycles = missedCycles;
+    telemetryRecorder_.pushControlCycleTiming(timingSample);
     cdprVelocityStatus_.maximumTrackingErrorDegree = std::max(
         cdprVelocityStatus_.maximumTrackingErrorDegree, maximumError);
     cdprVelocityStatus_.stateText = elapsedS < cdprVelocityPlan_.timeS.constLast()
@@ -1613,8 +1738,20 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         finishCdprVelocityControl(QStringLiteral("八轴速度闭环轨迹结束，已执行 1 s 终点收敛。"), false);
         return;
     }
-    emit cdprVelocityControlStatusChanged(cdprVelocityStatus_);
-    publishStatus();
+    if (!cdprVelocityPerformanceLogClock_.isValid()
+        || cdprVelocityPerformanceLogClock_.elapsed() >= 2000) {
+        cdprVelocityPerformanceLogClock_.restart();
+        const QString summary = cdprVelocityPerformanceSummary(
+            QStringLiteral("八轴周期性能"));
+        emit logMessage(summary);
+        telemetryRecorder_.appendEvent(summary);
+    }
+    if (!cdprVelocityStatusPublishClock_.isValid()
+        || cdprVelocityStatusPublishClock_.elapsed() >= 100) {
+        cdprVelocityStatusPublishClock_.restart();
+        emit cdprVelocityControlStatusChanged(cdprVelocityStatus_);
+        publishStatus();
+    }
 }
 
 void MotionControlWorker::stopCdprVelocityControl(bool emergency)
@@ -1623,6 +1760,36 @@ void MotionControlWorker::stopCdprVelocityControl(bool emergency)
         finishCdprVelocityControl(emergency ? QStringLiteral("八轴速度闭环已立即停止。")
                                             : QStringLiteral("八轴速度闭环已减速停止。"), emergency);
     }
+}
+
+QString MotionControlWorker::cdprVelocityPerformanceSummary(
+    const QString &prefix) const
+{
+    return QStringLiteral(
+        "%1：样本=%2，设定/实际周期均值/最大=%3/%4/%5 ms，"
+        "完整周期均值/最大=%6/%7 ms，Trace均值/最大=%8/%9 ms，"
+        "计算均值/最大=%10/%11 ms，八轴API均值/最大=%12/%13 ms，"
+        "最慢单轴=轴%14/%15 ms，执行超时/调度超时=%16/%17，"
+        "估算漏周期=%18，本次Trace=%19帧。")
+        .arg(prefix)
+        .arg(cdprVelocityStatus_.timingSampleCount)
+        .arg(static_cast<double>(cdprVelocityConfig_.controlPeriodMs), 0, 'f', 3)
+        .arg(cdprVelocityStatus_.averageControlDtMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.maximumControlDtMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.averageFullCycleMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.maximumFullCycleMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.averageTracePollMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.maximumTracePollMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.averageCalculationMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.maximumCalculationMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.averageApiTotalMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.maximumApiTotalMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.slowestAxis)
+        .arg(cdprVelocityStatus_.maximumSingleAxisApiMs, 0, 'f', 3)
+        .arg(cdprVelocityStatus_.executionOverrunCount)
+        .arg(cdprVelocityStatus_.schedulingOverrunCount)
+        .arg(cdprVelocityStatus_.estimatedMissedCycles)
+        .arg(cdprVelocityStatus_.latestTraceFramesRead);
 }
 
 void MotionControlWorker::finishCdprVelocityControl(const QString &message, bool emergency)
@@ -1651,6 +1818,12 @@ void MotionControlWorker::finishCdprVelocityControl(const QString &message, bool
     cdprVelocityStatus_.stateText = emergency ? QStringLiteral("八轴闭环异常停止")
                                                : QStringLiteral("八轴闭环已完成");
     stateText_ = cdprVelocityStatus_.stateText;
+    if (cdprVelocityStatus_.timingSampleCount > 0) {
+        const QString performanceSummary = cdprVelocityPerformanceSummary(
+            QStringLiteral("八轴周期性能最终统计"));
+        telemetryRecorder_.appendEvent(performanceSummary);
+        emit logMessage(performanceSummary);
+    }
     finishCdprRunRecording(
         QStringLiteral("cdpr_velocity_control_finished emergency=%1 message=%2")
             .arg(emergency ? 1 : 0)
@@ -1846,9 +2019,13 @@ void MotionControlWorker::finishCdprRunRecording(const QString &eventText,
     telemetryRecorder_.appendEvent(eventText);
     telemetryRecorder_.stop();
     const TelemetryRecorderStatus result = telemetryRecorder_.status();
-    emit logMessage(QStringLiteral("CDPR 运行记录已停止：写入 %1 帧，丢弃 %2 帧，目录=%3。")
+    emit logMessage(QStringLiteral(
+                        "CDPR 运行记录已停止：Trace写入 %1 帧、丢弃 %2 帧；"
+                        "周期耗时写入 %3 条、丢弃 %4 条；目录=%5。")
                         .arg(result.writtenFrames)
                         .arg(result.droppedFrames)
+                        .arg(result.writtenTimingSamples)
+                        .arg(result.droppedTimingSamples)
                         .arg(result.outputDirectory));
     autoRecordingFlag = false;
     const QString analysisDirectory = cdprRunRecordDirectory_;
@@ -5214,7 +5391,9 @@ bool MotionControlWorker::configureFeedbackTrace(const QVector<quint16> &axes,
     const bool emptyPreparedRecording = allowEmptyActiveRecording
         && recorderStatus.recording
         && recorderStatus.queuedFrames == 0
-        && recorderStatus.writtenFrames == 0;
+        && recorderStatus.writtenFrames == 0
+        && recorderStatus.queuedTimingSamples == 0
+        && recorderStatus.writtenTimingSamples == 0;
     if (recorderStatus.recording && !emptyPreparedRecording) {
         errorMessage = QStringLiteral("Trace 数据记录进行中，不能切换测试轴或重配 Trace；请先停止记录。");
         return false;

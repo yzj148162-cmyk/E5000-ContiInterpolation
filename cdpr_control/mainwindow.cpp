@@ -830,12 +830,31 @@ void MainWindow::updateCdprVelocityControlStatus(
 {
     cdprVelocityControlStatus_ = status;
     ui_->cdprRtStatusLabel->setText(
-        QStringLiteral("%1；t=%2 s，周期=%3 ms，最大调用耗时=%4 ms，最大轨迹误差=%5°")
+        QStringLiteral(
+            "%1；t=%2 s，设定/实际周期均值/最大=%3/%4/%5 ms，最大轨迹误差=%6°\n"
+            "周期性能：完整均值/最大=%7/%8 ms，Trace=%9/%10 ms，计算=%11/%12 ms，"
+            "八轴API=%13/%14 ms，最慢轴%15=%16 ms，超时(执行/调度)=%17/%18，"
+            "估算漏周期=%19，本次Trace=%20帧")
             .arg(status.stateText)
             .arg(status.elapsedS, 0, 'f', 3)
-            .arg(status.controlDtMs, 0, 'f', 3)
-            .arg(status.maximumCycleMs, 0, 'f', 3)
-            .arg(status.maximumTrackingErrorDegree, 0, 'f', 4));
+            .arg(ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst())
+            .arg(status.averageControlDtMs, 0, 'f', 3)
+            .arg(status.maximumControlDtMs, 0, 'f', 3)
+            .arg(status.maximumTrackingErrorDegree, 0, 'f', 4)
+            .arg(status.averageFullCycleMs, 0, 'f', 3)
+            .arg(status.maximumFullCycleMs, 0, 'f', 3)
+            .arg(status.averageTracePollMs, 0, 'f', 3)
+            .arg(status.maximumTracePollMs, 0, 'f', 3)
+            .arg(status.averageCalculationMs, 0, 'f', 3)
+            .arg(status.maximumCalculationMs, 0, 'f', 3)
+            .arg(status.averageApiTotalMs, 0, 'f', 3)
+            .arg(status.maximumApiTotalMs, 0, 'f', 3)
+            .arg(status.slowestAxis)
+            .arg(status.maximumSingleAxisApiMs, 0, 'f', 3)
+            .arg(status.executionOverrunCount)
+            .arg(status.schedulingOverrunCount)
+            .arg(status.estimatedMissedCycles)
+            .arg(status.latestTraceFramesRead));
     ui_->cdprRtPrepareButton->setEnabled(!status.active);
     ui_->cdprRtStartButton->setEnabled(
         !status.active && cdprVelocityPlan_.valid
@@ -1609,11 +1628,16 @@ void MainWindow::updateStatus(const ContiStatus &status)
         ? QStringLiteral("尚未创建；开始记录后自动创建 records/run_*")
         : status.recorder.outputDirectory;
     ui_->recordingStateValueLabel->setToolTip(
-        QStringLiteral("输出目录：%1\n写入 / 队列 / 丢帧：%2 / %3 / %4")
+        QStringLiteral(
+            "输出目录：%1\nTrace 写入 / 队列 / 丢帧：%2 / %3 / %4\n"
+            "周期耗时 写入 / 队列 / 丢弃：%5 / %6 / %7")
             .arg(recordDirectory)
             .arg(status.recorder.writtenFrames)
             .arg(status.recorder.queuedFrames)
-            .arg(status.recorder.droppedFrames));
+            .arg(status.recorder.droppedFrames)
+            .arg(status.recorder.writtenTimingSamples)
+            .arg(status.recorder.queuedTimingSamples)
+            .arg(status.recorder.droppedTimingSamples));
     const quint16 selectedAxis =
         static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt());
     const AxisFeedback *selectedFeedback = nullptr;

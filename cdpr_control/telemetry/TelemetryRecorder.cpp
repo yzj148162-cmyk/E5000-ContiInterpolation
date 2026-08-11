@@ -11,10 +11,12 @@
 #include <QTimer>
 
 #include <algorithm>
+#include <utility>
 
 namespace {
 constexpr int kWriterIntervalMs = 100;
 constexpr int kWriterBatchFrames = 4096;
+constexpr int kWriterBatchTimingSamples = 4096;
 
 QString createRunDirectory(const QString &rootDirectory, QString &error)
 {
@@ -92,6 +94,22 @@ public:
             traceFile_.close();
             return false;
         }
+        timingFile_.setFileName(
+            QDir(runDirectory_).filePath(QStringLiteral("control_cycle_timing.csv")));
+        if (!timingFile_.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)) {
+            error = QStringLiteral("无法打开 control_cycle_timing.csv：%1")
+                        .arg(timingFile_.errorString());
+            eventFile_.close();
+            traceFile_.close();
+            return false;
+        }
+        timingFile_.write(
+            "run_id,cycle_index,host_elapsed_us,target_period_us,"
+            "scheduling_interval_us,trace_poll_us,calculation_us,api_total_us,"
+            "full_cycle_us,cable0_axis_api_us,cable1_axis_api_us,"
+            "cable2_axis_api_us,cable3_axis_api_us,cable4_axis_api_us,"
+            "cable5_axis_api_us,cable6_axis_api_us,cable7_axis_api_us,slowest_axis,"
+            "trace_frames_read,estimated_missed_cycles\n");
         writeEvent(QStringLiteral("recording_started"));
         if (timer_ == nullptr) {
             timer_ = new QTimer(this);
@@ -120,10 +138,19 @@ public:
             traceFile_.flush();
             traceFile_.close();
         }
+        if (timingFile_.isOpen()) {
+            timingFile_.flush();
+            timingFile_.close();
+        }
         runDirectory_.clear();
     }
 
     int drain()
+    {
+        return drainTraceFrames() + drainTimingSamples();
+    }
+
+    int drainTraceFrames()
     {
         if (!traceFile_.isOpen()) {
             return 0;
@@ -140,6 +167,60 @@ public:
             return count;
         }
         recorder_->addWrittenFrames(static_cast<quint64>(count));
+        return count;
+    }
+
+    int drainTimingSamples()
+    {
+        if (!timingFile_.isOpen()) {
+            return 0;
+        }
+        timingBatch_.clear();
+        const int count = recorder_->takeTimingBatch(
+            timingBatch_, kWriterBatchTimingSamples);
+        if (count <= 0) {
+            return 0;
+        }
+        QByteArray output;
+        output.reserve(count * 220);
+        for (const ControlCycleTimingSample &sample : std::as_const(timingBatch_)) {
+            output.append(QByteArray::number(sample.runId));
+            output.append(',');
+            output.append(QByteArray::number(sample.cycleIndex));
+            output.append(',');
+            output.append(QByteArray::number(sample.hostElapsedUs));
+            output.append(',');
+            output.append(QByteArray::number(sample.targetPeriodUs));
+            output.append(',');
+            output.append(QByteArray::number(sample.schedulingIntervalUs));
+            output.append(',');
+            output.append(QByteArray::number(sample.tracePollUs));
+            output.append(',');
+            output.append(QByteArray::number(sample.calculationUs));
+            output.append(',');
+            output.append(QByteArray::number(sample.apiTotalUs));
+            output.append(',');
+            output.append(QByteArray::number(sample.fullCycleUs));
+            for (const quint32 axisUs : sample.axisApiUs) {
+                output.append(',');
+                output.append(QByteArray::number(axisUs));
+            }
+            output.append(',');
+            output.append(QByteArray::number(sample.slowestAxis));
+            output.append(',');
+            output.append(QByteArray::number(sample.traceFramesRead));
+            output.append(',');
+            output.append(QByteArray::number(sample.estimatedMissedCycles));
+            output.append('\n');
+        }
+        const qint64 written = timingFile_.write(output);
+        if (written != output.size()) {
+            recorder_->setWriterError(
+                QStringLiteral("写入 control_cycle_timing.csv 失败：%1")
+                    .arg(timingFile_.errorString()));
+            return count;
+        }
+        recorder_->addWrittenTimingSamples(static_cast<quint64>(count));
         return count;
     }
 
@@ -163,12 +244,15 @@ private:
     QTimer *timer_ = nullptr;
     QFile traceFile_;
     QFile eventFile_;
+    QFile timingFile_;
     QString runDirectory_;
     QVector<TraceTelemetryFrame> batch_;
+    QVector<ControlCycleTimingSample> timingBatch_;
 };
 
 TelemetryRecorder::TelemetryRecorder()
     : ring_(static_cast<qsizetype>(kRingCapacity))
+    , timingRing_(static_cast<qsizetype>(kTimingRingCapacity))
     , writerThread_(new QThread)
     , writer_(new TelemetryWriterWorker(this))
 {
@@ -196,6 +280,10 @@ bool TelemetryRecorder::start(const TelemetryRunMetadata &metadata, QString &err
     readIndex_.store(0, std::memory_order_release);
     writtenFrames_.store(0, std::memory_order_release);
     droppedFrames_.store(0, std::memory_order_release);
+    timingWriteIndex_.store(0, std::memory_order_release);
+    timingReadIndex_.store(0, std::memory_order_release);
+    writtenTimingSamples_.store(0, std::memory_order_release);
+    droppedTimingSamples_.store(0, std::memory_order_release);
     firstRecordedTraceTimeUs_ = 0;
     hasFirstRecordedTraceTime_ = false;
     {
@@ -245,6 +333,22 @@ void TelemetryRecorder::pushFrames(const QVector<TraceTelemetryFrame> &frames)
     }
 }
 
+void TelemetryRecorder::pushControlCycleTiming(
+    const ControlCycleTimingSample &sample)
+{
+    if (!recording_.load(std::memory_order_acquire)) {
+        return;
+    }
+    const quint32 write = timingWriteIndex_.load(std::memory_order_relaxed);
+    const quint32 next = (write + 1U) % kTimingRingCapacity;
+    if (next == timingReadIndex_.load(std::memory_order_acquire)) {
+        droppedTimingSamples_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    timingRing_[static_cast<qsizetype>(write)] = sample;
+    timingWriteIndex_.store(next, std::memory_order_release);
+}
+
 void TelemetryRecorder::appendEvent(const QString &eventText)
 {
     if (!recording_.load(std::memory_order_acquire)) {
@@ -264,6 +368,15 @@ TelemetryRecorderStatus TelemetryRecorder::status() const
     result.queuedFrames = write >= read ? write - read : kRingCapacity - read + write;
     result.writtenFrames = writtenFrames_.load(std::memory_order_acquire);
     result.droppedFrames = droppedFrames_.load(std::memory_order_acquire);
+    const quint32 timingWrite = timingWriteIndex_.load(std::memory_order_acquire);
+    const quint32 timingRead = timingReadIndex_.load(std::memory_order_acquire);
+    result.queuedTimingSamples = timingWrite >= timingRead
+        ? timingWrite - timingRead
+        : kTimingRingCapacity - timingRead + timingWrite;
+    result.writtenTimingSamples =
+        writtenTimingSamples_.load(std::memory_order_acquire);
+    result.droppedTimingSamples =
+        droppedTimingSamples_.load(std::memory_order_acquire);
     QMutexLocker locker(&statusMutex_);
     result.outputDirectory = outputDirectory_;
     result.errorText = errorText_;
@@ -284,6 +397,21 @@ int TelemetryRecorder::takeBatch(QVector<TraceTelemetryFrame> &batch, int maximu
     return batch.size();
 }
 
+int TelemetryRecorder::takeTimingBatch(
+    QVector<ControlCycleTimingSample> &batch, int maximum)
+{
+    const int limit = std::max(1, maximum);
+    batch.reserve(limit);
+    quint32 read = timingReadIndex_.load(std::memory_order_relaxed);
+    const quint32 write = timingWriteIndex_.load(std::memory_order_acquire);
+    while (read != write && batch.size() < limit) {
+        batch.push_back(timingRing_[static_cast<qsizetype>(read)]);
+        read = (read + 1U) % kTimingRingCapacity;
+    }
+    timingReadIndex_.store(read, std::memory_order_release);
+    return batch.size();
+}
+
 void TelemetryRecorder::setWriterError(const QString &errorText)
 {
     QMutexLocker locker(&statusMutex_);
@@ -299,4 +427,9 @@ void TelemetryRecorder::setOutputDirectory(const QString &directory)
 void TelemetryRecorder::addWrittenFrames(quint64 count)
 {
     writtenFrames_.fetch_add(count, std::memory_order_relaxed);
+}
+
+void TelemetryRecorder::addWrittenTimingSamples(quint64 count)
+{
+    writtenTimingSamples_.fetch_add(count, std::memory_order_relaxed);
 }

@@ -461,6 +461,9 @@ struct TelemetryRecorderStatus
     quint64 queuedFrames = 0;
     quint64 writtenFrames = 0;
     quint64 droppedFrames = 0;
+    quint64 queuedTimingSamples = 0;
+    quint64 writtenTimingSamples = 0;
+    quint64 droppedTimingSamples = 0;
     QString outputDirectory;
     QString errorText;
 };
