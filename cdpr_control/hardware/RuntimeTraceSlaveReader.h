@@ -117,6 +117,7 @@ private:
     int configReadbackMismatchCount_ = 0;
     QElapsedTimer productionRateClock_;
     std::vector<double> values_;
+    std::vector<unsigned char> readBuffer_;
     std::deque<Sample> samples_;
     quint64 nextSequence_ = 1;
 };

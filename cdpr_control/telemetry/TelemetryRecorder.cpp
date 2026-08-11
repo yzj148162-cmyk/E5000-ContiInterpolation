@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QMetaObject>
+#include <QSaveFile>
 #include <QThread>
 #include <QTimer>
 
@@ -53,10 +54,12 @@ public:
         if (runDirectory_.isEmpty()) {
             return false;
         }
+        runContext_ = {};
+        runContextDirty_ = false;
 
         QJsonObject root;
         root.insert(QStringLiteral("format"), QStringLiteral("Leadshine Motion Card Trace Telemetry"));
-    root.insert(QStringLiteral("formatVersion"), 3);
+        root.insert(QStringLiteral("formatVersion"), 3);
         root.insert(QStringLiteral("createdAt"), QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
         root.insert(QStringLiteral("cardNo"), static_cast<int>(metadata.cardNo));
         root.insert(QStringLiteral("traceSamplePeriodUs"), metadata.traceSamplePeriodUs);
@@ -69,6 +72,20 @@ public:
         root.insert(QStringLiteral("byteOrder"), QStringLiteral("little-endian"));
         root.insert(QStringLiteral("traceTimeOrigin"), QStringLiteral("first recorded Trace frame"));
         root.insert(QStringLiteral("description"), metadata.description);
+        QJsonArray traceDataTypes;
+        QString traceProfileText;
+        if (metadata.traceProfile == TraceFeedbackProfile::VelocityControl) {
+            traceProfileText = QStringLiteral("velocity_control_3_4_6");
+            traceDataTypes = QJsonArray {3, 4, 6};
+        } else if (metadata.traceProfile == TraceFeedbackProfile::PositionControl) {
+            traceProfileText = QStringLiteral("position_control_5_6");
+            traceDataTypes = QJsonArray {5, 6};
+        } else {
+            traceProfileText = QStringLiteral("full_3_4_5_6");
+            traceDataTypes = QJsonArray {3, 4, 5, 6};
+        }
+        root.insert(QStringLiteral("traceProfile"), traceProfileText);
+        root.insert(QStringLiteral("traceDataTypes"), traceDataTypes);
         QJsonArray axes;
         for (const quint16 axis : metadata.axes) {
             axes.append(static_cast<int>(axis));
@@ -129,6 +146,7 @@ public:
         }
         while (drain() > 0) {
         }
+        writeRunContextIfDirty();
         if (eventFile_.isOpen()) {
             writeEvent(QStringLiteral("recording_stopped"));
             eventFile_.flush();
@@ -147,7 +165,25 @@ public:
 
     int drain()
     {
-        return drainTraceFrames() + drainTimingSamples();
+        const int drained = drainTraceFrames() + drainTimingSamples();
+        writeRunContextIfDirty();
+        return drained;
+    }
+
+    bool initializeRunContext(const QJsonObject &context, QString &error)
+    {
+        runContext_ = context;
+        runContextDirty_ = true;
+        return writeRunContextIfDirty(&error);
+    }
+
+    void updateRunContext(const QString &key, const QJsonValue &value)
+    {
+        if (runDirectory_.isEmpty()) {
+            return;
+        }
+        runContext_.insert(key, value);
+        runContextDirty_ = true;
     }
 
     int drainTraceFrames()
@@ -232,6 +268,28 @@ public:
     }
 
 private:
+    bool writeRunContextIfDirty(QString *error = nullptr)
+    {
+        if (!runContextDirty_ || runDirectory_.isEmpty()) {
+            return true;
+        }
+        QSaveFile file(QDir(runDirectory_).filePath(QStringLiteral("run_context.json")));
+        const QByteArray payload = QJsonDocument(runContext_).toJson(QJsonDocument::Indented);
+        if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
+            || file.write(payload) != payload.size()
+            || !file.commit()) {
+            const QString message = QStringLiteral("无法异步写入CDPR运行上下文：%1")
+                                        .arg(file.errorString());
+            recorder_->setWriterError(message);
+            if (error != nullptr) {
+                *error = message;
+            }
+            return false;
+        }
+        runContextDirty_ = false;
+        return true;
+    }
+
     void writeEvent(const QString &event)
     {
         eventFile_.write(QDateTime::currentDateTime().toString(Qt::ISODateWithMs).toUtf8());
@@ -246,6 +304,8 @@ private:
     QFile eventFile_;
     QFile timingFile_;
     QString runDirectory_;
+    QJsonObject runContext_;
+    bool runContextDirty_ = false;
     QVector<TraceTelemetryFrame> batch_;
     QVector<ControlCycleTimingSample> timingBatch_;
 };
@@ -356,6 +416,30 @@ void TelemetryRecorder::appendEvent(const QString &eventText)
     }
     QMetaObject::invokeMethod(writer_, [this, eventText] {
         writer_->appendEvent(eventText);
+    }, Qt::QueuedConnection);
+}
+
+bool TelemetryRecorder::initializeRunContext(const QJsonObject &context,
+                                             QString &errorMessage)
+{
+    if (!recording_.load(std::memory_order_acquire)) {
+        errorMessage = QStringLiteral("数据记录尚未启动，无法初始化运行上下文。");
+        return false;
+    }
+    bool written = false;
+    const bool invoked = QMetaObject::invokeMethod(writer_, [&] {
+        written = writer_->initializeRunContext(context, errorMessage);
+    }, Qt::BlockingQueuedConnection);
+    return invoked && written;
+}
+
+void TelemetryRecorder::updateRunContext(const QString &key, const QJsonValue &value)
+{
+    if (!recording_.load(std::memory_order_acquire)) {
+        return;
+    }
+    QMetaObject::invokeMethod(writer_, [writer = writer_, key, value] {
+        writer->updateRunContext(key, value);
     }, Qt::QueuedConnection);
 }
 

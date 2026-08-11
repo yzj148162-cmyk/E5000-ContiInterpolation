@@ -336,9 +336,12 @@ int RuntimeTraceSlaveReader::readTraceCached()
     for (int drain = 0; drain < config_.maxDrainReads && validNum > 0; ++drain) {
         const int frameCount = std::max(1, std::min(validNum, config_.maxBufferBytes / layout.frameBytes));
         const int bufferSize = std::max(layout.frameBytes, frameCount * layout.frameBytes);
-        std::vector<unsigned char> buffer(static_cast<std::size_t>(bufferSize));
+        if (readBuffer_.size() < static_cast<std::size_t>(bufferSize)) {
+            readBuffer_.resize(static_cast<std::size_t>(bufferSize));
+        }
         int readBytes = 0;
-        lastResult_ = dmc_trace_get_data(static_cast<WORD>(config_.cardNo), bufferSize, buffer.data(), &readBytes);
+        lastResult_ = dmc_trace_get_data(static_cast<WORD>(config_.cardNo), bufferSize,
+                                         readBuffer_.data(), &readBytes);
         if (lastResult_ != 0 || readBytes < layout.frameBytes) {
             timingReliable_ = false;
             failureReason_ = lastResult_ != 0
@@ -357,7 +360,7 @@ int RuntimeTraceSlaveReader::readTraceCached()
         const int completeFrames = readBytes / layout.frameBytes;
         for (int frame = 0; frame < completeFrames; ++frame) {
             const unsigned char *frameData =
-                buffer.data() + frame * layout.frameBytes;
+                readBuffer_.data() + frame * layout.frameBytes;
             int offset = layout.valueStart;
             for (int objectIndex = 0; objectIndex < static_cast<int>(config_.objects.size()); ++objectIndex) {
                 const ObjectConfig &object = config_.objects[objectIndex];

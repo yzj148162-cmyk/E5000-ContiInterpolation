@@ -5,6 +5,8 @@
 #include <array>
 
 #include <QMutex>
+#include <QJsonObject>
+#include <QJsonValue>
 #include <QString>
 #include <QVector>
 
@@ -36,6 +38,7 @@ struct TelemetryRunMetadata
     QVector<quint16> axes;
     int traceSamplePeriodUs = 1000;
     double degreesPerCardUnit = 1.0;
+    TraceFeedbackProfile traceProfile = TraceFeedbackProfile::FullPositionVelocity;
     QString rootDirectory;
     QString description;
 };
@@ -55,6 +58,8 @@ public:
     void pushFrames(const QVector<TraceTelemetryFrame> &frames);
     void pushControlCycleTiming(const ControlCycleTimingSample &sample);
     void appendEvent(const QString &eventText);
+    bool initializeRunContext(const QJsonObject &context, QString &errorMessage);
+    void updateRunContext(const QString &key, const QJsonValue &value);
     TelemetryRecorderStatus status() const;
 
 private:

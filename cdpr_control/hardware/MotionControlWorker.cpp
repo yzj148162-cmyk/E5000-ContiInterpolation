@@ -346,7 +346,7 @@ void MotionControlWorker::initializeBoard(const ContiTestConfig &config)
     feedbackTimer_->start();
     emit logMessage(QStringLiteral("EtherCAT 总线周期已设置并读回：%1 us；Trace=%2 us（每总线周期采样一次）；轨迹规划=%3 ms（%4 个总线周期）。")
                         .arg(actualBusCycleUs_)
-                        .arg(card_.traceSamplePeriodUs())
+                        .arg(traceSamplePeriodUs_)
                         .arg(config_.producerPeriodMs)
                         .arg(config_.producerPeriodMs * 1000 / actualBusCycleUs_));
     emit logMessage(QStringLiteral("控制卡初始化成功：工作模式=EtherCAT，主站状态=8（OP），总线错误码=0；"
@@ -386,7 +386,7 @@ void MotionControlWorker::refreshBusCycle()
     } else {
         emit logMessage(QStringLiteral("EtherCAT 总线周期读回正常：%1 us；Trace=%2 us；规划周期=%3 ms（%4 个总线周期）。")
                             .arg(cycleUs)
-                            .arg(card_.traceSamplePeriodUs())
+                            .arg(traceSamplePeriodUs_)
                             .arg(config_.producerPeriodMs)
                             .arg(config_.producerPeriodMs * 1000 / cycleUs));
     }
@@ -407,9 +407,10 @@ void MotionControlWorker::startTelemetryRecording()
         return;
     }
     TelemetryRunMetadata metadata;
+    metadata.traceProfile = traceFeedbackProfile_;
     metadata.cardNo = initializedCardNo_;
     metadata.axes = traceAxes_;
-    metadata.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    metadata.traceSamplePeriodUs = traceSamplePeriodUs_;
     metadata.degreesPerCardUnit = config_.degreesPerCardUnit;
     metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("records"));
     metadata.description = QStringLiteral("雷赛运动控制卡 Trace：type 3/4 指令与实际速度＋type 5/6 指令与实际位置");
@@ -1020,7 +1021,8 @@ void MotionControlWorker::startOfflinePvt(const CdprOfflinePvtPlan &plan)
     }
     offlinePvtTraceWarningReported_ = false;
     offlinePvtTraceAvailable_ =
-        configureFeedbackTrace(axes, plan.request.degreesPerCardUnit, error);
+        configureFeedbackTrace(axes, plan.request.degreesPerCardUnit, error,
+                               TraceFeedbackProfile::PositionControl);
     if (!offlinePvtTraceAvailable_) {
         offlinePvtTraceWarningReported_ = true;
         emit logMessage(QStringLiteral(
@@ -1289,7 +1291,8 @@ void MotionControlWorker::startCdprVelocityControl(
         }
         axes.append(axis);
     }
-    if (!configureFeedbackTrace(axes, config.degreesPerCardUnit, error)) {
+    if (!configureFeedbackTrace(axes, config.degreesPerCardUnit, error,
+                                TraceFeedbackProfile::VelocityControl)) {
         enterError(QStringLiteral("八轴速度闭环 Trace 配置失败：%1").arg(error));
         return;
     }
@@ -1301,7 +1304,8 @@ void MotionControlWorker::startCdprVelocityControl(
     // 轨迹CSV和配置快照的同步导出可能耗时超过1 s。导出期间Trace已经开始采样，
     // 若直接使用随后读到的首批数据，会把启动前积压帧误当成实时反馈。记录准备
     // 完成后再次配置Trace，以硬件reset/start清空积压，再建立运行时间锚点。
-    if (!configureFeedbackTrace(axes, config.degreesPerCardUnit, error, true)) {
+    if (!configureFeedbackTrace(axes, config.degreesPerCardUnit, error,
+                                TraceFeedbackProfile::VelocityControl, true)) {
         finishCdprRunRecording(
             QStringLiteral("cdpr_velocity_trace_resync_failed: %1").arg(error),
             cdprVelocityAutoRecording_);
@@ -1495,7 +1499,7 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         // 主机运行时间；标定延迟只在跟随误差和其保护中扣除，不参与 PID 指令。
         const double traceFrameElapsedS =
             static_cast<double>(feedback.traceSequence - cdprVelocityStartTraceSequence_)
-            * std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
+            * std::max(1, traceSamplePeriodUs_) / 1000000.0;
         const double delayS = axis < static_cast<quint16>(traceDelayAxisResults_.size())
             ? std::max(0.0, traceDelayAxisResults_.at(axis).appliedDelayMs) / 1000.0
             : 0.0;
@@ -1526,9 +1530,9 @@ void MotionControlWorker::runCdprVelocityControlCycle()
             finishCdprVelocityControl(QStringLiteral(
                 "八轴速度闭环：轴 %1 延迟对齐跟随误差=规划位置(t-τ)-Trace实际位置(t)=%2°，"
                 "超过 %3°（τ=%4 ms）；主机时刻=%5 s，Trace序号/相对时刻=%6/%7 s，"
-                "对齐规划时刻=%8 s，起点/对齐规划/板卡指令/Trace实际=%9/%10/%11/%12°，"
-                "Trace指令/实际速度=%13/%14°/s，命令起始Trace序号=%15，"
-                "卡侧有效/剩余=%16/%17。")
+                "对齐规划时刻=%8 s，起点/对齐规划/Trace实际=%9/%10/%11°，"
+                "Trace指令/实际速度=%12/%13°/s，命令起始Trace序号=%14，"
+                "卡侧有效/剩余=%15/%16。")
                                           .arg(axis).arg(trackingError, 0, 'f', 4)
                                           .arg(cdprVelocityConfig_.maxFollowingErrorDegree, 0, 'f', 4)
                                           .arg(delayS * 1000.0, 0, 'f', 3)
@@ -1538,7 +1542,6 @@ void MotionControlWorker::runCdprVelocityControlCycle()
                                           .arg(alignedReferenceTimeS, 0, 'f', 6)
                                           .arg(cdprVelocityStartPositionDegree_[index], 0, 'f', 6)
                                           .arg(alignedExpectedPosition, 0, 'f', 6)
-                                          .arg(feedback.commandPositionUnit, 0, 'f', 6)
                                           .arg(feedback.encoderPositionUnit, 0, 'f', 6)
                                           .arg(feedback.commandVelocityUnitPerSecond, 0, 'f', 6)
                                           .arg(feedback.actualVelocityUnitPerSecond, 0, 'f', 6)
@@ -1547,7 +1550,7 @@ void MotionControlWorker::runCdprVelocityControlCycle()
                                           .arg(traceReadDiagnostics_.freeFrames), true);
             return;
         }
-        double feedbackDt = std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
+        double feedbackDt = std::max(1, traceSamplePeriodUs_) / 1000000.0;
         if (traceFresh && cdprVelocityLastTraceTimeUs_[index] != 0
             && feedback.traceTimeUs > cdprVelocityLastTraceTimeUs_[index]) {
             feedbackDt = (feedback.traceTimeUs - cdprVelocityLastTraceTimeUs_[index]) / 1000000.0;
@@ -1849,9 +1852,10 @@ bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
         axes.append(plan.axes[static_cast<size_t>(cable)]);
     }
     TelemetryRunMetadata metadata;
+    metadata.traceProfile = traceFeedbackProfile_;
     metadata.cardNo = initializedCardNo_;
     metadata.axes = axes;
-    metadata.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    metadata.traceSamplePeriodUs = traceSamplePeriodUs_;
     metadata.degreesPerCardUnit = plan.request.degreesPerCardUnit;
     metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
                                 .filePath(QStringLiteral("records"));
@@ -1970,18 +1974,7 @@ bool MotionControlWorker::exportCdprExpectedTrajectory(const CdprOfflinePvtPlan 
 
 bool MotionControlWorker::writeCdprRunContext(QString &errorMessage)
 {
-    if (cdprRunRecordDirectory_.isEmpty()) {
-        errorMessage = QStringLiteral("CDPR运行记录目录为空。");
-        return false;
-    }
-    QSaveFile file(QDir(cdprRunRecordDirectory_).filePath(QStringLiteral("run_context.json")));
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)
-        || file.write(QJsonDocument(cdprRunContext_).toJson(QJsonDocument::Indented)) < 0
-        || !file.commit()) {
-        errorMessage = QStringLiteral("无法写入CDPR运行上下文：%1").arg(file.errorString());
-        return false;
-    }
-    return true;
+    return telemetryRecorder_.initializeRunContext(cdprRunContext_, errorMessage);
 }
 
 void MotionControlWorker::updateCdprRunContext(const QString &key, const QJsonValue &value)
@@ -1990,10 +1983,9 @@ void MotionControlWorker::updateCdprRunContext(const QString &key, const QJsonVa
         return;
     }
     cdprRunContext_.insert(key, value);
-    QString error;
-    if (!writeCdprRunContext(error)) {
-        emit logMessage(QStringLiteral("CDPR运行记录上下文更新失败：%1").arg(error));
-    }
+    // 仅投递内存更新。JSON序列化和QSaveFile提交由记录线程按100 ms节拍合并执行，
+    // 不再阻塞八轴实时控制周期。
+    telemetryRecorder_.updateRunContext(key, value);
 }
 
 void MotionControlWorker::startCdprVirtualConsistencyAnalysis(const QString &directory)
@@ -2460,7 +2452,7 @@ void MotionControlWorker::startVelocityControl(const VelocityControlConfig &requ
     velocityFeedbackReferencePositionDegree_ = 0.0;
     velocityFeedbackReferenceVelocityDegreePerSecond_ = 0.0;
     velocityFeedbackPositionErrorDegree_ = 0.0;
-    velocityFeedbackDtSeconds_ = std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
+    velocityFeedbackDtSeconds_ = std::max(1, traceSamplePeriodUs_) / 1000000.0;
     velocityFeedbackReferenceValid_ = false;
     velocityLastDiagnosticMs_ = -1;
     pendingVelocityPlotSamples_.clear();
@@ -2479,9 +2471,10 @@ void MotionControlWorker::startVelocityControl(const VelocityControlConfig &requ
     velocityAlignedErrorFreshClock_.start();
 
     TelemetryRunMetadata metadata;
+    metadata.traceProfile = traceFeedbackProfile_;
     metadata.cardNo = initializedCardNo_;
     metadata.axes = {config.axis};
-    metadata.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    metadata.traceSamplePeriodUs = traceSamplePeriodUs_;
     metadata.degreesPerCardUnit = config.degreesPerCardUnit;
     metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
                                  .filePath(QStringLiteral("records"));
@@ -2767,7 +2760,7 @@ void MotionControlWorker::runVelocityControlCycle()
                 / 1000000.0;
         } else {
             velocityFeedbackDtSeconds_ =
-                std::max(1, card_.traceSamplePeriodUs()) / 1000000.0;
+                std::max(1, traceSamplePeriodUs_) / 1000000.0;
         }
         velocityLastFeedbackTraceTimeUs_ = feedback.traceTimeUs;
         velocityFeedbackReferenceValid_ = true;
@@ -3732,9 +3725,10 @@ void MotionControlWorker::startTraceDelayCalibration(
     traceDelayPhaseClock_.start();
 
     TelemetryRunMetadata metadata;
+    metadata.traceProfile = traceFeedbackProfile_;
     metadata.cardNo = initializedCardNo_;
     metadata.axes = {config.axis};
-    metadata.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    metadata.traceSamplePeriodUs = traceSamplePeriodUs_;
     metadata.degreesPerCardUnit = config.degreesPerCardUnit;
     metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
                                  .filePath(QStringLiteral("records"));
@@ -3928,7 +3922,7 @@ void MotionControlWorker::runTraceDelayCalibrationCycle()
 void MotionControlWorker::analyzeTraceDelayCalibration()
 {
     const TraceDelayFitResult fit = TraceDelayCalibrationAnalyzer::analyze(
-        traceDelayConfig_, card_.traceSamplePeriodUs(), traceDelaySegments_);
+        traceDelayConfig_, traceSamplePeriodUs_, traceDelaySegments_);
     TraceDelayAxisResult attempt = fit.axisResult;
     attempt.timestamp = QDateTime::currentDateTime().toString(Qt::ISODateWithMs);
     traceDelayStatus_.fittedSpeedDegreePerSecond =
@@ -4170,6 +4164,11 @@ void MotionControlWorker::resetTraceDelayHistory()
 void MotionControlWorker::applyTraceDelayCompensation(
     const QVector<TraceTelemetryFrame> &frames)
 {
+    // 速度闭环档位没有配置type 5，跟随误差直接由“规划位置(t-τ)-type 6”
+    // 计算；无需逐帧维护卡内指令位置的延迟队列。
+    if (traceFeedbackProfile_ == TraceFeedbackProfile::VelocityControl) {
+        return;
+    }
     if (frames.isEmpty()) {
         return;
     }
@@ -4180,7 +4179,8 @@ void MotionControlWorker::applyTraceDelayCompensation(
         }
         lastTraceDelaySequence_ = frame.traceSequence;
         for (int axisIndex = 0; axisIndex < frame.axisCount; ++axisIndex) {
-            if ((frame.validAxisMask & static_cast<quint8>(1U << axisIndex)) == 0U) {
+            const quint8 axisBit = static_cast<quint8>(1U << axisIndex);
+            if ((frame.validAxisMask & axisBit) == 0U) {
                 continue;
             }
             const quint16 axis = frame.axes[axisIndex];
@@ -4310,7 +4310,7 @@ void MotionControlWorker::saveTraceDelayCalibrationResults()
     QJsonObject root;
     root.insert(QStringLiteral("version"), 1);
     root.insert(QStringLiteral("busCycleUs"), actualBusCycleUs_);
-    root.insert(QStringLiteral("tracePeriodUs"), card_.traceSamplePeriodUs());
+    root.insert(QStringLiteral("tracePeriodUs"), traceSamplePeriodUs_);
     QJsonArray axes;
     for (const TraceDelayAxisResult &result : traceDelayAxisResults_) {
         QJsonObject object;
@@ -4339,7 +4339,7 @@ void MotionControlWorker::saveTraceDelayCalibrationResults()
     }
     file.write(QJsonDocument(root).toJson(QJsonDocument::Indented));
     savedCalibrationBusCycleUs_ = actualBusCycleUs_;
-    savedCalibrationTracePeriodUs_ = card_.traceSamplePeriodUs();
+    savedCalibrationTracePeriodUs_ = traceSamplePeriodUs_;
 }
 
 void MotionControlWorker::validateLoadedTraceDelayTiming()
@@ -5214,7 +5214,7 @@ void MotionControlWorker::publishStatus()
     status.traceStateText = card_.traceStateText();
     status.latestTraceSequence = latestTraceSequence_;
     status.latestTraceTimeUs = latestTraceTimeUs_;
-    status.traceSamplePeriodUs = card_.traceSamplePeriodUs();
+    status.traceSamplePeriodUs = traceSamplePeriodUs_;
     status.manualTelemetryRecordingActive = manualTelemetryRecording_;
     status.recorder = telemetryRecorder_.status();
     status.velocityControl = velocityStatus_;
@@ -5385,6 +5385,7 @@ void MotionControlWorker::refreshAxisStates()
 bool MotionControlWorker::configureFeedbackTrace(const QVector<quint16> &axes,
                                          double degreesPerCardUnit,
                                          QString &errorMessage,
+                                         TraceFeedbackProfile profile,
                                          bool allowEmptyActiveRecording)
 {
     const TelemetryRecorderStatus recorderStatus = telemetryRecorder_.status();
@@ -5407,9 +5408,11 @@ bool MotionControlWorker::configureFeedbackTrace(const QVector<quint16> &axes,
         return false;
     }
     if (!card_.configureTrace(axes, traceSamplePeriodUs, config_.busCycleUs,
-                              degreesPerCardUnit, errorMessage)) {
+                              degreesPerCardUnit, profile, errorMessage)) {
         return false;
     }
+    traceFeedbackProfile_ = profile;
+    traceSamplePeriodUs_ = traceSamplePeriodUs;
     resetTraceDelayHistory();
     traceAxes_ = card_.traceAxes();
     latestAxisFeedback_ = card_.axisFeedback();
@@ -5436,18 +5439,20 @@ bool MotionControlWorker::configureFeedbackTrace(const QVector<quint16> &axes,
 bool MotionControlWorker::pollTraceFeedback()
 {
     QString error;
-    if (!card_.pollFeedback(error)) {
-        traceFramesRead_ = card_.traceFramesRead();
-        traceStateText_ = error;
-        traceReadDiagnostics_ = card_.traceReadDiagnostics();
+    TraceFeedbackSnapshot snapshot;
+    const bool pollSucceeded = card_.pollFeedback(snapshot, error);
+    traceAxes_ = std::move(snapshot.axes);
+    latestAxisFeedback_ = std::move(snapshot.axisFeedback);
+    traceFramesRead_ = snapshot.framesRead;
+    traceStateText_ = pollSucceeded ? std::move(snapshot.stateText) : error;
+    traceReadDiagnostics_ = snapshot.diagnostics;
+    if (snapshot.samplePeriodUs > 0) {
+        traceSamplePeriodUs_ = snapshot.samplePeriodUs;
+    }
+    if (!pollSucceeded) {
         return false;
     }
-    traceAxes_ = card_.traceAxes();
-    latestAxisFeedback_ = card_.axisFeedback();
-    traceFramesRead_ = card_.traceFramesRead();
-    traceStateText_ = card_.traceStateText();
-    traceReadDiagnostics_ = card_.traceReadDiagnostics();
-    QVector<TraceTelemetryFrame> frames = card_.takeTraceTelemetryFrames();
+    QVector<TraceTelemetryFrame> frames = std::move(snapshot.frames);
     if (!frames.isEmpty()) {
         const long currentMark = listOpen_ ? card_.currentMark(config_) : -1;
         for (TraceTelemetryFrame &frame : frames) {
@@ -5461,7 +5466,9 @@ bool MotionControlWorker::pollTraceFeedback()
         latestTraceTimeUs_ = frames.constLast().traceTimeUs;
         applyTraceDelayCompensation(frames);
         appendTraceDelayCalibrationFrames(frames);
-        updateTraceVelocityDiagnostics(frames);
+        if (!cdprVelocityControlActive_) {
+            updateTraceVelocityDiagnostics(frames);
+        }
         appendVelocityPlotFrames(frames);
         telemetryRecorder_.pushFrames(frames);
     }
@@ -5471,6 +5478,8 @@ bool MotionControlWorker::pollTraceFeedback()
 void MotionControlWorker::updateTraceVelocityDiagnostics(const QVector<TraceTelemetryFrame> &frames)
 {
     constexpr quint64 kVelocityWindowUs = 10000;
+    const bool hasDirectVelocity =
+        traceFeedbackProfile_ != TraceFeedbackProfile::PositionControl;
     for (const TraceTelemetryFrame &frame : frames) {
         int activeIndex = -1;
         for (int index = 0; index < frame.axisCount; ++index) {
@@ -5480,6 +5489,17 @@ void MotionControlWorker::updateTraceVelocityDiagnostics(const QVector<TraceTele
             }
         }
         if (activeIndex < 0) {
+            continue;
+        }
+
+        if (hasDirectVelocity) {
+            traceCommandVelocityDegreePerSecond_ =
+                frame.commandVelocityPulsePerSecond[activeIndex]
+                / MotorUnit::kPhysicalPulsesPerDegree;
+            traceActualVelocityDegreePerSecond_ =
+                frame.actualVelocityPulsePerSecond[activeIndex]
+                / MotorUnit::kPhysicalPulsesPerDegree;
+            traceVelocityValid_ = true;
             continue;
         }
 

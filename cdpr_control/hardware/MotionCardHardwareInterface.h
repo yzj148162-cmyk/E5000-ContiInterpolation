@@ -26,7 +26,8 @@ public:
     bool readEthercatSlaveCount(quint16 &slaveCount, QString &errorMessage) const;
 
     bool configureTrace(const QVector<quint16> &axes, int samplePeriodUs, int traceBaseCycleUs,
-                        double degreesPerCardUnit, QString &errorMessage);
+                        double degreesPerCardUnit, TraceFeedbackProfile profile,
+                        QString &errorMessage);
     bool enableAxis(quint16 axis, QString &noticeMessage, QString &errorMessage);
     bool disableAxis(quint16 axis, QString &errorMessage);
 
@@ -92,6 +93,7 @@ public:
     short runState(const ContiTestConfig &config) const;
 
     bool pollFeedback(QString &errorMessage);
+    bool pollFeedback(TraceFeedbackSnapshot &snapshot, QString &errorMessage);
     QVector<AxisFeedback> axisFeedback() const;
     QVector<quint16> traceAxes() const;
     bool traceConfigured() const;

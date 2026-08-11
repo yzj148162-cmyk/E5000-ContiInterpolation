@@ -403,8 +403,21 @@ struct AxisFeedback
     QString delayCompensationSource = QStringLiteral("默认");
     double commandVelocityUnitPerSecond = 0.0;
     double actualVelocityUnitPerSecond = 0.0;
+    bool commandPositionValid = false;
+    bool actualPositionValid = false;
+    bool commandVelocityValid = false;
+    bool actualVelocityValid = false;
     bool traceSampleValid = false;
     QString errorText;
+};
+
+// 不同测试模式只配置自己实际使用的 Trace 对象。八轴速度闭环不采集
+// 速度模式下没有控制意义的卡内指令位置(type 5)。
+enum class TraceFeedbackProfile : quint8
+{
+    FullPositionVelocity = 0, // type 3/4/5/6
+    VelocityControl = 1,     // type 3/4/6
+    PositionControl = 2      // type 5/6
 };
 
 // Trace API没有为每帧返回绝对硬件时间戳，traceTimeUs由硬件帧头序号（若有）
@@ -453,6 +466,19 @@ struct TraceTelemetryFrame
     quint8 validAxisMask = 0;
     qint32 currentMark = -1;
     qint32 pushedMark = -1;
+};
+
+// 一次硬件线程 Trace 轮询的完整快照。控制线程只进行一次阻塞式跨线程调用，
+// 避免分别读取轴列表、反馈、诊断、状态文字和帧队列造成多次线程往返。
+struct TraceFeedbackSnapshot
+{
+    QVector<quint16> axes;
+    QVector<AxisFeedback> axisFeedback;
+    QVector<TraceTelemetryFrame> frames;
+    TraceReadDiagnostics diagnostics;
+    int framesRead = 0;
+    int samplePeriodUs = 0;
+    QString stateText;
 };
 
 struct TelemetryRecorderStatus

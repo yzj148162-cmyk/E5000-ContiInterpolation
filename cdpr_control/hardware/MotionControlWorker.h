@@ -100,6 +100,8 @@ private:
     bool configureBaseAxes(const ContiTestConfig &config);
     bool configureFeedbackTrace(const QVector<quint16> &axes, double degreesPerCardUnit,
                                 QString &errorMessage,
+                                TraceFeedbackProfile profile =
+                                    TraceFeedbackProfile::FullPositionVelocity,
                                 bool allowEmptyActiveRecording = false);
     bool pollTraceFeedback();
     void updateTraceVelocityDiagnostics(const QVector<TraceTelemetryFrame> &frames);
@@ -183,6 +185,9 @@ private:
     QSet<quint16> enabledAxes_;
     QVector<quint16> detectedAxes_;
     QVector<quint16> traceAxes_;
+    TraceFeedbackProfile traceFeedbackProfile_ =
+        TraceFeedbackProfile::FullPositionVelocity;
+    int traceSamplePeriodUs_ = 1000;
     QVector<AxisFeedback> latestAxisFeedback_;
     QTimer *producerTimer_ = nullptr;
     QTimer *monitorTimer_ = nullptr;

@@ -19,6 +19,14 @@
 class MotionCardHardwareInterface::Backend : public QObject
 {
 public:
+    struct TraceAxisObjectIndices
+    {
+        int commandVelocity = -1;
+        int actualVelocity = -1;
+        int commandPosition = -1;
+        int actualPosition = -1;
+    };
+
     void stopFeedScheduler(bool clearQueue = true)
     {
         if (feedTimer_ != nullptr) {
@@ -295,6 +303,8 @@ public:
         stopFeedScheduler(true);
         feedbackTrace_.reset();
         traceAxes_.clear();
+        traceObjectIndices_.clear();
+        expectedTraceValueCount_ = 0;
         latestAxisFeedback_.clear();
         pendingTelemetryFrames_.clear();
         latestTraceSequence_ = 0;
@@ -305,7 +315,8 @@ public:
     }
 
     bool configureTrace(const QVector<quint16> &axes, int samplePeriodUs,
-                        int traceBaseCycleUs, double degreesPerCardUnit, QString &error)
+                        int traceBaseCycleUs, double degreesPerCardUnit,
+                        TraceFeedbackProfile profile, QString &error)
     {
         QSet<quint16> uniqueAxes;
         for (const quint16 axis : axes) {
@@ -321,6 +332,9 @@ public:
             return false;
         }
         traceAxes_ = axes;
+        traceProfile_ = profile;
+        traceObjectIndices_.clear();
+        traceObjectIndices_.resize(traceAxes_.size());
         latestAxisFeedback_.clear();
         pendingTelemetryFrames_.clear();
         latestTraceSequence_ = 0;
@@ -332,16 +346,18 @@ public:
                 ? QStringLiteral("等待 Trace 首帧") : QStringLiteral("未纳入当前测试轴 Trace");
             latestAxisFeedback_.push_back(feedback);
         }
+        axisStateRefreshClock_.invalidate();
 
         RuntimeTraceSlaveReader::ReaderConfig traceConfig;
         traceConfig.cardNo = cardNo_;
         traceConfig.samplePeriodUs = samplePeriodUs;
         traceConfig.traceBaseCycleUs = traceBaseCycleUs;
-        traceConfig.objects.reserve(traceAxes_.size() * 4);
-        const auto addObject = [&traceConfig](int logicalIndex, short dataType,
-                                               quint16 axis, double scale) {
+        const int objectGroups = profile == TraceFeedbackProfile::FullPositionVelocity
+            ? 4 : (profile == TraceFeedbackProfile::VelocityControl ? 3 : 2);
+        traceConfig.objects.reserve(traceAxes_.size() * objectGroups);
+        const auto addObject = [&traceConfig](short dataType, quint16 axis, double scale) {
             RuntimeTraceSlaveReader::ObjectConfig object;
-            object.logicalIndex = logicalIndex;
+            object.logicalIndex = static_cast<int>(traceConfig.objects.size());
             object.dataType = dataType;
             object.dataIndex = axis;
             object.dataSubIndex = 0;
@@ -351,24 +367,41 @@ public:
             object.valueBytes = 4;
             object.scale = scale;
             traceConfig.objects.push_back(object);
+            return object.logicalIndex;
         };
-        // 固定对象顺序：type 3 指令速度、type 4 实际速度、type 5 指令位置、
-        // type 6 实际位置。type 3/4 原始值为 card unit/s，type 5/6 为 pulse。
-        for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(index, 3, traceAxes_.at(index), degreesPerCardUnit);
+        const auto addVelocityGroup = [&](short dataType, bool command) {
+            for (int index = 0; index < traceAxes_.size(); ++index) {
+                const int objectIndex = addObject(dataType, traceAxes_.at(index),
+                                                  degreesPerCardUnit);
+                if (command) {
+                    traceObjectIndices_[index].commandVelocity = objectIndex;
+                } else {
+                    traceObjectIndices_[index].actualVelocity = objectIndex;
+                }
+            }
+        };
+        const auto addPositionGroup = [&](short dataType, bool command) {
+            for (int index = 0; index < traceAxes_.size(); ++index) {
+                const int objectIndex = addObject(
+                    dataType, traceAxes_.at(index),
+                    1.0 / MotorUnit::kPhysicalPulsesPerDegree);
+                if (command) {
+                    traceObjectIndices_[index].commandPosition = objectIndex;
+                } else {
+                    traceObjectIndices_[index].actualPosition = objectIndex;
+                }
+            }
+        };
+
+        if (profile != TraceFeedbackProfile::PositionControl) {
+            addVelocityGroup(3, true);
+            addVelocityGroup(4, false);
         }
-        for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(traceAxes_.size() + index, 4, traceAxes_.at(index),
-                      degreesPerCardUnit);
+        if (profile != TraceFeedbackProfile::VelocityControl) {
+            addPositionGroup(5, true);
         }
-        for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(traceAxes_.size() * 2 + index, 5, traceAxes_.at(index),
-                      1.0 / MotorUnit::kPhysicalPulsesPerDegree);
-        }
-        for (int index = 0; index < traceAxes_.size(); ++index) {
-            addObject(traceAxes_.size() * 3 + index, 6, traceAxes_.at(index),
-                      1.0 / MotorUnit::kPhysicalPulsesPerDegree);
-        }
+        addPositionGroup(6, false);
+        expectedTraceValueCount_ = static_cast<int>(traceConfig.objects.size());
         if (!feedbackTrace_.configure(traceConfig)) {
             error = feedbackTrace_.failureReason().isEmpty()
                 ? QStringLiteral("dmc_trace_* 返回码=%1")
@@ -379,8 +412,15 @@ public:
         }
         traceFramesRead_ = 0;
         traceSamplePeriodUs_ = samplePeriodUs;
-        traceStateText_ = QStringLiteral("Trace 已配置：%1 us，同帧 type 3/4 速度＋type 5/6 位置")
-                              .arg(traceSamplePeriodUs_);
+        const QString objectText = profile == TraceFeedbackProfile::VelocityControl
+            ? QStringLiteral("type 3/4 速度＋type 6 实际位置")
+            : (profile == TraceFeedbackProfile::PositionControl
+                   ? QStringLiteral("type 5/6 位置")
+                   : QStringLiteral("type 3/4 速度＋type 5/6 位置"));
+        traceStateText_ = QStringLiteral("Trace 已配置：%1 us，%2，共 %3 对象")
+                              .arg(traceSamplePeriodUs_)
+                              .arg(objectText)
+                              .arg(expectedTraceValueCount_);
         return true;
     }
 
@@ -412,29 +452,49 @@ public:
                 ? QStringLiteral("Trace 正常，无新增帧") : QStringLiteral("等待 Trace 首帧");
         } else {
             for (const RuntimeTraceSlaveReader::Sample &sample : samples) {
-                if (sample.values.size() < static_cast<std::size_t>(traceAxes_.size() * 4)) {
-                    error = QStringLiteral("Trace 帧对象数量不足");
+                if (sample.values.size() < static_cast<std::size_t>(expectedTraceValueCount_)) {
+                    error = QStringLiteral("Trace 帧对象数量不足：实际=%1，期望=%2")
+                                .arg(sample.values.size())
+                                .arg(expectedTraceValueCount_);
                     traceStateText_ = error;
                     return false;
                 }
-                const quint64 traceTimeUs =
-                    (sample.sequence > 0 ? sample.sequence - 1 : 0)
-                    * static_cast<quint64>(traceSamplePeriodUs_);
-                for (int index = 0; index < traceAxes_.size(); ++index) {
-                    AxisFeedback &feedback = latestAxisFeedback_[traceAxes_.at(index)];
-                    const std::size_t axisCount = static_cast<std::size_t>(traceAxes_.size());
-                    feedback.traceSequence = sample.sequence;
-                    feedback.traceTimeUs = traceTimeUs;
+            }
+
+            // 控制层只需要最新反馈；完整批次仍在下方转换为记录帧。避免对每个
+            // 积压帧重复覆盖同一组八轴状态。
+            const RuntimeTraceSlaveReader::Sample &latestSample = samples.back();
+            const quint64 latestTraceTimeUs =
+                (latestSample.sequence > 0 ? latestSample.sequence - 1 : 0)
+                * static_cast<quint64>(traceSamplePeriodUs_);
+            for (int index = 0; index < traceAxes_.size(); ++index) {
+                AxisFeedback &feedback = latestAxisFeedback_[traceAxes_.at(index)];
+                const TraceAxisObjectIndices &objects = traceObjectIndices_.at(index);
+                feedback.traceSequence = latestSample.sequence;
+                feedback.traceTimeUs = latestTraceTimeUs;
+                feedback.commandVelocityValid = objects.commandVelocity >= 0;
+                feedback.actualVelocityValid = objects.actualVelocity >= 0;
+                feedback.commandPositionValid = objects.commandPosition >= 0;
+                feedback.actualPositionValid = objects.actualPosition >= 0;
+                if (feedback.commandVelocityValid) {
                     feedback.commandVelocityUnitPerSecond =
-                        sample.values[static_cast<std::size_t>(index)];
-                    feedback.actualVelocityUnitPerSecond =
-                        sample.values[axisCount + static_cast<std::size_t>(index)];
-                    feedback.commandPositionUnit =
-                        sample.values[axisCount * 2U + static_cast<std::size_t>(index)];
-                    feedback.encoderPositionUnit =
-                        sample.values[axisCount * 3U + static_cast<std::size_t>(index)];
-                    feedback.traceSampleValid = true;
+                        latestSample.values[static_cast<std::size_t>(objects.commandVelocity)];
                 }
+                if (feedback.actualVelocityValid) {
+                    feedback.actualVelocityUnitPerSecond =
+                        latestSample.values[static_cast<std::size_t>(objects.actualVelocity)];
+                }
+                if (feedback.commandPositionValid) {
+                    feedback.commandPositionUnit =
+                        latestSample.values[static_cast<std::size_t>(objects.commandPosition)];
+                }
+                if (feedback.actualPositionValid) {
+                    feedback.encoderPositionUnit =
+                        latestSample.values[static_cast<std::size_t>(objects.actualPosition)];
+                }
+                feedback.traceSampleValid = feedback.actualPositionValid
+                    && (traceProfile_ != TraceFeedbackProfile::VelocityControl
+                        || feedback.actualVelocityValid);
             }
             const QString reliabilityText = feedbackTrace_.timingReliable()
                 ? QStringLiteral("可信")
@@ -446,15 +506,27 @@ public:
                                   .arg(feedbackTrace_.lastFreeFrames())
                                   .arg(reliabilityText);
         }
-        for (const quint16 axis : traceAxes_) {
-            AxisFeedback state;
-            card_.readAxisFeedback(cardNo_, axis, state);
-            AxisFeedback &feedback = latestAxisFeedback_[axis];
-            feedback.stateMachine = state.stateMachine;
-            feedback.axisErrorCode = state.axisErrorCode;
-            feedback.valid = state.valid && feedback.traceSampleValid;
-            feedback.errorText = !state.valid ? state.errorText
-                                               : (feedback.traceSampleValid ? QString() : feedback.errorText);
+        // 状态机和轴错误码不是1 ms轨迹量。限制为10 ms读取一次，避免每个控制
+        // 周期额外执行8轴共16次SDK查询；异常检测延迟上界保持为10 ms。
+        if (!axisStateRefreshClock_.isValid() || axisStateRefreshClock_.elapsed() >= 10) {
+            axisStateRefreshClock_.restart();
+            for (const quint16 axis : traceAxes_) {
+                AxisFeedback state;
+                card_.readAxisFeedback(cardNo_, axis, state);
+                AxisFeedback &feedback = latestAxisFeedback_[axis];
+                feedback.stateMachine = state.stateMachine;
+                feedback.axisErrorCode = state.axisErrorCode;
+                feedback.valid = state.valid && feedback.traceSampleValid;
+                feedback.errorText = !state.valid ? state.errorText
+                                                   : (feedback.traceSampleValid ? QString()
+                                                                                : feedback.errorText);
+            }
+        } else {
+            for (const quint16 axis : traceAxes_) {
+                AxisFeedback &feedback = latestAxisFeedback_[axis];
+                feedback.valid = feedback.traceSampleValid
+                    && feedback.stateMachine == 4 && feedback.axisErrorCode == 0;
+            }
         }
         pendingTelemetryFrames_.clear();
         pendingTelemetryFrames_.reserve(static_cast<qsizetype>(samples.size()));
@@ -469,20 +541,33 @@ public:
             for (int index = 0; index < frame.axisCount; ++index) {
                 const quint16 axis = traceAxes_.at(index);
                 const AxisFeedback &feedback = latestAxisFeedback_.at(axis);
+                const TraceAxisObjectIndices &objects = traceObjectIndices_.at(index);
+                const quint8 axisBit = static_cast<quint8>(1U << index);
                 frame.axes[index] = axis;
-                const std::size_t axisCount = static_cast<std::size_t>(traceAxes_.size());
-                frame.commandVelocityPulsePerSecond[index] = static_cast<qint32>(std::llround(
-                    sample.values[static_cast<std::size_t>(index)] * MotorUnit::kPhysicalPulsesPerDegree));
-                frame.actualVelocityPulsePerSecond[index] = static_cast<qint32>(std::llround(
-                    sample.values[axisCount + static_cast<std::size_t>(index)] * MotorUnit::kPhysicalPulsesPerDegree));
-                frame.commandPulse[index] = static_cast<qint32>(std::llround(
-                    sample.values[axisCount * 2U + static_cast<std::size_t>(index)] * MotorUnit::kPhysicalPulsesPerDegree));
-                frame.actualPulse[index] = static_cast<qint32>(std::llround(
-                    sample.values[axisCount * 3U + static_cast<std::size_t>(index)] * MotorUnit::kPhysicalPulsesPerDegree));
+                if (objects.commandVelocity >= 0) {
+                    frame.commandVelocityPulsePerSecond[index] = static_cast<qint32>(std::llround(
+                        sample.values[static_cast<std::size_t>(objects.commandVelocity)]
+                        * MotorUnit::kPhysicalPulsesPerDegree));
+                }
+                if (objects.actualVelocity >= 0) {
+                    frame.actualVelocityPulsePerSecond[index] = static_cast<qint32>(std::llround(
+                        sample.values[static_cast<std::size_t>(objects.actualVelocity)]
+                        * MotorUnit::kPhysicalPulsesPerDegree));
+                }
+                if (objects.commandPosition >= 0) {
+                    frame.commandPulse[index] = static_cast<qint32>(std::llround(
+                        sample.values[static_cast<std::size_t>(objects.commandPosition)]
+                        * MotorUnit::kPhysicalPulsesPerDegree));
+                }
+                if (objects.actualPosition >= 0) {
+                    frame.actualPulse[index] = static_cast<qint32>(std::llround(
+                        sample.values[static_cast<std::size_t>(objects.actualPosition)]
+                        * MotorUnit::kPhysicalPulsesPerDegree));
+                }
                 frame.axisState[index] = feedback.stateMachine;
                 frame.axisError[index] = feedback.axisErrorCode;
                 if (feedback.valid) {
-                    frame.validAxisMask |= static_cast<quint8>(1U << index);
+                    frame.validAxisMask |= axisBit;
                 }
             }
             pendingTelemetryFrames_.push_back(frame);
@@ -491,11 +576,53 @@ public:
         return true;
     }
 
+    TraceReadDiagnostics traceDiagnostics() const
+    {
+        TraceReadDiagnostics diagnostics;
+        diagnostics.timingReliable = feedbackTrace_.timingReliable();
+        diagnostics.validFrames = feedbackTrace_.lastValidFrames();
+        diagnostics.freeFrames = feedbackTrace_.lastFreeFrames();
+        diagnostics.maximumValidFrames = feedbackTrace_.maximumValidFrames();
+        diagnostics.minimumFreeFrames = feedbackTrace_.minimumFreeFrames();
+        diagnostics.locallyDroppedSamples = feedbackTrace_.locallyDroppedSamples();
+        diagnostics.objectTotalBytes = feedbackTrace_.objectTotalBytes();
+        diagnostics.objectTotalNum = feedbackTrace_.objectTotalNum();
+        diagnostics.frameBytes = feedbackTrace_.frameBytes();
+        diagnostics.frameHeaderBytes = feedbackTrace_.frameHeaderBytes();
+        diagnostics.hardwareSequenceAvailable = feedbackTrace_.hardwareSequenceAvailable();
+        diagnostics.logicalToHostTimeRatio = feedbackTrace_.logicalToHostTimeRatio();
+        diagnostics.productionRateDiagnosticValid =
+            feedbackTrace_.productionRateDiagnosticValid();
+        diagnostics.estimatedGeneratedFrames = feedbackTrace_.estimatedGeneratedFrames();
+        diagnostics.sequenceGapFrames = feedbackTrace_.sequenceGapFrames();
+        diagnostics.lastReadBytes = feedbackTrace_.lastReadBytes();
+        diagnostics.lastReadFrames = feedbackTrace_.lastReadFrames();
+        diagnostics.lastReadFirstSequence = feedbackTrace_.lastReadFirstSequence();
+        diagnostics.lastReadLastSequence = feedbackTrace_.lastReadLastSequence();
+        diagnostics.configReadbackMismatchCount = feedbackTrace_.configReadbackMismatchCount();
+        return diagnostics;
+    }
+
+    void takeTraceSnapshot(TraceFeedbackSnapshot &snapshot)
+    {
+        snapshot.axes = traceAxes_;
+        snapshot.axisFeedback = latestAxisFeedback_;
+        snapshot.frames = std::move(pendingTelemetryFrames_);
+        pendingTelemetryFrames_.clear();
+        snapshot.diagnostics = traceDiagnostics();
+        snapshot.framesRead = traceFramesRead_;
+        snapshot.samplePeriodUs = traceSamplePeriodUs_;
+        snapshot.stateText = traceStateText_;
+    }
+
     LeadshineMotionCard card_;
     RuntimeTraceSlaveReader feedbackTrace_;
     static constexpr WORD kEthercatPort = 2;
     quint16 cardNo_ = 0;
     QVector<quint16> traceAxes_;
+    QVector<TraceAxisObjectIndices> traceObjectIndices_;
+    TraceFeedbackProfile traceProfile_ = TraceFeedbackProfile::FullPositionVelocity;
+    int expectedTraceValueCount_ = 0;
     QVector<AxisFeedback> latestAxisFeedback_;
     int traceFramesRead_ = 0;
     int traceSamplePeriodUs_ = 0;
@@ -508,6 +635,7 @@ public:
     ContiTestConfig streamConfig_;
     ContiFeedStatus feedStatus_;
     QElapsedTimer feedServiceClock_;
+    QElapsedTimer axisStateRefreshClock_;
     qint64 lastFeedServiceUs_ = -1;
     bool streamListOpen_ = false;
     long lastAcceptedMark_ = 0;
@@ -565,10 +693,11 @@ bool MotionCardHardwareInterface::readEthercatSlaveCount(quint16 &slaveCount, QS
 { return invokeHardware(backend_, [&] { return backend_->readEthercatSlaveCount(slaveCount, error); }); }
 bool MotionCardHardwareInterface::configureTrace(const QVector<quint16> &axes, int samplePeriodUs,
                                              int traceBaseCycleUs,
-                                             double degreesPerCardUnit, QString &error)
+                                             double degreesPerCardUnit,
+                                             TraceFeedbackProfile profile, QString &error)
 { return invokeHardware(backend_, [&] {
     return backend_->configureTrace(axes, samplePeriodUs, traceBaseCycleUs,
-                                    degreesPerCardUnit, error);
+                                    degreesPerCardUnit, profile, error);
 }); }
 bool MotionCardHardwareInterface::enableAxis(quint16 axis, QString &notice, QString &error)
 { return invokeHardware(backend_, [&] { return backend_->enable(axis, notice, error); }); }
@@ -823,6 +952,14 @@ short MotionCardHardwareInterface::runState(const ContiTestConfig &config) const
 { return invokeHardware(backend_, [&] { return backend_->card_.runState(config); }); }
 bool MotionCardHardwareInterface::pollFeedback(QString &error)
 { return invokeHardware(backend_, [&] { return backend_->poll(error); }); }
+bool MotionCardHardwareInterface::pollFeedback(TraceFeedbackSnapshot &snapshot, QString &error)
+{
+    return invokeHardware(backend_, [&] {
+        const bool ok = backend_->poll(error);
+        backend_->takeTraceSnapshot(snapshot);
+        return ok;
+    });
+}
 QVector<AxisFeedback> MotionCardHardwareInterface::axisFeedback() const
 { return invokeHardware(backend_, [&] { return backend_->latestAxisFeedback_; }); }
 QVector<quint16> MotionCardHardwareInterface::traceAxes() const
@@ -837,39 +974,7 @@ int MotionCardHardwareInterface::traceSamplePeriodUs() const
 { return invokeHardware(backend_, [&] { return backend_->traceSamplePeriodUs_; }); }
 TraceReadDiagnostics MotionCardHardwareInterface::traceReadDiagnostics() const
 {
-    return invokeHardware(backend_, [&] {
-        TraceReadDiagnostics diagnostics;
-        diagnostics.timingReliable = backend_->feedbackTrace_.timingReliable();
-        diagnostics.validFrames = backend_->feedbackTrace_.lastValidFrames();
-        diagnostics.freeFrames = backend_->feedbackTrace_.lastFreeFrames();
-        diagnostics.maximumValidFrames = backend_->feedbackTrace_.maximumValidFrames();
-        diagnostics.minimumFreeFrames = backend_->feedbackTrace_.minimumFreeFrames();
-        diagnostics.locallyDroppedSamples =
-            backend_->feedbackTrace_.locallyDroppedSamples();
-        diagnostics.objectTotalBytes = backend_->feedbackTrace_.objectTotalBytes();
-        diagnostics.objectTotalNum = backend_->feedbackTrace_.objectTotalNum();
-        diagnostics.frameBytes = backend_->feedbackTrace_.frameBytes();
-        diagnostics.frameHeaderBytes = backend_->feedbackTrace_.frameHeaderBytes();
-        diagnostics.hardwareSequenceAvailable =
-            backend_->feedbackTrace_.hardwareSequenceAvailable();
-        diagnostics.logicalToHostTimeRatio =
-            backend_->feedbackTrace_.logicalToHostTimeRatio();
-        diagnostics.productionRateDiagnosticValid =
-            backend_->feedbackTrace_.productionRateDiagnosticValid();
-        diagnostics.estimatedGeneratedFrames =
-            backend_->feedbackTrace_.estimatedGeneratedFrames();
-        diagnostics.sequenceGapFrames =
-            backend_->feedbackTrace_.sequenceGapFrames();
-        diagnostics.lastReadBytes = backend_->feedbackTrace_.lastReadBytes();
-        diagnostics.lastReadFrames = backend_->feedbackTrace_.lastReadFrames();
-        diagnostics.lastReadFirstSequence =
-            backend_->feedbackTrace_.lastReadFirstSequence();
-        diagnostics.lastReadLastSequence =
-            backend_->feedbackTrace_.lastReadLastSequence();
-        diagnostics.configReadbackMismatchCount =
-            backend_->feedbackTrace_.configReadbackMismatchCount();
-        return diagnostics;
-    });
+    return invokeHardware(backend_, [&] { return backend_->traceDiagnostics(); });
 }
 QVector<TraceTelemetryFrame> MotionCardHardwareInterface::takeTraceTelemetryFrames()
 {
