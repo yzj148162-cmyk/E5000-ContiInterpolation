@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
-#include <limits>
 #include <thread>
 
 namespace {
@@ -24,6 +23,14 @@ long readSignedLittleEndian(const unsigned char *raw, int bytes)
         return static_cast<long>(static_cast<std::int16_t>(value));
     }
     return static_cast<long>(static_cast<std::int8_t>(raw[0]));
+}
+
+quint32 readUnsignedLittleEndian32(const unsigned char *raw)
+{
+    return static_cast<quint32>(raw[0])
+        | (static_cast<quint32>(raw[1]) << 8)
+        | (static_cast<quint32>(raw[2]) << 16)
+        | (static_cast<quint32>(raw[3]) << 24);
 }
 }
 
@@ -73,6 +80,26 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
             return false;
         }
     }
+    // 配置后逐项读回，防止对象顺序、索引或板卡接受的配置与软件假设不一致。
+    for (int index = 0; index < static_cast<int>(config_.objects.size()); ++index) {
+        short dataType = 0;
+        int dataIndex = 0;
+        int dataSubIndex = 0;
+        short slaveId = 0;
+        short dataBytes = 0;
+        lastResult_ = dmc_trace_get_config_object(
+            cardNo, static_cast<short>(index), &dataType, &dataIndex,
+            &dataSubIndex, &slaveId, &dataBytes);
+        const ObjectConfig &expected = config_.objects[static_cast<std::size_t>(index)];
+        if (lastResult_ != 0 || dataType != expected.dataType
+            || dataIndex != expected.dataIndex
+            || dataSubIndex != expected.dataSubIndex
+            || slaveId != expected.slaveId
+            || (dataBytes > 0 && dataBytes != expected.valueBytes)) {
+            dmc_trace_data_stop(cardNo);
+            return false;
+        }
+    }
     lastResult_ = dmc_trace_data_start(cardNo);
     if (lastResult_ != 0) {
         return false;
@@ -85,6 +112,18 @@ bool RuntimeTraceSlaveReader::configure(const ReaderConfig &config)
     maximumValidFrames_ = 0;
     minimumFreeFrames_ = -1;
     locallyDroppedSamples_ = 0;
+    objectTotalBytes_ = 0;
+    objectTotalNum_ = 0;
+    frameBytes_ = 0;
+    frameHeaderBytes_ = 0;
+    hardwareSequenceAvailable_ = false;
+    hardwareSequenceInitialized_ = false;
+    firstHardwareSequence_ = 0;
+    lastHardwareSequence_ = 0;
+    firstLogicalSequence_ = 0;
+    lastLogicalSequence_ = 0;
+    logicalToHostTimeRatio_ = 1.0;
+    timingClock_.invalidate();
     nextSequence_ = 1;
     std::this_thread::sleep_for(std::chrono::milliseconds(std::max(2, config_.samplePeriodUs / 1000 + 1)));
     return true;
@@ -104,38 +143,98 @@ void RuntimeTraceSlaveReader::reset()
     maximumValidFrames_ = 0;
     minimumFreeFrames_ = -1;
     locallyDroppedSamples_ = 0;
+    objectTotalBytes_ = 0;
+    objectTotalNum_ = 0;
+    frameBytes_ = 0;
+    frameHeaderBytes_ = 0;
+    hardwareSequenceAvailable_ = false;
+    hardwareSequenceInitialized_ = false;
+    firstHardwareSequence_ = 0;
+    lastHardwareSequence_ = 0;
+    firstLogicalSequence_ = 0;
+    lastLogicalSequence_ = 0;
+    logicalToHostTimeRatio_ = 1.0;
+    timingClock_.invalidate();
     values_.clear();
     samples_.clear();
     nextSequence_ = 1;
 }
 
-RuntimeTraceSlaveReader::FrameLayout RuntimeTraceSlaveReader::resolveLayout(int objectTotalBytes) const
+RuntimeTraceSlaveReader::FrameLayout RuntimeTraceSlaveReader::resolveLayout(
+    int objectTotalBytes, int objectTotalNum) const
 {
     FrameLayout layout;
     int valueBytesTotal = 0;
-    int maxValueBytes = 0;
     for (const ObjectConfig &object : config_.objects) {
         valueBytesTotal += std::max(1, object.valueBytes);
-        maxValueBytes = std::max(maxValueBytes, std::max(1, object.valueBytes));
     }
-    layout.frameBytes = std::max(valueBytesTotal, objectTotalBytes);
-    if (objectTotalBytes < valueBytesTotal || config_.objects.empty()) {
+    // objectTotalBytes/objectTotalNum 是板卡对当前固定对象配置的回读结果。
+    // 不再枚举 1/2/4/8 字节槽位猜测帧布局。
+    if (config_.objects.empty()
+        || objectTotalNum != static_cast<int>(config_.objects.size())
+        || objectTotalBytes < valueBytesTotal) {
         return layout;
     }
-    int bestHeader = std::numeric_limits<int>::max();
-    for (const int slotBytes : {8, 4, 2, 1}) {
-        const int bodyBytes = slotBytes * static_cast<int>(config_.objects.size());
-        if (slotBytes >= maxValueBytes && bodyBytes <= objectTotalBytes
-            && objectTotalBytes - bodyBytes < bestHeader) {
-            bestHeader = objectTotalBytes - bodyBytes;
-            layout.valueStart = bestHeader;
-            layout.objectStep = slotBytes;
-        }
-    }
-    if (layout.objectStep == 0) {
-        layout.valueStart = objectTotalBytes - valueBytesTotal;
-    }
+    layout.frameBytes = objectTotalBytes;
+    layout.valueStart = objectTotalBytes - valueBytesTotal;
+    layout.hasSequenceHeader = layout.valueStart >= 4;
     return layout;
+}
+
+quint64 RuntimeTraceSlaveReader::decodeSequence(
+    const unsigned char *frameData, bool hasSequenceHeader)
+{
+    if (!hasSequenceHeader) {
+        hardwareSequenceAvailable_ = false;
+        return nextSequence_++;
+    }
+
+    hardwareSequenceAvailable_ = true;
+    const quint32 rawSequence = readUnsignedLittleEndian32(frameData);
+    if (!hardwareSequenceInitialized_) {
+        hardwareSequenceInitialized_ = true;
+        firstHardwareSequence_ = rawSequence;
+        lastHardwareSequence_ = rawSequence;
+        nextSequence_ = 2;
+        return 1;
+    }
+
+    const quint32 increment = rawSequence - lastHardwareSequence_;
+    if (increment == 0 || increment > 1000000U) {
+        timingReliable_ = false;
+        return nextSequence_++;
+    }
+    if (increment != 1U) {
+        // 保留硬件帧间隙，使逻辑时间不会因漏帧而被压短；同时标记时间轴不可信。
+        timingReliable_ = false;
+    }
+    lastHardwareSequence_ = rawSequence;
+    const quint64 sequence = static_cast<quint64>(rawSequence - firstHardwareSequence_) + 1U;
+    nextSequence_ = sequence + 1U;
+    return sequence;
+}
+
+void RuntimeTraceSlaveReader::updateTimingConsistency()
+{
+    if (firstLogicalSequence_ == 0 || lastLogicalSequence_ <= firstLogicalSequence_
+        || !timingClock_.isValid()) {
+        return;
+    }
+    const qint64 hostElapsedUs = timingClock_.nsecsElapsed() / 1000;
+    const quint64 logicalElapsedUs =
+        (lastLogicalSequence_ - firstLogicalSequence_)
+        * static_cast<quint64>(config_.samplePeriodUs);
+    if (hostElapsedUs <= 0) {
+        return;
+    }
+    logicalToHostTimeRatio_ = static_cast<double>(logicalElapsedUs)
+        / static_cast<double>(hostElapsedUs);
+    // 等待至少 0.5 s，避开首次批量读取的固定偏差。超过 20% 说明帧布局、
+    // 硬件序号或采样周期假设至少有一项不成立，不能继续用于时间对齐保护。
+    if (hostElapsedUs >= 500000
+        && (logicalToHostTimeRatio_ < 0.8 || logicalToHostTimeRatio_ > 1.2)) {
+        timingReliable_ = false;
+    }
 }
 
 int RuntimeTraceSlaveReader::readTraceCached()
@@ -154,10 +253,15 @@ int RuntimeTraceSlaveReader::readTraceCached()
     if (validNum <= 0) {
         return everRead_ ? 0 : -1;
     }
-    const FrameLayout layout = resolveLayout(objectTotalBytes);
+    objectTotalBytes_ = objectTotalBytes;
+    objectTotalNum_ = objectTotalNum;
+    const FrameLayout layout = resolveLayout(objectTotalBytes, objectTotalNum);
     if (layout.frameBytes <= 0) {
+        timingReliable_ = false;
         return -1;
     }
+    frameBytes_ = layout.frameBytes;
+    frameHeaderBytes_ = layout.valueStart;
     int total = 0;
     for (int drain = 0; drain < config_.maxDrainReads && validNum > 0; ++drain) {
         const int frameCount = std::max(1, std::min(validNum, config_.maxBufferBytes / layout.frameBytes));
@@ -174,6 +278,8 @@ int RuntimeTraceSlaveReader::readTraceCached()
         }
         const int completeFrames = readBytes / layout.frameBytes;
         for (int frame = 0; frame < completeFrames; ++frame) {
+            const unsigned char *frameData =
+                buffer.data() + frame * layout.frameBytes;
             int offset = layout.valueStart;
             for (int objectIndex = 0; objectIndex < static_cast<int>(config_.objects.size()); ++objectIndex) {
                 const ObjectConfig &object = config_.objects[objectIndex];
@@ -183,10 +289,16 @@ int RuntimeTraceSlaveReader::readTraceCached()
                 }
                 const int output = outputIndex(objectIndex);
                 values_[output] = static_cast<double>(readSignedLittleEndian(
-                                      buffer.data() + frame * layout.frameBytes + offset, bytes)) * object.scale;
-                offset += layout.objectStep >= bytes ? layout.objectStep : bytes;
+                                      frameData + offset, bytes)) * object.scale;
+                offset += bytes;
             }
-            samples_.push_back({nextSequence_++, values_});
+            const quint64 sequence = decodeSequence(frameData, layout.hasSequenceHeader);
+            if (firstLogicalSequence_ == 0) {
+                firstLogicalSequence_ = sequence;
+                timingClock_.start();
+            }
+            lastLogicalSequence_ = sequence;
+            samples_.push_back({sequence, values_});
             while (static_cast<int>(samples_.size()) > config_.maxQueuedSamples) {
                 samples_.pop_front();
                 ++locallyDroppedSamples_;
@@ -205,6 +317,7 @@ int RuntimeTraceSlaveReader::readTraceCached()
             break;
         }
     }
+    updateTimingConsistency();
     everRead_ = everRead_ || total > 0;
     return total;
 }

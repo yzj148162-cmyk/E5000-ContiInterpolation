@@ -346,7 +346,8 @@ public:
             object.dataIndex = axis;
             object.dataSubIndex = 0;
             object.slaveId = 0;
-            object.apiDataBytes = 4;
+            // 雷赛手册规定现有采集类型由板卡自动匹配字节数，此参数固定传 0。
+            object.apiDataBytes = 0;
             object.valueBytes = 4;
             object.scale = scale;
             traceConfig.objects.push_back(object);
@@ -839,6 +840,14 @@ TraceReadDiagnostics MotionCardHardwareInterface::traceReadDiagnostics() const
         diagnostics.minimumFreeFrames = backend_->feedbackTrace_.minimumFreeFrames();
         diagnostics.locallyDroppedSamples =
             backend_->feedbackTrace_.locallyDroppedSamples();
+        diagnostics.objectTotalBytes = backend_->feedbackTrace_.objectTotalBytes();
+        diagnostics.objectTotalNum = backend_->feedbackTrace_.objectTotalNum();
+        diagnostics.frameBytes = backend_->feedbackTrace_.frameBytes();
+        diagnostics.frameHeaderBytes = backend_->feedbackTrace_.frameHeaderBytes();
+        diagnostics.hardwareSequenceAvailable =
+            backend_->feedbackTrace_.hardwareSequenceAvailable();
+        diagnostics.logicalToHostTimeRatio =
+            backend_->feedbackTrace_.logicalToHostTimeRatio();
         return diagnostics;
     });
 }

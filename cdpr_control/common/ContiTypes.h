@@ -407,9 +407,9 @@ struct AxisFeedback
     QString errorText;
 };
 
-// Trace API没有为每帧返回绝对硬件时间戳，traceTimeUs由连续读取序号和固定
-// 采样周期重建。只要卡侧缓冲未耗尽且本地未丢弃帧，该逻辑时间可用于帧间对齐；
-// 一旦出现溢出风险，timingReliable会保持为false，直到重新配置Trace。
+// Trace API没有为每帧返回绝对硬件时间戳，traceTimeUs由硬件帧头序号（若有）
+// 和固定采样周期重建；同时与主机单调时钟做比例自检。帧布局、序号连续性、
+// 卡侧缓冲或本地队列任一项异常时，timingReliable保持为false直到重新配置Trace。
 struct TraceReadDiagnostics
 {
     bool timingReliable = true;
@@ -418,6 +418,12 @@ struct TraceReadDiagnostics
     int maximumValidFrames = 0;
     int minimumFreeFrames = -1;
     quint64 locallyDroppedSamples = 0;
+    int objectTotalBytes = 0;
+    int objectTotalNum = 0;
+    int frameBytes = 0;
+    int frameHeaderBytes = 0;
+    bool hardwareSequenceAvailable = false;
+    double logicalToHostTimeRatio = 1.0;
 };
 
 // Trace 原始帧最多保存八轴。位置保存为原始脉冲，时间由 traceSequence 和

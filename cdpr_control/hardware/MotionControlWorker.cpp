@@ -95,6 +95,20 @@ int traceFrameAxisIndex(const TraceTelemetryFrame &frame, quint16 axis)
     }
     return -1;
 }
+
+QString traceLayoutDiagnosticText(const TraceReadDiagnostics &diagnostics)
+{
+    return QStringLiteral(
+        "对象=%1，板卡对象总字节=%2，固定帧宽=%3，帧头=%4，硬件序号=%5，"
+        "Trace/主机时间比=%6")
+        .arg(diagnostics.objectTotalNum)
+        .arg(diagnostics.objectTotalBytes)
+        .arg(diagnostics.frameBytes)
+        .arg(diagnostics.frameHeaderBytes)
+        .arg(diagnostics.hardwareSequenceAvailable
+                 ? QStringLiteral("有") : QStringLiteral("无"))
+        .arg(diagnostics.logicalToHostTimeRatio, 0, 'f', 4);
+}
 }
 
 MotionControlWorker::MotionControlWorker(QObject *parent)
@@ -1052,10 +1066,11 @@ void MotionControlWorker::monitorOfflinePvt()
     }
     if (!traceReadDiagnostics_.timingReliable) {
         finishOfflinePvt(QStringLiteral(
-            "离线PVT Trace 时间轴不可信：卡侧有效/剩余=%1/%2，本地丢帧=%3。")
+            "离线PVT Trace 时间轴不可信：卡侧有效/剩余=%1/%2，本地丢帧=%3；%4。")
                          .arg(traceReadDiagnostics_.validFrames)
                          .arg(traceReadDiagnostics_.freeFrames)
-                         .arg(traceReadDiagnostics_.locallyDroppedSamples),
+                         .arg(traceReadDiagnostics_.locallyDroppedSamples)
+                         .arg(traceLayoutDiagnosticText(traceReadDiagnostics_)),
                          CdprOfflinePvtRunState::Fault, true);
         return;
     }
@@ -1309,11 +1324,12 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         finishCdprVelocityControl(
             QStringLiteral(
                 "八轴速度闭环 Trace 时间轴不可信：卡侧有效/剩余=%1/%2，"
-                "历史最低剩余=%3，本地丢帧=%4。")
+                "历史最低剩余=%3，本地丢帧=%4；%5。")
                 .arg(traceReadDiagnostics_.validFrames)
                 .arg(traceReadDiagnostics_.freeFrames)
                 .arg(traceReadDiagnostics_.minimumFreeFrames)
-                .arg(traceReadDiagnostics_.locallyDroppedSamples),
+                .arg(traceReadDiagnostics_.locallyDroppedSamples)
+                .arg(traceLayoutDiagnosticText(traceReadDiagnostics_)),
             true);
         return;
     }
@@ -1351,8 +1367,9 @@ void MotionControlWorker::runCdprVelocityControlCycle()
         cdprVelocityStatus_.stateText = QStringLiteral("八轴速度闭环运行中");
         emit logMessage(QStringLiteral(
             "八轴速度闭环已取得同一 Trace 首帧：序号=%1。主机运行时钟自此刻启动；"
-            "Trace 反馈仅按帧序号×总线周期映射到该起点，用于延迟对齐跟随误差。")
-                            .arg(cdprVelocityStartTraceSequence_));
+            "Trace 反馈仅按帧序号×总线周期映射到该起点，用于延迟对齐跟随误差；%2。")
+                            .arg(cdprVelocityStartTraceSequence_)
+                            .arg(traceLayoutDiagnosticText(traceReadDiagnostics_)));
         telemetryRecorder_.appendEvent(QStringLiteral(
             "cdpr_velocity_control_time_anchor trace_sequence=%1 control_period_ms=%2")
             .arg(cdprVelocityStartTraceSequence_)
@@ -2335,12 +2352,13 @@ void MotionControlWorker::runVelocityControlCycle()
             QStringLiteral(
                 "Trace 时间轴不可信：卡侧有效/剩余=%1/%2，历史最高有效=%3，"
                 "历史最小剩余=%4，本地丢弃=%5；"
-                "已停止使用按读取序号重建的时间进行闭环控制。")
+                "%6；已停止使用该 Trace 时间轴进行闭环控制。")
                 .arg(traceReadDiagnostics_.validFrames)
                 .arg(traceReadDiagnostics_.freeFrames)
                 .arg(traceReadDiagnostics_.maximumValidFrames)
                 .arg(traceReadDiagnostics_.minimumFreeFrames)
-                .arg(traceReadDiagnostics_.locallyDroppedSamples),
+                .arg(traceReadDiagnostics_.locallyDroppedSamples)
+                .arg(traceLayoutDiagnosticText(traceReadDiagnostics_)),
             true);
         return;
     }
