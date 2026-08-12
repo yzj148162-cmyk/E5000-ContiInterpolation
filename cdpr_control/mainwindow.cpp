@@ -598,7 +598,7 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
             : QStringLiteral("平台质心力旋量：无有效输入"));
     ui_->cdprReadinessValueLabel->setText(
         QStringLiteral("配置%1｜运动学%2｜初始位姿%3｜"
-                       "外力输入%4｜Newmark%5｜8轴实机链×")
+                       "外力输入%4｜Newmark%5｜力控执行链×")
             .arg(status.configurationValid
                      ? QStringLiteral("✓") : QStringLiteral("×"))
             .arg(status.kinematicsReady

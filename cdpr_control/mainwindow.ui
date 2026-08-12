@@ -4134,7 +4134,7 @@
          <item>
           <widget class="QLabel" name="extensionHintLabel">
            <property name="text">
-            <string>当前已接入结构配置、直线绳段运动学、模拟F/T输入和Newmark软件单步；Nokov位姿重建、F/T Trace对象和8轴实机控制仍未开放。</string>
+            <string>当前已完成结构配置、直线绳段运动学、模拟F/T输入、Newmark软件单步，以及8轴PVT和预设轨迹速度闭环测试；最终力交互连续控制、真实F/T Trace和Nokov位姿重建仍待接入。</string>
            </property>
            <property name="wordWrap">
             <bool>true</bool>
@@ -4184,7 +4184,7 @@
          <item>
           <widget class="QGroupBox" name="cdprStateGroup">
            <property name="title">
-            <string>控制状态（所有子页共用）</string>
+            <string>整机状态（所有子页共用）</string>
            </property>
            <layout class="QGridLayout" name="cdprStateLayout">
             <item row="0" column="0">
@@ -4226,29 +4226,6 @@
              <widget class="QLabel" name="cdprOnlineAxesValueLabel">
               <property name="text">
                <string>0 / 8</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="6">
-             <widget class="QPushButton" name="cdprStartButton">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="toolTip">
-               <string>8轴同帧反馈、编码器启动基准、安全链和8轴速度命令尚未接入，因此保持禁用。</string>
-              </property>
-              <property name="text">
-               <string>开始控制（未开放）</string>
-              </property>
-             </widget>
-            </item>
-            <item row="0" column="7">
-             <widget class="QPushButton" name="cdprStopButton">
-              <property name="enabled">
-               <bool>false</bool>
-              </property>
-              <property name="text">
-               <string>停止控制</string>
               </property>
              </widget>
             </item>
@@ -4755,15 +4732,15 @@
              </item>
             </layout>
            </widget>
-           <widget class="QWidget" name="cdprOfflinePvtTab">
+           <widget class="QWidget" name="cdprPresetTrajectoryTab">
             <attribute name="title">
-             <string>离线PVT位控</string>
+              <string>预设轨迹测试</string>
             </attribute>
             <layout class="QVBoxLayout" name="cdprOfflinePvtLayout">
              <item>
               <widget class="QGroupBox" name="cdprOfflinePvtTrajectoryGroup">
                <property name="title">
-                <string>末端相对轨迹（五次多项式）</string>
+                 <string>末端预设轨迹（五次多项式，两种执行方式共用）</string>
                </property>
                <layout class="QGridLayout" name="cdprOfflinePvtTrajectoryLayout">
                 <item row="0" column="0">
@@ -4983,7 +4960,7 @@
                 <item row="2" column="0" colspan="8">
                  <widget class="QLabel" name="cdprPvtModeHintLabel">
                   <property name="text">
-                   <string>完整轨迹先离线生成并校验，再由8轴PVT表同步执行；与连续插补、点动、速度闭环、转矩和标定任务互斥。</string>
+                    <string>同一末端始末位姿可用于两种测试：离线PVT将完整轨迹装表后同步执行；在线速度闭环按所选控制周期生成参考，并逐周期更新8轴速度命令。两种模式互斥。</string>
                   </property>
                   <property name="wordWrap">
                    <bool>true</bool>
@@ -4996,17 +4973,24 @@
              <item>
               <widget class="QGroupBox" name="cdprOfflinePvtExecutionGroup">
                <property name="title">
-                <string>生成与执行</string>
+                 <string>两种执行方式</string>
                </property>
                <layout class="QGridLayout" name="cdprOfflinePvtExecutionLayout">
-                <item row="0" column="0">
-                 <widget class="QPushButton" name="cdprPvtGenerateButton">
+                <item row="0" column="0" colspan="5">
+                 <widget class="QLabel" name="cdprPvtExecutionModeLabel">
                   <property name="text">
-                   <string>生成并检查轨迹</string>
+                   <string>方式一：离线PVT——生成完整位置—时间表，装入板卡后同步执行</string>
                   </property>
                  </widget>
                 </item>
-                <item row="0" column="1">
+                <item row="1" column="0">
+                 <widget class="QPushButton" name="cdprPvtGenerateButton">
+                  <property name="text">
+                    <string>生成PVT轨迹</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
                  <widget class="QPushButton" name="cdprPvtStartButton">
                   <property name="enabled">
                    <bool>false</bool>
@@ -5016,7 +5000,7 @@
                   </property>
                  </widget>
                 </item>
-                <item row="0" column="2">
+                <item row="1" column="2">
                  <widget class="QPushButton" name="cdprPvtStopButton">
                   <property name="enabled">
                    <bool>false</bool>
@@ -5026,7 +5010,7 @@
                   </property>
                  </widget>
                 </item>
-                <item row="0" column="3">
+                <item row="1" column="3">
                  <widget class="QPushButton" name="cdprPvtEmergencyStopButton">
                   <property name="enabled">
                    <bool>false</bool>
@@ -5039,7 +5023,7 @@
                   </property>
                  </widget>
                 </item>
-                <item row="0" column="4">
+                <item row="1" column="4">
                  <widget class="QProgressBar" name="cdprPvtProgressBar">
                   <property name="value">
                    <number>0</number>
@@ -5049,7 +5033,7 @@
                   </property>
                  </widget>
                 </item>
-                <item row="1" column="0" colspan="5">
+                <item row="2" column="0" colspan="5">
                  <widget class="QLabel" name="cdprPvtStatusLabel">
                   <property name="text">
                    <string>尚未生成轨迹。</string>
@@ -5059,10 +5043,10 @@
                   </property>
                  </widget>
                 </item>
-                <item row="2" column="0" colspan="5">
+                <item row="3" column="0" colspan="5">
                  <widget class="QGroupBox" name="cdprRealtimeVelocityGroup">
                   <property name="title">
-                   <string>8轴实时速度闭环（末端轨迹 → 逆运动学 → 在线变速）</string>
+                   <string>方式二：预设轨迹在线速度闭环（末端轨迹 → 逆运动学 → 逐周期变速）</string>
                   </property>
                   <layout class="QGridLayout" name="cdprRealtimeVelocityLayout">
                    <item row="0" column="0">
@@ -5127,7 +5111,7 @@
              <item>
               <widget class="QGroupBox" name="cdprOfflinePvtPreviewGroup">
                <property name="title">
-                <string>8轴轨迹摘要</string>
+                 <string>离线PVT的8轴轨迹摘要</string>
                </property>
                <layout class="QVBoxLayout" name="cdprOfflinePvtPreviewLayout">
                 <item>
@@ -5199,27 +5183,11 @@
              </item>
             </layout>
            </widget>
-           <widget class="QWidget" name="cdprControlStatusTab">
+           <widget class="QWidget" name="cdprSoftwareValidationTab">
             <attribute name="title">
-             <string>控制状态</string>
+              <string>软件验证</string>
             </attribute>
-            <layout class="QVBoxLayout" name="cdprControlStatusLayout">
-             <item>
-              <widget class="QGroupBox" name="cdprReadinessGroup">
-               <property name="title">
-                <string>就绪链</string>
-               </property>
-               <layout class="QVBoxLayout" name="cdprReadinessLayout">
-                <item>
-                 <widget class="QLabel" name="cdprReadinessValueLabel">
-                  <property name="text">
-                   <string>配置×｜运动学×｜初始位姿×｜外力输入×｜Newmark×｜8轴实机链×</string>
-                  </property>
-                 </widget>
-                </item>
-               </layout>
-              </widget>
-             </item>
+             <layout class="QVBoxLayout" name="cdprSoftwareValidationLayout">
              <item>
               <widget class="QGroupBox" name="cdprDynamicsGroup">
                <property name="title">
@@ -5268,7 +5236,7 @@
               </widget>
              </item>
              <item>
-              <spacer name="cdprControlStatusSpacer">
+              <spacer name="cdprSoftwareValidationSpacer">
                <property name="orientation">
                 <enum>Qt::Orientation::Vertical</enum>
                </property>
@@ -5280,9 +5248,113 @@
                </property>
               </spacer>
              </item>
-            </layout>
-           </widget>
-           <widget class="QWidget" name="cdprCableStatusTab">
+             </layout>
+            </widget>
+            <widget class="QWidget" name="cdprForceInteractionTab">
+             <attribute name="title">
+              <string>力交互控制</string>
+             </attribute>
+             <layout class="QVBoxLayout" name="cdprForceInteractionLayout">
+              <item>
+               <widget class="QGroupBox" name="cdprReadinessGroup">
+                <property name="title">
+                 <string>力交互就绪链</string>
+                </property>
+                <layout class="QVBoxLayout" name="cdprReadinessLayout">
+                 <item>
+                  <widget class="QLabel" name="cdprReadinessValueLabel">
+                   <property name="text">
+                    <string>配置×｜运动学×｜初始位姿×｜外力输入×｜Newmark×｜力控执行链×</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="cdprForceInteractionFlowGroup">
+                <property name="title">
+                 <string>周期控制链</string>
+                </property>
+                <layout class="QVBoxLayout" name="cdprForceInteractionFlowLayout">
+                 <item>
+                  <widget class="QLabel" name="cdprForceInteractionFlowLabel">
+                   <property name="text">
+                    <string>当前F/T样本（ZOH） → Newmark-β单步 → 末端期望状态 → 逆运动学 → 8轴速度前馈与位置PID → 整机安全检查 → 在线速度命令</string>
+                   </property>
+                   <property name="wordWrap">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="cdprForceInteractionBoundaryLabel">
+                   <property name="text">
+                    <string>本页对应最终连续力交互模式，不使用预生成的有限轨迹。当前仅完成模拟F/T与Newmark软件单步，周期执行器和整机安全链尚未接入，因此启动按钮保持禁用。</string>
+                   </property>
+                   <property name="wordWrap">
+                    <bool>true</bool>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <widget class="QGroupBox" name="cdprForceInteractionExecutionGroup">
+                <property name="title">
+                 <string>运行控制</string>
+                </property>
+                <layout class="QGridLayout" name="cdprForceInteractionExecutionLayout">
+                 <item row="0" column="0">
+                  <widget class="QPushButton" name="cdprStartButton">
+                   <property name="enabled">
+                    <bool>false</bool>
+                   </property>
+                   <property name="toolTip">
+                    <string>模拟/真实F/T到Newmark、逆运动学、8轴速度闭环和整机安全链尚未贯通，因此保持禁用。</string>
+                   </property>
+                   <property name="text">
+                    <string>开始力交互（未开放）</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="1">
+                  <widget class="QPushButton" name="cdprStopButton">
+                   <property name="enabled">
+                    <bool>false</bool>
+                   </property>
+                   <property name="text">
+                    <string>停止力交互</string>
+                   </property>
+                  </widget>
+                 </item>
+                 <item row="0" column="2">
+                  <widget class="QLabel" name="cdprForceInteractionStatusLabel">
+                   <property name="text">
+                    <string>等待周期执行器与统一安全链实现。</string>
+                   </property>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </item>
+              <item>
+               <spacer name="cdprForceInteractionSpacer">
+                <property name="orientation">
+                 <enum>Qt::Orientation::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
+              </item>
+             </layout>
+            </widget>
+            <widget class="QWidget" name="cdprCableStatusTab">
             <attribute name="title">
              <string>8绳监视</string>
             </attribute>
