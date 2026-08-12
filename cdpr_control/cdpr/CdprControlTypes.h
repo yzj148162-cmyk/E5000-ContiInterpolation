@@ -150,7 +150,7 @@ struct CdprOfflinePvtRequest
     double durationS = 5.0;
     int samplePeriodMs = 10;
     double winchRadiusM = 0.08;
-    double maximumAxisVelocityDegreePerSecond = 90.0;
+    double maximumAxisVelocityDegreePerSecond = 720.0;
     double degreesPerCardUnit = 1.0;
 };
 
