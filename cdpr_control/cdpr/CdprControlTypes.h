@@ -144,6 +144,8 @@ struct CdprRobotState
 // 生成入口；只有离线PVT入口受板卡装表点数策略限制。
 struct CdprOfflinePvtRequest
 {
+    // UI用于丢弃参数变化前仍在后台生成的旧速度闭环轨迹；不参与运动计算。
+    quint64 requestId = 0;
     CdprVector6 relativePose {};
     double durationS = 5.0;
     int samplePeriodMs = 10;
@@ -167,6 +169,10 @@ struct CdprOfflinePvtPlan
     // 本次规划所用结构配置的完整JSON快照。运行记录会原样写入
     // configuration_snapshot.json，保证旧记录可独立复算。
     QString configurationSnapshotJson;
+    // 八轴速度闭环的预生成轨迹缓存。离线PVT仍在每次运行目录中保存独立副本。
+    QString planId;
+    QString expectedTrajectoryPath;
+    QString expectedTrajectorySha256;
     std::array<quint16, kCdprCableCount> axes {};
     std::array<int, kCdprCableCount> directions {};
     std::array<QVector<double>, kCdprCableCount> axisPositionDegree;

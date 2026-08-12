@@ -223,6 +223,7 @@ private:
     double lastTorquePlotTimeS_ = -1.0;
     CdprOfflinePvtPlan cdprOfflinePvtPlan_;
     CdprOfflinePvtPlan cdprVelocityPlan_;
+    quint64 cdprVelocityPlanGeneration_ = 0;
     CdprOfflinePvtStatus cdprOfflinePvtStatus_;
     CdprVelocityControlStatus cdprVelocityControlStatus_;
     bool cdprAllMappedAxesEnabled_ = false;

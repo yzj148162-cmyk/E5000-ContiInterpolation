@@ -358,10 +358,16 @@ void MainWindow::connectWorker()
         const int periodMs = ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt();
         CdprOfflinePvtRequest request = collectCdprOfflinePvtRequest();
         request.samplePeriodMs = periodMs;
+        request.requestId = ++cdprVelocityPlanGeneration_;
+        cdprVelocityPlan_ = {};
+        ui_->cdprRtStartButton->setEnabled(false);
+        ui_->cdprRtStatusLabel->setText(
+            QStringLiteral("正在生成并缓存八轴参考轨迹……"));
         emit prepareCdprVelocityTrajectoryRequested(request);
     });
     connect(ui_->cdprRtPeriodCombo, qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int) {
+        ++cdprVelocityPlanGeneration_;
         cdprVelocityPlan_ = {};
         ui_->cdprRtStartButton->setEnabled(false);
         ui_->cdprRtStatusLabel->setText(
@@ -705,6 +711,7 @@ CdprVelocityControlConfig MainWindow::collectCdprVelocityControlConfig() const
 
 void MainWindow::invalidateCdprOfflinePvtPlan()
 {
+    ++cdprVelocityPlanGeneration_;
     if (cdprOfflinePvtStatus_.active) {
         cdprOfflinePvtPlan_.valid = false;
         cdprVelocityPlan_.valid = false;
@@ -781,6 +788,13 @@ void MainWindow::updateCdprOfflinePvtPlan(
 void MainWindow::updateCdprVelocityTrajectory(
     const CdprOfflinePvtPlan &plan)
 {
+    if (plan.request.requestId != cdprVelocityPlanGeneration_) {
+        appendLog(QStringLiteral(
+            "已丢弃参数变化前完成的旧八轴参考轨迹（请求%1，当前%2）。")
+                      .arg(plan.request.requestId)
+                      .arg(cdprVelocityPlanGeneration_));
+        return;
+    }
     cdprVelocityPlan_ = plan;
     const int selectedPeriodMs =
         ui_->cdprRtPeriodCombo->currentText().split(' ').constFirst().toInt();
@@ -797,7 +811,7 @@ void MainWindow::updateCdprVelocityTrajectory(
             QStringLiteral("参考轨迹周期与当前控制周期不一致，请重新生成。"));
     } else {
         ui_->cdprRtStatusLabel->setText(
-            QStringLiteral("参考轨迹已生成：%1点，%2 ms控制周期；可启动八轴速度闭环。")
+            QStringLiteral("参考轨迹与缓存已生成：%1点，%2 ms控制周期；可启动八轴速度闭环。")
                 .arg(plan.timeS.size())
                 .arg(plan.request.samplePeriodMs));
     }

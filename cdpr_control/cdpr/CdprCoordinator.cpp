@@ -1,10 +1,13 @@
 #include "CdprCoordinator.h"
+#include "CdprTrajectoryFile.h"
 
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 
 #include <QTimer>
+#include <QCoreApplication>
+#include <QDir>
 
 namespace {
 constexpr double kPi = 3.14159265358979323846;
@@ -534,19 +537,36 @@ void CdprCoordinator::prepareReferenceTrajectory(
 
     plan.initialCables = initialInverse.cables;
     plan.finalCables = finalInverse.cables;
+    if (!enforcePvtPointLimit) {
+        QString cacheError;
+        const QString cacheRoot = QDir(QCoreApplication::applicationDirPath())
+                                      .filePath(QStringLiteral("trajectory_cache"));
+        if (!CdprTrajectoryFile::prepareCache(plan, cacheRoot, cacheError)) {
+            fail(QStringLiteral("期望轨迹缓存失败：%1").arg(cacheError));
+            return;
+        }
+    }
     plan.valid = true;
-    plan.summary = (enforcePvtPointLimit
-        ? QStringLiteral(
-              "离线PVT轨迹有效：%1点，%2 s，采样%3 ms；8轴最大峰值速度%4°/s。")
-        : QStringLiteral(
-              "速度闭环参考轨迹有效：%1点，%2 s，控制周期%3 ms；8轴最大峰值速度%4°/s。"))
-                       .arg(pointCount)
-                       .arg(request.durationS, 0, 'f', 3)
-                       .arg(request.samplePeriodMs)
-                       .arg(*std::max_element(
-                                plan.peakAxisVelocityDegreePerSecond.begin(),
-                                plan.peakAxisVelocityDegreePerSecond.end()),
-                            0, 'f', 3);
+    const double maximumPeakVelocity = *std::max_element(
+        plan.peakAxisVelocityDegreePerSecond.begin(),
+        plan.peakAxisVelocityDegreePerSecond.end());
+    if (enforcePvtPointLimit) {
+        plan.summary = QStringLiteral(
+            "离线PVT轨迹有效：%1点，%2 s，采样%3 ms；8轴最大峰值速度%4°/s。")
+                           .arg(pointCount)
+                           .arg(request.durationS, 0, 'f', 3)
+                           .arg(request.samplePeriodMs)
+                           .arg(maximumPeakVelocity, 0, 'f', 3);
+    } else {
+        plan.summary = QStringLiteral(
+            "速度闭环参考轨迹及缓存有效：%1点，%2 s，控制周期%3 ms；"
+            "8轴最大峰值速度%4°/s；缓存ID=%5。")
+                           .arg(pointCount)
+                           .arg(request.durationS, 0, 'f', 3)
+                           .arg(request.samplePeriodMs)
+                           .arg(maximumPeakVelocity, 0, 'f', 3)
+                           .arg(plan.planId.left(12));
+    }
     emit logMessage(plan.summary);
     publishPlan(plan);
 }

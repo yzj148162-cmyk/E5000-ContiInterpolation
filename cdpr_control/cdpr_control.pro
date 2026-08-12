@@ -17,6 +17,7 @@ SOURCES += \
     cdpr/CdprDynamics.cpp \
     cdpr/CdprForceInput.cpp \
     cdpr/CdprKinematics.cpp \
+    cdpr/CdprTrajectoryFile.cpp \
     cdpr/CdprVirtualConsistencyAnalyzer.cpp \
     cdpr/NokovMarkerProvider.cpp \
     control/PositionVelocityPid.cpp \
@@ -36,6 +37,7 @@ HEADERS += \
     cdpr/CdprDynamics.h \
     cdpr/CdprForceInput.h \
     cdpr/CdprKinematics.h \
+    cdpr/CdprTrajectoryFile.h \
     cdpr/CdprVirtualConsistencyAnalyzer.h \
     cdpr/NokovMarkerProvider.h \
     common/ContiTypes.h \

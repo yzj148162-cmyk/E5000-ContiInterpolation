@@ -1,4 +1,5 @@
 #include "hardware/MotionControlWorker.h"
+#include "cdpr/CdprTrajectoryFile.h"
 
 #include <QtConcurrent/QtConcurrentRun>
 
@@ -1197,6 +1198,19 @@ bool MotionControlWorker::validateCdprVelocityControl(
                            .arg(config.controlPeriodMs).arg(actualBusCycleUs_);
         return false;
     }
+    if (plan.planId.isEmpty() || plan.expectedTrajectoryPath.isEmpty()
+        || plan.expectedTrajectorySha256.isEmpty()) {
+        errorMessage = QStringLiteral(
+            "八轴速度闭环启动失败：期望轨迹缓存信息不完整，请重新生成轨迹。");
+        return false;
+    }
+    QString cacheError;
+    if (!CdprTrajectoryFile::verify(plan.expectedTrajectoryPath,
+                                    plan.expectedTrajectorySha256,
+                                    cacheError)) {
+        errorMessage = QStringLiteral("八轴速度闭环启动失败：%1").arg(cacheError);
+        return false;
+    }
     if (!sameCardUnitDefinition(config.degreesPerCardUnit,
                                 plan.request.degreesPerCardUnit)
         || !sameCardUnitDefinition(config.degreesPerCardUnit,
@@ -1291,19 +1305,13 @@ void MotionControlWorker::startCdprVelocityControl(
         }
         axes.append(axis);
     }
-    if (!configureFeedbackTrace(axes, config.degreesPerCardUnit, error,
-                                TraceFeedbackProfile::VelocityControl)) {
-        enterError(QStringLiteral("八轴速度闭环 Trace 配置失败：%1").arg(error));
-        return;
-    }
     if (!beginCdprRunRecording(plan, QStringLiteral("八轴实时速度闭环"), error)) {
         emit logMessage(QStringLiteral("八轴速度闭环启动失败：运行记录初始化失败：%1").arg(error));
         return;
     }
     cdprVelocityAutoRecording_ = true;
-    // 轨迹CSV和配置快照的同步导出可能耗时超过1 s。导出期间Trace已经开始采样，
-    // 若直接使用随后读到的首批数据，会把启动前积压帧误当成实时反馈。记录准备
-    // 完成后再次配置Trace，以硬件reset/start清空积压，再建立运行时间锚点。
+    // 期望轨迹已在生成阶段缓存。启动阶段只创建轻量运行上下文，再配置并复位
+    // Trace一次，以复位后的新鲜同帧反馈建立运行时间锚点。
     if (!configureFeedbackTrace(axes, config.degreesPerCardUnit, error,
                                 TraceFeedbackProfile::VelocityControl, true)) {
         finishCdprRunRecording(
@@ -1314,8 +1322,8 @@ void MotionControlWorker::startCdprVelocityControl(
         return;
     }
     emit logMessage(QStringLiteral(
-        "八轴速度闭环：运行记录准备完成后已重新复位Trace，启动前积压帧已清除；"
-        "将以复位后的新鲜同帧反馈建立时间锚点。"));
+        "八轴速度闭环：运行记录已引用预生成轨迹缓存，Trace已复位；"
+        "将以新鲜同帧反馈建立时间锚点。"));
     cdprVelocityPlan_ = plan;
     cdprVelocityConfig_ = config;
     cdprVelocityStatus_ = {};
@@ -1851,26 +1859,35 @@ bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
     for (int cable = 0; cable < kCdprCableCount; ++cable) {
         axes.append(plan.axes[static_cast<size_t>(cable)]);
     }
+    const bool offlinePvt = mode == QStringLiteral("离线PVT");
     TelemetryRunMetadata metadata;
-    metadata.traceProfile = traceFeedbackProfile_;
+    metadata.traceProfile = offlinePvt
+        ? TraceFeedbackProfile::PositionControl
+        : TraceFeedbackProfile::VelocityControl;
     metadata.cardNo = initializedCardNo_;
     metadata.axes = axes;
-    metadata.traceSamplePeriodUs = traceSamplePeriodUs_;
+    metadata.traceSamplePeriodUs = offlinePvt && traceSamplePeriodUs_ > 0
+        ? traceSamplePeriodUs_
+        : actualBusCycleUs_ * config_.traceCycle;
     metadata.degreesPerCardUnit = plan.request.degreesPerCardUnit;
     metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
                                 .filePath(QStringLiteral("records"));
-    metadata.description = QStringLiteral("CDPR %1：八轴 Trace 原始反馈；"
-                                          "期望轨迹见 expected_trajectory.csv。")
-                               .arg(mode);
+    metadata.description = offlinePvt
+        ? QStringLiteral("CDPR离线PVT：八轴Trace原始反馈；"
+                         "期望轨迹见本运行目录expected_trajectory.csv。")
+        : QStringLiteral("CDPR八轴实时速度闭环：八轴Trace原始反馈；"
+                         "期望轨迹由run_context.json引用预生成缓存。");
     if (!telemetryRecorder_.start(metadata, errorMessage)) {
         return false;
     }
     const QString directory = telemetryRecorder_.status().outputDirectory;
-    if (!exportCdprExpectedTrajectory(plan, directory, errorMessage)) {
-        telemetryRecorder_.appendEvent(
-            QStringLiteral("cdpr_expected_trajectory_export_failed: %1").arg(errorMessage));
-        telemetryRecorder_.stop();
-        return false;
+    if (offlinePvt) {
+        if (!exportCdprExpectedTrajectory(plan, directory, errorMessage)) {
+            telemetryRecorder_.appendEvent(
+                QStringLiteral("cdpr_expected_trajectory_export_failed: %1").arg(errorMessage));
+            telemetryRecorder_.stop();
+            return false;
+        }
     }
     QSaveFile configurationFile(
         QDir(directory).filePath(QStringLiteral("configuration_snapshot.json")));
@@ -1886,7 +1903,7 @@ bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
     }
     cdprRunRecordDirectory_ = directory;
     cdprRunContext_ = QJsonObject {
-        {QStringLiteral("mode"), mode == QStringLiteral("离线PVT")
+        {QStringLiteral("mode"), offlinePvt
              ? QStringLiteral("offline_pvt") : QStringLiteral("velocity_control")},
         {QStringLiteral("trace_period_us"), metadata.traceSamplePeriodUs},
         {QStringLiteral("degrees_per_card_unit"), plan.request.degreesPerCardUnit},
@@ -1894,6 +1911,13 @@ bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
         {QStringLiteral("pvt_start_request_pre_trace_sequence"), 0.0},
         {QStringLiteral("velocity_start_trace_sequence"), 0.0}
     };
+    if (!offlinePvt) {
+        cdprRunContext_.insert(QStringLiteral("plan_id"), plan.planId);
+        cdprRunContext_.insert(QStringLiteral("expected_trajectory_path"),
+                               plan.expectedTrajectoryPath);
+        cdprRunContext_.insert(QStringLiteral("expected_trajectory_sha256"),
+                               plan.expectedTrajectorySha256);
+    }
     QJsonArray calibrations;
     for (const TraceDelayAxisResult &calibration : traceDelayAxisResults_) {
         calibrations.append(QJsonObject {
@@ -1913,14 +1937,23 @@ bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
         cdprRunContext_ = {};
         return false;
     }
-    telemetryRecorder_.appendEvent(QStringLiteral(
+    QString recordingEvent = QStringLiteral(
         "cdpr_run_recording_started mode=%1 planned_points=%2 trace_period_us=%3")
-        .arg(mode)
-        .arg(plan.timeS.size())
-        .arg(metadata.traceSamplePeriodUs));
-    emit logMessage(QStringLiteral("CDPR %1 运行记录已创建：%2；"
-                                   "已保存完整期望轨迹与八轴原始 Trace 反馈。")
-                        .arg(mode, directory));
+                                 .arg(mode)
+                                 .arg(plan.timeS.size())
+                                 .arg(metadata.traceSamplePeriodUs);
+    if (!offlinePvt) {
+        recordingEvent += QStringLiteral(" plan_id=%1 expected_trajectory_path=%2")
+                              .arg(plan.planId, plan.expectedTrajectoryPath);
+    }
+    telemetryRecorder_.appendEvent(recordingEvent);
+    emit logMessage(offlinePvt
+        ? QStringLiteral("CDPR离线PVT运行记录已创建：%1；"
+                         "已保存独立期望轨迹与八轴原始Trace反馈。")
+              .arg(directory)
+        : QStringLiteral("CDPR八轴实时速度闭环运行记录已创建：%1；"
+                         "已引用轨迹缓存%2并开始记录八轴原始Trace反馈。")
+              .arg(directory, plan.planId.left(12)));
     return true;
 }
 
@@ -1932,44 +1965,10 @@ bool MotionControlWorker::exportCdprExpectedTrajectory(const CdprOfflinePvtPlan 
         errorMessage = QStringLiteral("运行记录目录为空。");
         return false;
     }
-    QSaveFile file(QDir(directory).filePath(QStringLiteral("expected_trajectory.csv")));
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        errorMessage = QStringLiteral("无法创建期望轨迹文件：%1").arg(file.errorString());
-        return false;
-    }
-    QTextStream stream(&file);
-    stream.setRealNumberNotation(QTextStream::FixedNotation);
-    stream.setRealNumberPrecision(9);
-    stream << "time_s";
-    stream << ",platform_x_m,platform_y_m,platform_z_m"
-              ",platform_roll_rad,platform_pitch_rad,platform_yaw_rad";
-    for (int cable = 0; cable < kCdprCableCount; ++cable) {
-        stream << ",axis" << plan.axes[static_cast<size_t>(cable)]
-               << "_planned_position_deg";
-    }
-    for (int cable = 0; cable < kCdprCableCount; ++cable) {
-        stream << ",axis" << plan.axes[static_cast<size_t>(cable)]
-               << "_planned_velocity_deg_per_s";
-    }
-    stream << '\n';
-    for (qsizetype point = 0; point < plan.timeS.size(); ++point) {
-        stream << plan.timeS.at(point);
-        for (double value : plan.platformPose.at(point)) {
-            stream << ',' << value;
-        }
-        for (int cable = 0; cable < kCdprCableCount; ++cable) {
-            stream << ',' << plan.axisPositionDegree[static_cast<size_t>(cable)].at(point);
-        }
-        for (int cable = 0; cable < kCdprCableCount; ++cable) {
-            stream << ',' << plan.axisVelocityDegreePerSecond[static_cast<size_t>(cable)].at(point);
-        }
-        stream << '\n';
-    }
-    if (!file.commit()) {
-        errorMessage = QStringLiteral("提交期望轨迹文件失败：%1").arg(file.errorString());
-        return false;
-    }
-    return true;
+    QString ignoredSha256;
+    return CdprTrajectoryFile::exportExpectedTrajectory(
+        plan, QDir(directory).filePath(QStringLiteral("expected_trajectory.csv")),
+        ignoredSha256, errorMessage);
 }
 
 bool MotionControlWorker::writeCdprRunContext(QString &errorMessage)

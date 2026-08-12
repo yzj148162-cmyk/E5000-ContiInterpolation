@@ -2,6 +2,7 @@
 
 #include "cdpr/CdprConfiguration.h"
 #include "cdpr/CdprKinematics.h"
+#include "cdpr/CdprTrajectoryFile.h"
 #include "common/ContiTypes.h"
 
 #include <QDir>
@@ -538,8 +539,24 @@ CdprVirtualConsistencyAnalysisResult CdprVirtualConsistencyAnalyzer::analyze(
         return fail(QStringLiteral("运行上下文中的Trace周期或虚拟绞盘半径无效。"));
     }
 
+    QString expectedTrajectoryPath =
+        directory.filePath(QStringLiteral("expected_trajectory.csv"));
+    const QString expectedTrajectorySha256 =
+        context.value(QStringLiteral("expected_trajectory_sha256")).toString();
+    if (!QFileInfo::exists(expectedTrajectoryPath)) {
+        expectedTrajectoryPath =
+            context.value(QStringLiteral("expected_trajectory_path")).toString();
+        if (!CdprTrajectoryFile::verify(expectedTrajectoryPath,
+                                        expectedTrajectorySha256, error)) {
+            return fail(QStringLiteral("期望轨迹缓存无效：%1").arg(error));
+        }
+    } else if (!expectedTrajectorySha256.isEmpty()
+               && !CdprTrajectoryFile::verify(expectedTrajectoryPath,
+                                              expectedTrajectorySha256, error)) {
+        return fail(QStringLiteral("运行目录期望轨迹校验失败：%1").arg(error));
+    }
     ExpectedTrajectory expected;
-    if (!readExpectedTrajectory(directory.filePath(QStringLiteral("expected_trajectory.csv")),
+    if (!readExpectedTrajectory(expectedTrajectoryPath,
                                 configuration, expected, error)) {
         return fail(error);
     }

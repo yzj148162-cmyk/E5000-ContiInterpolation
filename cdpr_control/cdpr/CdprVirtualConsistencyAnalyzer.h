@@ -28,8 +28,9 @@ struct CdprVirtualConsistencyAnalysisResult
 class CdprVirtualConsistencyAnalyzer
 {
 public:
-    // runDirectory 必须包含 metadata.json、configuration_snapshot.json、
-    // run_context.json、expected_trajectory.csv 和 trace_position.bin。
+    // runDirectory必须包含metadata.json、configuration_snapshot.json、
+    // run_context.json和trace_position.bin。期望轨迹可位于旧运行目录内，
+    // 也可由run_context引用经过SHA-256校验的预生成缓存。
     static CdprVirtualConsistencyAnalysisResult analyze(
         const QString &runDirectory);
 };
