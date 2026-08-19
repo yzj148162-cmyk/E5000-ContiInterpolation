@@ -44,6 +44,31 @@ enum class CdprForceInputSource : quint8
     TraceFtSensor
 };
 
+enum class CdprSimulatedWrenchMode : quint8
+{
+    Constant = 0,
+    Pulse,
+    Sine,
+    Formula
+};
+
+// 模拟六维力的只读配置快照。六个分量依次为Fx、Fy、Fz、Mx、My、Mz。
+// 实时线程只对已校验、已编译的表达式求值，不在控制周期内解析字符串。
+struct CdprSimulatedWrenchProfile
+{
+    CdprSimulatedWrenchMode mode = CdprSimulatedWrenchMode::Constant;
+    CdprVector6 value {};
+    CdprVector6 bias {};
+    double pulseStartS = 0.0;
+    double pulseDurationS = 0.5;
+    double sineFrequencyHz = 0.5;
+    double sinePhaseRad = 0.0;
+    std::array<QString, kCdprDofCount> expressions {
+        QStringLiteral("0"), QStringLiteral("0"), QStringLiteral("0"),
+        QStringLiteral("0"), QStringLiteral("0"), QStringLiteral("0")
+    };
+};
+
 enum class CdprWrenchCoordinate : quint8
 {
     Sensor = 0,
@@ -263,5 +288,6 @@ Q_DECLARE_METATYPE(CdprOfflinePvtPlan)
 Q_DECLARE_METATYPE(CdprOfflinePvtStatus)
 Q_DECLARE_METATYPE(CdprVelocityControlConfig)
 Q_DECLARE_METATYPE(CdprVelocityControlStatus)
+Q_DECLARE_METATYPE(CdprSimulatedWrenchProfile)
 
 #endif // CDPRCONTROLTYPES_H

@@ -68,6 +68,8 @@ public slots:
     void startCdprForceControl(const CdprForceControlRequest &request);
     void updateCdprSimulatedWrench(double fx, double fy, double fz,
                                    double mx, double my, double mz);
+    void updateCdprSimulatedWrenchProfile(
+        const CdprSimulatedWrenchProfile &profile);
     void stopCdprForceControl(bool emergency);
     void startTelemetryRecording();
     void stopTelemetryRecording();

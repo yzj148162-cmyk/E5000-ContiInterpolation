@@ -34,9 +34,13 @@ public slots:
     void setForceInputSource(int source);
     void setSimulatedSensorWrench(double fx, double fy, double fz,
                                   double mx, double my, double mz);
+    void setSimulatedWrenchProfile(
+        const CdprSimulatedWrenchProfile &profile);
     void clearSimulatedSensorWrench();
     void resetDynamics();
     void advanceDynamicsOnce();
+    void startOfflineValidation(double durationS);
+    void stopOfflineValidation();
     void prepareOfflinePvt(const CdprOfflinePvtRequest &request);
     void prepareVelocityTrajectory(const CdprOfflinePvtRequest &request);
     void prepareForceControl(const CdprVelocityControlConfig &velocityControl);
@@ -49,12 +53,15 @@ signals:
     void forceControlRequestReady(const CdprForceControlRequest &request);
     void simulatedWrenchChanged(double fx, double fy, double fz,
                                 double mx, double my, double mz);
+    void simulatedWrenchProfileChanged(
+        const CdprSimulatedWrenchProfile &profile);
 
 private:
     void rebuildInitialKinematics();
     bool resetDynamicsFromSelectedPose(QString *errorText = nullptr);
     CdprWrenchTransformResult currentPlatformWrench(
-        const CdprFrameStamp &stamp) const;
+        const CdprFrameStamp &stamp, double elapsedS = 0.0) const;
+    void advanceOfflineValidation();
     void prepareReferenceTrajectory(const CdprOfflinePvtRequest &request,
                                     bool enforcePvtPointLimit);
     void publishStatus();
@@ -86,7 +93,12 @@ private:
     int detectedAxisCount_ = 0;
     quint16 enabledAxisMask_ = 0;
     quint64 previewSequence_ = 0;
+    quint64 offlineValidationCycle_ = 0;
+    double offlineValidationDurationS_ = 5.0;
+    bool offlineValidationActive_ = false;
+    QString offlineValidationText_ = QStringLiteral("未运行");
     QTimer *statusTimer_ = nullptr;
+    QTimer *offlineValidationTimer_ = nullptr;
 };
 
 #endif // CDPRCOORDINATOR_H

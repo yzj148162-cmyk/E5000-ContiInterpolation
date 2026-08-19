@@ -69,9 +69,13 @@ signals:
     void setCdprSimulatedWrenchRequested(
         double fx, double fy, double fz,
         double mx, double my, double mz);
+    void setCdprSimulatedWrenchProfileRequested(
+        const CdprSimulatedWrenchProfile &profile);
     void clearCdprSimulatedWrenchRequested();
     void resetCdprDynamicsRequested();
     void advanceCdprDynamicsOnceRequested();
+    void startCdprOfflineValidationRequested(double durationS);
+    void stopCdprOfflineValidationRequested();
     void prepareCdprOfflinePvtRequested(
         const CdprOfflinePvtRequest &request);
     void prepareCdprVelocityTrajectoryRequested(
@@ -149,6 +153,10 @@ private:
     TraceDelayCalibrationConfig collectTraceDelayCalibrationConfig() const;
     CdprOfflinePvtRequest collectCdprOfflinePvtRequest() const;
     CdprVelocityControlConfig collectCdprVelocityControlConfig() const;
+    CdprSimulatedWrenchProfile collectCdprWrenchProfile() const;
+    void updateCdprWrenchModeUi();
+    bool validateAndPreviewCdprWrenchProfile(bool applyProfile);
+    void initializeCdprWrenchPreviewCharts();
     void invalidateCdprOfflinePvtPlan();
     void connectWorker();
     void initializeContiTrajectoryChart();
@@ -233,6 +241,15 @@ private:
     CdprForceControlStatus cdprForceControlStatus_;
     bool cdprForceControlAvailable_ = false;
     bool cdprAllMappedAxesEnabled_ = false;
+    bool cdprOfflineValidationActive_ = false;
+    QChart *cdprForcePreviewChart_ = nullptr;
+    QChart *cdprMomentPreviewChart_ = nullptr;
+    QValueAxis *cdprForcePreviewTimeAxis_ = nullptr;
+    QValueAxis *cdprForcePreviewValueAxis_ = nullptr;
+    QValueAxis *cdprMomentPreviewTimeAxis_ = nullptr;
+    QValueAxis *cdprMomentPreviewValueAxis_ = nullptr;
+    QLineSeries *cdprForcePreviewSeries_[3] {nullptr, nullptr, nullptr};
+    QLineSeries *cdprMomentPreviewSeries_[3] {nullptr, nullptr, nullptr};
 };
 
 #endif // MAINWINDOW_H

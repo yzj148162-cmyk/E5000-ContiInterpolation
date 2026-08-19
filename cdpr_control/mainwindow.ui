@@ -4281,7 +4281,7 @@
            </widget>
            <widget class="QWidget" name="cdprInitializationTab">
             <attribute name="title">
-             <string>初始化与输入</string>
+             <string>初始状态</string>
             </attribute>
             <layout class="QVBoxLayout" name="cdprInitializationLayout">
              <item>
@@ -4545,8 +4545,28 @@
                  </widget>
                 </item>
                </layout>
-              </widget>
+             </widget>
              </item>
+             <item>
+              <spacer name="cdprInitializationSpacer">
+               <property name="orientation">
+                <enum>Qt::Orientation::Vertical</enum>
+               </property>
+               <property name="sizeHint" stdset="0">
+                <size>
+                 <width>20</width>
+                 <height>40</height>
+                </size>
+               </property>
+              </spacer>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="cdprForceInputTab">
+            <attribute name="title">
+             <string>力输入</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="cdprForceInputTabLayout">
              <item>
               <widget class="QGroupBox" name="cdprForceInputGroup">
                <property name="title">
@@ -4727,6 +4747,118 @@
                   </property>
                  </widget>
                 </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="cdprWrenchModeLabel">
+                  <property name="text">
+                   <string>模拟类型</string>
+                  </property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QComboBox" name="cdprWrenchModeCombo">
+                  <item><property name="text"><string>定值</string></property></item>
+                  <item><property name="text"><string>有限脉冲</string></property></item>
+                  <item><property name="text"><string>正弦</string></property></item>
+                  <item><property name="text"><string>自定义公式</string></property></item>
+                 </widget>
+                </item>
+                <item row="3" column="2">
+                 <widget class="QDoubleSpinBox" name="cdprPulseStartSpin">
+                  <property name="prefix"><string>开始=</string></property>
+                  <property name="suffix"><string> s</string></property>
+                  <property name="decimals"><number>3</number></property>
+                  <property name="maximum"><double>3600.000000000000000</double></property>
+                 </widget>
+                </item>
+                <item row="3" column="3">
+                 <widget class="QDoubleSpinBox" name="cdprPulseDurationSpin">
+                  <property name="prefix"><string>持续=</string></property>
+                  <property name="suffix"><string> s</string></property>
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.005000000000000</double></property>
+                  <property name="maximum"><double>3600.000000000000000</double></property>
+                  <property name="value"><double>0.500000000000000</double></property>
+                 </widget>
+                </item>
+                <item row="3" column="4">
+                 <widget class="QDoubleSpinBox" name="cdprSineFrequencySpin">
+                  <property name="prefix"><string>频率=</string></property>
+                  <property name="suffix"><string> Hz</string></property>
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.001000000000000</double></property>
+                  <property name="maximum"><double>99.999000000000000</double></property>
+                  <property name="value"><double>0.500000000000000</double></property>
+                 </widget>
+                </item>
+                <item row="3" column="5">
+                 <widget class="QDoubleSpinBox" name="cdprSinePhaseSpin">
+                  <property name="prefix"><string>相位=</string></property>
+                  <property name="suffix"><string> rad</string></property>
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>-6283.185000000000400</double></property>
+                  <property name="maximum"><double>6283.185000000000400</double></property>
+                 </widget>
+                </item>
+                <item row="4" column="0">
+                 <widget class="QLabel" name="cdprWrenchBiasLabel">
+                  <property name="text"><string>偏置</string></property>
+                 </widget>
+                </item>
+                <item row="4" column="1" colspan="5">
+                 <layout class="QHBoxLayout" name="cdprWrenchBiasLayout">
+                  <item><widget class="QDoubleSpinBox" name="cdprBiasFxSpin"><property name="prefix"><string>Fx=</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>-10000.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
+                  <item><widget class="QDoubleSpinBox" name="cdprBiasFySpin"><property name="prefix"><string>Fy=</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>-10000.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
+                  <item><widget class="QDoubleSpinBox" name="cdprBiasFzSpin"><property name="prefix"><string>Fz=</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>-10000.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
+                  <item><widget class="QDoubleSpinBox" name="cdprBiasMxSpin"><property name="prefix"><string>Mx=</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>-10000.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
+                  <item><widget class="QDoubleSpinBox" name="cdprBiasMySpin"><property name="prefix"><string>My=</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>-10000.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
+                  <item><widget class="QDoubleSpinBox" name="cdprBiasMzSpin"><property name="prefix"><string>Mz=</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>-10000.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
+                 </layout>
+                </item>
+                <item row="5" column="0">
+                 <widget class="QLabel" name="cdprFormulaLabel">
+                  <property name="text"><string>六维公式</string></property>
+                 </widget>
+                </item>
+                <item row="5" column="1" colspan="5">
+                 <layout class="QGridLayout" name="cdprFormulaLayout">
+                  <item row="0" column="0"><widget class="QLineEdit" name="cdprFormulaFxEdit"><property name="placeholderText"><string>Fx(t)</string></property><property name="text"><string>0</string></property></widget></item>
+                  <item row="0" column="1"><widget class="QLineEdit" name="cdprFormulaFyEdit"><property name="placeholderText"><string>Fy(t)</string></property><property name="text"><string>0</string></property></widget></item>
+                  <item row="0" column="2"><widget class="QLineEdit" name="cdprFormulaFzEdit"><property name="placeholderText"><string>Fz(t)</string></property><property name="text"><string>0</string></property></widget></item>
+                  <item row="1" column="0"><widget class="QLineEdit" name="cdprFormulaMxEdit"><property name="placeholderText"><string>Mx(t)</string></property><property name="text"><string>0</string></property></widget></item>
+                  <item row="1" column="1"><widget class="QLineEdit" name="cdprFormulaMyEdit"><property name="placeholderText"><string>My(t)</string></property><property name="text"><string>0</string></property></widget></item>
+                  <item row="1" column="2"><widget class="QLineEdit" name="cdprFormulaMzEdit"><property name="placeholderText"><string>Mz(t)</string></property><property name="text"><string>0</string></property></widget></item>
+                 </layout>
+                </item>
+                <item row="6" column="0">
+                 <widget class="QPushButton" name="cdprValidateWrenchProfileButton">
+                  <property name="text"><string>校验并预览</string></property>
+                 </widget>
+                </item>
+                <item row="6" column="1">
+                 <widget class="QDoubleSpinBox" name="cdprWrenchPreviewDurationSpin">
+                  <property name="prefix"><string>预览=</string></property>
+                  <property name="suffix"><string> s</string></property>
+                  <property name="decimals"><number>1</number></property>
+                  <property name="minimum"><double>0.100000000000000</double></property>
+                  <property name="maximum"><double>600.000000000000000</double></property>
+                  <property name="value"><double>5.000000000000000</double></property>
+                 </widget>
+                </item>
+                <item row="6" column="2" colspan="4">
+                 <widget class="QLabel" name="cdprWrenchProfileStatusLabel">
+                  <property name="text"><string>定值模式；点击“校验并预览”检查输入。</string></property>
+                  <property name="wordWrap"><bool>true</bool></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="cdprWrenchPreviewGroup">
+               <property name="title"><string>六维力公式预览（仅UI低频绘图）</string></property>
+               <layout class="QHBoxLayout" name="cdprWrenchPreviewLayout">
+                <item><widget class="ZoomableChartView" name="cdprForcePreviewChartView"><property name="minimumSize"><size><width>0</width><height>210</height></size></property></widget></item>
+                <item><widget class="ZoomableChartView" name="cdprMomentPreviewChartView"><property name="minimumSize"><size><width>0</width><height>210</height></size></property></widget></item>
                </layout>
               </widget>
              </item>
@@ -5363,19 +5495,19 @@
            </widget>
            <widget class="QWidget" name="cdprSoftwareValidationTab">
             <attribute name="title">
-             <string>软件验证</string>
+             <string>离线验证</string>
             </attribute>
             <layout class="QVBoxLayout" name="cdprSoftwareValidationLayout">
              <item>
               <widget class="QGroupBox" name="cdprDynamicsGroup">
                <property name="title">
-                <string>Newmark-β软件验证</string>
+                <string>力输入 → Newmark-β → 8绳逆运动学（不访问硬件）</string>
                </property>
                <layout class="QGridLayout" name="cdprDynamicsLayout">
                 <item row="0" column="0">
                  <widget class="QLabel" name="cdprDynamicsParametersLabel">
                   <property name="text">
-                   <string>β=0.25，γ=0.5，dt使用JSON控制周期；纯惯性，无回中刚度、阻尼和重力项。</string>
+                   <string>β=0.25，γ=0.5，固定5 ms步长；纯惯性，无回中刚度、阻尼和重力项。</string>
                   </property>
                  </widget>
                 </item>
@@ -5393,14 +5525,35 @@
                   </property>
                  </widget>
                 </item>
-                <item row="1" column="0" colspan="3">
+                <item row="0" column="3">
+                 <widget class="QDoubleSpinBox" name="cdprOfflineValidationDurationSpin">
+                  <property name="prefix"><string>时长=</string></property>
+                  <property name="suffix"><string> s</string></property>
+                  <property name="decimals"><number>1</number></property>
+                  <property name="minimum"><double>0.100000000000000</double></property>
+                  <property name="maximum"><double>3600.000000000000000</double></property>
+                  <property name="value"><double>5.000000000000000</double></property>
+                 </widget>
+                </item>
+                <item row="0" column="4">
+                 <widget class="QPushButton" name="cdprStartOfflineValidationButton">
+                  <property name="text"><string>连续验证</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="5">
+                 <widget class="QPushButton" name="cdprStopOfflineValidationButton">
+                  <property name="enabled"><bool>false</bool></property>
+                  <property name="text"><string>停止验证</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="0" colspan="6">
                  <widget class="QLabel" name="cdprDynamicsStatusValueLabel">
                   <property name="text">
                    <string>未配置</string>
                   </property>
                  </widget>
                 </item>
-                <item row="2" column="0" colspan="3">
+                <item row="2" column="0" colspan="6">
                  <widget class="QLabel" name="cdprDesiredPlatformValueLabel">
                   <property name="text">
                    <string>期望平台状态：--</string>
@@ -5408,6 +5561,12 @@
                   <property name="wordWrap">
                    <bool>true</bool>
                   </property>
+                 </widget>
+                </item>
+                <item row="3" column="0" colspan="6">
+                 <widget class="QLabel" name="cdprOfflineValidationStatusLabel">
+                  <property name="text"><string>未运行。单步或连续验证均不会读取Trace或下发电机命令。</string></property>
+                  <property name="wordWrap"><bool>true</bool></property>
                  </widget>
                 </item>
                </layout>

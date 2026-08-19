@@ -41,14 +41,20 @@ QString vector6Text(const CdprVector6 &value, int precision)
 CdprCoordinator::CdprCoordinator(QObject *parent)
     : QObject(parent)
     , statusTimer_(new QTimer(this))
+    , offlineValidationTimer_(new QTimer(this))
 {
     statusTimer_->setInterval(200);
     connect(statusTimer_, &QTimer::timeout,
             this, &CdprCoordinator::publishStatus);
+    offlineValidationTimer_->setTimerType(Qt::PreciseTimer);
+    offlineValidationTimer_->setInterval(5);
+    connect(offlineValidationTimer_, &QTimer::timeout,
+            this, &CdprCoordinator::advanceOfflineValidation);
 }
 
 void CdprCoordinator::loadConfiguration(const QString &path)
 {
+    stopOfflineValidation();
     CdprConfiguration candidate;
     QStringList messages;
     if (!CdprConfigurationFile::load(path, candidate, messages)) {
@@ -117,6 +123,7 @@ void CdprCoordinator::updateHardwareStatus(const ContiStatus &status)
 
 void CdprCoordinator::setInitialPoseSource(int source)
 {
+    stopOfflineValidation();
     initialPoseSource_ = source
             == static_cast<int>(CdprInitialPoseSource::NokovMarkers)
         ? CdprInitialPoseSource::NokovMarkers
@@ -130,6 +137,7 @@ void CdprCoordinator::setPresetInitialPose(
     double x, double y, double z,
     double roll, double pitch, double yaw)
 {
+    stopOfflineValidation();
     presetInitialPose_ = {x, y, z, roll, pitch, yaw};
     if (initialPoseSource_ == CdprInitialPoseSource::Preset) {
         startupState_ = {};
@@ -164,6 +172,7 @@ void CdprCoordinator::disconnectNokov()
 
 void CdprCoordinator::captureInitialState()
 {
+    stopOfflineValidation();
     if (!configurationLoaded_ || !kinematicsReady_ || !kinematics_) {
         emit logMessage(QStringLiteral(
             "无法建立启动基准：请先加载有效CDPR配置并通过运动学自检。"));
@@ -233,6 +242,7 @@ void CdprCoordinator::captureInitialState()
 
 void CdprCoordinator::setForceInputSource(int source)
 {
+    stopOfflineValidation();
     forceInputSource_ = source
             == static_cast<int>(CdprForceInputSource::TraceFtSensor)
         ? CdprForceInputSource::TraceFtSensor
@@ -254,10 +264,27 @@ void CdprCoordinator::setSimulatedSensorWrench(
     publishStatus();
 }
 
+void CdprCoordinator::setSimulatedWrenchProfile(
+    const CdprSimulatedWrenchProfile &profile)
+{
+    QString error;
+    if (!simulatedWrenchSource_.configure(profile, &error)) {
+        emit logMessage(QStringLiteral("模拟F/T公式校验失败：%1").arg(error));
+        publishStatus();
+        return;
+    }
+    emit simulatedWrenchProfileChanged(profile);
+    emit logMessage(QStringLiteral("模拟F/T输入已应用：%1。")
+                        .arg(simulatedWrenchSource_.summary()));
+    publishStatus();
+}
+
 void CdprCoordinator::clearSimulatedSensorWrench()
 {
+    stopOfflineValidation();
     simulatedWrenchSource_.setSensorWrench({});
     emit simulatedWrenchChanged(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
+    emit simulatedWrenchProfileChanged(simulatedWrenchSource_.profile());
     emit logMessage(QStringLiteral("模拟F/T输入已清零。"));
     publishStatus();
 }
@@ -270,7 +297,7 @@ void CdprCoordinator::prepareForceControl(
     request.velocityControl = velocityControl;
     request.velocityControl.controlPeriodMs = 5;
     request.configuration.controlPeriodUs = 5000;
-    request.initialSimulatedSensorWrench = simulatedWrenchSource_.sensorWrench();
+    request.simulatedWrenchProfile = simulatedWrenchSource_.profile();
 
     const bool configurationValid = configurationLoaded_
         && validationMessages_.isEmpty();
@@ -302,14 +329,17 @@ void CdprCoordinator::prepareForceControl(
         emit logMessage(QStringLiteral("力交互准备失败：%1").arg(request.errorText));
     } else {
         emit logMessage(QStringLiteral(
-            "力交互请求已生成：预设初始位姿、模拟F/T、固定5 ms周期；"
-            "等待硬件线程取得八轴同帧Trace基准。"));
+            "力交互请求已生成：预设初始位姿、模拟F/T（%1）、固定5 ms周期；"
+            "等待硬件线程取得八轴同帧Trace基准。")
+                            .arg(simulatedWrenchSource_.summary()));
     }
     emit forceControlRequestReady(request);
 }
 
 void CdprCoordinator::resetDynamics()
 {
+    stopOfflineValidation();
+    offlineValidationCycle_ = 0;
     QString error;
     if (!resetDynamicsFromSelectedPose(&error)) {
         dynamicsError_ = error;
@@ -334,18 +364,21 @@ void CdprCoordinator::advanceDynamicsOnce()
     const CdprFrameStamp stamp {
         ++previewSequence_, monotonicNowUs(), true
     };
+    const double elapsedS = static_cast<double>(offlineValidationCycle_) * 0.005;
     const CdprWrenchTransformResult transformed =
-        currentPlatformWrench(stamp);
+        currentPlatformWrench(stamp, elapsedS);
     if (!transformed.sample.valid) {
+        dynamicsError_ = transformed.errorText.isEmpty()
+            ? QStringLiteral("模拟力样本无效") : transformed.errorText;
         emit logMessage(QStringLiteral(
             "Newmark软件单步无有效外力输入：%1")
-                            .arg(transformed.errorText));
+                            .arg(dynamicsError_));
         publishStatus();
         return;
     }
     const CdprDynamicsResult result = dynamics_.step(
         transformed.sample,
-        static_cast<double>(configuration_.controlPeriodUs) / 1.0e6);
+        0.005);
     if (!result.valid) {
         dynamicsError_ = result.errorText;
         emit logMessage(QStringLiteral(
@@ -367,18 +400,89 @@ void CdprCoordinator::advanceDynamicsOnce()
     robotState_.stamp = stamp;
     robotState_.rawWrench = forceInputSource_
             == CdprForceInputSource::Simulated
-        ? simulatedWrenchSource_.sample(stamp)
+        ? simulatedWrenchSource_.sample(stamp, elapsedS)
         : traceFtSensorSource_.latestSample();
     robotState_.platformWrench = transformed.sample;
     robotState_.desiredPlatform = result.state;
     robotState_.desiredCables = inverse.cables;
+    ++offlineValidationCycle_;
+    offlineValidationText_ = QStringLiteral(
+        "t=%1 s，位姿=[%2]，8绳逆运动学有效，未下发电机命令。")
+        .arg(static_cast<double>(offlineValidationCycle_) * 0.005, 0, 'f', 3)
+        .arg(vector6Text(result.state.pose, 6));
+    if (!offlineValidationActive_) {
+        emit logMessage(QStringLiteral(
+            "Newmark软件单步完成：序号=%1，迭代=%2，"
+            "期望位姿=[%3]；未下发任何电机命令。")
+                            .arg(stamp.sequence)
+                            .arg(result.iterations)
+                            .arg(vector6Text(result.state.pose, 6)));
+        publishStatus();
+    } else if (offlineValidationCycle_ % 20 == 0) {
+        publishStatus();
+    }
+}
+
+void CdprCoordinator::startOfflineValidation(double durationS)
+{
+    if (!std::isfinite(durationS) || durationS <= 0.0 || durationS > 3600.0) {
+        emit logMessage(QStringLiteral("离线验证时长必须在0～3600 s范围内。"));
+        return;
+    }
+    if (forceInputSource_ != CdprForceInputSource::Simulated) {
+        emit logMessage(QStringLiteral("离线验证只使用模拟F/T输入。"));
+        return;
+    }
+    QString error;
+    if (!resetDynamicsFromSelectedPose(&error)) {
+        emit logMessage(QStringLiteral("离线验证无法开始：%1").arg(error));
+        return;
+    }
+    offlineValidationCycle_ = 0;
+    offlineValidationDurationS_ = durationS;
+    offlineValidationActive_ = true;
+    offlineValidationText_ = QStringLiteral("连续离线验证运行中");
+    offlineValidationTimer_->start();
     emit logMessage(QStringLiteral(
-        "Newmark软件单步完成：序号=%1，迭代=%2，"
-        "期望位姿=[%3]；未下发任何电机命令。")
-                        .arg(stamp.sequence)
-                        .arg(result.iterations)
-                        .arg(vector6Text(result.state.pose, 6)));
+        "离线验证已启动：5 ms步长，时长%1 s，不访问控制卡。")
+                        .arg(durationS, 0, 'f', 3));
     publishStatus();
+}
+
+void CdprCoordinator::stopOfflineValidation()
+{
+    if (offlineValidationTimer_->isActive()) {
+        offlineValidationTimer_->stop();
+    }
+    if (offlineValidationActive_) {
+        offlineValidationActive_ = false;
+        offlineValidationText_ = QStringLiteral("已停止");
+        publishStatus();
+    }
+}
+
+void CdprCoordinator::advanceOfflineValidation()
+{
+    if (!offlineValidationActive_) return;
+    advanceDynamicsOnce();
+    if (!dynamicsError_.isEmpty()) {
+        offlineValidationActive_ = false;
+        offlineValidationTimer_->stop();
+        offlineValidationText_ = QStringLiteral("故障：%1").arg(dynamicsError_);
+        publishStatus();
+        return;
+    }
+    const double elapsedS = static_cast<double>(offlineValidationCycle_) * 0.005;
+    if (elapsedS + 1.0e-12 >= offlineValidationDurationS_) {
+        offlineValidationActive_ = false;
+        offlineValidationTimer_->stop();
+        offlineValidationText_ = QStringLiteral("完成：%1 s")
+                                     .arg(elapsedS, 0, 'f', 3);
+        emit logMessage(QStringLiteral(
+            "离线验证完成：%1个5 ms步，未访问控制卡。")
+                            .arg(offlineValidationCycle_));
+        publishStatus();
+    }
 }
 
 void CdprCoordinator::prepareOfflinePvt(
@@ -655,7 +759,7 @@ bool CdprCoordinator::resetDynamicsFromSelectedPose(QString *errorText)
 }
 
 CdprWrenchTransformResult CdprCoordinator::currentPlatformWrench(
-    const CdprFrameStamp &stamp) const
+    const CdprFrameStamp &stamp, double elapsedS) const
 {
     CdprWrenchTransformResult result;
     if (!wrenchTransformer_) {
@@ -664,7 +768,7 @@ CdprWrenchTransformResult CdprCoordinator::currentPlatformWrench(
     }
     CdprWrenchSample raw;
     if (forceInputSource_ == CdprForceInputSource::Simulated) {
-        raw = simulatedWrenchSource_.sample(stamp);
+        raw = simulatedWrenchSource_.sample(stamp, elapsedS);
     } else {
         raw = traceFtSensorSource_.latestSample();
     }
@@ -812,12 +916,17 @@ void CdprCoordinator::publishStatus()
     status.presetInitialPose = presetInitialPose_;
     status.simulatedSensorWrench =
         simulatedWrenchSource_.sensorWrench();
+    status.simulatedWrenchProfileText = simulatedWrenchSource_.summary();
     status.dynamicsState = dynamics_.currentState();
     status.dynamicsText = dynamicsError_.isEmpty()
         ? (status.dynamicsReady
                ? QStringLiteral("Newmark就绪（β=0.25，γ=0.5，纯惯性）")
                : QStringLiteral("Newmark等待初始状态"))
         : QStringLiteral("Newmark错误：%1").arg(dynamicsError_);
+    status.offlineValidationActive = offlineValidationActive_;
+    status.offlineValidationElapsedS =
+        static_cast<double>(offlineValidationCycle_) * 0.005;
+    status.offlineValidationText = offlineValidationText_;
     status.initialPoseReady =
         initialPoseSource_ == CdprInitialPoseSource::Preset
         ? kinematicsReady_

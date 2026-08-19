@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <utility>
 
 namespace {
 constexpr int kStopPollIntervalMs = 10;
@@ -1949,7 +1950,11 @@ void MotionControlWorker::startCdprForceControl(
         emit logMessage(QStringLiteral("力交互Newmark初始化失败：%1").arg(error));
         return;
     }
-    cdprForceWrenchSource_.setSensorWrench(request.initialSimulatedSensorWrench);
+    if (!cdprForceWrenchSource_.configure(
+            request.simulatedWrenchProfile, &error)) {
+        emit logMessage(QStringLiteral("力交互模拟力公式无效：%1").arg(error));
+        return;
+    }
 
     QVector<quint16> axes;
     axes.reserve(kCdprCableCount);
@@ -1989,7 +1994,8 @@ void MotionControlWorker::startCdprForceControl(
     cdprForceStatus_.active = true;
     cdprForceStatus_.runId = ++cdprForceRunId_;
     cdprForceStatus_.stateText = QStringLiteral("等待八轴同帧Trace基准");
-    cdprForceStatus_.simulatedSensorWrench = request.initialSimulatedSensorWrench;
+    cdprForceStatus_.simulatedSensorWrench =
+        cdprForceWrenchSource_.sensorWrench();
     cdprForceControlActive_ = true;
     cdprForceAxisStarted_.fill(false);
     cdprForceCommandStartTraceSequence_.fill(0);
@@ -2030,6 +2036,25 @@ void MotionControlWorker::updateCdprSimulatedWrench(
                 .arg(fx, 0, 'g', 12).arg(fy, 0, 'g', 12)
                 .arg(fz, 0, 'g', 12).arg(mx, 0, 'g', 12)
                 .arg(my, 0, 'g', 12).arg(mz, 0, 'g', 12));
+    }
+}
+
+void MotionControlWorker::updateCdprSimulatedWrenchProfile(
+    const CdprSimulatedWrenchProfile &profile)
+{
+    QString error;
+    SimulatedWrenchSource candidate;
+    if (!candidate.configure(profile, &error)) {
+        emit logMessage(QStringLiteral("模拟力公式更新被拒绝：%1").arg(error));
+        return;
+    }
+    if (cdprForceControlActive_) {
+        // 运行中的控制链使用启动时的不可变公式快照。新配置只在下次启动生效，
+        // 防止公式时间轴和动力学状态在中途发生不连续切换。
+        emit logMessage(QStringLiteral(
+            "模拟力公式已校验，将在下一次力交互启动时生效；当前运行保持原快照。"));
+    } else {
+        cdprForceWrenchSource_ = std::move(candidate);
     }
 }
 
@@ -2157,7 +2182,8 @@ void MotionControlWorker::runCdprForceControlCycle()
         cdprForceCycleIndex_,
         static_cast<qint64>(std::llround(desiredElapsedS * 1000000.0)), true
     };
-    const CdprWrenchSample sensorSample = cdprForceWrenchSource_.sample(stamp);
+    const CdprWrenchSample sensorSample =
+        cdprForceWrenchSource_.sample(stamp, desiredElapsedS);
     const CdprWrenchTransformResult transformed =
         cdprForceWrenchTransformer_->toPlatformCenterOfMass(sensorSample);
     if (!transformed.sample.valid) {

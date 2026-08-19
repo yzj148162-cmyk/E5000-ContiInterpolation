@@ -61,7 +61,7 @@ struct CdprConfiguration
 };
 
 // 连续力交互启动时由CdprCoordinator生成的一次性只读快照。
-// 运行周期只更新模拟力样本，结构参数和初始位姿在本次运行中保持不变。
+// 结构参数、初始位姿和力输入公式在本次运行中保持不变。
 struct CdprForceControlRequest
 {
     bool valid = false;
@@ -69,7 +69,7 @@ struct CdprForceControlRequest
     CdprConfiguration configuration;
     CdprPlatformState6 initialPlatform;
     CdprCableState8 initialCables;
-    CdprVector6 initialSimulatedSensorWrench {};
+    CdprSimulatedWrenchProfile simulatedWrenchProfile;
     CdprVelocityControlConfig velocityControl;
 };
 
@@ -93,6 +93,7 @@ struct CdprForceControlStatus
     double maximumTrackingErrorDegree = 0.0;
     double maximumCableTravelM = 0.0;
     CdprVector6 simulatedSensorWrench {};
+    QString simulatedWrenchProfileText = QStringLiteral("定值");
     CdprPlatformState6 desiredPlatform;
     QString stateText = QStringLiteral("未运行");
 };
@@ -137,9 +138,13 @@ struct CdprUiStatus
     CdprForceInputSource forceInputSource = CdprForceInputSource::Simulated;
     CdprVector6 presetInitialPose {};
     CdprVector6 simulatedSensorWrench {};
+    QString simulatedWrenchProfileText = QStringLiteral("定值");
     CdprVector6 platformWrench {};
     CdprPlatformState6 dynamicsState;
     QString dynamicsText = QStringLiteral("未配置");
+    bool offlineValidationActive = false;
+    double offlineValidationElapsedS = 0.0;
+    QString offlineValidationText = QStringLiteral("未运行");
     QString nokovText = QStringLiteral("未连接");
     QString traceFtText = QStringLiteral("Trace F/T对象类型待配置");
     bool nokovConnected = false;

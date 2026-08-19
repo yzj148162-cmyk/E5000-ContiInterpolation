@@ -22,8 +22,10 @@
 #include <QtCharts/QValueAxis>
 
 #include <cmath>
+#include <algorithm>
 #include <initializer_list>
 #include <limits>
+#include <utility>
 
 #ifdef Q_OS_WIN
 #ifndef NOMINMAX
@@ -35,6 +37,7 @@
 
 #include "hardware/MotionControlWorker.h"
 #include "cdpr/CdprCoordinator.h"
+#include "cdpr/CdprForceInput.h"
 #include "widgets/ZoomableChartView.h"
 
 namespace {
@@ -110,6 +113,7 @@ MainWindow::MainWindow(QWidget *parent)
     initializeContiTrajectoryChart();
     initializeVelocityControlCharts();
     initializeTorqueTestCharts();
+    initializeCdprWrenchPreviewCharts();
     initializeUiRefreshTimer();
     onStageChanged(ui_->stageCombo->currentIndex());
 
@@ -297,32 +301,54 @@ void MainWindow::connectWorker()
             this, [this](int index) {
         emit setCdprForceInputSourceRequested(index);
     });
+    connect(ui_->cdprWrenchModeCombo,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int) { updateCdprWrenchModeUi(); });
+    updateCdprWrenchModeUi();
+    connect(ui_->cdprValidateWrenchProfileButton, &QPushButton::clicked,
+            this, [this] { validateAndPreviewCdprWrenchProfile(false); });
     connect(ui_->cdprApplySimulatedWrenchButton, &QPushButton::clicked,
             this, [this] {
-        emit setCdprSimulatedWrenchRequested(
-            ui_->cdprForceFxSpin->value(),
-            ui_->cdprForceFySpin->value(),
-            ui_->cdprForceFzSpin->value(),
-            ui_->cdprForceMxSpin->value(),
-            ui_->cdprForceMySpin->value(),
-            ui_->cdprForceMzSpin->value());
+        validateAndPreviewCdprWrenchProfile(true);
     });
     connect(ui_->cdprClearSimulatedWrenchButton, &QPushButton::clicked,
             this, [this] {
         const QList<QDoubleSpinBox *> controls {
             ui_->cdprForceFxSpin, ui_->cdprForceFySpin,
             ui_->cdprForceFzSpin, ui_->cdprForceMxSpin,
-            ui_->cdprForceMySpin, ui_->cdprForceMzSpin
+            ui_->cdprForceMySpin, ui_->cdprForceMzSpin,
+            ui_->cdprBiasFxSpin, ui_->cdprBiasFySpin,
+            ui_->cdprBiasFzSpin, ui_->cdprBiasMxSpin,
+            ui_->cdprBiasMySpin, ui_->cdprBiasMzSpin
         };
         for (QDoubleSpinBox *control : controls) {
             control->setValue(0.0);
         }
+        ui_->cdprWrenchModeCombo->setCurrentIndex(0);
+        const QList<QLineEdit *> expressions {
+            ui_->cdprFormulaFxEdit, ui_->cdprFormulaFyEdit,
+            ui_->cdprFormulaFzEdit, ui_->cdprFormulaMxEdit,
+            ui_->cdprFormulaMyEdit, ui_->cdprFormulaMzEdit
+        };
+        for (QLineEdit *expression : expressions) {
+            expression->setText(QStringLiteral("0"));
+        }
         emit clearCdprSimulatedWrenchRequested();
+        validateAndPreviewCdprWrenchProfile(false);
     });
     connect(ui_->cdprResetDynamicsButton, &QPushButton::clicked,
             this, [this] { emit resetCdprDynamicsRequested(); });
     connect(ui_->cdprAdvanceDynamicsButton, &QPushButton::clicked,
             this, [this] { emit advanceCdprDynamicsOnceRequested(); });
+    connect(ui_->cdprStartOfflineValidationButton, &QPushButton::clicked,
+            this, [this] {
+        if (validateAndPreviewCdprWrenchProfile(true)) {
+            emit startCdprOfflineValidationRequested(
+                ui_->cdprOfflineValidationDurationSpin->value());
+        }
+    });
+    connect(ui_->cdprStopOfflineValidationButton, &QPushButton::clicked,
+            this, [this] { emit stopCdprOfflineValidationRequested(); });
     connect(ui_->cdprPvtGenerateButton, &QPushButton::clicked,
             this, [this] {
         emit prepareCdprOfflinePvtRequested(
@@ -450,14 +476,22 @@ void MainWindow::connectWorker()
             cdprCoordinator_, &CdprCoordinator::setForceInputSource);
     connect(this, &MainWindow::setCdprSimulatedWrenchRequested,
             cdprCoordinator_, &CdprCoordinator::setSimulatedSensorWrench);
+    connect(this, &MainWindow::setCdprSimulatedWrenchProfileRequested,
+            cdprCoordinator_, &CdprCoordinator::setSimulatedWrenchProfile);
     connect(this, &MainWindow::clearCdprSimulatedWrenchRequested,
             cdprCoordinator_, &CdprCoordinator::clearSimulatedSensorWrench);
     connect(cdprCoordinator_, &CdprCoordinator::simulatedWrenchChanged,
             worker_, &MotionControlWorker::updateCdprSimulatedWrench);
+    connect(cdprCoordinator_, &CdprCoordinator::simulatedWrenchProfileChanged,
+            worker_, &MotionControlWorker::updateCdprSimulatedWrenchProfile);
     connect(this, &MainWindow::resetCdprDynamicsRequested,
             cdprCoordinator_, &CdprCoordinator::resetDynamics);
     connect(this, &MainWindow::advanceCdprDynamicsOnceRequested,
             cdprCoordinator_, &CdprCoordinator::advanceDynamicsOnce);
+    connect(this, &MainWindow::startCdprOfflineValidationRequested,
+            cdprCoordinator_, &CdprCoordinator::startOfflineValidation);
+    connect(this, &MainWindow::stopCdprOfflineValidationRequested,
+            cdprCoordinator_, &CdprCoordinator::stopOfflineValidation);
     connect(this, &MainWindow::prepareCdprOfflinePvtRequested,
             cdprCoordinator_, &CdprCoordinator::prepareOfflinePvt);
     connect(this, &MainWindow::prepareCdprVelocityTrajectoryRequested,
@@ -545,6 +579,7 @@ void MainWindow::onCdprCreateTemplateClicked()
 
 void MainWindow::updateCdprStatus(const CdprUiStatus &status)
 {
+    cdprOfflineValidationActive_ = status.offlineValidationActive;
     cdprAllMappedAxesEnabled_ = status.allMappedAxesEnabled;
     ui_->cdprPvtStartButton->setEnabled(
         !cdprOfflinePvtStatus_.active
@@ -609,6 +644,9 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
     ui_->cdprNokovConnectButton->setEnabled(!status.nokovConnected);
     ui_->cdprNokovDisconnectButton->setEnabled(status.nokovConnected);
     ui_->cdprTraceFtStatusLabel->setText(status.traceFtText);
+    ui_->cdprWrenchProfileStatusLabel->setText(
+        QStringLiteral("已应用：%1；实机启动时复制为不可变快照。")
+            .arg(status.simulatedWrenchProfileText));
     ui_->cdprPlatformWrenchValueLabel->setText(
         status.forceInputReady
             ? QStringLiteral("平台质心力旋量：[")
@@ -639,7 +677,22 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
                        cdprVector6Text(status.dynamicsState.twist, 6))
             : QStringLiteral("期望平台状态：--"));
     ui_->cdprAdvanceDynamicsButton->setEnabled(
-        status.dynamicsReady && status.forceInputReady);
+        status.dynamicsReady && status.forceInputReady
+        && !status.offlineValidationActive);
+    ui_->cdprResetDynamicsButton->setEnabled(!status.offlineValidationActive);
+    ui_->cdprStartOfflineValidationButton->setEnabled(
+        status.dynamicsReady && status.forceInputReady
+        && !status.offlineValidationActive && !cdprForceControlStatus_.active);
+    ui_->cdprStopOfflineValidationButton->setEnabled(
+        status.offlineValidationActive);
+    ui_->cdprOfflineValidationStatusLabel->setText(
+        QStringLiteral("%1｜t=%2 s；不读取Trace，不下发电机命令。")
+            .arg(status.offlineValidationText)
+            .arg(status.offlineValidationElapsedS, 0, 'f', 3));
+    const bool profileEditable = !status.offlineValidationActive
+        && !cdprForceControlStatus_.active;
+    ui_->cdprApplySimulatedWrenchButton->setEnabled(profileEditable);
+    ui_->cdprClearSimulatedWrenchButton->setEnabled(profileEditable);
 
     ui_->cdprMarkerTable->setRowCount(status.markers.size());
     for (int row = 0; row < status.markers.size(); ++row) {
@@ -699,6 +752,10 @@ void MainWindow::updateCdprForceControlStatus(
     ui_->cdprStartButton->setEnabled(
         cdprForceControlAvailable_ && !status.active);
     ui_->cdprStopButton->setEnabled(status.active);
+    ui_->cdprApplySimulatedWrenchButton->setEnabled(
+        !status.active && !cdprOfflineValidationActive_);
+    ui_->cdprClearSimulatedWrenchButton->setEnabled(
+        !status.active && !cdprOfflineValidationActive_);
 
     if (!status.active && status.cycleCount == 0) {
         ui_->cdprForceInteractionStatusLabel->setText(status.stateText);
@@ -728,6 +785,143 @@ void MainWindow::updateCdprForceControlStatus(
             .arg(status.maximumCableTravelM, 0, 'f', 6)
             .arg(status.executionOverrunCount)
             .arg(status.schedulingOverrunCount));
+}
+
+CdprSimulatedWrenchProfile MainWindow::collectCdprWrenchProfile() const
+{
+    CdprSimulatedWrenchProfile profile;
+    profile.mode = static_cast<CdprSimulatedWrenchMode>(
+        ui_->cdprWrenchModeCombo->currentIndex());
+    profile.value = {
+        ui_->cdprForceFxSpin->value(), ui_->cdprForceFySpin->value(),
+        ui_->cdprForceFzSpin->value(), ui_->cdprForceMxSpin->value(),
+        ui_->cdprForceMySpin->value(), ui_->cdprForceMzSpin->value()
+    };
+    profile.bias = {
+        ui_->cdprBiasFxSpin->value(), ui_->cdprBiasFySpin->value(),
+        ui_->cdprBiasFzSpin->value(), ui_->cdprBiasMxSpin->value(),
+        ui_->cdprBiasMySpin->value(), ui_->cdprBiasMzSpin->value()
+    };
+    profile.pulseStartS = ui_->cdprPulseStartSpin->value();
+    profile.pulseDurationS = ui_->cdprPulseDurationSpin->value();
+    profile.sineFrequencyHz = ui_->cdprSineFrequencySpin->value();
+    profile.sinePhaseRad = ui_->cdprSinePhaseSpin->value();
+    profile.expressions = {
+        ui_->cdprFormulaFxEdit->text(), ui_->cdprFormulaFyEdit->text(),
+        ui_->cdprFormulaFzEdit->text(), ui_->cdprFormulaMxEdit->text(),
+        ui_->cdprFormulaMyEdit->text(), ui_->cdprFormulaMzEdit->text()
+    };
+    return profile;
+}
+
+void MainWindow::updateCdprWrenchModeUi()
+{
+    const auto mode = static_cast<CdprSimulatedWrenchMode>(
+        ui_->cdprWrenchModeCombo->currentIndex());
+    const bool valueEnabled = mode != CdprSimulatedWrenchMode::Formula;
+    const bool biasEnabled = mode == CdprSimulatedWrenchMode::Pulse
+        || mode == CdprSimulatedWrenchMode::Sine;
+    const bool pulseEnabled = mode == CdprSimulatedWrenchMode::Pulse;
+    const bool sineEnabled = mode == CdprSimulatedWrenchMode::Sine;
+    const bool formulaEnabled = mode == CdprSimulatedWrenchMode::Formula;
+    const QList<QDoubleSpinBox *> values {
+        ui_->cdprForceFxSpin, ui_->cdprForceFySpin,
+        ui_->cdprForceFzSpin, ui_->cdprForceMxSpin,
+        ui_->cdprForceMySpin, ui_->cdprForceMzSpin
+    };
+    const QList<QDoubleSpinBox *> biases {
+        ui_->cdprBiasFxSpin, ui_->cdprBiasFySpin,
+        ui_->cdprBiasFzSpin, ui_->cdprBiasMxSpin,
+        ui_->cdprBiasMySpin, ui_->cdprBiasMzSpin
+    };
+    const QList<QLineEdit *> formulas {
+        ui_->cdprFormulaFxEdit, ui_->cdprFormulaFyEdit,
+        ui_->cdprFormulaFzEdit, ui_->cdprFormulaMxEdit,
+        ui_->cdprFormulaMyEdit, ui_->cdprFormulaMzEdit
+    };
+    for (QDoubleSpinBox *control : values) control->setEnabled(valueEnabled);
+    for (QDoubleSpinBox *control : biases) control->setEnabled(biasEnabled);
+    for (QLineEdit *control : formulas) control->setEnabled(formulaEnabled);
+    ui_->cdprPulseStartSpin->setEnabled(pulseEnabled);
+    ui_->cdprPulseDurationSpin->setEnabled(pulseEnabled);
+    ui_->cdprSineFrequencySpin->setEnabled(sineEnabled);
+    ui_->cdprSinePhaseSpin->setEnabled(sineEnabled);
+    ui_->cdprSimulatedForceLabel->setText(
+        mode == CdprSimulatedWrenchMode::Constant
+            ? QStringLiteral("传感器坐标系定值")
+            : (mode == CdprSimulatedWrenchMode::Formula
+                   ? QStringLiteral("公式模式不使用本行")
+                   : QStringLiteral("传感器坐标系幅值")));
+    const QString formulaHelp = QStringLiteral(
+        "支持t、pi、+ - * / ^以及sin/cos/tan/exp/sqrt/abs/log；例如5*sin(2*pi*0.5*t)。");
+    for (QLineEdit *control : formulas) control->setToolTip(formulaHelp);
+}
+
+bool MainWindow::validateAndPreviewCdprWrenchProfile(bool applyProfile)
+{
+    const CdprSimulatedWrenchProfile profile = collectCdprWrenchProfile();
+    SimulatedWrenchSource source;
+    QString error;
+    if (!source.configure(profile, &error)) {
+        ui_->cdprWrenchProfileStatusLabel->setText(
+            QStringLiteral("校验失败：%1").arg(error));
+        ui_->cdprWrenchProfileStatusLabel->setStyleSheet(
+            QStringLiteral("QLabel { color: #c62828; font-weight: bold; }"));
+        appendLog(QStringLiteral("模拟六维力配置校验失败：%1").arg(error));
+        return false;
+    }
+
+    QList<QPointF> forcePoints[3];
+    QList<QPointF> momentPoints[3];
+    const double durationS = ui_->cdprWrenchPreviewDurationSpin->value();
+    constexpr int kPreviewPointCount = 501;
+    double forceMinimum = std::numeric_limits<double>::max();
+    double forceMaximum = std::numeric_limits<double>::lowest();
+    double momentMinimum = std::numeric_limits<double>::max();
+    double momentMaximum = std::numeric_limits<double>::lowest();
+    for (int point = 0; point < kPreviewPointCount; ++point) {
+        const double timeS = durationS * point / (kPreviewPointCount - 1);
+        CdprVector6 wrench {};
+        if (!source.evaluate(timeS, wrench, &error)) {
+            ui_->cdprWrenchProfileStatusLabel->setText(
+                QStringLiteral("预览失败：%1").arg(error));
+            return false;
+        }
+        for (int component = 0; component < 3; ++component) {
+            forcePoints[component].append(QPointF(timeS, wrench[component]));
+            momentPoints[component].append(QPointF(timeS, wrench[component + 3]));
+            forceMinimum = std::min(forceMinimum, wrench[component]);
+            forceMaximum = std::max(forceMaximum, wrench[component]);
+            momentMinimum = std::min(momentMinimum, wrench[component + 3]);
+            momentMaximum = std::max(momentMaximum, wrench[component + 3]);
+        }
+    }
+    for (int component = 0; component < 3; ++component) {
+        cdprForcePreviewSeries_[component]->replace(forcePoints[component]);
+        cdprMomentPreviewSeries_[component]->replace(momentPoints[component]);
+    }
+    const auto paddedRange = [](double minimum, double maximum) {
+        const double span = std::max(0.01, maximum - minimum);
+        const double margin = std::max(0.01, span * 0.1);
+        return std::pair<double, double>(minimum - margin, maximum + margin);
+    };
+    const auto forceRange = paddedRange(forceMinimum, forceMaximum);
+    const auto momentRange = paddedRange(momentMinimum, momentMaximum);
+    ui_->cdprForcePreviewChartView->setAutomaticRange(
+        0.0, durationS, forceRange.first, forceRange.second);
+    ui_->cdprMomentPreviewChartView->setAutomaticRange(
+        0.0, durationS, momentRange.first, momentRange.second);
+    ui_->cdprForcePreviewChartView->resetAutomaticRangeMode();
+    ui_->cdprMomentPreviewChartView->resetAutomaticRangeMode();
+    ui_->cdprWrenchProfileStatusLabel->setStyleSheet(
+        QStringLiteral("QLabel { color: #2e7d32; font-weight: bold; }"));
+    ui_->cdprWrenchProfileStatusLabel->setText(
+        QStringLiteral("校验通过：%1；预览%2 s。")
+            .arg(source.summary()).arg(durationS, 0, 'f', 1));
+    if (applyProfile) {
+        emit setCdprSimulatedWrenchProfileRequested(profile);
+    }
+    return true;
 }
 
 CdprOfflinePvtRequest MainWindow::collectCdprOfflinePvtRequest() const
@@ -1988,6 +2182,58 @@ void MainWindow::initializeTorqueTestCharts()
         torqueMotionSeries_[index]->attachAxis(torqueMotionTimeAxis_);
         torqueMotionSeries_[index]->attachAxis(torqueMotionValueAxis_);
     }
+}
+
+void MainWindow::initializeCdprWrenchPreviewCharts()
+{
+    const auto createChart = [](const QString &title, const QString &valueTitle,
+                                ZoomableChartView *view, QChart *&chart,
+                                QValueAxis *&timeAxis, QValueAxis *&valueAxis) {
+        chart = new QChart;
+        chart->setTitle(title);
+        chart->legend()->setVisible(true);
+        timeAxis = new QValueAxis(chart);
+        timeAxis->setTitleText(QStringLiteral("公式时间 (s)"));
+        timeAxis->setLabelFormat(QStringLiteral("%.2f"));
+        timeAxis->setTickCount(6);
+        timeAxis->setRange(0.0, 5.0);
+        valueAxis = new QValueAxis(chart);
+        valueAxis->setTitleText(valueTitle);
+        valueAxis->setRange(-1.0, 1.0);
+        chart->addAxis(timeAxis, Qt::AlignBottom);
+        chart->addAxis(valueAxis, Qt::AlignLeft);
+        view->setChart(chart);
+        view->setRenderHint(QPainter::Antialiasing, false);
+        view->setAutomaticRange(0.0, 5.0, -1.0, 1.0);
+    };
+    createChart(QStringLiteral("模拟力预览"), QStringLiteral("力 (N)"),
+                ui_->cdprForcePreviewChartView, cdprForcePreviewChart_,
+                cdprForcePreviewTimeAxis_, cdprForcePreviewValueAxis_);
+    createChart(QStringLiteral("模拟力矩预览"), QStringLiteral("力矩 (N·m)"),
+                ui_->cdprMomentPreviewChartView, cdprMomentPreviewChart_,
+                cdprMomentPreviewTimeAxis_, cdprMomentPreviewValueAxis_);
+    const QStringList forceNames {QStringLiteral("Fx"), QStringLiteral("Fy"),
+                                  QStringLiteral("Fz")};
+    const QStringList momentNames {QStringLiteral("Mx"), QStringLiteral("My"),
+                                   QStringLiteral("Mz")};
+    const QList<QColor> colors {QColor(0, 102, 204), QColor(0, 153, 102),
+                                QColor(204, 51, 51)};
+    for (int index = 0; index < 3; ++index) {
+        cdprForcePreviewSeries_[index] = new QLineSeries(cdprForcePreviewChart_);
+        cdprForcePreviewSeries_[index]->setName(forceNames.at(index));
+        cdprForcePreviewSeries_[index]->setPen(QPen(colors.at(index), 1.4));
+        cdprForcePreviewChart_->addSeries(cdprForcePreviewSeries_[index]);
+        cdprForcePreviewSeries_[index]->attachAxis(cdprForcePreviewTimeAxis_);
+        cdprForcePreviewSeries_[index]->attachAxis(cdprForcePreviewValueAxis_);
+
+        cdprMomentPreviewSeries_[index] = new QLineSeries(cdprMomentPreviewChart_);
+        cdprMomentPreviewSeries_[index]->setName(momentNames.at(index));
+        cdprMomentPreviewSeries_[index]->setPen(QPen(colors.at(index), 1.4));
+        cdprMomentPreviewChart_->addSeries(cdprMomentPreviewSeries_[index]);
+        cdprMomentPreviewSeries_[index]->attachAxis(cdprMomentPreviewTimeAxis_);
+        cdprMomentPreviewSeries_[index]->attachAxis(cdprMomentPreviewValueAxis_);
+    }
+    validateAndPreviewCdprWrenchProfile(false);
 }
 
 void MainWindow::clearVelocityControlCharts()
