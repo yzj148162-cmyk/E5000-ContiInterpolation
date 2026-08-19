@@ -45,6 +45,8 @@ int main(int argc, char *argv[])
     qRegisterMetaType<CdprOfflinePvtStatus>("CdprOfflinePvtStatus");
     qRegisterMetaType<CdprVelocityControlConfig>("CdprVelocityControlConfig");
     qRegisterMetaType<CdprVelocityControlStatus>("CdprVelocityControlStatus");
+    qRegisterMetaType<CdprForceControlRequest>("CdprForceControlRequest");
+    qRegisterMetaType<CdprForceControlStatus>("CdprForceControlStatus");
 
     MainWindow window;
     window.show();

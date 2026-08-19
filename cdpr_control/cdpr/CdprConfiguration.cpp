@@ -63,6 +63,8 @@ CdprRigidBodyConfig readRigidBody(const QJsonObject &object)
 QJsonObject writeRigidBody(const CdprRigidBodyConfig &value)
 {
     return {
+        {QStringLiteral("_note"),
+         QStringLiteral("现阶段采用G302参数；实机定型后复核质量、质心与惯量。")},
         {QStringLiteral("mass_kg"), value.massKg},
         {QStringLiteral("center_of_mass_m"), writeVector3(value.centerOfMassM)},
         {QStringLiteral("inertia_kg_m2"), writeArray(value.inertiaKgM2)}
@@ -97,6 +99,8 @@ CdprForceSensorConfig readForceSensor(const QJsonObject &object)
 QJsonObject writeForceSensor(const CdprForceSensorConfig &value)
 {
     return {
+        {QStringLiteral("_note"),
+         QStringLiteral("现阶段按当前安装假设使用；接入实物F/T后重新标定安装位置、方向、比例与零偏。")},
         {QStringLiteral("origin_in_platform_m"),
          writeVector3(value.originInPlatformM)},
         {QStringLiteral("rotation_sensor_to_platform"),
@@ -160,6 +164,8 @@ QJsonObject toJson(const CdprConfiguration &configuration)
     QJsonArray cables;
     for (const CdprCableAxisConfig &cable : configuration.cables) {
         cables.append(QJsonObject {
+            {QStringLiteral("_note"),
+             QStringLiteral("出绳点、平台连接点、轴映射和收放绳方向为现阶段采用值；实机安装后逐项复核。")},
             {QStringLiteral("cable"), cable.cable},
             {QStringLiteral("axis"), cable.axis},
             {QStringLiteral("direction"), cable.direction},
@@ -169,6 +175,8 @@ QJsonObject toJson(const CdprConfiguration &configuration)
     }
     return {
         {QStringLiteral("schema_version"), 4},
+        {QStringLiteral("_note"),
+         QStringLiteral("结构参数现阶段按G302与当前样机假设使用；带_note字段仅作说明，不参与计算。")},
         {QStringLiteral("name"), configuration.name},
         {QStringLiteral("parameters_confirmed"), configuration.parametersConfirmed},
         {QStringLiteral("coordinate_convention"), configuration.coordinateConvention},
@@ -177,6 +185,8 @@ QJsonObject toJson(const CdprConfiguration &configuration)
         {QStringLiteral("physical_platform"), writeRigidBody(configuration.physicalPlatform)},
         {QStringLiteral("force_sensor"), writeForceSensor(configuration.forceSensor)},
         {QStringLiteral("winch_safety"), QJsonObject {
+             {QStringLiteral("_note"),
+              QStringLiteral("绞盘直径与初始位置双向行程为现阶段采用值；连接实物绞盘后复核。")},
              {QStringLiteral("diameter_m"), configuration.winchSafety.diameterM},
              {QStringLiteral("maximum_turns_from_initial"),
               configuration.winchSafety.maximumTurnsFromInitial}

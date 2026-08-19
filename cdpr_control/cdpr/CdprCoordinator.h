@@ -39,12 +39,16 @@ public slots:
     void advanceDynamicsOnce();
     void prepareOfflinePvt(const CdprOfflinePvtRequest &request);
     void prepareVelocityTrajectory(const CdprOfflinePvtRequest &request);
+    void prepareForceControl(const CdprVelocityControlConfig &velocityControl);
 
 signals:
     void statusChanged(const CdprUiStatus &status);
     void logMessage(const QString &message);
     void offlinePvtPlanReady(const CdprOfflinePvtPlan &plan);
     void velocityTrajectoryReady(const CdprOfflinePvtPlan &plan);
+    void forceControlRequestReady(const CdprForceControlRequest &request);
+    void simulatedWrenchChanged(double fx, double fy, double fz,
+                                double mx, double my, double mz);
 
 private:
     void rebuildInitialKinematics();

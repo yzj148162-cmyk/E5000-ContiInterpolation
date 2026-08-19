@@ -1,4 +1,5 @@
 {
+    "_note": "当前G302结构参数用于软件联调；出绳点、平台连接点、质量惯量、传感器安装位姿及轴方向均需在实物接入前复核。",
     "schema_version": 4,
     "name": "G302八绳六自由度CDPR",
     "parameters_confirmed": true,
@@ -12,6 +13,7 @@
         0.0
     ],
     "physical_platform": {
+        "_note": "当前采用G302刚体参数；Newmark最小闭环为纯惯性模型，不额外加入回中刚度或阻尼。",
         "mass_kg": 30.0,
         "center_of_mass_m": [
             0.0,
@@ -31,6 +33,7 @@
         ]
     },
     "force_sensor": {
+        "_note": "当前假定传感器原始六维量已是N和N*m；安装位置与sensor到platform旋转取自现有G302配置，实物接入前复核。",
         "origin_in_platform_m": [
             0.0,
             0.0,
@@ -66,6 +69,7 @@
         ]
     },
     "winch_safety": {
+        "_note": "当前实物绞盘直径160 mm；相对启动位置允许收绳或放绳各6.5圈。",
         "diameter_m": 0.16,
         "maximum_turns_from_initial": 6.5
     },

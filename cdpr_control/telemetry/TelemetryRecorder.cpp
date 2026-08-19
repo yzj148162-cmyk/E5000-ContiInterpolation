@@ -18,6 +18,16 @@ namespace {
 constexpr int kWriterIntervalMs = 100;
 constexpr int kWriterBatchFrames = 4096;
 constexpr int kWriterBatchTimingSamples = 4096;
+constexpr int kWriterBatchForceControlSamples = 1024;
+
+template <size_t Size>
+void appendCsvArray(QByteArray &output, const std::array<double, Size> &values)
+{
+    for (double value : values) {
+        output.append(',');
+        output.append(QByteArray::number(value, 'g', 17));
+    }
+}
 
 QString createRunDirectory(const QString &rootDirectory, QString &error)
 {
@@ -127,6 +137,42 @@ public:
             "cable2_axis_api_us,cable3_axis_api_us,cable4_axis_api_us,"
             "cable5_axis_api_us,cable6_axis_api_us,cable7_axis_api_us,slowest_axis,"
             "trace_frames_read,estimated_missed_cycles\n");
+        forceControlFile_.setFileName(
+            QDir(runDirectory_).filePath(QStringLiteral("cdpr_force_control.csv")));
+        if (!forceControlFile_.open(QIODevice::WriteOnly | QIODevice::Text
+                                    | QIODevice::Truncate)) {
+            error = QStringLiteral("无法打开 cdpr_force_control.csv：%1")
+                        .arg(forceControlFile_.errorString());
+            timingFile_.close();
+            eventFile_.close();
+            traceFile_.close();
+            return false;
+        }
+        QByteArray forceHeader("run_id,cycle_index,host_elapsed_us,trace_sequence");
+        const QList<QByteArray> groups {
+            "sensor_wrench", "platform_wrench", "desired_pose", "desired_twist"
+        };
+        for (const QByteArray &group : groups) {
+            for (int index = 0; index < 6; ++index) {
+                forceHeader.append(',');
+                forceHeader.append(group);
+                forceHeader.append(QByteArray::number(index));
+            }
+        }
+        const QList<QByteArray> cableGroups {
+            "desired_cable_length_m", "desired_cable_velocity_mps",
+            "target_axis_position_deg", "target_axis_velocity_deg_s",
+            "actual_axis_position_deg", "actual_axis_velocity_deg_s"
+        };
+        for (const QByteArray &group : cableGroups) {
+            for (int index = 0; index < 8; ++index) {
+                forceHeader.append(',');
+                forceHeader.append(group);
+                forceHeader.append(QByteArray::number(index));
+            }
+        }
+        forceHeader.append(",maximum_tracking_error_deg,maximum_cable_travel_m\n");
+        forceControlFile_.write(forceHeader);
         writeEvent(QStringLiteral("recording_started"));
         if (timer_ == nullptr) {
             timer_ = new QTimer(this);
@@ -160,12 +206,17 @@ public:
             timingFile_.flush();
             timingFile_.close();
         }
+        if (forceControlFile_.isOpen()) {
+            forceControlFile_.flush();
+            forceControlFile_.close();
+        }
         runDirectory_.clear();
     }
 
     int drain()
     {
-        const int drained = drainTraceFrames() + drainTimingSamples();
+        const int drained = drainTraceFrames() + drainTimingSamples()
+            + drainForceControlSamples();
         writeRunContextIfDirty();
         return drained;
     }
@@ -260,6 +311,56 @@ public:
         return count;
     }
 
+    int drainForceControlSamples()
+    {
+        if (!forceControlFile_.isOpen()) {
+            return 0;
+        }
+        forceControlBatch_.clear();
+        const int count = recorder_->takeForceControlBatch(
+            forceControlBatch_, kWriterBatchForceControlSamples);
+        if (count <= 0) {
+            return 0;
+        }
+        QByteArray output;
+        output.reserve(count * 1200);
+        for (const CdprForceControlTelemetrySample &sample
+             : std::as_const(forceControlBatch_)) {
+            output.append(QByteArray::number(sample.runId));
+            output.append(',');
+            output.append(QByteArray::number(sample.cycleIndex));
+            output.append(',');
+            output.append(QByteArray::number(sample.hostElapsedUs));
+            output.append(',');
+            output.append(QByteArray::number(sample.traceSequence));
+            appendCsvArray(output, sample.sensorWrench);
+            appendCsvArray(output, sample.platformWrench);
+            appendCsvArray(output, sample.desiredPose);
+            appendCsvArray(output, sample.desiredTwist);
+            appendCsvArray(output, sample.desiredCableLengthM);
+            appendCsvArray(output, sample.desiredCableVelocityMps);
+            appendCsvArray(output, sample.targetAxisPositionDegree);
+            appendCsvArray(output, sample.targetAxisVelocityDegreePerSecond);
+            appendCsvArray(output, sample.actualAxisPositionDegree);
+            appendCsvArray(output, sample.actualAxisVelocityDegreePerSecond);
+            output.append(',');
+            output.append(QByteArray::number(
+                sample.maximumTrackingErrorDegree, 'g', 17));
+            output.append(',');
+            output.append(QByteArray::number(sample.maximumCableTravelM, 'g', 17));
+            output.append('\n');
+        }
+        if (forceControlFile_.write(output) != output.size()) {
+            recorder_->setWriterError(
+                QStringLiteral("写入 cdpr_force_control.csv 失败：%1")
+                    .arg(forceControlFile_.errorString()));
+        } else {
+            recorder_->addWrittenForceControlSamples(
+                static_cast<quint64>(count));
+        }
+        return count;
+    }
+
     void appendEvent(const QString &eventText)
     {
         if (eventFile_.isOpen()) {
@@ -303,16 +404,19 @@ private:
     QFile traceFile_;
     QFile eventFile_;
     QFile timingFile_;
+    QFile forceControlFile_;
     QString runDirectory_;
     QJsonObject runContext_;
     bool runContextDirty_ = false;
     QVector<TraceTelemetryFrame> batch_;
     QVector<ControlCycleTimingSample> timingBatch_;
+    QVector<CdprForceControlTelemetrySample> forceControlBatch_;
 };
 
 TelemetryRecorder::TelemetryRecorder()
     : ring_(static_cast<qsizetype>(kRingCapacity))
     , timingRing_(static_cast<qsizetype>(kTimingRingCapacity))
+    , forceControlRing_(static_cast<qsizetype>(kForceControlRingCapacity))
     , writerThread_(new QThread)
     , writer_(new TelemetryWriterWorker(this))
 {
@@ -344,6 +448,10 @@ bool TelemetryRecorder::start(const TelemetryRunMetadata &metadata, QString &err
     timingReadIndex_.store(0, std::memory_order_release);
     writtenTimingSamples_.store(0, std::memory_order_release);
     droppedTimingSamples_.store(0, std::memory_order_release);
+    forceControlWriteIndex_.store(0, std::memory_order_release);
+    forceControlReadIndex_.store(0, std::memory_order_release);
+    writtenForceControlSamples_.store(0, std::memory_order_release);
+    droppedForceControlSamples_.store(0, std::memory_order_release);
     firstRecordedTraceTimeUs_ = 0;
     hasFirstRecordedTraceTime_ = false;
     {
@@ -409,6 +517,22 @@ void TelemetryRecorder::pushControlCycleTiming(
     timingWriteIndex_.store(next, std::memory_order_release);
 }
 
+void TelemetryRecorder::pushCdprForceControlSample(
+    const CdprForceControlTelemetrySample &sample)
+{
+    if (!recording_.load(std::memory_order_acquire)) {
+        return;
+    }
+    const quint32 write = forceControlWriteIndex_.load(std::memory_order_relaxed);
+    const quint32 next = (write + 1U) % kForceControlRingCapacity;
+    if (next == forceControlReadIndex_.load(std::memory_order_acquire)) {
+        droppedForceControlSamples_.fetch_add(1, std::memory_order_relaxed);
+        return;
+    }
+    forceControlRing_[static_cast<qsizetype>(write)] = sample;
+    forceControlWriteIndex_.store(next, std::memory_order_release);
+}
+
 void TelemetryRecorder::appendEvent(const QString &eventText)
 {
     if (!recording_.load(std::memory_order_acquire)) {
@@ -461,6 +585,17 @@ TelemetryRecorderStatus TelemetryRecorder::status() const
         writtenTimingSamples_.load(std::memory_order_acquire);
     result.droppedTimingSamples =
         droppedTimingSamples_.load(std::memory_order_acquire);
+    const quint32 forceWrite =
+        forceControlWriteIndex_.load(std::memory_order_acquire);
+    const quint32 forceRead =
+        forceControlReadIndex_.load(std::memory_order_acquire);
+    result.queuedForceControlSamples = forceWrite >= forceRead
+        ? forceWrite - forceRead
+        : kForceControlRingCapacity - forceRead + forceWrite;
+    result.writtenForceControlSamples =
+        writtenForceControlSamples_.load(std::memory_order_acquire);
+    result.droppedForceControlSamples =
+        droppedForceControlSamples_.load(std::memory_order_acquire);
     QMutexLocker locker(&statusMutex_);
     result.outputDirectory = outputDirectory_;
     result.errorText = errorText_;
@@ -496,6 +631,21 @@ int TelemetryRecorder::takeTimingBatch(
     return batch.size();
 }
 
+int TelemetryRecorder::takeForceControlBatch(
+    QVector<CdprForceControlTelemetrySample> &batch, int maximum)
+{
+    const int limit = std::max(1, maximum);
+    batch.reserve(limit);
+    quint32 read = forceControlReadIndex_.load(std::memory_order_relaxed);
+    const quint32 write = forceControlWriteIndex_.load(std::memory_order_acquire);
+    while (read != write && batch.size() < limit) {
+        batch.push_back(forceControlRing_[static_cast<qsizetype>(read)]);
+        read = (read + 1U) % kForceControlRingCapacity;
+    }
+    forceControlReadIndex_.store(read, std::memory_order_release);
+    return batch.size();
+}
+
 void TelemetryRecorder::setWriterError(const QString &errorText)
 {
     QMutexLocker locker(&statusMutex_);
@@ -516,4 +666,9 @@ void TelemetryRecorder::addWrittenFrames(quint64 count)
 void TelemetryRecorder::addWrittenTimingSamples(quint64 count)
 {
     writtenTimingSamples_.fetch_add(count, std::memory_order_relaxed);
+}
+
+void TelemetryRecorder::addWrittenForceControlSamples(quint64 count)
+{
+    writtenForceControlSamples_.fetch_add(count, std::memory_order_relaxed);
 }

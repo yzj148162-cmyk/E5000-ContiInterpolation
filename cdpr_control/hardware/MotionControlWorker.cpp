@@ -138,6 +138,7 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
     , traceDelayCalibrationTimer_(new QTimer(this))
     , offlinePvtMonitorTimer_(new QTimer(this))
     , cdprVelocityControlTimer_(new QTimer(this))
+    , cdprForceControlTimer_(new QTimer(this))
     , cdprAnalysisWatcher_(new QFutureWatcher<CdprVirtualConsistencyAnalysisResult>(this))
 {
     softwareZeroUnit_.fill(0.0, 8);
@@ -158,6 +159,8 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
     offlinePvtMonitorTimer_->setInterval(20);
     cdprVelocityControlTimer_->setTimerType(Qt::PreciseTimer);
     cdprVelocityControlTimer_->setInterval(1);
+    cdprForceControlTimer_->setTimerType(Qt::PreciseTimer);
+    cdprForceControlTimer_->setInterval(5);
 
     connect(producerTimer_, &QTimer::timeout, this, &MotionControlWorker::produceNextPoint);
     connect(monitorTimer_, &QTimer::timeout, this, &MotionControlWorker::monitorContinuousRun);
@@ -172,6 +175,8 @@ MotionControlWorker::MotionControlWorker(QObject *parent)
             this, &MotionControlWorker::monitorOfflinePvt);
     connect(cdprVelocityControlTimer_, &QTimer::timeout,
             this, &MotionControlWorker::runCdprVelocityControlCycle);
+    connect(cdprForceControlTimer_, &QTimer::timeout,
+            this, &MotionControlWorker::runCdprForceControlCycle);
     connect(cdprAnalysisWatcher_, &QFutureWatcher<CdprVirtualConsistencyAnalysisResult>::finished,
             this, [this] {
                 const CdprVirtualConsistencyAnalysisResult analysis =
@@ -441,11 +446,14 @@ void MotionControlWorker::stopTelemetryRecording()
     const TelemetryRecorderStatus after = telemetryRecorder_.status();
     emit logMessage(QStringLiteral(
                         "Trace 数据记录已停止：写入 %1 帧，丢弃 %2 帧；"
-                        "周期耗时写入 %3 条，丢弃 %4 条。")
+                        "周期耗时写入 %3 条，丢弃 %4 条；"
+                        "力交互快照写入 %5 条，丢弃 %6 条。")
                         .arg(after.writtenFrames)
                         .arg(after.droppedFrames)
                         .arg(after.writtenTimingSamples)
-                        .arg(after.droppedTimingSamples));
+                        .arg(after.droppedTimingSamples)
+                        .arg(after.writtenForceControlSamples)
+                        .arg(after.droppedForceControlSamples));
     publishStatus();
 }
 
@@ -461,6 +469,7 @@ void MotionControlWorker::shutdownHardware()
     traceDelayCalibrationTimer_->stop();
     offlinePvtMonitorTimer_->stop();
     cdprVelocityControlTimer_->stop();
+    cdprForceControlTimer_->stop();
     resetRunTimingState();
 
     if (!boardInitialized_) {
@@ -472,6 +481,8 @@ void MotionControlWorker::shutdownHardware()
         offlinePvtStatus_.active = false;
         cdprVelocityControlActive_ = false;
         cdprVelocityStatus_.active = false;
+        cdprForceControlActive_ = false;
+        cdprForceStatus_.active = false;
         return;
     }
 
@@ -496,6 +507,17 @@ void MotionControlWorker::shutdownHardware()
     traceDelayStatus_.active = false;
     traceDelayStatus_.phaseText = QStringLiteral("控制卡已关闭");
     resetTraceDelayHistory();
+    offlinePvtActive_ = false;
+    offlinePvtStatus_.active = false;
+    cdprVelocityControlActive_ = false;
+    cdprVelocityStatus_.active = false;
+    cdprForceControlActive_ = false;
+    cdprForceAxisStarted_.fill(false);
+    cdprForceStatus_.active = false;
+    cdprForceStatus_.motionStarted = false;
+    cdprForceStatus_.stateText = QStringLiteral("控制卡已关闭");
+    cdprForceReferenceHistory_.clear();
+    cdprForceAutoRecording_ = false;
 
     QString error;
     if (!card_.closeBoard(error)) {
@@ -524,7 +546,8 @@ void MotionControlWorker::enableSelectedAxes(const ContiTestConfig &config)
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_ || cdprVelocityControlActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能切换轴使能。"));
         return;
     }
@@ -592,7 +615,8 @@ void MotionControlWorker::disableSelectedAxes(const ContiTestConfig &config)
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_ || cdprVelocityControlActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         stopTest(false);
     }
     if (config.cardNo != initializedCardNo_) {
@@ -629,7 +653,8 @@ void MotionControlWorker::enableAllDetectedAxes()
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能执行全局轴使能。"));
         return;
     }
@@ -682,6 +707,9 @@ void MotionControlWorker::disableAllDetectedAxes()
     if (cdprVelocityControlActive_) {
         finishCdprVelocityControl(QStringLiteral("CDPR八轴速度闭环已因全局失能而减速停止"), false);
     }
+    if (cdprForceControlActive_) {
+        finishCdprForceControl(QStringLiteral("CDPR力交互已因全局失能而减速停止"), false);
+    }
     if (traceDelayCalibrationActive_) {
         emit logMessage(QStringLiteral("全局失能前正在停止 Trace 延迟标定。"));
         finishTraceDelayCalibration(QStringLiteral("Trace 延迟标定已因全局失能而停止"),
@@ -727,7 +755,8 @@ void MotionControlWorker::startTest(const ContiTestConfig &config)
     }
     if (running_ || preparing_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("已有测试正在准备或运行。"));
         return;
     }
@@ -908,6 +937,10 @@ void MotionControlWorker::stopTest(bool emergency)
         stopCdprVelocityControl(emergency);
         return;
     }
+    if (cdprForceControlActive_) {
+        stopCdprForceControl(emergency);
+        return;
+    }
     if (torqueTestActive_) {
         stopTorqueTest(emergency);
         return;
@@ -965,7 +998,8 @@ void MotionControlWorker::startOfflinePvt(const CdprOfflinePvtPlan &plan)
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动离线PVT。"));
         return;
     }
@@ -1280,7 +1314,7 @@ void MotionControlWorker::startCdprVelocityControl(
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || torqueTestActive_ || traceDelayCalibrationActive_ || offlinePvtActive_
-        || cdprVelocityControlActive_) {
+        || cdprVelocityControlActive_ || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("已有运动或标定正在运行，不能启动八轴速度闭环。"));
         return;
     }
@@ -1773,6 +1807,720 @@ void MotionControlWorker::stopCdprVelocityControl(bool emergency)
     }
 }
 
+bool MotionControlWorker::validateCdprForceControl(
+    const CdprForceControlRequest &request, QString &errorMessage) const
+{
+    if (!request.valid || !request.initialPlatform.poseValid
+        || !request.initialCables.lengthValid) {
+        errorMessage = request.errorText.isEmpty()
+            ? QStringLiteral("力交互请求或初始状态无效。") : request.errorText;
+        return false;
+    }
+    const CdprVelocityControlConfig &control = request.velocityControl;
+    if (control.controlPeriodMs != 5
+        || actualBusCycleUs_ <= 0
+        || (control.controlPeriodMs * 1000) % actualBusCycleUs_ != 0) {
+        errorMessage = QStringLiteral(
+            "力交互首版固定5 ms控制周期，且必须是当前总线周期%1 us的整数倍。")
+                           .arg(actualBusCycleUs_);
+        return false;
+    }
+    if (!sameCardUnitDefinition(control.degreesPerCardUnit,
+                                config_.degreesPerCardUnit)
+        || control.maxVelocityDegreePerSecond <= 0.0
+        || control.maxAccelerationDegreePerSecond2 <= 0.0
+        || control.onlineChangeTimeS < 0.001
+        || control.maxFollowingErrorDegree <= 0.0
+        || control.traceTimeoutMs <= 0) {
+        errorMessage = QStringLiteral("力交互的板卡unit或八轴闭环参数无效。");
+        return false;
+    }
+    if (request.configuration.winchSafety.diameterM <= 0.0
+        || request.configuration.winchSafety.maximumTurnsFromInitial <= 0.0) {
+        errorMessage = QStringLiteral("绞盘直径或双向最大圈数无效。");
+        return false;
+    }
+    QSet<int> mappedAxes;
+    for (const CdprCableAxisConfig &cable : request.configuration.cables) {
+        if (cable.cable < 0 || cable.cable >= kCdprCableCount
+            || cable.axis < 0 || cable.axis >= 8
+            || !detectedAxes_.contains(static_cast<quint16>(cable.axis))
+            || !enabledAxes_.contains(static_cast<quint16>(cable.axis))
+            || mappedAxes.contains(cable.axis)
+            || (cable.direction != -1 && cable.direction != 1)) {
+            errorMessage = QStringLiteral(
+                "绳%1的轴映射、使能状态或收放绳方向无效。")
+                               .arg(cable.cable);
+            return false;
+        }
+        mappedAxes.insert(cable.axis);
+    }
+    return mappedAxes.size() == kCdprCableCount;
+}
+
+bool MotionControlWorker::beginCdprForceRunRecording(QString &errorMessage)
+{
+    QVector<quint16> axes;
+    axes.reserve(kCdprCableCount);
+    for (const CdprCableAxisConfig &cable : cdprForceRequest_.configuration.cables) {
+        axes.append(static_cast<quint16>(cable.axis));
+    }
+    TelemetryRunMetadata metadata;
+    metadata.traceProfile = TraceFeedbackProfile::VelocityControl;
+    metadata.cardNo = initializedCardNo_;
+    metadata.axes = axes;
+    metadata.traceSamplePeriodUs = actualBusCycleUs_ * config_.traceCycle;
+    metadata.degreesPerCardUnit =
+        cdprForceRequest_.velocityControl.degreesPerCardUnit;
+    metadata.rootDirectory = QDir(QCoreApplication::applicationDirPath())
+                                 .filePath(QStringLiteral("records"));
+    metadata.description = QStringLiteral(
+        "CDPR模拟六维力最小实时闭环：5 ms Newmark、直线绳段逆运动学、"
+        "八轴速度闭环、原始Trace与逐周期期望/反馈快照。");
+    if (!telemetryRecorder_.start(metadata, errorMessage)) {
+        return false;
+    }
+    const QString directory = telemetryRecorder_.status().outputDirectory;
+    QSaveFile configurationFile(
+        QDir(directory).filePath(QStringLiteral("configuration_snapshot.json")));
+    const QByteArray configurationJson =
+        CdprConfigurationFile::serialize(cdprForceRequest_.configuration).toUtf8();
+    if (!configurationFile.open(QIODevice::WriteOnly | QIODevice::Text)
+        || configurationFile.write(configurationJson) != configurationJson.size()
+        || !configurationFile.commit()) {
+        errorMessage = QStringLiteral("无法写入力交互配置快照：%1")
+                           .arg(configurationFile.errorString());
+        telemetryRecorder_.stop();
+        return false;
+    }
+    cdprRunRecordDirectory_ = directory;
+    cdprRunAnalysisEnabled_ = false;
+    cdprRunContext_ = QJsonObject {
+        {QStringLiteral("mode"), QStringLiteral("simulated_force_control")},
+        {QStringLiteral("control_period_ms"), 5},
+        {QStringLiteral("trace_period_us"), metadata.traceSamplePeriodUs},
+        {QStringLiteral("degrees_per_card_unit"), metadata.degreesPerCardUnit},
+        {QStringLiteral("winch_radius_m"),
+         cdprForceRequest_.configuration.winchSafety.diameterM * 0.5},
+        {QStringLiteral("velocity_start_trace_sequence"), 0.0}
+    };
+    if (!writeCdprRunContext(errorMessage)) {
+        telemetryRecorder_.stop();
+        cdprRunRecordDirectory_.clear();
+        cdprRunContext_ = {};
+        return false;
+    }
+    telemetryRecorder_.appendEvent(QStringLiteral(
+        "cdpr_force_control_recording_started control_period_ms=5"));
+    emit logMessage(QStringLiteral(
+        "模拟力交互运行记录已创建：%1；将异步保存原始Trace、周期耗时和"
+        "cdpr_force_control.csv。")
+                        .arg(directory));
+    return true;
+}
+
+void MotionControlWorker::startCdprForceControl(
+    const CdprForceControlRequest &request)
+{
+    if (!boardInitialized_) {
+        emit logMessage(QStringLiteral("力交互启动失败：请先初始化控制卡。"));
+        return;
+    }
+    if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
+        || torqueTestActive_ || traceDelayCalibrationActive_ || offlinePvtActive_
+        || cdprVelocityControlActive_ || cdprForceControlActive_) {
+        emit logMessage(QStringLiteral("已有运动或标定正在运行，不能启动力交互。"));
+        return;
+    }
+    QString error;
+    if (!validateCdprForceControl(request, error)) {
+        emit logMessage(QStringLiteral("力交互启动失败：%1").arg(error));
+        return;
+    }
+
+    cdprForceRequest_ = request;
+    cdprForceKinematics_ =
+        std::make_unique<CdprKinematics>(request.configuration);
+    cdprForceWrenchTransformer_ =
+        std::make_unique<CdprWrenchTransformer>(request.configuration.forceSensor);
+    if (!cdprForceDynamics_.configure(request.configuration.physicalPlatform,
+                                      CdprNewmarkConfig {}, &error)
+        || !cdprForceDynamics_.reset(request.initialPlatform, &error)) {
+        emit logMessage(QStringLiteral("力交互Newmark初始化失败：%1").arg(error));
+        return;
+    }
+    cdprForceWrenchSource_.setSensorWrench(request.initialSimulatedSensorWrench);
+
+    QVector<quint16> axes;
+    axes.reserve(kCdprCableCount);
+    for (const CdprCableAxisConfig &cable : request.configuration.cables) {
+        const quint16 axis = static_cast<quint16>(cable.axis);
+        if (!card_.setAxisEquivalent(
+                initializedCardNo_, axis,
+                MotorUnit::pulsesPerCardUnit(
+                    request.velocityControl.degreesPerCardUnit), error)) {
+            emit logMessage(QStringLiteral("力交互：轴%1脉冲当量设置失败：%2")
+                                .arg(axis).arg(error));
+            return;
+        }
+        axes.append(axis);
+    }
+    if (telemetryRecorder_.status().recording) {
+        stopTelemetryRecording();
+    }
+    if (!beginCdprForceRunRecording(error)) {
+        emit logMessage(QStringLiteral("力交互启动失败：运行记录初始化失败：%1")
+                            .arg(error));
+        return;
+    }
+    cdprForceAutoRecording_ = true;
+    if (!configureFeedbackTrace(axes,
+                                request.velocityControl.degreesPerCardUnit,
+                                error, TraceFeedbackProfile::VelocityControl,
+                                true)) {
+        finishCdprRunRecording(
+            QStringLiteral("cdpr_force_trace_resync_failed: %1").arg(error),
+            cdprForceAutoRecording_);
+        emit logMessage(QStringLiteral("力交互Trace配置失败：%1").arg(error));
+        return;
+    }
+
+    cdprForceStatus_ = {};
+    cdprForceStatus_.active = true;
+    cdprForceStatus_.runId = ++cdprForceRunId_;
+    cdprForceStatus_.stateText = QStringLiteral("等待八轴同帧Trace基准");
+    cdprForceStatus_.simulatedSensorWrench = request.initialSimulatedSensorWrench;
+    cdprForceControlActive_ = true;
+    cdprForceAxisStarted_.fill(false);
+    cdprForceCommandStartTraceSequence_.fill(0);
+    cdprForceLastTraceTimeUs_.fill(0);
+    cdprForceStartPositionDegree_.fill(0.0);
+    cdprForceReferenceHistory_.clear();
+    cdprForceStartTraceSequence_ = 0;
+    cdprForceLastTraceSequence_ = latestTraceSequence_;
+    cdprForceCycleIndex_ = 0;
+    cdprForceConsecutiveSevereOverruns_ = 0;
+    for (PositionVelocityPid &pid : cdprForcePids_) {
+        pid.reset();
+    }
+    cdprForceRunClock_.invalidate();
+    cdprForceCycleClock_.invalidate();
+    cdprForceTraceFreshClock_.start();
+    cdprForceStatusPublishClock_.start();
+    cdprForceDiagnosticClock_.start();
+    feedbackTimer_->stop();
+    cdprForceControlTimer_->setInterval(5);
+    cdprForceControlTimer_->start();
+    stateText_ = QStringLiteral("模拟力交互等待Trace");
+    emit logMessage(QStringLiteral(
+        "模拟六维力最小实时闭环已准备：固定5 ms周期、纯惯性Newmark、"
+        "直线绳段逆运动学、8个独立PID状态；运行没有自动终点。"));
+    emit cdprForceControlStatusChanged(cdprForceStatus_);
+    publishStatus();
+}
+
+void MotionControlWorker::updateCdprSimulatedWrench(
+    double fx, double fy, double fz, double mx, double my, double mz)
+{
+    cdprForceWrenchSource_.setSensorWrench({fx, fy, fz, mx, my, mz});
+    cdprForceStatus_.simulatedSensorWrench = {fx, fy, fz, mx, my, mz};
+    if (cdprForceControlActive_) {
+        telemetryRecorder_.appendEvent(QStringLiteral(
+            "simulated_wrench_updated Fx=%1 Fy=%2 Fz=%3 Mx=%4 My=%5 Mz=%6")
+                .arg(fx, 0, 'g', 12).arg(fy, 0, 'g', 12)
+                .arg(fz, 0, 'g', 12).arg(mx, 0, 'g', 12)
+                .arg(my, 0, 'g', 12).arg(mz, 0, 'g', 12));
+    }
+}
+
+bool MotionControlWorker::forceReferenceAt(
+    double elapsedS, int cable, double &positionDegree,
+    double &velocityDegreePerSecond) const
+{
+    if (cable < 0 || cable >= kCdprCableCount
+        || cdprForceReferenceHistory_.isEmpty()) {
+        return false;
+    }
+    const size_t index = static_cast<size_t>(cable);
+    if (elapsedS <= cdprForceReferenceHistory_.head().elapsedS) {
+        positionDegree = cdprForceReferenceHistory_.head().positionDegree[index];
+        velocityDegreePerSecond =
+            cdprForceReferenceHistory_.head().velocityDegreePerSecond[index];
+        return true;
+    }
+    for (int right = 1; right < cdprForceReferenceHistory_.size(); ++right) {
+        const ForceReferenceHistorySample &upper =
+            cdprForceReferenceHistory_.at(right);
+        if (upper.elapsedS < elapsedS) {
+            continue;
+        }
+        const ForceReferenceHistorySample &lower =
+            cdprForceReferenceHistory_.at(right - 1);
+        const double span = upper.elapsedS - lower.elapsedS;
+        const double ratio = span > 0.0
+            ? std::clamp((elapsedS - lower.elapsedS) / span, 0.0, 1.0) : 0.0;
+        positionDegree = lower.positionDegree[index]
+            + ratio * (upper.positionDegree[index] - lower.positionDegree[index]);
+        velocityDegreePerSecond = lower.velocityDegreePerSecond[index]
+            + ratio * (upper.velocityDegreePerSecond[index]
+                       - lower.velocityDegreePerSecond[index]);
+        return true;
+    }
+    return false;
+}
+
+void MotionControlWorker::runCdprForceControlCycle()
+{
+    if (!cdprForceControlActive_) {
+        cdprForceControlTimer_->stop();
+        return;
+    }
+    QElapsedTimer fullCycleClock;
+    fullCycleClock.start();
+    const bool schedulingValid = cdprForceCycleClock_.isValid();
+    const qint64 schedulingNs = schedulingValid
+        ? cdprForceCycleClock_.nsecsElapsed() : 5000000LL;
+    if (schedulingValid) {
+        cdprForceCycleClock_.restart();
+    } else {
+        cdprForceCycleClock_.start();
+    }
+
+    QElapsedTimer traceClock;
+    traceClock.start();
+    if (!pollTraceFeedback()) {
+        finishCdprForceControl(
+            QStringLiteral("力交互Trace读取失败：%1").arg(traceStateText_), true);
+        return;
+    }
+    const qint64 traceNs = traceClock.nsecsElapsed();
+    const bool traceFresh = latestTraceSequence_ != cdprForceLastTraceSequence_;
+    if (traceFresh) {
+        cdprForceLastTraceSequence_ = latestTraceSequence_;
+        cdprForceTraceFreshClock_.restart();
+    }
+    if (!traceReadDiagnostics_.timingReliable) {
+        finishCdprForceControl(
+            QStringLiteral("力交互Trace时间轴不可信：%1")
+                .arg(traceLayoutDiagnosticText(traceReadDiagnostics_)), true);
+        return;
+    }
+    if (cdprForceTraceFreshClock_.elapsed()
+        > cdprForceRequest_.velocityControl.traceTimeoutMs) {
+        finishCdprForceControl(QStringLiteral("力交互Trace超时。"), true);
+        return;
+    }
+
+    if (!cdprForceRunClock_.isValid()) {
+        quint64 commonSequence = 0;
+        quint16 mask = 0;
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            const CdprCableAxisConfig &mapping =
+                cdprForceRequest_.configuration.cables[static_cast<size_t>(cable)];
+            const quint16 axis = static_cast<quint16>(mapping.axis);
+            if (axis >= latestAxisFeedback_.size()
+                || !latestAxisFeedback_.at(axis).traceSampleValid) {
+                return;
+            }
+            const AxisFeedback &feedback = latestAxisFeedback_.at(axis);
+            if (cable == 0) {
+                commonSequence = feedback.traceSequence;
+            } else if (commonSequence != feedback.traceSequence) {
+                finishCdprForceControl(
+                    QStringLiteral("力交互启动失败：八轴反馈不在同一Trace帧。"), true);
+                return;
+            }
+            cdprForceStartPositionDegree_[static_cast<size_t>(cable)] =
+                feedback.encoderPositionUnit;
+            mask |= static_cast<quint16>(1U << axis);
+        }
+        cdprForceStartTraceSequence_ = commonSequence;
+        ForceReferenceHistorySample initialReference;
+        initialReference.elapsedS = 0.0;
+        cdprForceReferenceHistory_.enqueue(initialReference);
+        cdprForceRunClock_.start();
+        cdprForceStatus_.stateText = QStringLiteral("模拟力交互运行中");
+        telemetryRecorder_.appendEvent(QStringLiteral(
+            "cdpr_force_control_time_anchor trace_sequence=%1 axis_mask=%2")
+            .arg(commonSequence).arg(mask));
+        updateCdprRunContext(QStringLiteral("velocity_start_trace_sequence"),
+                             static_cast<double>(commonSequence));
+        emit logMessage(QStringLiteral(
+            "力交互已取得八轴同帧Trace基准：序号=%1；已建立预设初始绳长与"
+            "八轴编码器零增量映射。")
+                            .arg(commonSequence));
+    }
+
+    const double dt = 0.005;
+    const double desiredElapsedS = (++cdprForceCycleIndex_) * dt;
+    const CdprFrameStamp stamp {
+        cdprForceCycleIndex_,
+        static_cast<qint64>(std::llround(desiredElapsedS * 1000000.0)), true
+    };
+    const CdprWrenchSample sensorSample = cdprForceWrenchSource_.sample(stamp);
+    const CdprWrenchTransformResult transformed =
+        cdprForceWrenchTransformer_->toPlatformCenterOfMass(sensorSample);
+    if (!transformed.sample.valid) {
+        finishCdprForceControl(
+            QStringLiteral("力交互力旋量转换失败：%1").arg(transformed.errorText), true);
+        return;
+    }
+
+    QElapsedTimer calculationClock;
+    calculationClock.start();
+    const CdprDynamicsResult dynamics =
+        cdprForceDynamics_.step(transformed.sample, dt);
+    if (!dynamics.valid) {
+        finishCdprForceControl(
+            QStringLiteral("力交互Newmark单步失败：%1").arg(dynamics.errorText), true);
+        return;
+    }
+    const CdprInverseKinematicsResult inverse =
+        cdprForceKinematics_->inverse(dynamics.state);
+    if (!inverse.valid || !inverse.cables.velocityValid) {
+        finishCdprForceControl(
+            QStringLiteral("力交互逆运动学失败：%1").arg(inverse.errorText), true);
+        return;
+    }
+
+    const double radiusM =
+        cdprForceRequest_.configuration.winchSafety.diameterM * 0.5;
+    const double radToDegree = 180.0 / (0.5 * kTwoPi);
+    ForceReferenceHistorySample reference;
+    reference.elapsedS = desiredElapsedS;
+    double maximumDesiredTravelM = 0.0;
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const size_t index = static_cast<size_t>(cable);
+        const int direction =
+            cdprForceRequest_.configuration.cables[index].direction;
+        const double cableDeltaM = inverse.cables.lengthM[index]
+            - cdprForceRequest_.initialCables.lengthM[index];
+        double ignoredTravel = 0.0;
+        if (!CdprConfigurationFile::cableTravelWithinLimit(
+                cdprForceRequest_.configuration,
+                cdprForceRequest_.initialCables.lengthM, cable,
+                inverse.cables.lengthM[index], &ignoredTravel)) {
+            finishCdprForceControl(
+                QStringLiteral("力交互：绳%1期望行程%2 m超过绞盘双向6.5圈限制。")
+                    .arg(cable).arg(cableDeltaM, 0, 'f', 6), true);
+            return;
+        }
+        maximumDesiredTravelM =
+            std::max(maximumDesiredTravelM, std::abs(cableDeltaM));
+        reference.positionDegree[index] =
+            direction * cableDeltaM / radiusM * radToDegree;
+        reference.velocityDegreePerSecond[index] =
+            direction * inverse.cables.velocityMps[index] / radiusM * radToDegree;
+    }
+    cdprForceReferenceHistory_.enqueue(reference);
+    while (cdprForceReferenceHistory_.size() > 2
+           && cdprForceReferenceHistory_.at(1).elapsedS
+                  < desiredElapsedS - 2.0) {
+        cdprForceReferenceHistory_.dequeue();
+    }
+
+    VelocityControlConfig pidConfig;
+    const CdprVelocityControlConfig &source = cdprForceRequest_.velocityControl;
+    pidConfig.cardNo = initializedCardNo_;
+    pidConfig.degreesPerCardUnit = source.degreesPerCardUnit;
+    pidConfig.pidEnabled = source.pidEnabled;
+    pidConfig.velocityFeedforwardEnabled = source.velocityFeedforwardEnabled;
+    pidConfig.velocityFeedforwardGain = source.velocityFeedforwardGain;
+    pidConfig.kp = source.kp;
+    pidConfig.ki = source.ki;
+    pidConfig.kd = source.kd;
+    pidConfig.integralLimitDegreeSecond = source.integralLimitDegreeSecond;
+    pidConfig.maxPidCorrectionDegreePerSecond = source.maxPidCorrectionDegreePerSecond;
+    pidConfig.maxVelocityDegreePerSecond = source.maxVelocityDegreePerSecond;
+    pidConfig.maxAccelerationDegreePerSecond2 = source.maxAccelerationDegreePerSecond2;
+    pidConfig.onlineChangeTimeS = source.onlineChangeTimeS;
+    pidConfig.startVelocityThresholdDegreePerSecond =
+        source.startVelocityThresholdDegreePerSecond;
+
+    qint64 apiTotalNs = 0;
+    double cycleMaximumTrackingError = 0.0;
+    double cycleMaximumActualTravelM = 0.0;
+    CdprForceControlTelemetrySample telemetry;
+    telemetry.runId = cdprForceStatus_.runId;
+    telemetry.cycleIndex = cdprForceCycleIndex_;
+    telemetry.hostElapsedUs = static_cast<quint64>(
+        std::llround(desiredElapsedS * 1000000.0));
+    telemetry.traceSequence = latestTraceSequence_;
+    telemetry.sensorWrench = sensorSample.wrench;
+    telemetry.platformWrench = transformed.sample.wrench;
+    telemetry.desiredPose = dynamics.state.pose;
+    telemetry.desiredTwist = dynamics.state.twist;
+    telemetry.desiredCableLengthM = inverse.cables.lengthM;
+    telemetry.desiredCableVelocityMps = inverse.cables.velocityMps;
+
+    for (int cable = 0; cable < kCdprCableCount; ++cable) {
+        const size_t index = static_cast<size_t>(cable);
+        const CdprCableAxisConfig &mapping =
+            cdprForceRequest_.configuration.cables[index];
+        const quint16 axis = static_cast<quint16>(mapping.axis);
+        if (axis >= latestAxisFeedback_.size()) {
+            finishCdprForceControl(QStringLiteral("力交互反馈轴索引越界。"), true);
+            return;
+        }
+        const AxisFeedback &feedback = latestAxisFeedback_.at(axis);
+        if (!feedback.traceSampleValid || feedback.stateMachine != 4
+            || feedback.axisErrorCode != 0) {
+            finishCdprForceControl(
+                QStringLiteral("力交互：轴%1状态异常，状态机=%2，错误码=%3。")
+                    .arg(axis).arg(feedback.stateMachine).arg(feedback.axisErrorCode), true);
+            return;
+        }
+        const double expectedPosition = cdprForceStartPositionDegree_[index]
+            + reference.positionDegree[index];
+        const double controlError = expectedPosition - feedback.encoderPositionUnit;
+
+        const double actualDeltaDegree = feedback.encoderPositionUnit
+            - cdprForceStartPositionDegree_[index];
+        const double actualCableDeltaM = mapping.direction * actualDeltaDegree
+            / radToDegree * radiusM;
+        cycleMaximumActualTravelM = std::max(
+            cycleMaximumActualTravelM, std::abs(actualCableDeltaM));
+        if (std::abs(actualCableDeltaM)
+            > CdprConfigurationFile::maximumCableTravelM(
+                cdprForceRequest_.configuration) + 1.0e-9) {
+            finishCdprForceControl(
+                QStringLiteral("力交互：轴%1对应绳%2实际行程%3 m超过限制。")
+                    .arg(axis).arg(cable).arg(actualCableDeltaM, 0, 'f', 6), true);
+            return;
+        }
+
+        double trackingError = 0.0;
+        bool protectionArmed = false;
+        if (feedback.traceSequence >= cdprForceStartTraceSequence_) {
+            const double traceElapsedS =
+                static_cast<double>(feedback.traceSequence
+                                    - cdprForceStartTraceSequence_)
+                * std::max(1, traceSamplePeriodUs_) / 1000000.0;
+            const double delayS = axis < traceDelayAxisResults_.size()
+                ? std::max(0.0,
+                    traceDelayAxisResults_.at(axis).appliedDelayMs) / 1000.0
+                : 0.0;
+            double alignedDelta = 0.0;
+            double ignoredVelocity = 0.0;
+            const bool referenceValid = forceReferenceAt(
+                std::max(0.0, traceElapsedS - delayS), cable,
+                alignedDelta, ignoredVelocity);
+            trackingError = cdprForceStartPositionDegree_[index]
+                + alignedDelta - feedback.encoderPositionUnit;
+            protectionArmed = referenceValid && cdprForceAxisStarted_[index]
+                && feedback.traceSequence
+                    > cdprForceCommandStartTraceSequence_[index];
+        }
+        if (protectionArmed) {
+            cycleMaximumTrackingError = std::max(
+                cycleMaximumTrackingError, std::abs(trackingError));
+            if (std::abs(trackingError) > source.maxFollowingErrorDegree) {
+                finishCdprForceControl(
+                    QStringLiteral("力交互：轴%1延迟对齐跟随误差%2°超过%3°。")
+                        .arg(axis).arg(trackingError, 0, 'f', 4)
+                        .arg(source.maxFollowingErrorDegree, 0, 'f', 4), true);
+                return;
+            }
+        }
+
+        double feedbackDt = std::max(1, traceSamplePeriodUs_) / 1000000.0;
+        if (traceFresh && cdprForceLastTraceTimeUs_[index] != 0
+            && feedback.traceTimeUs > cdprForceLastTraceTimeUs_[index]) {
+            feedbackDt = (feedback.traceTimeUs
+                          - cdprForceLastTraceTimeUs_[index]) / 1000000.0;
+        }
+        if (traceFresh) {
+            cdprForceLastTraceTimeUs_[index] = feedback.traceTimeUs;
+        }
+        pidConfig.axis = axis;
+        const PositionVelocityPidOutput output = cdprForcePids_[index].update(
+            pidConfig, controlError, reference.velocityDegreePerSecond[index],
+            reference.velocityDegreePerSecond[index],
+            feedback.actualVelocityUnitPerSecond, dt, feedbackDt, traceFresh);
+        QString error;
+        short apiResult = 0;
+        bool ok = true;
+        QElapsedTimer axisApiClock;
+        axisApiClock.start();
+        if (!cdprForceAxisStarted_[index]) {
+            if (std::abs(output.commandVelocity)
+                >= source.startVelocityThresholdDegreePerSecond) {
+                ok = card_.startVelocityMove(pidConfig, output.commandVelocity, error);
+                if (ok) {
+                    cdprForceAxisStarted_[index] = true;
+                    cdprForceCommandStartTraceSequence_[index] =
+                        feedback.traceSequence;
+                }
+            }
+        } else {
+            ok = card_.changeVelocity(pidConfig, output.commandVelocity,
+                                      apiResult, error);
+        }
+        apiTotalNs += axisApiClock.nsecsElapsed();
+        if (!ok) {
+            finishCdprForceControl(
+                QStringLiteral("力交互：轴%1速度命令失败：%2")
+                    .arg(axis).arg(error), true);
+            return;
+        }
+        telemetry.targetAxisPositionDegree[index] = expectedPosition;
+        telemetry.targetAxisVelocityDegreePerSecond[index] = output.commandVelocity;
+        telemetry.actualAxisPositionDegree[index] = feedback.encoderPositionUnit;
+        telemetry.actualAxisVelocityDegreePerSecond[index] =
+            feedback.actualVelocityUnitPerSecond;
+    }
+    const qint64 calculationAndApiNs = calculationClock.nsecsElapsed();
+    const qint64 calculationNs =
+        std::max<qint64>(0, calculationAndApiNs - apiTotalNs);
+    const qint64 fullCycleNs = fullCycleClock.nsecsElapsed();
+    const qint64 targetNs = 5000000LL;
+    const double count = static_cast<double>(cdprForceCycleIndex_);
+    cdprForceStatus_.active = true;
+    cdprForceStatus_.motionStarted = std::any_of(
+        cdprForceAxisStarted_.cbegin(), cdprForceAxisStarted_.cend(),
+        [](bool value) { return value; });
+    cdprForceStatus_.elapsedS = desiredElapsedS;
+    cdprForceStatus_.cycleCount = cdprForceCycleIndex_;
+    const double fullMs = fullCycleNs / 1000000.0;
+    const double traceMs = traceNs / 1000000.0;
+    const double calculationMs = calculationNs / 1000000.0;
+    const double apiMs = apiTotalNs / 1000000.0;
+    cdprForceStatus_.averageFullCycleMs +=
+        (fullMs - cdprForceStatus_.averageFullCycleMs) / count;
+    cdprForceStatus_.maximumFullCycleMs =
+        std::max(cdprForceStatus_.maximumFullCycleMs, fullMs);
+    cdprForceStatus_.averageTracePollMs +=
+        (traceMs - cdprForceStatus_.averageTracePollMs) / count;
+    cdprForceStatus_.maximumTracePollMs =
+        std::max(cdprForceStatus_.maximumTracePollMs, traceMs);
+    cdprForceStatus_.averageCalculationMs +=
+        (calculationMs - cdprForceStatus_.averageCalculationMs) / count;
+    cdprForceStatus_.maximumCalculationMs =
+        std::max(cdprForceStatus_.maximumCalculationMs, calculationMs);
+    cdprForceStatus_.averageApiTotalMs +=
+        (apiMs - cdprForceStatus_.averageApiTotalMs) / count;
+    cdprForceStatus_.maximumApiTotalMs =
+        std::max(cdprForceStatus_.maximumApiTotalMs, apiMs);
+    if (fullCycleNs > targetNs) {
+        ++cdprForceStatus_.executionOverrunCount;
+    }
+    if (schedulingValid && schedulingNs * 2LL > targetNs * 3LL) {
+        ++cdprForceStatus_.schedulingOverrunCount;
+    }
+    const bool severeOverrun = fullCycleNs > targetNs * 2LL
+        || (schedulingValid && schedulingNs > targetNs * 3LL);
+    cdprForceConsecutiveSevereOverruns_ = severeOverrun
+        ? cdprForceConsecutiveSevereOverruns_ + 1 : 0;
+    if (cdprForceConsecutiveSevereOverruns_ >= 3) {
+        finishCdprForceControl(
+            QStringLiteral("力交互连续3周期严重超时，已安全停止。"), true);
+        return;
+    }
+    cdprForceStatus_.maximumTrackingErrorDegree = std::max(
+        cdprForceStatus_.maximumTrackingErrorDegree,
+        cycleMaximumTrackingError);
+    cdprForceStatus_.maximumCableTravelM = std::max(
+        cdprForceStatus_.maximumCableTravelM,
+        std::max(maximumDesiredTravelM, cycleMaximumActualTravelM));
+    cdprForceStatus_.desiredPlatform = dynamics.state;
+    cdprForceStatus_.simulatedSensorWrench = sensorSample.wrench;
+
+    telemetry.maximumTrackingErrorDegree = cycleMaximumTrackingError;
+    telemetry.maximumCableTravelM =
+        std::max(maximumDesiredTravelM, cycleMaximumActualTravelM);
+    telemetryRecorder_.pushCdprForceControlSample(telemetry);
+    ControlCycleTimingSample timing;
+    timing.runId = cdprForceStatus_.runId;
+    timing.cycleIndex = cdprForceCycleIndex_;
+    timing.hostElapsedUs = telemetry.hostElapsedUs;
+    timing.targetPeriodUs = 5000;
+    timing.schedulingIntervalUs = static_cast<quint32>(
+        std::max<qint64>(0, (schedulingNs + 500LL) / 1000LL));
+    timing.tracePollUs = static_cast<quint32>(
+        std::max<qint64>(0, (traceNs + 500LL) / 1000LL));
+    timing.calculationUs = static_cast<quint32>(
+        std::max<qint64>(0, (calculationNs + 500LL) / 1000LL));
+    timing.apiTotalUs = static_cast<quint32>(
+        std::max<qint64>(0, (apiTotalNs + 500LL) / 1000LL));
+    timing.fullCycleUs = static_cast<quint32>(
+        std::max<qint64>(0, (fullCycleNs + 500LL) / 1000LL));
+    timing.traceFramesRead = static_cast<quint16>(
+        std::clamp(traceFramesRead_, 0,
+                   static_cast<int>(std::numeric_limits<quint16>::max())));
+    telemetryRecorder_.pushControlCycleTiming(timing);
+
+    if (!cdprForceDiagnosticClock_.isValid()
+        || cdprForceDiagnosticClock_.elapsed() >= 2000) {
+        cdprForceDiagnosticClock_.restart();
+        const QString message = QStringLiteral(
+            "力交互周期：t=%1 s，完整/Trace/计算/API均值=%2/%3/%4/%5 ms，"
+            "最大跟随误差=%6°，最大绞盘行程=%7 m，超时=%8/%9。")
+            .arg(desiredElapsedS, 0, 'f', 3)
+            .arg(cdprForceStatus_.averageFullCycleMs, 0, 'f', 3)
+            .arg(cdprForceStatus_.averageTracePollMs, 0, 'f', 3)
+            .arg(cdprForceStatus_.averageCalculationMs, 0, 'f', 3)
+            .arg(cdprForceStatus_.averageApiTotalMs, 0, 'f', 3)
+            .arg(cdprForceStatus_.maximumTrackingErrorDegree, 0, 'f', 4)
+            .arg(cdprForceStatus_.maximumCableTravelM, 0, 'f', 6)
+            .arg(cdprForceStatus_.executionOverrunCount)
+            .arg(cdprForceStatus_.schedulingOverrunCount);
+        emit logMessage(message);
+        telemetryRecorder_.appendEvent(message);
+    }
+    if (!cdprForceStatusPublishClock_.isValid()
+        || cdprForceStatusPublishClock_.elapsed() >= 100) {
+        cdprForceStatusPublishClock_.restart();
+        emit cdprForceControlStatusChanged(cdprForceStatus_);
+        publishStatus();
+    }
+}
+
+void MotionControlWorker::stopCdprForceControl(bool emergency)
+{
+    if (cdprForceControlActive_) {
+        finishCdprForceControl(
+            emergency ? QStringLiteral("模拟力交互已立即停止。")
+                      : QStringLiteral("模拟力交互已减速停止。"), emergency);
+    }
+}
+
+void MotionControlWorker::finishCdprForceControl(
+    const QString &message, bool emergency)
+{
+    cdprForceControlTimer_->stop();
+    if (boardInitialized_) {
+        for (int cable = 0; cable < kCdprCableCount; ++cable) {
+            const size_t index = static_cast<size_t>(cable);
+            if (!cdprForceAxisStarted_[index]) {
+                continue;
+            }
+            QString error;
+            const quint16 axis = static_cast<quint16>(
+                cdprForceRequest_.configuration.cables[index].axis);
+            card_.stopAxis(initializedCardNo_, axis, emergency, error);
+            if (!error.isEmpty()) {
+                emit logMessage(QStringLiteral("力交互停止轴%1失败：%2")
+                                    .arg(axis).arg(error));
+            }
+        }
+    }
+    cdprForceControlActive_ = false;
+    cdprForceAxisStarted_.fill(false);
+    cdprForceStatus_.active = false;
+    cdprForceStatus_.motionStarted = false;
+    cdprForceStatus_.stateText = emergency
+        ? QStringLiteral("力交互异常停止") : QStringLiteral("力交互已停止");
+    stateText_ = cdprForceStatus_.stateText;
+    finishCdprRunRecording(
+        QStringLiteral("cdpr_force_control_finished emergency=%1 message=%2")
+            .arg(emergency ? 1 : 0).arg(message),
+        cdprForceAutoRecording_);
+    emit logMessage(emergency ? QStringLiteral("错误：%1").arg(message) : message);
+    emit cdprForceControlStatusChanged(cdprForceStatus_);
+    feedbackTimer_->start();
+    publishStatus();
+}
+
 QString MotionControlWorker::cdprVelocityPerformanceSummary(
     const QString &prefix) const
 {
@@ -1849,6 +2597,7 @@ bool MotionControlWorker::beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
                                                  const QString &mode,
                                                  QString &errorMessage)
 {
+    cdprRunAnalysisEnabled_ = true;
     if (plan.timeS.size() < 2 || plan.platformPose.size() != plan.timeS.size()
         || plan.configurationSnapshotJson.trimmed().isEmpty()) {
         errorMessage = QStringLiteral("期望轨迹为空，无法创建 CDPR 运行记录。");
@@ -2012,19 +2761,23 @@ void MotionControlWorker::finishCdprRunRecording(const QString &eventText,
     const TelemetryRecorderStatus result = telemetryRecorder_.status();
     emit logMessage(QStringLiteral(
                         "CDPR 运行记录已停止：Trace写入 %1 帧、丢弃 %2 帧；"
-                        "周期耗时写入 %3 条、丢弃 %4 条；目录=%5。")
+                        "周期耗时写入 %3 条、丢弃 %4 条；"
+                        "力交互快照写入 %5 条、丢弃 %6 条；目录=%7。")
                         .arg(result.writtenFrames)
                         .arg(result.droppedFrames)
                         .arg(result.writtenTimingSamples)
                         .arg(result.droppedTimingSamples)
+                        .arg(result.writtenForceControlSamples)
+                        .arg(result.droppedForceControlSamples)
                         .arg(result.outputDirectory));
     autoRecordingFlag = false;
     const QString analysisDirectory = cdprRunRecordDirectory_;
     cdprRunRecordDirectory_.clear();
     cdprRunContext_ = {};
-    if (result.writtenFrames > 0) {
+    if (result.writtenFrames > 0 && cdprRunAnalysisEnabled_) {
         startCdprVirtualConsistencyAnalysis(analysisDirectory);
     }
+    cdprRunAnalysisEnabled_ = true;
 }
 
 void MotionControlWorker::refreshFeedback()
@@ -2094,7 +2847,8 @@ void MotionControlWorker::enableJogAxis(const SingleAxisJogConfig &config)
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("连续插补准备、运行或单轴点位运动期间不能切换点动测试轴。"));
         return;
     }
@@ -2161,7 +2915,8 @@ void MotionControlWorker::disableJogAxis(const SingleAxisJogConfig &config)
     }
     if (running_ || preparing_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间不能失能点动测试轴。"));
         return;
     }
@@ -2200,7 +2955,8 @@ void MotionControlWorker::setJogAxisZero(const SingleAxisJogConfig &config)
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("运动准备或运行期间不能修改点动软件零位。"));
         return;
     }
@@ -2241,7 +2997,8 @@ void MotionControlWorker::startPointMove(const SingleAxisJogConfig &config)
     }
     if (running_ || preparing_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("连续插补准备或运行期间禁止单轴点动。"));
         return;
     }
@@ -2402,7 +3159,8 @@ void MotionControlWorker::startVelocityControl(const VelocityControlConfig &requ
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动速度闭环。"));
         return;
     }
@@ -3184,7 +3942,8 @@ void MotionControlWorker::writeTorqueVelocityLimit(const TorqueTestConfig &confi
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("存在运动任务时禁止写入转矩模式速度限制。"));
         return;
     }
@@ -3223,7 +3982,8 @@ void MotionControlWorker::startTorqueTest(const TorqueTestConfig &requestedConfi
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动转矩测试。"));
         return;
     }
@@ -3668,7 +4428,8 @@ void MotionControlWorker::startTraceDelayCalibration(
     }
     if (running_ || preparing_ || pointMoveActive_ || velocityControlActive_
         || traceDelayCalibrationActive_ || torqueTestActive_
-        || offlinePvtActive_) {
+        || offlinePvtActive_ || cdprVelocityControlActive_
+        || cdprForceControlActive_) {
         emit logMessage(QStringLiteral("已有运动正在准备或运行，不能启动 Trace 延迟标定。"));
         return;
     }
@@ -4502,6 +5263,34 @@ void MotionControlWorker::safelyStopAllMotionForShutdown()
             }
         }
     }
+    if (cdprVelocityControlActive_) {
+        for (const quint16 axis : cdprVelocityPlan_.axes) {
+            QString error;
+            if (!card_.stopAxis(initializedCardNo_, axis, false, error)
+                || !waitForAxisStop(axis, kGracefulStopTimeoutMs)) {
+                emit logMessage(QStringLiteral(
+                    "八轴速度闭环安全停机：轴%1减速停止未确认，改为立即停止。")
+                                    .arg(axis));
+                error.clear();
+                card_.stopAxis(initializedCardNo_, axis, true, error);
+            }
+        }
+    }
+    if (cdprForceControlActive_) {
+        for (const CdprCableAxisConfig &cable
+             : cdprForceRequest_.configuration.cables) {
+            const quint16 axis = static_cast<quint16>(cable.axis);
+            QString error;
+            if (!card_.stopAxis(initializedCardNo_, axis, false, error)
+                || !waitForAxisStop(axis, kGracefulStopTimeoutMs)) {
+                emit logMessage(QStringLiteral(
+                    "模拟力交互安全停机：轴%1减速停止未确认，改为立即停止。")
+                                    .arg(axis));
+                error.clear();
+                card_.stopAxis(initializedCardNo_, axis, true, error);
+            }
+        }
+    }
 
     listOpen_ = false;
     preparing_ = false;
@@ -4525,6 +5314,16 @@ void MotionControlWorker::safelyStopAllMotionForShutdown()
     offlinePvtStatus_.state = CdprOfflinePvtRunState::Stopped;
     offlinePvtStatus_.stateText = QStringLiteral("已安全停止");
     emit offlinePvtStatusChanged(offlinePvtStatus_);
+    cdprVelocityControlActive_ = false;
+    cdprVelocityStatus_.active = false;
+    cdprVelocityStatus_.stateText = QStringLiteral("已安全停止");
+    emit cdprVelocityControlStatusChanged(cdprVelocityStatus_);
+    cdprForceControlActive_ = false;
+    cdprForceAxisStarted_.fill(false);
+    cdprForceStatus_.active = false;
+    cdprForceStatus_.motionStarted = false;
+    cdprForceStatus_.stateText = QStringLiteral("已安全停止");
+    emit cdprForceControlStatusChanged(cdprForceStatus_);
     hostQueue_.clear();
     lastFeedStatus_ = {};
 }
@@ -5074,6 +5873,8 @@ void MotionControlWorker::enterError(const QString &message)
     torqueTestTimer_->stop();
     traceDelayCalibrationTimer_->stop();
     offlinePvtMonitorTimer_->stop();
+    cdprVelocityControlTimer_->stop();
+    cdprForceControlTimer_->stop();
     if (listOpen_) {
         QString ignored;
         card_.stop(config_, true, ignored);
@@ -5104,6 +5905,20 @@ void MotionControlWorker::enterError(const QString &message)
             card_.stopAxis(initializedCardNo_, axis, true, ignored);
         }
     }
+    if (cdprVelocityControlActive_ && boardInitialized_) {
+        for (const quint16 axis : cdprVelocityPlan_.axes) {
+            QString ignored;
+            card_.stopAxis(initializedCardNo_, axis, true, ignored);
+        }
+    }
+    if (cdprForceControlActive_ && boardInitialized_) {
+        for (const CdprCableAxisConfig &cable
+             : cdprForceRequest_.configuration.cables) {
+            QString ignored;
+            card_.stopAxis(initializedCardNo_,
+                           static_cast<quint16>(cable.axis), true, ignored);
+        }
+    }
     listOpen_ = false;
     preparing_ = false;
     running_ = false;
@@ -5126,6 +5941,16 @@ void MotionControlWorker::enterError(const QString &message)
     offlinePvtStatus_.state = CdprOfflinePvtRunState::Fault;
     offlinePvtStatus_.stateText = QStringLiteral("错误");
     emit offlinePvtStatusChanged(offlinePvtStatus_);
+    cdprVelocityControlActive_ = false;
+    cdprVelocityStatus_.active = false;
+    cdprVelocityStatus_.stateText = QStringLiteral("错误");
+    emit cdprVelocityControlStatusChanged(cdprVelocityStatus_);
+    cdprForceControlActive_ = false;
+    cdprForceAxisStarted_.fill(false);
+    cdprForceStatus_.active = false;
+    cdprForceStatus_.motionStarted = false;
+    cdprForceStatus_.stateText = QStringLiteral("错误");
+    emit cdprForceControlStatusChanged(cdprForceStatus_);
     if (velocityAutoRecording_) {
         telemetryRecorder_.stop();
         velocityAutoRecording_ = false;
@@ -5138,6 +5963,8 @@ void MotionControlWorker::enterError(const QString &message)
                            offlinePvtAutoRecording_);
     finishCdprRunRecording(QStringLiteral("cdpr_run_aborted: %1").arg(message),
                            cdprVelocityAutoRecording_);
+    finishCdprRunRecording(QStringLiteral("cdpr_run_aborted: %1").arg(message),
+                           cdprForceAutoRecording_);
     trajectoryComparisonActive_ = false;
     speedRatioPending_ = false;
     lastFeedStatus_ = {};
@@ -5393,7 +6220,9 @@ bool MotionControlWorker::configureFeedbackTrace(const QVector<quint16> &axes,
         && recorderStatus.queuedFrames == 0
         && recorderStatus.writtenFrames == 0
         && recorderStatus.queuedTimingSamples == 0
-        && recorderStatus.writtenTimingSamples == 0;
+        && recorderStatus.writtenTimingSamples == 0
+        && recorderStatus.queuedForceControlSamples == 0
+        && recorderStatus.writtenForceControlSamples == 0;
     if (recorderStatus.recording && !emptyPreparedRecording) {
         errorMessage = QStringLiteral("Trace 数据记录进行中，不能切换测试轴或重配 Trace；请先停止记录。");
         return false;
@@ -5465,7 +6294,7 @@ bool MotionControlWorker::pollTraceFeedback()
         latestTraceTimeUs_ = frames.constLast().traceTimeUs;
         applyTraceDelayCompensation(frames);
         appendTraceDelayCalibrationFrames(frames);
-        if (!cdprVelocityControlActive_) {
+        if (!cdprVelocityControlActive_ && !cdprForceControlActive_) {
             updateTraceVelocityDiagnostics(frames);
         }
         appendVelocityPlotFrames(frames);

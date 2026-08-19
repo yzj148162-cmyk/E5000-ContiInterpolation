@@ -60,6 +60,43 @@ struct CdprConfiguration
     double maximumPositionErrorDegree = 2.0;
 };
 
+// 连续力交互启动时由CdprCoordinator生成的一次性只读快照。
+// 运行周期只更新模拟力样本，结构参数和初始位姿在本次运行中保持不变。
+struct CdprForceControlRequest
+{
+    bool valid = false;
+    QString errorText;
+    CdprConfiguration configuration;
+    CdprPlatformState6 initialPlatform;
+    CdprCableState8 initialCables;
+    CdprVector6 initialSimulatedSensorWrench {};
+    CdprVelocityControlConfig velocityControl;
+};
+
+struct CdprForceControlStatus
+{
+    bool active = false;
+    bool motionStarted = false;
+    quint64 runId = 0;
+    double elapsedS = 0.0;
+    quint64 cycleCount = 0;
+    double averageFullCycleMs = 0.0;
+    double maximumFullCycleMs = 0.0;
+    double averageTracePollMs = 0.0;
+    double maximumTracePollMs = 0.0;
+    double averageCalculationMs = 0.0;
+    double maximumCalculationMs = 0.0;
+    double averageApiTotalMs = 0.0;
+    double maximumApiTotalMs = 0.0;
+    quint64 executionOverrunCount = 0;
+    quint64 schedulingOverrunCount = 0;
+    double maximumTrackingErrorDegree = 0.0;
+    double maximumCableTravelM = 0.0;
+    CdprVector6 simulatedSensorWrench {};
+    CdprPlatformState6 desiredPlatform;
+    QString stateText = QStringLiteral("未运行");
+};
+
 struct CdprMarkerView
 {
     int id = -1;
@@ -135,5 +172,7 @@ public:
 };
 
 Q_DECLARE_METATYPE(CdprUiStatus)
+Q_DECLARE_METATYPE(CdprForceControlRequest)
+Q_DECLARE_METATYPE(CdprForceControlStatus)
 
 #endif // CDPRCONFIGURATION_H

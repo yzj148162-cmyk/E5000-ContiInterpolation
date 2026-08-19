@@ -9,9 +9,14 @@
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QMap>
+#include <memory>
 
 #include "common/ContiTypes.h"
 #include "cdpr/CdprControlTypes.h"
+#include "cdpr/CdprConfiguration.h"
+#include "cdpr/CdprDynamics.h"
+#include "cdpr/CdprForceInput.h"
+#include "cdpr/CdprKinematics.h"
 #include "cdpr/CdprVirtualConsistencyAnalyzer.h"
 #include "control/PositionVelocityPid.h"
 #include "control/TraceDelayCalibration.h"
@@ -60,6 +65,10 @@ public slots:
     void startCdprVelocityControl(const CdprOfflinePvtPlan &plan,
                                   const CdprVelocityControlConfig &config);
     void stopCdprVelocityControl(bool emergency);
+    void startCdprForceControl(const CdprForceControlRequest &request);
+    void updateCdprSimulatedWrench(double fx, double fy, double fz,
+                                   double mx, double my, double mz);
+    void stopCdprForceControl(bool emergency);
     void startTelemetryRecording();
     void stopTelemetryRecording();
     void refreshBusCycle();
@@ -72,6 +81,7 @@ signals:
     void torquePlotSamplesReady(const QVector<TorquePlotSample> &samples);
     void offlinePvtStatusChanged(const CdprOfflinePvtStatus &status);
     void cdprVelocityControlStatusChanged(const CdprVelocityControlStatus &status);
+    void cdprForceControlStatusChanged(const CdprForceControlStatus &status);
 
 private slots:
     void produceNextPoint();
@@ -81,6 +91,7 @@ private slots:
     void runTraceDelayCalibrationCycle();
     void monitorOfflinePvt();
     void runCdprVelocityControlCycle();
+    void runCdprForceControlCycle();
 
 private:
     bool startAfterPreload();
@@ -144,6 +155,13 @@ private:
                                double &positionDegree,
                                double &velocityDegreePerSecond) const;
     void finishCdprVelocityControl(const QString &message, bool emergency);
+    bool validateCdprForceControl(const CdprForceControlRequest &request,
+                                  QString &errorMessage) const;
+    bool beginCdprForceRunRecording(QString &errorMessage);
+    bool forceReferenceAt(double elapsedS, int cable,
+                          double &positionDegree,
+                          double &velocityDegreePerSecond) const;
+    void finishCdprForceControl(const QString &message, bool emergency);
     bool beginCdprRunRecording(const CdprOfflinePvtPlan &plan,
                                const QString &mode,
                                QString &errorMessage);
@@ -176,6 +194,13 @@ private:
         double commandPositionDegree = 0.0;
     };
 
+    struct ForceReferenceHistorySample
+    {
+        double elapsedS = 0.0;
+        CdprVector8 positionDegree {};
+        CdprVector8 velocityDegreePerSecond {};
+    };
+
     // 控制线程只保存状态机与轨迹数据；SDK、Trace PDO 和控制卡状态均在
     // MotionCardHardwareInterface 的独占硬件线程内。
     MotionCardHardwareInterface card_;
@@ -197,6 +222,7 @@ private:
     QTimer *traceDelayCalibrationTimer_ = nullptr;
     QTimer *offlinePvtMonitorTimer_ = nullptr;
     QTimer *cdprVelocityControlTimer_ = nullptr;
+    QTimer *cdprForceControlTimer_ = nullptr;
     ContiTestConfig config_;
     ContiFeedStatus lastFeedStatus_;
     bool boardInitialized_ = false;
@@ -221,6 +247,7 @@ private:
     bool traceDelayAutoRecording_ = false;
     bool offlinePvtActive_ = false;
     bool cdprVelocityControlActive_ = false;
+    bool cdprForceControlActive_ = false;
     bool manualTelemetryRecording_ = false;
     quint64 velocityRunId_ = 0;
     VelocityControlConfig velocityConfig_;
@@ -306,6 +333,30 @@ private:
     quint64 cdprVelocitySchedulingSampleCount_ = 0;
     quint64 cdprVelocityRunId_ = 0;
     bool cdprVelocityAutoRecording_ = false;
+    CdprForceControlRequest cdprForceRequest_;
+    CdprForceControlStatus cdprForceStatus_;
+    std::unique_ptr<CdprKinematics> cdprForceKinematics_;
+    std::unique_ptr<CdprWrenchTransformer> cdprForceWrenchTransformer_;
+    CdprDynamics cdprForceDynamics_;
+    SimulatedWrenchSource cdprForceWrenchSource_;
+    std::array<PositionVelocityPid, kCdprCableCount> cdprForcePids_;
+    std::array<double, kCdprCableCount> cdprForceStartPositionDegree_ {};
+    std::array<bool, kCdprCableCount> cdprForceAxisStarted_ {};
+    std::array<quint64, kCdprCableCount> cdprForceCommandStartTraceSequence_ {};
+    std::array<quint64, kCdprCableCount> cdprForceLastTraceTimeUs_ {};
+    QQueue<ForceReferenceHistorySample> cdprForceReferenceHistory_;
+    QElapsedTimer cdprForceRunClock_;
+    QElapsedTimer cdprForceCycleClock_;
+    QElapsedTimer cdprForceTraceFreshClock_;
+    QElapsedTimer cdprForceStatusPublishClock_;
+    QElapsedTimer cdprForceDiagnosticClock_;
+    quint64 cdprForceLastTraceSequence_ = 0;
+    quint64 cdprForceStartTraceSequence_ = 0;
+    quint64 cdprForceCycleIndex_ = 0;
+    quint64 cdprForceRunId_ = 0;
+    int cdprForceConsecutiveSevereOverruns_ = 0;
+    bool cdprForceAutoRecording_ = false;
+    bool cdprRunAnalysisEnabled_ = true;
     QString cdprRunRecordDirectory_;
     QJsonObject cdprRunContext_;
     QFutureWatcher<CdprVirtualConsistencyAnalysisResult> *cdprAnalysisWatcher_ = nullptr;

@@ -82,6 +82,9 @@ signals:
     void startCdprVelocityControlRequested(const CdprOfflinePvtPlan &plan,
                                            const CdprVelocityControlConfig &config);
     void stopCdprVelocityControlRequested(bool emergency);
+    void prepareCdprForceControlRequested(
+        const CdprVelocityControlConfig &velocityControl);
+    void stopCdprForceControlRequested(bool emergency);
 
 private slots:
     void onStageChanged(int index);
@@ -134,6 +137,7 @@ private slots:
     void updateCdprVelocityTrajectory(const CdprOfflinePvtPlan &plan);
     void updateCdprOfflinePvtStatus(const CdprOfflinePvtStatus &status);
     void updateCdprVelocityControlStatus(const CdprVelocityControlStatus &status);
+    void updateCdprForceControlStatus(const CdprForceControlStatus &status);
     void appendLog(const QString &message);
     void updateStatus(const ContiStatus &status);
 
@@ -226,6 +230,8 @@ private:
     quint64 cdprVelocityPlanGeneration_ = 0;
     CdprOfflinePvtStatus cdprOfflinePvtStatus_;
     CdprVelocityControlStatus cdprVelocityControlStatus_;
+    CdprForceControlStatus cdprForceControlStatus_;
+    bool cdprForceControlAvailable_ = false;
     bool cdprAllMappedAxesEnabled_ = false;
 };
 

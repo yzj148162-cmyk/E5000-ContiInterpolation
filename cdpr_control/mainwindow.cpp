@@ -383,6 +383,13 @@ void MainWindow::connectWorker()
     });
     connect(ui_->cdprRtStopButton, &QPushButton::clicked,
             this, [this] { emit stopCdprVelocityControlRequested(false); });
+    connect(ui_->cdprStartButton, &QPushButton::clicked, this, [this] {
+        CdprVelocityControlConfig control = collectCdprVelocityControlConfig();
+        control.controlPeriodMs = 5;
+        emit prepareCdprForceControlRequested(control);
+    });
+    connect(ui_->cdprStopButton, &QPushButton::clicked,
+            this, [this] { emit stopCdprForceControlRequested(false); });
 
     connect(this, &MainWindow::initializeBoardRequested, worker_, &MotionControlWorker::initializeBoard);
     connect(this, &MainWindow::closeBoardRequested, worker_, &MotionControlWorker::closeBoard);
@@ -445,6 +452,8 @@ void MainWindow::connectWorker()
             cdprCoordinator_, &CdprCoordinator::setSimulatedSensorWrench);
     connect(this, &MainWindow::clearCdprSimulatedWrenchRequested,
             cdprCoordinator_, &CdprCoordinator::clearSimulatedSensorWrench);
+    connect(cdprCoordinator_, &CdprCoordinator::simulatedWrenchChanged,
+            worker_, &MotionControlWorker::updateCdprSimulatedWrench);
     connect(this, &MainWindow::resetCdprDynamicsRequested,
             cdprCoordinator_, &CdprCoordinator::resetDynamics);
     connect(this, &MainWindow::advanceCdprDynamicsOnceRequested,
@@ -457,6 +466,10 @@ void MainWindow::connectWorker()
             this, &MainWindow::updateCdprOfflinePvtPlan);
     connect(cdprCoordinator_, &CdprCoordinator::velocityTrajectoryReady,
             this, &MainWindow::updateCdprVelocityTrajectory);
+    connect(this, &MainWindow::prepareCdprForceControlRequested,
+            cdprCoordinator_, &CdprCoordinator::prepareForceControl);
+    connect(cdprCoordinator_, &CdprCoordinator::forceControlRequestReady,
+            worker_, &MotionControlWorker::startCdprForceControl);
     connect(this, &MainWindow::startCdprOfflinePvtRequested,
             worker_, &MotionControlWorker::startOfflinePvt);
     connect(this, &MainWindow::stopCdprOfflinePvtRequested,
@@ -467,8 +480,12 @@ void MainWindow::connectWorker()
             worker_, &MotionControlWorker::startCdprVelocityControl);
     connect(this, &MainWindow::stopCdprVelocityControlRequested,
             worker_, &MotionControlWorker::stopCdprVelocityControl);
+    connect(this, &MainWindow::stopCdprForceControlRequested,
+            worker_, &MotionControlWorker::stopCdprForceControl);
     connect(worker_, &MotionControlWorker::cdprVelocityControlStatusChanged,
             this, &MainWindow::updateCdprVelocityControlStatus);
+    connect(worker_, &MotionControlWorker::cdprForceControlStatusChanged,
+            this, &MainWindow::updateCdprForceControlStatus);
     connect(ui_->readBusCycleButton, &QPushButton::clicked,
             this, [this] { emit refreshBusCycleRequested(); });
     connect(worker_, &MotionControlWorker::logMessage, this, &MainWindow::appendLog);
@@ -557,8 +574,10 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
         status.hardwareReady
             ? QStringLiteral("QLabel { color: #2e7d32; font-weight: bold; }")
             : QStringLiteral("QLabel { color: #c62828; font-weight: bold; }"));
-    ui_->cdprStartButton->setEnabled(status.controlStartAvailable);
-    ui_->cdprStopButton->setEnabled(false);
+    cdprForceControlAvailable_ = status.controlStartAvailable;
+    ui_->cdprStartButton->setEnabled(
+        cdprForceControlAvailable_ && !cdprForceControlStatus_.active);
+    ui_->cdprStopButton->setEnabled(cdprForceControlStatus_.active);
     ui_->cdprInitialPoseSourceCombo->setCurrentIndex(
         status.initialPoseSource == CdprInitialPoseSource::Preset ? 0 : 1);
     ui_->cdprForceInputSourceCombo->setCurrentIndex(
@@ -597,8 +616,8 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
                   + QStringLiteral("]")
             : QStringLiteral("平台质心力旋量：无有效输入"));
     ui_->cdprReadinessValueLabel->setText(
-        QStringLiteral("配置%1｜运动学%2｜初始位姿%3｜"
-                       "外力输入%4｜Newmark%5｜力控执行链×")
+        QStringLiteral("配置%1｜运动学%2｜预设初值%3｜"
+                       "模拟外力%4｜Newmark%5｜8轴硬件%6｜5 ms执行链✓")
             .arg(status.configurationValid
                      ? QStringLiteral("✓") : QStringLiteral("×"))
             .arg(status.kinematicsReady
@@ -608,6 +627,8 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
             .arg(status.forceInputReady
                      ? QStringLiteral("✓") : QStringLiteral("×"))
             .arg(status.dynamicsReady
+                     ? QStringLiteral("✓") : QStringLiteral("×"))
+            .arg(status.hardwareReady && status.allMappedAxesEnabled
                      ? QStringLiteral("✓") : QStringLiteral("×")));
     ui_->cdprDynamicsStatusValueLabel->setText(status.dynamicsText);
     ui_->cdprDesiredPlatformValueLabel->setText(
@@ -669,6 +690,44 @@ void MainWindow::updateCdprStatus(const CdprUiStatus &status)
         }
     }
     ui_->cdprAxisTable->resizeColumnsToContents();
+}
+
+void MainWindow::updateCdprForceControlStatus(
+    const CdprForceControlStatus &status)
+{
+    cdprForceControlStatus_ = status;
+    ui_->cdprStartButton->setEnabled(
+        cdprForceControlAvailable_ && !status.active);
+    ui_->cdprStopButton->setEnabled(status.active);
+
+    if (!status.active && status.cycleCount == 0) {
+        ui_->cdprForceInteractionStatusLabel->setText(status.stateText);
+        return;
+    }
+
+    ui_->cdprForceInteractionStatusLabel->setText(
+        QStringLiteral(
+            "%1｜t=%2 s，周期=%3｜整周期 平均/最大=%4/%5 ms｜"
+            "Trace=%6/%7 ms｜计算=%8/%9 ms｜API=%10/%11 ms\n"
+            "外力=[%12]｜期望位姿=[%13]｜最大轨迹误差=%14°｜"
+            "最大绳长变化=%15 m｜超期 执行/调度=%16/%17")
+            .arg(status.stateText)
+            .arg(status.elapsedS, 0, 'f', 3)
+            .arg(status.cycleCount)
+            .arg(status.averageFullCycleMs, 0, 'f', 3)
+            .arg(status.maximumFullCycleMs, 0, 'f', 3)
+            .arg(status.averageTracePollMs, 0, 'f', 3)
+            .arg(status.maximumTracePollMs, 0, 'f', 3)
+            .arg(status.averageCalculationMs, 0, 'f', 3)
+            .arg(status.maximumCalculationMs, 0, 'f', 3)
+            .arg(status.averageApiTotalMs, 0, 'f', 3)
+            .arg(status.maximumApiTotalMs, 0, 'f', 3)
+            .arg(cdprVector6Text(status.simulatedSensorWrench, 3))
+            .arg(cdprVector6Text(status.desiredPlatform.pose, 6))
+            .arg(status.maximumTrackingErrorDegree, 0, 'f', 4)
+            .arg(status.maximumCableTravelM, 0, 'f', 6)
+            .arg(status.executionOverrunCount)
+            .arg(status.schedulingOverrunCount));
 }
 
 CdprOfflinePvtRequest MainWindow::collectCdprOfflinePvtRequest() const
@@ -1644,14 +1703,18 @@ void MainWindow::updateStatus(const ContiStatus &status)
     ui_->recordingStateValueLabel->setToolTip(
         QStringLiteral(
             "输出目录：%1\nTrace 写入 / 队列 / 丢帧：%2 / %3 / %4\n"
-            "周期耗时 写入 / 队列 / 丢弃：%5 / %6 / %7")
+            "周期耗时 写入 / 队列 / 丢弃：%5 / %6 / %7\n"
+            "力交互快照 写入 / 队列 / 丢弃：%8 / %9 / %10")
             .arg(recordDirectory)
             .arg(status.recorder.writtenFrames)
             .arg(status.recorder.queuedFrames)
             .arg(status.recorder.droppedFrames)
             .arg(status.recorder.writtenTimingSamples)
             .arg(status.recorder.queuedTimingSamples)
-            .arg(status.recorder.droppedTimingSamples));
+            .arg(status.recorder.droppedTimingSamples)
+            .arg(status.recorder.writtenForceControlSamples)
+            .arg(status.recorder.queuedForceControlSamples)
+            .arg(status.recorder.droppedForceControlSamples));
     const quint16 selectedAxis =
         static_cast<quint16>(ui_->jogAxisCombo->currentText().toUInt());
     const AxisFeedback *selectedFeedback = nullptr;

@@ -246,6 +246,7 @@ void CdprCoordinator::setSimulatedSensorWrench(
 {
     simulatedWrenchSource_.setSensorWrench(
         {fx, fy, fz, mx, my, mz});
+    emit simulatedWrenchChanged(fx, fy, fz, mx, my, mz);
     emit logMessage(QStringLiteral(
         "模拟F/T输入已更新（传感器坐标系）：[%1]。")
                         .arg(vector6Text(
@@ -256,8 +257,55 @@ void CdprCoordinator::setSimulatedSensorWrench(
 void CdprCoordinator::clearSimulatedSensorWrench()
 {
     simulatedWrenchSource_.setSensorWrench({});
+    emit simulatedWrenchChanged(0.0, 0.0, 0.0, 0.0, 0.0, 0.0);
     emit logMessage(QStringLiteral("模拟F/T输入已清零。"));
     publishStatus();
+}
+
+void CdprCoordinator::prepareForceControl(
+    const CdprVelocityControlConfig &velocityControl)
+{
+    CdprForceControlRequest request;
+    request.configuration = configuration_;
+    request.velocityControl = velocityControl;
+    request.velocityControl.controlPeriodMs = 5;
+    request.configuration.controlPeriodUs = 5000;
+    request.initialSimulatedSensorWrench = simulatedWrenchSource_.sensorWrench();
+
+    const bool configurationValid = configurationLoaded_
+        && validationMessages_.isEmpty();
+    if (!configurationValid || !kinematicsReady_ || !kinematics_) {
+        request.errorText = QStringLiteral("配置或直线绳段运动学尚未就绪。");
+    } else if (initialPoseSource_ != CdprInitialPoseSource::Preset) {
+        request.errorText = QStringLiteral("最小实时闭环首版只允许使用预设初始位姿。");
+    } else if (forceInputSource_ != CdprForceInputSource::Simulated) {
+        request.errorText = QStringLiteral("最小实时闭环首版只允许使用模拟六维力输入。");
+    } else if (!dynamics_.configured()) {
+        request.errorText = QStringLiteral("Newmark动力学模块尚未配置。");
+    } else {
+        request.initialPlatform = {};
+        request.initialPlatform.pose = presetInitialPose_;
+        request.initialPlatform.poseValid = true;
+        request.initialPlatform.twistValid = true;
+        request.initialPlatform.accelerationValid = true;
+        const CdprInverseKinematicsResult inverse =
+            kinematics_->inverse(request.initialPlatform);
+        if (!inverse.valid) {
+            request.errorText = QStringLiteral("预设初始位姿逆运动学失败：%1")
+                                    .arg(inverse.errorText);
+        } else {
+            request.initialCables = inverse.cables;
+            request.valid = true;
+        }
+    }
+    if (!request.valid) {
+        emit logMessage(QStringLiteral("力交互准备失败：%1").arg(request.errorText));
+    } else {
+        emit logMessage(QStringLiteral(
+            "力交互请求已生成：预设初始位姿、模拟F/T、固定5 ms周期；"
+            "等待硬件线程取得八轴同帧Trace基准。"));
+    }
+    emit forceControlRequestReady(request);
 }
 
 void CdprCoordinator::resetDynamics()
@@ -801,7 +849,11 @@ void CdprCoordinator::publishStatus()
         view.positionM = marker.positionM;
         status.markers.append(view);
     }
-    status.controlStartAvailable = false;
+    status.controlStartAvailable = status.configurationValid
+        && kinematicsReady_ && status.dynamicsReady
+        && status.initialPoseReady && status.forceInputReady
+        && initialPoseSource_ == CdprInitialPoseSource::Preset
+        && forceInputSource_ == CdprForceInputSource::Simulated;
 
     quint16 mappedAxisMask = 0;
     bool allMappedAxesOnline =
@@ -825,6 +877,8 @@ void CdprCoordinator::publishStatus()
     status.allMappedAxesEnabled =
         allMappedAxesOnline
         && (enabledAxisMask_ & mappedAxisMask) == mappedAxisMask;
+    status.controlStartAvailable = status.controlStartAvailable
+        && status.hardwareReady && status.allMappedAxesEnabled;
 
     if (!configurationLoaded_) {
         status.stateText = QStringLiteral("未加载配置");
