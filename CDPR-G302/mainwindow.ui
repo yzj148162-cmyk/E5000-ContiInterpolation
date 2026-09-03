@@ -16536,7 +16536,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QLabel" name="forceInteractionValidationHintLabel">
               <property name="text">
-               <string>仅运行模拟六维力 → 纯惯性Newmark-β → 补偿逆运动学 → 正运动学抽检；结构、质量和惯量读取当前控制界面配置，全程不调用雷赛运动API。</string>
+               <string>仅运行模拟六维力 → 纯惯性Newmark-β → 补偿逆运动学 → 每步正运动学往返校验；结构、质量和惯量读取当前控制界面配置，全程不调用雷赛运动API。</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>

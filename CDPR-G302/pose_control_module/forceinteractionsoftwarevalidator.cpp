@@ -224,7 +224,6 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
 
     const int stepCount = std::max(1, static_cast<int>(
             std::ceil(configuration.durationS / configuration.controlPeriodS)));
-    const int forwardCheckStride = std::max(1, stepCount / 100);
     CompensatedCableKinematics::State kinematicsState = kinematics.initialState();
     ForwardKinematicsSolver forwardSolver;
     forwardSolver.setInitialPose(configuration.initialPoseMmRad.front());
@@ -278,8 +277,7 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                         result.maximumRelativeMotorAngleRad, std::abs(angle));
         }
 
-        if(stepIndex == 1 || stepIndex == stepCount ||
-                stepIndex % forwardCheckStride == 0){
+        {
             ForwardKinematicsSolver::Request request;
             request.anchorPos = configuration.kinematics.anchorCableCoordinate;
             request.contactPointLocal =
@@ -334,13 +332,15 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
     constexpr double translationToleranceMm = 0.1;
     constexpr double orientationToleranceDeg = 0.01;
     constexpr double cableResidualToleranceMm = 0.1;
-    result.valid = result.maximumTranslationRoundTripErrorMm <= translationToleranceMm &&
+    result.valid = result.completedSteps == stepCount &&
+            result.forwardKinematicsChecks == stepCount &&
+            result.maximumTranslationRoundTripErrorMm <= translationToleranceMm &&
             result.maximumOrientationRoundTripErrorDeg <= orientationToleranceDeg &&
             result.maximumCableResidualMm <= cableResidualToleranceMm;
     result.summary = QStringLiteral(
                 "阶段A软件验证%1\n"
                 "输入：%2；周期=%3 ms，时长=%4 s\n"
-                "数学步=%5，正运动学抽检=%6\n"
+                "数学步=%5，逐步运动学往返校验=%6（每步一次）\n"
                 "Newmark最大迭代/残差=%7/%8\n"
                 "运动学往返最大误差：平移=%9 mm，姿态=%10 deg，绳长残差=%11 mm\n"
                 "最大相对电机角=%12 rad\n"
