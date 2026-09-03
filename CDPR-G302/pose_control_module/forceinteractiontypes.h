@@ -21,6 +21,14 @@ inline constexpr ForceInteractionVector3 kMeasuredForceSensorOriginInPlatformM{{
     0.0, 0.0, 0.32548
 }};
 
+// 实测安装关系：传感器坐标系 S 的三轴方向与动平台局部坐标系 E 完全一致，
+// 因而从 S 到 E 的旋转矩阵 R_ES 为单位阵。
+inline constexpr ForceInteractionMatrix3 kMeasuredForceSensorToPlatformRotation{{
+    1.0, 0.0, 0.0,
+    0.0, 1.0, 0.0,
+    0.0, 0.0, 1.0
+}};
+
 // Trace 时刻和主机接收时刻职责不同。纯软件验证不伪造 Trace 序号，
 // 只填写主机单调时间；后续实机阶段再由同帧 Trace 数据填充完整标记。
 struct ForceInteractionFrameStamp
@@ -69,9 +77,11 @@ struct ForceInteractionRigidBodyConfig
 struct ForceSensorTransformConfig
 {
     bool configured = false;
-    ForceInteractionMatrix3 rotationSensorToPlatform{};
+    ForceInteractionMatrix3 rotationSensorToPlatform =
+            kMeasuredForceSensorToPlatformRotation;
     // 从动平台质心/局部原点指向传感器受力/测量参考点，在平台局部系表达。
-    // 位置已经实测；configured 仍须等姿态、通道和方向全部确认后才能置 true。
+    // 安装位置和坐标轴方向均已实测；configured 仍须等 Trace 通道映射和
+    // 力/力矩正负方向全部确认后才能置 true。
     ForceInteractionVector3 sensorOriginInPlatformM =
             kMeasuredForceSensorOriginInPlatformM;
     ForceInteractionVector6 channelScale{{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}};

@@ -36,10 +36,9 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
 {
     ForceSensorTransformConfig transform;
     transform.configured = true;
-    transform.rotationSensorToPlatform = {{1.0, 0.0, 0.0,
-                                            0.0, 1.0, 0.0,
-                                            0.0, 0.0, 1.0}};
-    // 这里只用单位旋转隔离验证实测力臂的 r x F 项；单位旋转不代表真实安装姿态。
+    transform.rotationSensorToPlatform =
+            kMeasuredForceSensorToPlatformRotation;
+    // 使用实测安装关系 R_ES=I 和实测力臂，联合验证坐标旋转及 r x F 项。
     transform.sensorOriginInPlatformM = kMeasuredForceSensorOriginInPlatformM;
     WrenchTransformer transformer(transform);
     ForceInteractionWrenchSample sensor;
