@@ -39,7 +39,8 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
     transform.rotationSensorToPlatform = {{1.0, 0.0, 0.0,
                                             0.0, 1.0, 0.0,
                                             0.0, 0.0, 1.0}};
-    transform.sensorOriginInPlatformM = {{0.0, 1.0, 0.0}};
+    // 这里只用单位旋转隔离验证实测力臂的 r x F 项；单位旋转不代表真实安装姿态。
+    transform.sensorOriginInPlatformM = kMeasuredForceSensorOriginInPlatformM;
     WrenchTransformer transformer(transform);
     ForceInteractionWrenchSample sensor;
     sensor.stamp.valid = true;
@@ -50,9 +51,10 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
             transformer.toPlatformCenterOfMass(sensor);
     if(!transformed.sample.valid ||
             std::abs(transformed.sample.wrench[0] - 1.0) > 1.0e-12 ||
-            std::abs(transformed.sample.wrench[5] + 1.0) > 1.0e-12){
+            std::abs(transformed.sample.wrench[4] -
+                     kMeasuredForceSensorOriginInPlatformM[2]) > 1.0e-12){
         if(errorMessage){
-            *errorMessage = QStringLiteral("力旋量平移自检失败");
+            *errorMessage = QStringLiteral("实测F/T力臂的力旋量平移自检失败");
         }
         return false;
     }

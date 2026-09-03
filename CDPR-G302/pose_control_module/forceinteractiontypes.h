@@ -13,6 +13,14 @@ using ForceInteractionVector3 = std::array<double, 3>;
 using ForceInteractionVector6 = std::array<double, kForceInteractionDofCount>;
 using ForceInteractionMatrix3 = std::array<double, 9>;
 
+// 实测六维力受力/测量参考点位于动平台局部坐标系原点（正二十面体几何中心）
+// 正上方 325.48 mm。动力学和力旋量变换统一使用 SI，因此此处保存为 m。
+// 当前把该实测点作为传感器坐标系 S 的原点；若传感器手册另行定义测量原点，
+// 应在实物标定时修正本向量。
+inline constexpr ForceInteractionVector3 kMeasuredForceSensorOriginInPlatformM{{
+    0.0, 0.0, 0.32548
+}};
+
 // Trace 时刻和主机接收时刻职责不同。纯软件验证不伪造 Trace 序号，
 // 只填写主机单调时间；后续实机阶段再由同帧 Trace 数据填充完整标记。
 struct ForceInteractionFrameStamp
@@ -62,7 +70,10 @@ struct ForceSensorTransformConfig
 {
     bool configured = false;
     ForceInteractionMatrix3 rotationSensorToPlatform{};
-    ForceInteractionVector3 sensorOriginInPlatformM{};
+    // 从动平台质心/局部原点指向传感器受力/测量参考点，在平台局部系表达。
+    // 位置已经实测；configured 仍须等姿态、通道和方向全部确认后才能置 true。
+    ForceInteractionVector3 sensorOriginInPlatformM =
+            kMeasuredForceSensorOriginInPlatformM;
     ForceInteractionVector6 channelScale{{1.0, 1.0, 1.0, 1.0, 1.0, 1.0}};
     ForceInteractionVector6 channelBias{};
     int wrenchReactionSign = 1;
