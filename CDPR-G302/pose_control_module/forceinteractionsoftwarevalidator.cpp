@@ -34,13 +34,9 @@ CompensatedCableKinematics::PoseMatrix toPoseMmRad(
 bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
                        QString* errorMessage)
 {
-    ForceSensorTransformConfig transform;
-    transform.configured = true;
-    transform.rotationSensorToPlatform =
-            kMeasuredForceSensorToPlatformRotation;
-    // 使用实测安装关系 R_ES=I 和实测力臂，联合验证坐标旋转及 r x F 项。
-    transform.sensorOriginInPlatformM = kMeasuredForceSensorOriginInPlatformM;
-    WrenchTransformer transformer(transform);
+    // 自检和正式仿真必须使用同一份冻结安装参数，避免出现“自检使用实测
+    // 力臂、正式循环却把模拟量直接当作质心力旋量”的双重语义。
+    WrenchTransformer transformer(configuration.sensorTransform);
     ForceInteractionWrenchSample sensor;
     sensor.stamp.valid = true;
     sensor.valid = true;
@@ -51,7 +47,7 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
     if(!transformed.sample.valid ||
             std::abs(transformed.sample.wrench[0] - 1.0) > 1.0e-12 ||
             std::abs(transformed.sample.wrench[4] -
-                     kMeasuredForceSensorOriginInPlatformM[2]) > 1.0e-12){
+                     configuration.sensorTransform.sensorOriginInPlatformM[2]) > 1.0e-12){
         if(errorMessage){
             *errorMessage = QStringLiteral("实测F/T力臂的力旋量平移自检失败");
         }
@@ -183,9 +179,11 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
             configuration.controlPeriodS <= 0.0 ||
             !std::isfinite(configuration.durationS) ||
             configuration.durationS <= 0.0 ||
-            configuration.initialPoseMmRad.size() != 1){
+            configuration.initialPoseMmRad.size() != 1 ||
+            configuration.machineTemplateName.trimmed().isEmpty() ||
+            !configuration.sensorTransform.configured){
         result.summary = failureSummary(QStringLiteral("输入校验"),
-                                        QStringLiteral("周期、时长或单末端初始位姿无效"));
+                                        QStringLiteral("Lite模板、F/T安装参数、周期、时长或单末端初始位姿无效"));
         return result;
     }
 
@@ -227,6 +225,11 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
     CompensatedCableKinematics::State kinematicsState = kinematics.initialState();
     ForwardKinematicsSolver forwardSolver;
     forwardSolver.setInitialPose(configuration.initialPoseMmRad.front());
+    WrenchTransformer wrenchTransformer(configuration.sensorTransform);
+
+    constexpr double translationToleranceMm = 0.1;
+    constexpr double orientationToleranceDeg = 0.01;
+    constexpr double cableResidualToleranceMm = 0.1;
 
     for(int stepIndex = 1; stepIndex <= stepCount; ++stepIndex){
         if(cancellationRequested && cancellationRequested->load()){
@@ -241,15 +244,30 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
         stamp.hostMonotonicTimeUs = static_cast<qint64>(
                     std::llround(elapsedS * 1.0e6));
         stamp.valid = true;
-        const ForceInteractionWrenchSample wrench =
+        const ForceInteractionWrenchSample sensorWrench =
                 wrenchSource.sample(stamp, elapsedS);
-        if(!wrench.valid){
+        if(!sensorWrench.valid){
             result.summary = failureSummary(QStringLiteral("模拟力求值"),
                                             QStringLiteral("产生无效力旋量"));
             return result;
         }
+        WrenchTransformResult transformed =
+                wrenchTransformer.toPlatformCenterOfMass(sensorWrench);
+        if(!transformed.sample.valid){
+            result.summary = failureSummary(
+                        QStringLiteral("F/T安装变换"),
+                        transformed.errorMessage.isEmpty() ?
+                            QStringLiteral("无法得到动平台质心处力旋量") :
+                            transformed.errorMessage);
+            return result;
+        }
+        if(configuration.translationOnly){
+            transformed.sample.wrench[3] = 0.0;
+            transformed.sample.wrench[4] = 0.0;
+            transformed.sample.wrench[5] = 0.0;
+        }
         const CdprDynamicsStepResult dynamicsStep =
-                dynamics.step(wrench, configuration.controlPeriodS);
+                dynamics.step(transformed.sample, configuration.controlPeriodS);
         if(!dynamicsStep.valid){
             result.summary = failureSummary(QStringLiteral("Newmark单步"),
                                             dynamicsStep.errorMessage);
@@ -261,6 +279,22 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                     result.maximumNewmarkResidual, dynamicsStep.residual);
 
         const auto poseMmRad = toPoseMmRad(dynamicsStep.state);
+        bool poseOutsideBounds = false;
+        if(configuration.poseLowerBoundsMmRad.size() >= 6 &&
+                configuration.poseUpperBoundsMmRad.size() >= 6){
+            for(int dimension = 0; dimension < 6; ++dimension){
+                const double value = poseMmRad[0][static_cast<size_t>(dimension)];
+                if(value < configuration.poseLowerBoundsMmRad[static_cast<size_t>(dimension)] ||
+                        value > configuration.poseUpperBoundsMmRad[static_cast<size_t>(dimension)]){
+                    poseOutsideBounds = true;
+                    break;
+                }
+            }
+        }
+        if(poseOutsideBounds && result.firstPoseBoundsViolationStep == 0){
+            result.firstPoseBoundsViolationStep = stepIndex;
+            result.firstPoseBoundsViolationState = dynamicsStep.state;
+        }
         const CompensatedCableKinematics::Evaluation evaluation =
                 kinematics.evaluatePose(poseMmRad, kinematicsState);
         if(!evaluation.valid ||
@@ -304,12 +338,15 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                         wrappedAngleDifference(forward.pose[3], poseMmRad[0][3]),
                         wrappedAngleDifference(forward.pose[4], poseMmRad[0][4]),
                         wrappedAngleDifference(forward.pose[5], poseMmRad[0][5]));
-            result.maximumTranslationRoundTripErrorMm = std::max(
-                        result.maximumTranslationRoundTripErrorMm,
-                        translationError);
-            result.maximumOrientationRoundTripErrorDeg = std::max(
-                        result.maximumOrientationRoundTripErrorDeg,
-                        orientationErrorRad * 180.0 / kPi);
+            const double orientationErrorDeg = orientationErrorRad * 180.0 / kPi;
+            if(translationError > result.maximumTranslationRoundTripErrorMm){
+                result.maximumTranslationRoundTripErrorMm = translationError;
+                result.maximumTranslationErrorStep = stepIndex;
+            }
+            if(orientationErrorDeg > result.maximumOrientationRoundTripErrorDeg){
+                result.maximumOrientationRoundTripErrorDeg = orientationErrorDeg;
+                result.maximumOrientationErrorStep = stepIndex;
+            }
 
             const std::vector<double> reconstructedLengths =
                     kinematics.cableLengthsForPose({forward.pose}, &error);
@@ -318,10 +355,20 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                 return result;
             }
             for(size_t cable = 0; cable < reconstructedLengths.size(); ++cable){
-                result.maximumCableResidualMm = std::max(
-                            result.maximumCableResidualMm,
-                            std::abs(reconstructedLengths[cable] -
-                                     evaluation.cableLengthMm[cable]));
+                const double cableResidual =
+                        std::abs(reconstructedLengths[cable] -
+                                 evaluation.cableLengthMm[cable]);
+                if(cableResidual > result.maximumCableResidualMm){
+                    result.maximumCableResidualMm = cableResidual;
+                    result.maximumCableResidualStep = stepIndex;
+                }
+            }
+            if(result.firstRoundTripToleranceViolationStep == 0 &&
+                    (translationError > translationToleranceMm ||
+                     orientationErrorDeg > orientationToleranceDeg ||
+                     result.maximumCableResidualMm > cableResidualToleranceMm)){
+                result.firstRoundTripToleranceViolationStep = stepIndex;
+                result.firstRoundTripToleranceViolationState = dynamicsStep.state;
             }
             ++result.forwardKinematicsChecks;
         }
@@ -329,34 +376,76 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
         result.completedSteps = stepIndex;
     }
 
-    constexpr double translationToleranceMm = 0.1;
-    constexpr double orientationToleranceDeg = 0.01;
-    constexpr double cableResidualToleranceMm = 0.1;
     result.valid = result.completedSteps == stepCount &&
             result.forwardKinematicsChecks == stepCount &&
+            result.firstPoseBoundsViolationStep == 0 &&
             result.maximumTranslationRoundTripErrorMm <= translationToleranceMm &&
             result.maximumOrientationRoundTripErrorDeg <= orientationToleranceDeg &&
             result.maximumCableResidualMm <= cableResidualToleranceMm;
     result.summary = QStringLiteral(
                 "阶段A软件验证%1\n"
-                "输入：%2；周期=%3 ms，时长=%4 s\n"
-                "数学步=%5，逐步运动学往返校验=%6（每步一次）\n"
-                "Newmark最大迭代/残差=%7/%8\n"
-                "运动学往返最大误差：平移=%9 mm，姿态=%10 deg，绳长残差=%11 mm\n"
-                "最大相对电机角=%12 rad\n"
-                "末态位姿(SI)=[%13, %14, %15 m, %16, %17, %18 rad]\n"
+                "模板：%2（阶段A仅允许Lite）\n"
+                "输入：%3；周期=%4 ms，时长=%5 s；仅平动=%6\n"
+                "F/T安装：r_ES=[%7, %8, %9] m，R_ES=I；模拟量先按传感器原始力旋量转换到质心\n"
+                "初始位姿(SI)=[%10, %11, %12 m, %13, %14, %15 rad]\n"
+                "刚体质量=%16 kg\n"
+                "数学步=%17，逐步运动学往返校验=%18（每步一次）\n"
+                "Newmark最大迭代/残差=%19/%20\n"
+                "运动学往返最大误差：平移=%21 mm（第%22步），姿态=%23 deg（第%24步），绳长残差=%25 mm（第%26步）\n"
+                "首次越出Lite正运动学边界：%27\n"
+                "首次往返误差超限：%28\n"
+                "最大相对电机角=%29 rad\n"
+                "末态位姿(SI)=[%30, %31, %32 m, %33, %34, %35 rad]\n"
                 "全程未调用任何雷赛运动API。")
             .arg(result.valid ? QStringLiteral("通过") : QStringLiteral("未通过"))
+            .arg(configuration.machineTemplateName)
             .arg(wrenchSource.summary())
             .arg(configuration.controlPeriodS * 1000.0, 0, 'f', 3)
             .arg(configuration.durationS, 0, 'f', 3)
+            .arg(configuration.translationOnly ? QStringLiteral("是（质心处三维力矩清零）") :
+                                                 QStringLiteral("否"))
+            .arg(configuration.sensorTransform.sensorOriginInPlatformM[0], 0, 'g', 8)
+            .arg(configuration.sensorTransform.sensorOriginInPlatformM[1], 0, 'g', 8)
+            .arg(configuration.sensorTransform.sensorOriginInPlatformM[2], 0, 'g', 8)
+            .arg(configuration.initialState.pose[0], 0, 'g', 8)
+            .arg(configuration.initialState.pose[1], 0, 'g', 8)
+            .arg(configuration.initialState.pose[2], 0, 'g', 8)
+            .arg(configuration.initialState.pose[3], 0, 'g', 8)
+            .arg(configuration.initialState.pose[4], 0, 'g', 8)
+            .arg(configuration.initialState.pose[5], 0, 'g', 8)
+            .arg(configuration.rigidBody.massKg, 0, 'g', 8)
             .arg(result.completedSteps)
             .arg(result.forwardKinematicsChecks)
             .arg(result.maximumNewmarkIterations)
             .arg(result.maximumNewmarkResidual, 0, 'g', 8)
             .arg(result.maximumTranslationRoundTripErrorMm, 0, 'g', 8)
+            .arg(result.maximumTranslationErrorStep)
             .arg(result.maximumOrientationRoundTripErrorDeg, 0, 'g', 8)
+            .arg(result.maximumOrientationErrorStep)
             .arg(result.maximumCableResidualMm, 0, 'g', 8)
+            .arg(result.maximumCableResidualStep)
+            .arg(result.firstPoseBoundsViolationStep > 0 ?
+                     QStringLiteral("第%1步，t=%2 ms，位姿=[%3, %4, %5 m, %6, %7, %8 rad]")
+                         .arg(result.firstPoseBoundsViolationStep)
+                         .arg(result.firstPoseBoundsViolationStep * configuration.controlPeriodS * 1000.0, 0, 'f', 3)
+                         .arg(result.firstPoseBoundsViolationState.pose[0], 0, 'g', 8)
+                         .arg(result.firstPoseBoundsViolationState.pose[1], 0, 'g', 8)
+                         .arg(result.firstPoseBoundsViolationState.pose[2], 0, 'g', 8)
+                         .arg(result.firstPoseBoundsViolationState.pose[3], 0, 'g', 8)
+                         .arg(result.firstPoseBoundsViolationState.pose[4], 0, 'g', 8)
+                         .arg(result.firstPoseBoundsViolationState.pose[5], 0, 'g', 8) :
+                     QStringLiteral("无"))
+            .arg(result.firstRoundTripToleranceViolationStep > 0 ?
+                     QStringLiteral("第%1步，t=%2 ms，位姿=[%3, %4, %5 m, %6, %7, %8 rad]")
+                         .arg(result.firstRoundTripToleranceViolationStep)
+                         .arg(result.firstRoundTripToleranceViolationStep * configuration.controlPeriodS * 1000.0, 0, 'f', 3)
+                         .arg(result.firstRoundTripToleranceViolationState.pose[0], 0, 'g', 8)
+                         .arg(result.firstRoundTripToleranceViolationState.pose[1], 0, 'g', 8)
+                         .arg(result.firstRoundTripToleranceViolationState.pose[2], 0, 'g', 8)
+                         .arg(result.firstRoundTripToleranceViolationState.pose[3], 0, 'g', 8)
+                         .arg(result.firstRoundTripToleranceViolationState.pose[4], 0, 'g', 8)
+                         .arg(result.firstRoundTripToleranceViolationState.pose[5], 0, 'g', 8) :
+                     QStringLiteral("无"))
             .arg(result.maximumRelativeMotorAngleRad, 0, 'g', 8)
             .arg(result.finalState.pose[0], 0, 'g', 8)
             .arg(result.finalState.pose[1], 0, 'g', 8)
@@ -364,6 +453,66 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
             .arg(result.finalState.pose[3], 0, 'g', 8)
             .arg(result.finalState.pose[4], 0, 'g', 8)
             .arg(result.finalState.pose[5], 0, 'g', 8);
+    result.summary += QStringLiteral(
+                "\n冻结模拟输入幅值/常值=[%1, %2, %3 N, %4, %5, %6 N·m]"
+                "\n冻结惯量矩阵=[%7, %8, %9; %10, %11, %12; %13, %14, %15] kg·m²"
+                "\n通过阈值：平移≤%16 mm，姿态≤%17 deg，绳长残差≤%18 mm")
+            .arg(configuration.wrenchProfile.amplitude[0], 0, 'g', 8)
+            .arg(configuration.wrenchProfile.amplitude[1], 0, 'g', 8)
+            .arg(configuration.wrenchProfile.amplitude[2], 0, 'g', 8)
+            .arg(configuration.wrenchProfile.amplitude[3], 0, 'g', 8)
+            .arg(configuration.wrenchProfile.amplitude[4], 0, 'g', 8)
+            .arg(configuration.wrenchProfile.amplitude[5], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[0], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[1], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[2], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[3], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[4], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[5], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[6], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[7], 0, 'g', 8)
+            .arg(configuration.rigidBody.inertiaKgM2[8], 0, 'g', 8)
+            .arg(translationToleranceMm, 0, 'g', 8)
+            .arg(orientationToleranceDeg, 0, 'g', 8)
+            .arg(cableResidualToleranceMm, 0, 'g', 8);
+    if(configuration.wrenchProfile.mode == SimulatedWrenchMode::Pulse){
+        result.summary += QStringLiteral("\n脉冲参数：起点=%1 s，持续=%2 s")
+                .arg(configuration.wrenchProfile.pulseStartS, 0, 'g', 8)
+                .arg(configuration.wrenchProfile.pulseDurationS, 0, 'g', 8);
+    }
+    else if(configuration.wrenchProfile.mode == SimulatedWrenchMode::Sine){
+        result.summary += QStringLiteral("\n正弦参数：频率=%1 Hz，相位=%2 rad")
+                .arg(configuration.wrenchProfile.sineFrequencyHz, 0, 'g', 8)
+                .arg(configuration.wrenchProfile.sinePhaseRad, 0, 'g', 8);
+    }
+    else if(configuration.wrenchProfile.mode == SimulatedWrenchMode::Formula){
+        result.summary += QStringLiteral(
+                    "\n六分量公式=[%1; %2; %3; %4; %5; %6]")
+                .arg(configuration.wrenchProfile.expressions[0])
+                .arg(configuration.wrenchProfile.expressions[1])
+                .arg(configuration.wrenchProfile.expressions[2])
+                .arg(configuration.wrenchProfile.expressions[3])
+                .arg(configuration.wrenchProfile.expressions[4])
+                .arg(configuration.wrenchProfile.expressions[5]);
+    }
+    if(configuration.poseLowerBoundsMmRad.size() >= 6 &&
+            configuration.poseUpperBoundsMmRad.size() >= 6){
+        result.summary += QStringLiteral(
+                    "\nLite正运动学边界：下界=[%1, %2, %3 mm, %4, %5, %6 rad]，"
+                    "上界=[%7, %8, %9 mm, %10, %11, %12 rad]")
+                .arg(configuration.poseLowerBoundsMmRad[0], 0, 'g', 8)
+                .arg(configuration.poseLowerBoundsMmRad[1], 0, 'g', 8)
+                .arg(configuration.poseLowerBoundsMmRad[2], 0, 'g', 8)
+                .arg(configuration.poseLowerBoundsMmRad[3], 0, 'g', 8)
+                .arg(configuration.poseLowerBoundsMmRad[4], 0, 'g', 8)
+                .arg(configuration.poseLowerBoundsMmRad[5], 0, 'g', 8)
+                .arg(configuration.poseUpperBoundsMmRad[0], 0, 'g', 8)
+                .arg(configuration.poseUpperBoundsMmRad[1], 0, 'g', 8)
+                .arg(configuration.poseUpperBoundsMmRad[2], 0, 'g', 8)
+                .arg(configuration.poseUpperBoundsMmRad[3], 0, 'g', 8)
+                .arg(configuration.poseUpperBoundsMmRad[4], 0, 'g', 8)
+                .arg(configuration.poseUpperBoundsMmRad[5], 0, 'g', 8);
+    }
     return result;
 }
 

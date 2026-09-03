@@ -11,9 +11,12 @@
 
 struct ForceInteractionValidationConfig
 {
+    QString machineTemplateName;
     ForceInteractionRigidBodyConfig rigidBody;
     NewmarkBetaConfig newmark;
     SimulatedWrenchProfile wrenchProfile;
+    ForceSensorTransformConfig sensorTransform;
+    bool translationOnly = false;
     double controlPeriodS = 0.005;
     double durationS = 2.0;
     ForceInteractionPlatformState initialState;
@@ -35,6 +38,13 @@ struct ForceInteractionValidationResult
     double maximumOrientationRoundTripErrorDeg = 0.0;
     double maximumCableResidualMm = 0.0;
     double maximumRelativeMotorAngleRad = 0.0;
+    int firstPoseBoundsViolationStep = 0;
+    int firstRoundTripToleranceViolationStep = 0;
+    int maximumTranslationErrorStep = 0;
+    int maximumOrientationErrorStep = 0;
+    int maximumCableResidualStep = 0;
+    ForceInteractionPlatformState firstPoseBoundsViolationState;
+    ForceInteractionPlatformState firstRoundTripToleranceViolationState;
     ForceInteractionPlatformState finalState;
     QString summary;
 };

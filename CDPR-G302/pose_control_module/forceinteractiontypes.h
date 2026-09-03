@@ -97,7 +97,8 @@ enum class SimulatedWrenchMode : quint8
     Formula
 };
 
-// 模拟量直接定义在平台质心 body frame，不依赖尚未标定的传感器安装关系。
+// 模拟量与真实F/T Trace保持相同语义：传感器测量参考点、传感器坐标系S下
+// 的原始六维力。进入动力学前统一经过WrenchTransformer转换到平台质心。
 struct SimulatedWrenchProfile
 {
     SimulatedWrenchMode mode = SimulatedWrenchMode::Constant;

@@ -80,6 +80,7 @@
 #include <QStackedWidget>
 #include <QStandardPaths>
 #include <QSerialPortInfo>
+#include <QStringConverter>
 #include <QStringList>
 #include <QTabBar>
 #include <QTabWidget>
@@ -18910,6 +18911,8 @@ void MainWindow::setupForceInteractionValidationTab()
             &QPushButton::clicked,
             this,
             &MainWindow::cancelForceInteractionSoftwareValidation);
+    connect(ui->devUseLite, &QRadioButton::toggled, this,
+            [this](bool){ refreshForceInteractionValidationInputState(); });
     refreshForceInteractionValidationInputState();
 }
 
@@ -18924,6 +18927,7 @@ void MainWindow::refreshForceInteractionValidationInputState()
     const bool sine = mode == SimulatedWrenchMode::Sine;
     const bool pulse = mode == SimulatedWrenchMode::Pulse;
     const bool formula = mode == SimulatedWrenchMode::Formula;
+    const bool liteTemplate = isLiteTemplateActive();
 
     ui->forceInteractionValidationInputGroupBox->setEnabled(!running);
     ui->forceInteractionFormulaGroupBox->setEnabled(!running && formula);
@@ -18935,7 +18939,10 @@ void MainWindow::refreshForceInteractionValidationInputState()
     ui->forceInteractionPulseStartSpinBox->setEnabled(!running && pulse);
     ui->forceInteractionPulseDurationTitleLabel->setEnabled(!running && pulse);
     ui->forceInteractionPulseDurationSpinBox->setEnabled(!running && pulse);
-    ui->forceInteractionValidationStartButton->setEnabled(!running);
+    ui->forceInteractionValidationStartButton->setEnabled(!running && liteTemplate);
+    ui->forceInteractionValidationStartButton->setToolTip(
+                liteTemplate ? QString() :
+                               QStringLiteral("请先在“控制界面”选择Lite模板"));
     ui->forceInteractionValidationCancelButton->setEnabled(running);
 }
 
@@ -18943,6 +18950,12 @@ void MainWindow::startForceInteractionSoftwareValidation()
 {
     if(forceInteractionValidationWorker){
         displayInfo("阶段A软件验证已经在运行", "warning");
+        return;
+    }
+    if(!isLiteTemplateActive()){
+        ui->forceInteractionValidationStatusLabel->setText(
+                    QStringLiteral("无法启动：请先在“控制界面”选择Lite模板。"));
+        displayInfo("阶段A软件验证无法启动：当前不是Lite模板", "error");
         return;
     }
     if(endMassVec.empty() || endIxxVec.empty() || endIyyVec.empty() ||
@@ -18955,6 +18968,14 @@ void MainWindow::startForceInteractionSoftwareValidation()
     }
 
     ForceInteractionValidationConfig config;
+    const MachineKinematicsProfile& profile = currentMachineKinematicsProfile(ui);
+    config.machineTemplateName = QString::fromLatin1(profile.name);
+    config.sensorTransform.configured = true;
+    config.sensorTransform.rotationSensorToPlatform =
+            kMeasuredForceSensorToPlatformRotation;
+    config.sensorTransform.sensorOriginInPlatformM =
+            kMeasuredForceSensorOriginInPlatformM;
+    config.translationOnly = ui->forceInteractionTranslationOnlyCheckBox->isChecked();
     config.controlPeriodS = ui->forceInteractionPeriodMsSpinBox->value() / 1000.0;
     config.durationS = ui->forceInteractionDurationSpinBox->value();
     config.wrenchProfile.mode = static_cast<SimulatedWrenchMode>(
@@ -19030,7 +19051,6 @@ void MainWindow::startForceInteractionSoftwareValidation()
     // 阶段A没有逐周期张力解，不启用绳弹性补偿；滑轮与绞盘几何仍复用原工程。
     config.kinematics.ropeElasticConfig.enabled = false;
 
-    const MachineKinematicsProfile& profile = currentMachineKinematicsProfile(ui);
     config.poseLowerBoundsMmRad = profile.forwardKinematicsPoseLowerBounds;
     config.poseUpperBoundsMmRad = profile.forwardKinematicsPoseUpperBounds;
 
@@ -19061,11 +19081,43 @@ void MainWindow::startForceInteractionSoftwareValidation()
                     valid ? QStringLiteral("阶段A验证通过。") :
                             (cancelled ? QStringLiteral("阶段A验证已取消。") :
                                          QStringLiteral("阶段A验证未通过，请查看下方结果。")));
+
+        QString validationLogPath;
+        QDir validationLogDir(QDir(uiEventLogDirPath()).filePath(
+                                  QStringLiteral("stage_a_validation")));
+        if(validationLogDir.exists() || validationLogDir.mkpath(QStringLiteral("."))){
+            validationLogPath = validationLogDir.filePath(
+                        QStringLiteral("stage_a_validation_%1.txt")
+                        .arg(QDateTime::currentDateTime().toString(
+                                 QStringLiteral("yyyyMMdd_HHmmss_zzz"))));
+            QSaveFile validationLog(validationLogPath);
+            if(validationLog.open(QIODevice::WriteOnly | QIODevice::Text)){
+                QTextStream stream(&validationLog);
+                stream.setEncoding(QStringConverter::Utf8);
+                stream << "生成时间："
+                       << QDateTime::currentDateTime().toString(Qt::ISODateWithMs)
+                       << '\n' << summary << '\n';
+                if(!validationLog.commit()){
+                    validationLogPath.clear();
+                }
+            }
+            else{
+                validationLogPath.clear();
+            }
+        }
         refreshForceInteractionValidationInputState();
         displayInfo((valid ? QStringLiteral("阶段A软件验证通过") :
                            (cancelled ? QStringLiteral("阶段A软件验证已取消") :
                                         QStringLiteral("阶段A软件验证未通过"))).toStdString(),
                     valid ? "info" : (cancelled ? "warning" : "error"));
+        if(validationLogPath.isEmpty()){
+            displayInfo("警告：阶段A详细验证日志保存失败", "warning");
+        }
+        else{
+            displayInfo(QStringLiteral("阶段A详细验证日志已保存：%1")
+                        .arg(QDir::toNativeSeparators(validationLogPath)).toStdString(),
+                        "info");
+        }
         worker->deleteLater();
     });
     worker->start(QThread::LowPriority);

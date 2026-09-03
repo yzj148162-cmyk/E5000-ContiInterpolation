@@ -453,7 +453,10 @@ ForceInteractionWrenchSample SimulatedWrenchSource::sample(
 {
     ForceInteractionWrenchSample result;
     result.stamp = stamp;
-    result.coordinate = ForceInteractionWrenchCoordinate::PlatformBodyAtCenterOfMass;
+    // 模拟量与未来真实F/T Trace保持相同语义：六个分量均为传感器
+    // 测量参考点、传感器坐标系S下的原始力旋量。进入动力学前必须统一
+    // 经过WrenchTransformer，不能绕过安装旋转和r x F力矩平移。
+    result.coordinate = ForceInteractionWrenchCoordinate::Sensor;
     QString errorMessage;
     result.valid = stamp.valid && evaluate(elapsedS, result.wrench, &errorMessage);
     return result;
@@ -468,7 +471,7 @@ QString SimulatedWrenchSource::summary() const
         QStringLiteral("常值"), QStringLiteral("脉冲"),
         QStringLiteral("正弦"), QStringLiteral("公式")
     };
-    return QStringLiteral("%1，采样周期=%2 ms")
+    return QStringLiteral("%1（传感器坐标系S原始输入），采样周期=%2 ms")
             .arg(names.value(static_cast<int>(profile_.mode), QStringLiteral("未知")))
             .arg(samplePeriodS_ * 1000.0, 0, 'f', 3);
 }

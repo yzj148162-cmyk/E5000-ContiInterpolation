@@ -16536,7 +16536,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QLabel" name="forceInteractionValidationHintLabel">
               <property name="text">
-               <string>仅运行模拟六维力 → 纯惯性Newmark-β → 补偿逆运动学 → 每步正运动学往返校验；结构、质量和惯量读取当前控制界面配置，全程不调用雷赛运动API。</string>
+               <string>阶段A仅使用控制界面的Lite模板。模拟量按传感器坐标系S的原始六维力输入，经实测安装关系转换到平台质心，再进入纯惯性Newmark-β、补偿逆运动学和每步正运动学往返校验；全程不调用雷赛运动API。</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>
@@ -16546,7 +16546,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QGroupBox" name="forceInteractionValidationInputGroupBox">
               <property name="title">
-               <string>模拟力与时序</string>
+               <string>传感器原始模拟力与时序</string>
               </property>
               <layout class="QGridLayout" name="gridLayoutForceInteractionValidationInput">
                <item row="0" column="0">
@@ -16610,6 +16610,32 @@ border-radius: 6px;</string>
                <item row="4" column="3"><widget class="QDoubleSpinBox" name="forceInteractionMySpinBox"><property name="decimals"><number>6</number></property><property name="minimum"><double>-10000.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
                <item row="4" column="4"><widget class="QLabel" name="forceInteractionMzTitleLabel"><property name="text"><string>Mz (N·m)</string></property></widget></item>
                <item row="4" column="5"><widget class="QDoubleSpinBox" name="forceInteractionMzSpinBox"><property name="decimals"><number>6</number></property><property name="minimum"><double>-10000.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
+               <item row="2" column="0" colspan="4">
+                <widget class="QLabel" name="forceInteractionSensorTransformLabel">
+                 <property name="text">
+                  <string>实测安装：r_ES=[0, 0, 325.48] mm，R_ES=I；Fx/Fy/Fz会通过r×F产生质心力矩</string>
+                 </property>
+                 <property name="toolTip">
+                  <string>r_ES从动平台质心指向传感器测量参考点，在平台局部坐标系E表达；传感器三轴与E系同向。</string>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item row="5" column="0" colspan="6">
+                <widget class="QCheckBox" name="forceInteractionTranslationOnlyCheckBox">
+                 <property name="text">
+                  <string>仅平动调试（安装变换后清零质心处三维力矩）</string>
+                 </property>
+                 <property name="checked">
+                  <bool>true</bool>
+                 </property>
+                 <property name="toolTip">
+                  <string>调试专用：仍先按r_ES和R_ES完成真实安装变换，再把质心处Mx/My/Mz清零，使Newmark只保留平动响应。正式六自由度验证时应取消勾选。</string>
+                 </property>
+                </widget>
+               </item>
               </layout>
              </widget>
             </item>
