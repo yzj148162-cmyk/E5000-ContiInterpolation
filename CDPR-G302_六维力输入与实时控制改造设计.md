@@ -483,7 +483,8 @@ Newmark 步长始终是冻结的总体控制周期 `T_c`。不能因为某次 Wi
 | `pose_control_module/wrenchsource.*` | 已完成常值、脉冲、正弦和公式模拟输入；真实 Trace 与零漂留待阶段 C |
 | `pose_control_module/wrenchtransformer.*` | 已完成 `S → E质心` 的确定性力旋量变换及未配置拒绝逻辑 |
 | `pose_control_module/cdprdynamics.*` | 已完成纯惯性 Newmark-β 单步及解析解自检 |
-| `pose_control_module/forceinteractionsoftwarevalidator.*` | 已完成阶段 A 后台验证编排，不调用雷赛运动 API |
+| `pose_control_module/forceinteractionsoftwarevalidator.*` | 已完成阶段 A 后台验证编排和逐步记录接入，不调用雷赛运动 API |
+| `pose_control_module/forceinteractionrunrecorder.*` | 六维力交互阶段 A～D 专用的有界异步 CSV 记录器；当前先由阶段 A 使用 |
 | `pose_control_module/endpointforceinteractioncontrol.*` | 周期状态机、Newmark、运动学、八轴闭环和保护 |
 | `pose_control_module/compensatedcablekinematics.*` | 复用现有补偿逆运动学，必要时只补公共数据适配与测试 |
 | `pose_control_module/forwardkinematicssolver.*` | 复用现有正运动学，供低频虚拟位姿和离线一致性分析 |
@@ -508,8 +509,26 @@ Newmark 步长始终是冻结的总体控制周期 `T_c`。不能因为某次 Wi
 - 各阶段耗时、漏格点数、帧龄、停机原因；
 - 本次安装变换、Trace 对象定义、动力学和控制参数快照。
 
-实时线程只写固定容量 SPSC 队列，记录线程批量落盘；UI 只低频消费快照，不能
-在控制周期内格式化日志、刷新曲线或直接写 CSV。
+本次采用增量方案，不重构现有 UI 事件日志、故障日志、`SessionRecorder` 和
+在线速度 CSV。新增的 `ForceInteractionRunRecorder` 只服务六维力交互阶段
+A～D，使用固定字段和可用性掩码：阶段 A 尚不存在的八轴指令、Trace 等字段
+保留为空语义，后续阶段直接填充，不再更换文件格式。
+
+计算/实时线程只用 `tryLock` 向固定容量环形队列复制一条定长记录，争用或队列
+满时立即丢弃并计数；低优先级记录线程每批最多写 128 行 CSV。UI 只显示开始、
+结束、文件路径、接受/写入/丢弃数和关键异常，不逐点刷新文本或曲线。阶段 A
+的逐步文件保存于 `data/outputmsg/force_interaction_runs/`，每个 Newmark 步记录：
+
+- 模拟传感器原始力旋量、变换后的平台质心力旋量；
+- 期望位姿、速度、加速度；
+- 八绳长度、相对电机角；
+- 正运动学回算位姿、三类往返误差和越界标志；
+- Newmark 迭代/残差及本步计算耗时。
+
+阶段 A 的计算循环运行快于真实时间，因此队列容量暂设为 65536 条；任何丢弃
+都会写入最终摘要，不能把存在丢弃的文件当作“完整逐步记录”。阶段 B～D 接入
+时复用同一记录器，并补齐八轴参考、PID 修正、速度命令、Trace 反馈和硬件 API
+耗时字段。公共写盘内核是否抽取，等力交互记录链稳定后再决定。
 
 ## 12. 分阶段实施与验收
 
@@ -553,8 +572,9 @@ Newmark 步长始终是冻结的总体控制周期 `T_c`。不能因为某次 Wi
   运动学往返校验；
 - 已在后台线程执行验证并支持取消，验证期间不会使能轴、不会调用雷赛运动
   API，也不会占用现有硬件线程；阶段 A 仅允许 Lite 模板，结果会记录模板、
-  初始位姿、安装参数、首次越界/误差超限步骤，并保存到
-  `data/outputmsg/stage_a_validation/`；
+  初始位姿、安装参数、首次越界/误差超限步骤；摘要保存到
+  `data/outputmsg/stage_a_validation/`，每步完整轨迹由六维力交互专用异步记录器
+  保存到 `data/outputmsg/force_interaction_runs/`；
 - 已通过 Qt 6.8.3/MSVC 2022 Debug 全量构建和无界面启动检查。
 
 当前“代码已落地”不等于阶段 A 已验收：仍需从新页面使用当前模板运行多组

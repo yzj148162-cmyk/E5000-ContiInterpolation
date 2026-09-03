@@ -46,6 +46,7 @@ SOURCES += \
     pose_control_module/cdprdynamics.cpp \
     pose_control_module/compensatedcablekinematics.cpp \
     pose_control_module/endpointremotecontrol.cpp \
+    pose_control_module/forceinteractionrunrecorder.cpp \
     pose_control_module/forceinteractionsoftwarevalidator.cpp \
     pose_control_module/forcecontroller.cpp \
     pose_control_module/forwardkinematicssolver.cpp \
@@ -109,6 +110,7 @@ HEADERS += \
     pose_control_module/cdprdynamics.h \
     pose_control_module/compensatedcablekinematics.h \
     pose_control_module/endpointremotecontrol.h \
+    pose_control_module/forceinteractionrunrecorder.h \
     pose_control_module/forceinteractionsoftwarevalidator.h \
     pose_control_module/forceinteractiontypes.h \
     pose_control_module/forcecontroller.h \

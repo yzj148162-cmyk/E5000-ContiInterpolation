@@ -1,7 +1,10 @@
 #include "forceinteractionsoftwarevalidator.h"
 
+#include "forceinteractionrunrecorder.h"
 #include "forwardkinematicssolver.h"
 #include "wrenchtransformer.h"
+
+#include <QElapsedTimer>
 
 #include <algorithm>
 #include <cmath>
@@ -227,28 +230,67 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
     forwardSolver.setInitialPose(configuration.initialPoseMmRad.front());
     WrenchTransformer wrenchTransformer(configuration.sensorTransform);
 
+    ForceInteractionRunMetadata recordingMetadata;
+    recordingMetadata.stage = QStringLiteral("stage_a");
+    recordingMetadata.sourceName = wrenchSource.summary();
+    recordingMetadata.machineTemplateName = configuration.machineTemplateName;
+    recordingMetadata.controlPeriodS = configuration.controlPeriodS;
+    recordingMetadata.plannedDurationS = configuration.durationS;
+    ForceInteractionRunRecorder recorder;
+    if(!recorder.begin(configuration.recordingDirectory, recordingMetadata,
+                       &result.recordingPath, &error)){
+        result.summary = failureSummary(QStringLiteral("逐步数据记录器"), error);
+        return result;
+    }
+    const auto finishRecording = [&]() {
+        recorder.finishAndWait();
+        result.acceptedRecords = recorder.acceptedCount();
+        result.writtenRecords = recorder.writtenCount();
+        result.droppedRecords = recorder.droppedCount();
+        result.recordingError = recorder.writerError();
+    };
+    const auto appendRecordingSummary = [&]() {
+        result.summary += QStringLiteral(
+                    "\n逐步CSV：%1\n记录接受/写入/丢弃=%2/%3/%4%5")
+                .arg(result.recordingPath)
+                .arg(result.acceptedRecords)
+                .arg(result.writtenRecords)
+                .arg(result.droppedRecords)
+                .arg(result.recordingError.isEmpty() ? QString() :
+                     QStringLiteral("；写盘错误=%1").arg(result.recordingError));
+    };
+
     constexpr double translationToleranceMm = 0.1;
     constexpr double orientationToleranceDeg = 0.01;
     constexpr double cableResidualToleranceMm = 0.1;
+    QElapsedTimer validationRuntime;
+    validationRuntime.start();
 
     for(int stepIndex = 1; stepIndex <= stepCount; ++stepIndex){
         if(cancellationRequested && cancellationRequested->load()){
             result.cancelled = true;
             result.summary = QStringLiteral("阶段A软件验证已取消；完成%1/%2个数学步，未调用任何雷赛运动API。")
                     .arg(result.completedSteps).arg(stepCount);
+            finishRecording();
+            appendRecordingSummary();
             return result;
         }
+        QElapsedTimer stepTimer;
+        stepTimer.start();
         const double elapsedS = std::min(configuration.durationS,
                                          stepIndex * configuration.controlPeriodS);
         ForceInteractionFrameStamp stamp;
-        stamp.hostMonotonicTimeUs = static_cast<qint64>(
-                    std::llround(elapsedS * 1.0e6));
+        // elapsedS 是可复现的仿真时间；hostMonotonicTimeUs 只记录本次后台
+        // 运算真实经过的单调时钟，二者不可混作同一时间基准。
+        stamp.hostMonotonicTimeUs = validationRuntime.nsecsElapsed() / 1000;
         stamp.valid = true;
         const ForceInteractionWrenchSample sensorWrench =
                 wrenchSource.sample(stamp, elapsedS);
         if(!sensorWrench.valid){
             result.summary = failureSummary(QStringLiteral("模拟力求值"),
                                             QStringLiteral("产生无效力旋量"));
+            finishRecording();
+            appendRecordingSummary();
             return result;
         }
         WrenchTransformResult transformed =
@@ -259,6 +301,8 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                         transformed.errorMessage.isEmpty() ?
                             QStringLiteral("无法得到动平台质心处力旋量") :
                             transformed.errorMessage);
+            finishRecording();
+            appendRecordingSummary();
             return result;
         }
         if(configuration.translationOnly){
@@ -271,6 +315,8 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
         if(!dynamicsStep.valid){
             result.summary = failureSummary(QStringLiteral("Newmark单步"),
                                             dynamicsStep.errorMessage);
+            finishRecording();
+            appendRecordingSummary();
             return result;
         }
         result.maximumNewmarkIterations = std::max(
@@ -303,6 +349,8 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                         QStringLiteral("补偿逆运动学"),
                         evaluation.errorMessage.isEmpty() ?
                             QStringLiteral("未返回完整8轴结果") : evaluation.errorMessage);
+            finishRecording();
+            appendRecordingSummary();
             return result;
         }
         kinematicsState = evaluation.nextState;
@@ -328,6 +376,8 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                 result.summary = failureSummary(
                             QStringLiteral("正运动学"),
                             QStringLiteral("第%1步未收敛到有限六维位姿").arg(stepIndex));
+                finishRecording();
+                appendRecordingSummary();
                 return result;
             }
             const double translationError = norm3(
@@ -352,12 +402,17 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                     kinematics.cableLengthsForPose({forward.pose}, &error);
             if(reconstructedLengths.size() != evaluation.cableLengthMm.size()){
                 result.summary = failureSummary(QStringLiteral("正运动学残差"), error);
+                finishRecording();
+                appendRecordingSummary();
                 return result;
             }
+            double stepMaximumCableResidualMm = 0.0;
             for(size_t cable = 0; cable < reconstructedLengths.size(); ++cable){
                 const double cableResidual =
                         std::abs(reconstructedLengths[cable] -
                                  evaluation.cableLengthMm[cable]);
+                stepMaximumCableResidualMm = std::max(
+                            stepMaximumCableResidualMm, cableResidual);
                 if(cableResidual > result.maximumCableResidualMm){
                     result.maximumCableResidualMm = cableResidual;
                     result.maximumCableResidualStep = stepIndex;
@@ -366,22 +421,60 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
             if(result.firstRoundTripToleranceViolationStep == 0 &&
                     (translationError > translationToleranceMm ||
                      orientationErrorDeg > orientationToleranceDeg ||
-                     result.maximumCableResidualMm > cableResidualToleranceMm)){
+                     stepMaximumCableResidualMm > cableResidualToleranceMm)){
                 result.firstRoundTripToleranceViolationStep = stepIndex;
                 result.firstRoundTripToleranceViolationState = dynamicsStep.state;
             }
+
+            ForceInteractionRunRecord record;
+            record.stepIndex = static_cast<quint64>(stepIndex);
+            record.elapsedS = elapsedS;
+            record.stamp = stamp;
+            record.availabilityMask = ForceRecordSensorWrench |
+                    ForceRecordPlatformWrench | ForceRecordDesiredState |
+                    ForceRecordCableKinematics | ForceRecordForwardKinematics |
+                    ForceRecordTiming;
+            record.sensorWrench = sensorWrench.wrench;
+            record.platformWrench = transformed.sample.wrench;
+            record.desiredState = dynamicsStep.state;
+            std::copy_n(evaluation.cableLengthMm.begin(),
+                        kForceInteractionCableCount,
+                        record.cableLengthMm.begin());
+            std::copy_n(evaluation.relativeMotorThetaRad.begin(),
+                        kForceInteractionCableCount,
+                        record.relativeMotorThetaRad.begin());
+            std::copy_n(forward.pose.begin(), kForceInteractionDofCount,
+                        record.forwardPoseMmRad.begin());
+            record.translationRoundTripErrorMm = translationError;
+            record.orientationRoundTripErrorDeg = orientationErrorDeg;
+            record.maximumCableResidualMm = stepMaximumCableResidualMm;
+            record.newmarkIterations = dynamicsStep.iterations;
+            record.newmarkResidual = dynamicsStep.residual;
+            record.poseBoundsViolation = poseOutsideBounds;
+            record.roundTripToleranceViolation =
+                    translationError > translationToleranceMm ||
+                    orientationErrorDeg > orientationToleranceDeg ||
+                    stepMaximumCableResidualMm > cableResidualToleranceMm;
+            record.calculationDurationUs = stepTimer.nsecsElapsed() / 1000;
+            record.fullCycleDurationUs = record.calculationDurationUs;
+            recorder.tryAppend(record);
             ++result.forwardKinematicsChecks;
         }
         result.finalState = dynamicsStep.state;
         result.completedSteps = stepIndex;
     }
 
+    finishRecording();
+
     result.valid = result.completedSteps == stepCount &&
             result.forwardKinematicsChecks == stepCount &&
             result.firstPoseBoundsViolationStep == 0 &&
             result.maximumTranslationRoundTripErrorMm <= translationToleranceMm &&
             result.maximumOrientationRoundTripErrorDeg <= orientationToleranceDeg &&
-            result.maximumCableResidualMm <= cableResidualToleranceMm;
+            result.maximumCableResidualMm <= cableResidualToleranceMm &&
+            result.recordingError.isEmpty() &&
+            result.droppedRecords == 0 &&
+            result.writtenRecords == static_cast<quint64>(result.completedSteps);
     result.summary = QStringLiteral(
                 "阶段A软件验证%1\n"
                 "模板：%2（阶段A仅允许Lite）\n"
@@ -513,6 +606,7 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                 .arg(configuration.poseUpperBoundsMmRad[4], 0, 'g', 8)
                 .arg(configuration.poseUpperBoundsMmRad[5], 0, 'g', 8);
     }
+    appendRecordingSummary();
     return result;
 }
 

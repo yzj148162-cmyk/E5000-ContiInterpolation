@@ -18978,6 +18978,8 @@ void MainWindow::startForceInteractionSoftwareValidation()
     config.translationOnly = ui->forceInteractionTranslationOnlyCheckBox->isChecked();
     config.controlPeriodS = ui->forceInteractionPeriodMsSpinBox->value() / 1000.0;
     config.durationS = ui->forceInteractionDurationSpinBox->value();
+    config.recordingDirectory = QDir(uiEventLogDirPath()).filePath(
+                QStringLiteral("force_interaction_runs"));
     config.wrenchProfile.mode = static_cast<SimulatedWrenchMode>(
                 ui->forceInteractionModeComboBox->currentIndex());
     config.wrenchProfile.amplitude = {{

@@ -19,6 +19,7 @@ struct ForceInteractionValidationConfig
     bool translationOnly = false;
     double controlPeriodS = 0.005;
     double durationS = 2.0;
+    QString recordingDirectory;
     ForceInteractionPlatformState initialState;
     CompensatedCableKinematics::Configuration kinematics;
     CompensatedCableKinematics::PoseMatrix initialPoseMmRad;
@@ -46,6 +47,11 @@ struct ForceInteractionValidationResult
     ForceInteractionPlatformState firstPoseBoundsViolationState;
     ForceInteractionPlatformState firstRoundTripToleranceViolationState;
     ForceInteractionPlatformState finalState;
+    QString recordingPath;
+    quint64 acceptedRecords = 0;
+    quint64 writtenRecords = 0;
+    quint64 droppedRecords = 0;
+    QString recordingError;
     QString summary;
 };
 
