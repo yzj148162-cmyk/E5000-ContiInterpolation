@@ -40,7 +40,7 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
         return fail(QStringLiteral("初始位姿或刚体质量无效"));
     }
     if(!finiteArray(motorUnitPerRadian) || velocityLimit <= 0.0 ||
-            accelerationLimit <= 0.0 || followingErrorLimit <= 0.0 ||
+            followingErrorLimit <= 0.0 ||
             correctionVelocityLimit < 0.0 || integralLimit < 0.0 ||
             onlineChangeTimeS < 0.0 || traceTimeoutUs <= 0){
         return fail(QStringLiteral("PID、运动限制或Trace参数无效"));
@@ -96,7 +96,6 @@ bool ForceInteractionRuntimeControl::prepare(
     lastFrameSequenceValid_ = false;
     integral_.fill(0.0);
     previousError_.fill(0.0);
-    lastCommandVelocity_.fill(0.0);
     return true;
 }
 
@@ -318,8 +317,9 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                              config_.feedForwardGain * referenceVelocity[axis] : 0.0) +
                 correction[axis];
     }
-    // 八轴先按共同倍率执行速度限幅，再按共同倍率执行命令增量限幅。
-    // 这样保留八绳速度向量的方向，不因逐轴截断破坏协同关系。
+    // 轴速上限仍按共同倍率执行，避免逐轴截断破坏八绳协同关系。
+    // 不再限制每周期速度命令增量：六维力交互必须保留 Newmark 给出的
+    // 纯惯性时间响应，不能用公共加速度倍率暗中改变等效质量。
     double velocityScale = 1.0;
     for(double value : command){
         if(std::fabs(value) > config_.velocityLimit){
@@ -329,18 +329,6 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     }
     for(double& value : command){
         value *= velocityScale;
-    }
-    const double maximumDelta = config_.accelerationLimit * dt;
-    double deltaScale = 1.0;
-    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
-        const double delta = command[axis] - lastCommandVelocity_[axis];
-        if(std::fabs(delta) > maximumDelta){
-            deltaScale = std::min(deltaScale, maximumDelta / std::fabs(delta));
-        }
-    }
-    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
-        command[axis] = lastCommandVelocity_[axis] +
-                deltaScale * (command[axis] - lastCommandVelocity_[axis]);
     }
     previousErrorValid_ = true;
     kinematicsState_ = evaluation.nextState;
@@ -415,7 +403,6 @@ void ForceInteractionRuntimeControl::noteCommandResult(
             recorder_->tryAppend(record);
             status_.droppedRecordCount = recorder_->droppedCount();
         }
-        lastCommandVelocity_ = step.commandVelocity;
         ++status_.commandCount;
     }
     else if(step.action == ForceInteractionRuntimeStep::Action::NormalStop){
@@ -432,7 +419,6 @@ void ForceInteractionRuntimeControl::setTerminal(
 {
     status_.state = state;
     status_.message = message;
-    lastCommandVelocity_.fill(0.0);
 }
 
 void ForceInteractionRuntimeControl::stop(bool fault, const QString& reason)

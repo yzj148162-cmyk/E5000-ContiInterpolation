@@ -37,7 +37,6 @@ struct ForceInteractionRuntimeConfig
     double integralLimit = 10.0;
     double correctionVelocityLimit = 20.0;
     double velocityLimit = 90.0;
-    double accelerationLimit = 720.0;
     double followingErrorLimit = 5.0;
     double onlineChangeTimeS = 0.001;
     qint64 traceTimeoutUs = 100000;
@@ -132,7 +131,6 @@ private:
     std::unique_ptr<ForceInteractionRunRecorder> recorder_;
     OnlineVelocityAxisArray actualStartPosition_{};
     OnlineVelocityAxisArray lastReferencePosition_{};
-    OnlineVelocityAxisArray lastCommandVelocity_{};
     OnlineVelocityAxisArray integral_{};
     OnlineVelocityAxisArray previousError_{};
     bool actualStartCaptured_ = false;

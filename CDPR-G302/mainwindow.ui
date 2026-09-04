@@ -12785,12 +12785,6 @@ border-radius: 6px;</string>
                  <property name="suffix"><string> unit/s</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>100000.000000000000000</double></property><property name="value"><double>90.000000000000000</double></property>
                 </widget>
                </item>
-               <item row="0" column="2"><widget class="QLabel" name="forceInteractionRuntimeAccelerationLimitTitleLabel"><property name="text"><string>轴加速度上限</string></property></widget></item>
-               <item row="0" column="3">
-                <widget class="QDoubleSpinBox" name="forceInteractionRuntimeAccelerationLimitSpinBox">
-                 <property name="suffix"><string> unit/s²</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.001000000000000</double></property><property name="maximum"><double>1000000.000000000000000</double></property><property name="value"><double>720.000000000000000</double></property>
-                </widget>
-               </item>
                <item row="0" column="4"><widget class="QLabel" name="forceInteractionRuntimeFollowingErrorTitleLabel"><property name="text"><string>最大轴位置误差</string></property></widget></item>
                <item row="0" column="5">
                 <widget class="QDoubleSpinBox" name="forceInteractionRuntimeFollowingErrorSpinBox">

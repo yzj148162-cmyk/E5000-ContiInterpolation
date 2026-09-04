@@ -19313,8 +19313,6 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
     config.correctionVelocityLimit =
             ui->forceInteractionRuntimeCorrectionLimitSpinBox->value();
     config.velocityLimit = ui->forceInteractionRuntimeVelocityLimitSpinBox->value();
-    config.accelerationLimit =
-            ui->forceInteractionRuntimeAccelerationLimitSpinBox->value();
     config.followingErrorLimit =
             ui->forceInteractionRuntimeFollowingErrorSpinBox->value();
     config.onlineChangeTimeS = ui->forceInteractionRuntimeChangeTimeSpinBox->value();
@@ -19384,7 +19382,7 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
     forceInteractionRuntimeLastForwardEquationCount = 0;
     forceInteractionRuntimeLastForwardSolveMs = -1;
     displayInfo(QStringLiteral(
-                    "阶段B已准备：模拟力=%1，周期=%2 ms，最长运行=%3 s，PID=%4；配置与初始位姿已冻结，尚未下发速度命令")
+                    "阶段B已准备：模拟力=%1，周期=%2 ms，最长运行=%3 s，PID=%4，八轴公共加速度缩放=关闭；配置与初始位姿已冻结，尚未下发速度命令")
                 .arg(ui->forceInteractionModeComboBox->currentText())
                 .arg(config.periodUs / 1000)
                 .arg(config.maximumTestDurationS, 0, 'f', 3)
