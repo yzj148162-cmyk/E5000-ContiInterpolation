@@ -18911,9 +18911,30 @@ void MainWindow::setupForceInteractionValidationTab()
             &QPushButton::clicked,
             this,
             &MainWindow::cancelForceInteractionSoftwareValidation);
+    connect(ui->forceInteractionRuntimePrepareButton,
+            &QPushButton::clicked,
+            this,
+            &MainWindow::prepareForceInteractionRuntimeFromUi);
+    connect(ui->forceInteractionRuntimeStartButton,
+            &QPushButton::clicked,
+            this,
+            &MainWindow::startForceInteractionRuntime);
+    connect(ui->forceInteractionRuntimeStopButton,
+            &QPushButton::clicked,
+            this,
+            [this](){
+        stopForceInteractionRuntime(false, QStringLiteral("用户请求阶段B减速停止"));
+    });
+    connect(ui->forceInteractionRuntimeEmergencyButton,
+            &QPushButton::clicked,
+            this,
+            [this](){
+        stopForceInteractionRuntime(true, QStringLiteral("用户请求阶段B立即停止"));
+    });
     connect(ui->devUseLite, &QRadioButton::toggled, this,
             [this](bool){ refreshForceInteractionValidationInputState(); });
     refreshForceInteractionValidationInputState();
+    refreshForceInteractionRuntimeUi();
 }
 
 void MainWindow::refreshForceInteractionValidationInputState()
@@ -18921,6 +18942,13 @@ void MainWindow::refreshForceInteractionValidationInputState()
     if(!ui){
         return;
     }
+    const ForceInteractionRuntimeStatus runtimeStatus = controlWorker ?
+                controlWorker->forceInteractionRuntimeStatus() :
+                ForceInteractionRuntimeStatus{};
+    const bool runtimeLocked =
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::Prepared ||
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::Running;
     const bool running = forceInteractionValidationWorker != nullptr;
     const SimulatedWrenchMode mode = static_cast<SimulatedWrenchMode>(
                 ui->forceInteractionModeComboBox->currentIndex());
@@ -18929,17 +18957,17 @@ void MainWindow::refreshForceInteractionValidationInputState()
     const bool formula = mode == SimulatedWrenchMode::Formula;
     const bool liteTemplate = isLiteTemplateActive();
 
-    ui->forceInteractionValidationInputGroupBox->setEnabled(!running);
-    ui->forceInteractionFormulaGroupBox->setEnabled(!running && formula);
-    ui->forceInteractionFrequencyTitleLabel->setEnabled(!running && sine);
-    ui->forceInteractionFrequencySpinBox->setEnabled(!running && sine);
-    ui->forceInteractionPhaseTitleLabel->setEnabled(!running && sine);
-    ui->forceInteractionPhaseSpinBox->setEnabled(!running && sine);
-    ui->forceInteractionPulseStartTitleLabel->setEnabled(!running && pulse);
-    ui->forceInteractionPulseStartSpinBox->setEnabled(!running && pulse);
-    ui->forceInteractionPulseDurationTitleLabel->setEnabled(!running && pulse);
-    ui->forceInteractionPulseDurationSpinBox->setEnabled(!running && pulse);
-    ui->forceInteractionValidationStartButton->setEnabled(!running && liteTemplate);
+    ui->forceInteractionValidationInputGroupBox->setEnabled(!running && !runtimeLocked);
+    ui->forceInteractionFormulaGroupBox->setEnabled(!running && !runtimeLocked && formula);
+    ui->forceInteractionFrequencyTitleLabel->setEnabled(!running && !runtimeLocked && sine);
+    ui->forceInteractionFrequencySpinBox->setEnabled(!running && !runtimeLocked && sine);
+    ui->forceInteractionPhaseTitleLabel->setEnabled(!running && !runtimeLocked && sine);
+    ui->forceInteractionPhaseSpinBox->setEnabled(!running && !runtimeLocked && sine);
+    ui->forceInteractionPulseStartTitleLabel->setEnabled(!running && !runtimeLocked && pulse);
+    ui->forceInteractionPulseStartSpinBox->setEnabled(!running && !runtimeLocked && pulse);
+    ui->forceInteractionPulseDurationTitleLabel->setEnabled(!running && !runtimeLocked && pulse);
+    ui->forceInteractionPulseDurationSpinBox->setEnabled(!running && !runtimeLocked && pulse);
+    ui->forceInteractionValidationStartButton->setEnabled(!running && !runtimeLocked && liteTemplate);
     ui->forceInteractionValidationStartButton->setToolTip(
                 liteTemplate ? QString() :
                                QStringLiteral("请先在“控制界面”选择Lite模板"));
@@ -19134,6 +19162,519 @@ void MainWindow::cancelForceInteractionSoftwareValidation()
     ui->forceInteractionValidationCancelButton->setEnabled(false);
     ui->forceInteractionValidationStatusLabel->setText(
                 QStringLiteral("正在等待当前数学步安全结束……"));
+}
+
+ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
+        QString* errorMessage)
+{
+    ForceInteractionRuntimeConfig config;
+    const auto fail = [errorMessage](const QString& message){
+        if(errorMessage){
+            *errorMessage = message;
+        }
+    };
+    if(!ui){
+        fail(QStringLiteral("界面尚未初始化"));
+        return config;
+    }
+
+    const MachineKinematicsProfile& profile = currentMachineKinematicsProfile(ui);
+    config.machineTemplateName = QString::fromLatin1(profile.name);
+    static const std::array<int, 5> periodUs{{1000, 2000, 5000, 10000, 20000}};
+    const int periodIndex = ui->forceInteractionRuntimePeriodComboBox->currentIndex();
+    config.periodUs = periodIndex >= 0 && periodIndex < static_cast<int>(periodUs.size()) ?
+                periodUs[static_cast<size_t>(periodIndex)] : 5000;
+    config.maximumTestDurationS = ui->forceInteractionRuntimeDurationSpinBox->value();
+    config.translationOnly = ui->forceInteractionTranslationOnlyCheckBox->isChecked();
+    config.sensorTransform.configured = true;
+    config.sensorTransform.rotationSensorToPlatform =
+            kMeasuredForceSensorToPlatformRotation;
+    config.sensorTransform.sensorOriginInPlatformM =
+            kMeasuredForceSensorOriginInPlatformM;
+
+    config.wrenchProfile.mode = static_cast<SimulatedWrenchMode>(
+                ui->forceInteractionModeComboBox->currentIndex());
+    config.wrenchProfile.amplitude = {{
+        ui->forceInteractionFxSpinBox->value(),
+        ui->forceInteractionFySpinBox->value(),
+        ui->forceInteractionFzSpinBox->value(),
+        ui->forceInteractionMxSpinBox->value(),
+        ui->forceInteractionMySpinBox->value(),
+        ui->forceInteractionMzSpinBox->value()
+    }};
+    config.wrenchProfile.pulseStartS = ui->forceInteractionPulseStartSpinBox->value();
+    config.wrenchProfile.pulseDurationS = ui->forceInteractionPulseDurationSpinBox->value();
+    config.wrenchProfile.sineFrequencyHz = ui->forceInteractionFrequencySpinBox->value();
+    config.wrenchProfile.sinePhaseRad =
+            ui->forceInteractionPhaseSpinBox->value() * M_PI / 180.0;
+    config.wrenchProfile.expressions = {{
+        ui->forceInteractionFxFormulaLineEdit->text(),
+        ui->forceInteractionFyFormulaLineEdit->text(),
+        ui->forceInteractionFzFormulaLineEdit->text(),
+        ui->forceInteractionMxFormulaLineEdit->text(),
+        ui->forceInteractionMyFormulaLineEdit->text(),
+        ui->forceInteractionMzFormulaLineEdit->text()
+    }};
+
+    if(endMassVec.empty() || endIxxVec.empty() || endIyyVec.empty() ||
+            endIzzVec.empty() || endIxyVec.empty() || endIxzVec.empty() ||
+            endIyzVec.empty()){
+        fail(QStringLiteral("质量或惯量控件尚未初始化"));
+        return config;
+    }
+    config.rigidBody.massKg = endMassVec[0]->value();
+    config.rigidBody.inertiaKgM2 = {{
+        endIxxVec[0]->value(), endIxyVec[0]->value(), endIxzVec[0]->value(),
+        endIxyVec[0]->value(), endIyyVec[0]->value(), endIyzVec[0]->value(),
+        endIxzVec[0]->value(), endIyzVec[0]->value(), endIzzVec[0]->value()
+    }};
+
+    const std::vector<double> initialPose = positionModeUiPoseToPlatformPose({
+        ui->mainPosModeTargetStartPx->value(),
+        ui->mainPosModeTargetStartPy->value(),
+        ui->mainPosModeTargetStartPz->value(),
+        ui->mainPosModeTargetStartRx->value(),
+        ui->mainPosModeTargetStartRy->value(),
+        ui->mainPosModeTargetStartRz->value()
+    }, positionModeUiRxOffsetRad());
+    if(initialPose.size() < 6 || !hasFiniteValues(initialPose, 6)){
+        fail(QStringLiteral("程序控制起点不是有效六维位姿"));
+        return config;
+    }
+    forceInteractionRuntimeInitialPoseMmRad.assign(initialPose.begin(),
+                                                    initialPose.begin() + 6);
+    for(int dimension = 0; dimension < 3; ++dimension){
+        config.initialState.pose[static_cast<size_t>(dimension)] =
+                initialPose[static_cast<size_t>(dimension)] / 1000.0;
+    }
+    for(int dimension = 3; dimension < 6; ++dimension){
+        config.initialState.pose[static_cast<size_t>(dimension)] =
+                initialPose[static_cast<size_t>(dimension)];
+    }
+    config.initialState.poseValid = true;
+    config.initialState.twistValid = true;
+    config.initialState.accelerationValid = true;
+
+    config.kinematics.cableMotorScaleRadPerMm = buildCableMotorCof();
+    config.kinematics.winchConfig = buildWinchCompensationConfig();
+    config.kinematics.winchReferencePose =
+            forwardKinematicsCableLengthReferencePose();
+    config.kinematics.endCableContactPos = buildCableContactPointPos();
+    config.kinematics.anchorCableCoordinate = buildFixedAnchorHome();
+    config.kinematics.pulleyRadiusMm = buildPulleyRadius();
+    config.kinematics.ropeElasticConfig = RopeElasticCompensation::defaultConfig();
+    config.kinematics.ropeElasticConfig.enabled = false;
+    if(profile.forwardKinematicsPoseLowerBounds.size() < config.poseLowerBoundsMmRad.size() ||
+            profile.forwardKinematicsPoseUpperBounds.size() < config.poseUpperBoundsMmRad.size()){
+        fail(QStringLiteral("Lite 模板的六维位姿边界配置不完整"));
+        return config;
+    }
+    std::copy_n(profile.forwardKinematicsPoseLowerBounds.cbegin(),
+                config.poseLowerBoundsMmRad.size(),
+                config.poseLowerBoundsMmRad.begin());
+    std::copy_n(profile.forwardKinematicsPoseUpperBounds.cbegin(),
+                config.poseUpperBoundsMmRad.size(),
+                config.poseUpperBoundsMmRad.begin());
+
+    double motorUnitPerRadian = 0.0;
+    if(ui->devMotorFeedbackIsRd->isChecked()){
+        motorUnitPerRadian = 1.0 / (2.0 * M_PI);
+    }
+    else if(ui->devMotorFeedbackIsTheta->isChecked()){
+        motorUnitPerRadian = 180.0 / M_PI;
+    }
+    else{
+        fail(QStringLiteral("电机反馈单位尚未选择"));
+        return config;
+    }
+    if(axisMotorMinVec.size() < kOnlineVelocityAxisCount ||
+            axisMotorMaxVec.size() < kOnlineVelocityAxisCount){
+        fail(QStringLiteral("八轴软件位置边界尚未建立"));
+        return config;
+    }
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        config.motorUnitPerRadian[axis] =
+                motorUnitPerRadian * motorHardwareDirectionSign(axis);
+        if(!axisMotorMinVec[axis] || !axisMotorMaxVec[axis]){
+            fail(QStringLiteral("轴%1软件位置边界无效").arg(axis));
+            return config;
+        }
+        config.motorPositionMinimum[axis] = axisMotorMinVec[axis]->value();
+        config.motorPositionMaximum[axis] = axisMotorMaxVec[axis]->value();
+    }
+
+    config.feedForwardEnabled = ui->forceInteractionRuntimeFeedForwardCheckBox->isChecked();
+    config.feedForwardGain = ui->forceInteractionRuntimeFeedForwardGainSpinBox->value();
+    config.pidEnabled = ui->forceInteractionRuntimePidCheckBox->isChecked();
+    config.kp = ui->forceInteractionRuntimeKpSpinBox->value();
+    config.ki = ui->forceInteractionRuntimeKiSpinBox->value();
+    config.kd = ui->forceInteractionRuntimeKdSpinBox->value();
+    config.integralLimit = ui->forceInteractionRuntimeIntegralLimitSpinBox->value();
+    config.correctionVelocityLimit =
+            ui->forceInteractionRuntimeCorrectionLimitSpinBox->value();
+    config.velocityLimit = ui->forceInteractionRuntimeVelocityLimitSpinBox->value();
+    config.accelerationLimit =
+            ui->forceInteractionRuntimeAccelerationLimitSpinBox->value();
+    config.followingErrorLimit =
+            ui->forceInteractionRuntimeFollowingErrorSpinBox->value();
+    config.onlineChangeTimeS = ui->forceInteractionRuntimeChangeTimeSpinBox->value();
+    config.traceTimeoutUs =
+            static_cast<qint64>(ui->forceInteractionRuntimeTraceTimeoutSpinBox->value()) * 1000;
+    config.recordingDirectory = QDir(uiEventLogDirPath()).filePath(
+                QStringLiteral("force_interaction_runs"));
+
+    QString validationError;
+    if(!config.validate(&validationError)){
+        fail(validationError);
+    }
+    else if(errorMessage){
+        errorMessage->clear();
+    }
+    return config;
+}
+
+void MainWindow::prepareForceInteractionRuntimeFromUi()
+{
+    if(!controlWorker || !ccThread || !ccThread->isRunning()){
+        displayInfo("阶段B准备失败：控制线程尚未运行", "error");
+        return;
+    }
+    if(forceInteractionValidationWorker){
+        displayInfo("阶段B准备失败：阶段A软件验证正在运行", "error");
+        return;
+    }
+    if(!isLiteTemplateActive()){
+        displayInfo("阶段B准备失败：当前仅允许Lite模板", "error");
+        return;
+    }
+    if(currentRobotState(false).anyMotionRunning){
+        displayInfo("阶段B准备失败：当前存在其他运动任务", "error");
+        return;
+    }
+    if(runtimeState.runMode != RunMode::OnlineVelocityControl){
+        setRunMode(RunMode::OnlineVelocityControl);
+    }
+    if(runtimeState.runMode != RunMode::OnlineVelocityControl){
+        displayInfo("阶段B准备失败：无法切换到在线速度控制模式", "error");
+        return;
+    }
+
+    QString errorMessage;
+    const ForceInteractionRuntimeConfig config =
+            forceInteractionRuntimeConfigFromUi(&errorMessage);
+    if(!errorMessage.isEmpty()){
+        displayInfo(QStringLiteral("阶段B准备失败：%1").arg(errorMessage).toStdString(),
+                    "error");
+        return;
+    }
+    bool prepared = false;
+    QMetaObject::invokeMethod(controlWorker, [&](){
+        prepared = controlWorker->prepareForceInteractionRuntime(config,
+                                                                 &errorMessage);
+    }, Qt::BlockingQueuedConnection);
+    if(!prepared){
+        displayInfo(QStringLiteral("阶段B准备失败：%1").arg(errorMessage).toStdString(),
+                    "error");
+        refreshForceInteractionRuntimeUi();
+        return;
+    }
+    forceInteractionRuntimeForwardSolver.setInitialPose(
+                forceInteractionRuntimeInitialPoseMmRad);
+    forceInteractionRuntimeLastForwardPose.clear();
+    forceInteractionRuntimeLastForwardEquationCount = 0;
+    forceInteractionRuntimeLastForwardSolveMs = -1;
+    displayInfo(QStringLiteral(
+                    "阶段B已准备：模拟力=%1，周期=%2 ms，最长运行=%3 s，PID=%4；配置与初始位姿已冻结，尚未下发速度命令")
+                .arg(ui->forceInteractionModeComboBox->currentText())
+                .arg(config.periodUs / 1000)
+                .arg(config.maximumTestDurationS, 0, 'f', 3)
+                .arg(config.pidEnabled ? QStringLiteral("开") : QStringLiteral("关"))
+                .toStdString(), "normal");
+    refreshForceInteractionValidationInputState();
+    refreshForceInteractionRuntimeUi();
+}
+
+void MainWindow::startForceInteractionRuntime()
+{
+    if(!controlWorker || !ccThread || !ccThread->isRunning()){
+        displayInfo("阶段B启动失败：控制线程尚未运行", "error");
+        return;
+    }
+    if(controlWorker->forceInteractionRuntimeStatus().state !=
+            ForceInteractionRuntimeStatus::State::Prepared){
+        displayInfo("阶段B启动失败：请先准备并冻结本次配置", "error");
+        return;
+    }
+    if(!confirmMotorCommandFromUi(
+            QStringLiteral("模拟六维力驱动八轴空转"),
+            QStringLiteral("将使用当前模拟六维力、纯惯性Newmark和虚拟绞盘模型周期下发八轴速度。电机未连接真实绳索时只能验证软件链和轴运动；请从零力、短时、低速开始，并保持急停可用。"))){
+        return;
+    }
+
+    runtimeState.onlineVelocityControlActive = true;
+    runtimeState.forceInteractionRuntimeActive = true;
+    markControlWorkerConfigDirty();
+    syncControlWorkerConfig(true);
+    syncSafetyMonitorConfig(true);
+    bool started = false;
+    QString errorMessage;
+    QMetaObject::invokeMethod(controlWorker, [&](){
+        started = controlWorker->startForceInteractionRuntime(&errorMessage);
+    }, Qt::BlockingQueuedConnection);
+    if(!started){
+        QMetaObject::invokeMethod(controlWorker, [&](){
+            controlWorker->stopForceInteractionRuntime(
+                        false, QStringLiteral("阶段B启动失败，撤销准备状态"));
+        }, Qt::BlockingQueuedConnection);
+        runtimeState.forceInteractionRuntimeActive = false;
+        runtimeState.onlineVelocityControlActive = false;
+        markControlWorkerConfigDirty();
+        syncControlWorkerConfig(true);
+        syncSafetyMonitorConfig(true);
+        displayInfo(QStringLiteral("阶段B启动失败：%1").arg(errorMessage).toStdString(),
+                    "error");
+        refreshForceInteractionRuntimeUi();
+        return;
+    }
+    setForceControlSelectionEnabled(false);
+    updateCableHomeConfirmEnabled();
+    displayInfo("阶段B已启动：等待可靠同帧八轴Trace后开始模拟力—Newmark—八轴速度闭环",
+                "normal");
+    refreshForceInteractionRuntimeUi();
+    refreshRunModeUiState();
+}
+
+void MainWindow::stopForceInteractionRuntime(bool emergency,
+                                             const QString& reason)
+{
+    if(!controlWorker || !ccThread || !ccThread->isRunning()){
+        runtimeState.forceInteractionRuntimeActive = false;
+        runtimeState.onlineVelocityControlActive = false;
+        refreshForceInteractionRuntimeUi();
+        return;
+    }
+    QMetaObject::invokeMethod(controlWorker, [=](){
+        controlWorker->stopForceInteractionRuntime(emergency, reason);
+    }, Qt::BlockingQueuedConnection);
+    finalizeForceInteractionRuntimeSession(
+                controlWorker->forceInteractionRuntimeStatus());
+}
+
+void MainWindow::finalizeForceInteractionRuntimeSession(
+        const ForceInteractionRuntimeStatus& status)
+{
+    if(forceInteractionRuntimeFinalizing){
+        return;
+    }
+    forceInteractionRuntimeFinalizing = true;
+    const bool wasActive = runtimeState.forceInteractionRuntimeActive;
+    runtimeState.forceInteractionRuntimeActive = false;
+    runtimeState.onlineVelocityControlActive = false;
+    if(status.commandCount > 0){
+        runtimeState.posePvtTrajectoryExecutedSinceConnect = true;
+    }
+    if(status.state == ForceInteractionRuntimeStatus::State::Fault){
+        runtimeState.cableHomeState = CableHomeState::Unconfirmed;
+    }
+    markControlWorkerConfigDirty();
+    syncControlWorkerConfig(true);
+    syncSafetyMonitorConfig(true);
+    updateCableHomeConfirmEnabled();
+    setForceControlSelectionEnabled(true);
+    if(wasActive){
+        const char* level = status.state == ForceInteractionRuntimeStatus::State::Fault ?
+                    "error" : "warning";
+        displayInfo(QStringLiteral(
+                        "阶段B会话结束：%1；步数=%2，命令=%3，漏周期=%4，最大轴误差=%5 unit，最大计算/API=%6/%7 us，记录=%8")
+                    .arg(status.message)
+                    .arg(status.stepCount)
+                    .arg(status.commandCount)
+                    .arg(status.missedCycleCount)
+                    .arg(status.maximumPositionError, 0, 'f', 6)
+                    .arg(status.maximumCalculationUs)
+                    .arg(status.maximumApiUs)
+                    .arg(QDir::toNativeSeparators(status.recordFile))
+                    .toStdString(), level);
+    }
+    forceInteractionRuntimeFinalizing = false;
+    refreshForceInteractionValidationInputState();
+    refreshForceInteractionRuntimeUi();
+    refreshRunModeUiState();
+}
+
+bool MainWindow::computeForceInteractionRuntimeForwardPose(
+        const ForceInteractionRuntimeStatus& status,
+        std::vector<double>& pose,
+        int* equationCount)
+{
+    pose.clear();
+    if(equationCount){
+        *equationCount = 0;
+    }
+    if(forceInteractionRuntimeInitialPoseMmRad.size() < 6 ||
+            status.stepCount == 0){
+        return false;
+    }
+    const std::vector<double> motorPosition(status.actualPosition.begin(),
+                                            status.actualPosition.end());
+    const std::vector<double> homePosition(status.actualStartPosition.begin(),
+                                           status.actualStartPosition.end());
+    QVector<double> flatCableLength;
+    if(!buildCableLengthForVisualizationFromReference(
+            motorPosition, homePosition,
+            {forceInteractionRuntimeInitialPoseMmRad},
+            flatCableLength)){
+        return false;
+    }
+    const std::vector<std::vector<std::vector<double>>> contactPointByEnd =
+            buildCableContactPointPos();
+    const std::vector<std::vector<std::vector<double>>> anchorPosByEnd =
+            splitAnchorPositionsByEnd(buildFixedAnchorHome());
+    if(contactPointByEnd.empty() || anchorPosByEnd.empty() ||
+            flatCableLength.size() < kOnlineVelocityAxisCount){
+        return false;
+    }
+
+    ForwardKinematicsSolver::Request request;
+    request.anchorPos = anchorPosByEnd.front();
+    request.contactPointLocal = contactPointByEnd.front();
+    request.cableLength.reserve(kOnlineVelocityAxisCount);
+    for(int cable = 0; cable < kOnlineVelocityAxisCount; ++cable){
+        request.cableLength.push_back(flatCableLength[cable]);
+    }
+    request.pulleyRadius = buildPulleyRadius();
+    request.initialPose = forceInteractionRuntimeForwardSolver.initialPose();
+    if(request.initialPose.size() < 6 || !hasFiniteValues(request.initialPose, 6)){
+        request.initialPose = forceInteractionRuntimeInitialPoseMmRad;
+    }
+    request.keepRotation = true;
+    applyForwardKinematicsBoundsForCurrentTemplate(request);
+    const ForwardKinematicsSolver::Result result =
+            forceInteractionRuntimeForwardSolver.solve(request);
+    if(equationCount){
+        *equationCount = result.equationCount;
+    }
+    if(!result.success || result.pose.size() < 6 ||
+            !hasFiniteValues(result.pose, 6)){
+        return false;
+    }
+    pose.assign(result.pose.begin(), result.pose.begin() + 6);
+    return true;
+}
+
+void MainWindow::refreshForceInteractionRuntimeUi()
+{
+    if(!ui || !ui->forceInteractionRuntimeStatusLabel){
+        return;
+    }
+    const ForceInteractionRuntimeStatus status = controlWorker ?
+                controlWorker->forceInteractionRuntimeStatus() :
+                ForceInteractionRuntimeStatus{};
+    const auto stateText = [](ForceInteractionRuntimeStatus::State state){
+        switch(state){
+        case ForceInteractionRuntimeStatus::State::Idle: return QStringLiteral("空闲");
+        case ForceInteractionRuntimeStatus::State::Prepared: return QStringLiteral("已准备");
+        case ForceInteractionRuntimeStatus::State::WaitingForTrace: return QStringLiteral("等待Trace");
+        case ForceInteractionRuntimeStatus::State::Running: return QStringLiteral("运行中");
+        case ForceInteractionRuntimeStatus::State::Completed: return QStringLiteral("已完成");
+        case ForceInteractionRuntimeStatus::State::Stopped: return QStringLiteral("已停止");
+        case ForceInteractionRuntimeStatus::State::Fault: return QStringLiteral("故障停止");
+        }
+        return QStringLiteral("未知");
+    };
+    const bool prepared = status.state == ForceInteractionRuntimeStatus::State::Prepared;
+    const bool active = status.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
+            status.state == ForceInteractionRuntimeStatus::State::Running;
+    const bool locked = prepared || active;
+    ui->forceInteractionRuntimePrepareButton->setEnabled(
+                !locked && !forceInteractionValidationWorker &&
+                isLiteTemplateActive() && !currentRobotState(false).anyMotionRunning);
+    ui->forceInteractionRuntimeStartButton->setEnabled(prepared);
+    // “减速停止”在已准备但尚未启动时兼作“取消准备”，防止冻结配置后无处退出。
+    ui->forceInteractionRuntimeStopButton->setEnabled(locked);
+    ui->forceInteractionRuntimeEmergencyButton->setEnabled(active);
+    ui->forceInteractionRuntimeControlGroupBox->setEnabled(!locked);
+    ui->forceInteractionRuntimeLimitGroupBox->setEnabled(!locked);
+    ui->forceInteractionRuntimeStatusLabel->setText(
+                QStringLiteral("%1：%2；t=%3 s，步数/命令/漏周期=%4/%5/%6，最大轴误差=%7 unit")
+                .arg(stateText(status.state))
+                .arg(status.message.isEmpty() ? QStringLiteral("无") : status.message)
+                .arg(status.elapsedS, 0, 'f', 3)
+                .arg(status.stepCount)
+                .arg(status.commandCount)
+                .arg(status.missedCycleCount)
+                .arg(status.maximumPositionError, 0, 'f', 6));
+
+    std::vector<double> virtualPose;
+    int equationCount = 0;
+    const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
+    bool forwardAttempted = false;
+    if(status.state == ForceInteractionRuntimeStatus::State::Running &&
+            (forceInteractionRuntimeLastForwardSolveMs < 0 ||
+             nowMs - forceInteractionRuntimeLastForwardSolveMs >= 200)){
+        forceInteractionRuntimeLastForwardSolveMs = nowMs;
+        forwardAttempted = true;
+        if(computeForceInteractionRuntimeForwardPose(status, virtualPose,
+                                                     &equationCount)){
+            forceInteractionRuntimeLastForwardPose = virtualPose;
+            forceInteractionRuntimeLastForwardEquationCount = equationCount;
+        }
+    }
+    else if(forceInteractionRuntimeLastForwardPose.size() >= 6){
+        virtualPose = forceInteractionRuntimeLastForwardPose;
+        equationCount = forceInteractionRuntimeLastForwardEquationCount;
+    }
+
+    QString detail = QStringLiteral(
+                "期望位姿：[%1, %2, %3] mm；[%4, %5, %6] rad\n")
+            .arg(status.desiredState.pose[0] * 1000.0, 0, 'f', 3)
+            .arg(status.desiredState.pose[1] * 1000.0, 0, 'f', 3)
+            .arg(status.desiredState.pose[2] * 1000.0, 0, 'f', 3)
+            .arg(status.desiredState.pose[3], 0, 'f', 6)
+            .arg(status.desiredState.pose[4], 0, 'f', 6)
+            .arg(status.desiredState.pose[5], 0, 'f', 6);
+    if(virtualPose.size() >= 6){
+        detail += QStringLiteral(
+                    "虚拟实际位姿（5 Hz）：[%1, %2, %3] mm；[%4, %5, %6] rad；方程=%7\n")
+                .arg(virtualPose[0], 0, 'f', 3)
+                .arg(virtualPose[1], 0, 'f', 3)
+                .arg(virtualPose[2], 0, 'f', 3)
+                .arg(virtualPose[3], 0, 'f', 6)
+                .arg(virtualPose[4], 0, 'f', 6)
+                .arg(virtualPose[5], 0, 'f', 6)
+                .arg(equationCount);
+    }
+    else{
+        detail += forwardAttempted ?
+                    QStringLiteral("虚拟实际位姿（5 Hz）：本次正运动学未收敛\n") :
+                    QStringLiteral("虚拟实际位姿（5 Hz）：等待运行数据\n");
+    }
+    detail += QStringLiteral("轴  期望位置  Trace位置  误差  速度命令\n");
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        detail += QStringLiteral("%1  %2  %3  %4  %5\n")
+                .arg(axis)
+                .arg(status.referencePosition[axis], 0, 'f', 5)
+                .arg(status.actualPosition[axis], 0, 'f', 5)
+                .arg(status.referencePosition[axis] - status.actualPosition[axis],
+                     0, 'f', 5)
+                .arg(status.commandVelocity[axis], 0, 'f', 5);
+    }
+    detail += QStringLiteral(
+                "Trace序号=%1；本次/最大计算=%2/%3 us；本次/最大API=%4/%5 us；丢记录=%6\n记录：%7")
+            .arg(status.latestTraceSequence)
+            .arg(status.latestCalculationUs)
+            .arg(status.maximumCalculationUs)
+            .arg(status.latestApiUs)
+            .arg(status.maximumApiUs)
+            .arg(status.droppedRecordCount)
+            .arg(QDir::toNativeSeparators(status.recordFile));
+    if(ui->forceInteractionRuntimeResultPlainTextEdit->toPlainText() != detail){
+        ui->forceInteractionRuntimeResultPlainTextEdit->setPlainText(detail);
+    }
+
+    if(runtimeState.forceInteractionRuntimeActive && !active){
+        finalizeForceInteractionRuntimeSession(status);
+    }
 }
 
 void MainWindow::setupOnlineVelocityTestTab()
@@ -21184,6 +21725,17 @@ void MainWindow::finalizeOnlineVelocitySession(const OnlineVelocityStatus& statu
 
 void MainWindow::stopOnlineVelocityTest(bool emergency, const QString& reason)
 {
+    if(runtimeState.forceInteractionRuntimeActive ||
+            (controlWorker &&
+             (controlWorker->forceInteractionRuntimeStatus().state ==
+                  ForceInteractionRuntimeStatus::State::Prepared ||
+              controlWorker->forceInteractionRuntimeStatus().state ==
+                  ForceInteractionRuntimeStatus::State::WaitingForTrace ||
+              controlWorker->forceInteractionRuntimeStatus().state ==
+                  ForceInteractionRuntimeStatus::State::Running))){
+        stopForceInteractionRuntime(emergency, reason);
+        return;
+    }
     if(runtimeState.endpointRemoteControlActive ||
             (controlWorker &&
              (controlWorker->endpointRemoteStatus().state ==
@@ -21624,6 +22176,7 @@ void MainWindow::refreshOnlineVelocityTestUi()
     }
 
     if(runtimeState.onlineVelocityControlActive &&
+            !runtimeState.forceInteractionRuntimeActive &&
             !runtimeState.endpointRemoteControlActive && !presetActive){
         finalizeOnlineVelocitySession(status);
     }
@@ -31835,6 +32388,7 @@ bool MainWindow::initPara(){
         }
         endpointRemoteLastPeriodicUiRefreshMs = nowMs;
         refreshOnlineVelocityTestUi();
+        refreshForceInteractionRuntimeUi();
     });
     connect(controlSnapshotTimer, &QTimer::timeout, this, [this](){
         // GUI_PERF_DIAG

@@ -17,7 +17,8 @@
 ```
 
 本文既说明总体改造路线，也记录实际完成进度。阶段 A 的纯软件数学模块和
-“只计算”验证入口已经写入 `CDPR-G302`；阶段 B 及以后尚未接入硬件控制链。
+“只计算”验证入口已经写入 `CDPR-G302`；阶段 B 的模拟力八电机空载最小闭环
+已经完成首版代码与界面接入，等待实机空载验收；阶段 C、D 尚未接入。
 
 ## 2. 已确认边界与待定参数
 
@@ -251,7 +252,9 @@ v_cmd,i = Kff · v_ref,i
           + Kd · derivative(e_i)
 ```
 
-其中位置误差必须使用同一逻辑时刻的期望位置和 Trace 实际位置。八轴共享一组
+首版控制误差使用本控制步新计算的参考位置减去最新可靠 Trace 实际位置；这是
+控制器当时真实可获得的因果反馈，包含采样和执行链延迟。后处理可按 Trace 时间
+计算延迟对齐诊断误差，但不得用“未来反馈”替换在线控制输入。八轴共享一组
 `Kff/Kp/Ki/Kd` 与限幅参数，但保留八份积分和微分状态。最终再执行共同缩放、
 速度/加速度限幅和在线变速时间约束，不能逐轴随意截断而破坏八绳协同。
 
@@ -282,9 +285,10 @@ v_cmd,i = Kff · v_ref,i
 往返校验，再直接复用，不能在力交互控制器中另写一份运动学算法。
 
 高频控制线程只完成控制所需的逆运动学、八轴闭环和轻量有效性检查。正运动学
-求解不作为速度命令下发的前置条件：完整 Trace 数据进入异步记录队列，后台以
-受控频率计算虚拟位姿，运行结束后再对全量记录离线复算；UI 只显示低频快照。
-这样既能检查空转状态下的数学/映射一致性，又不会让迭代正运动学破坏控制周期。
+求解不作为速度命令下发的前置条件：完整 Trace 数据进入异步记录队列，UI线程
+按 5 Hz 使用现有 `ForwardKinematicsSolver` 计算虚拟位姿。CSV 已保存未来全量
+离线复算所需字段，但首版尚未在会话结束时自动执行全量一致性分析。这样既能
+检查空转状态下的数学/映射一致性，又不会让迭代正运动学破坏控制周期。
 
 虚拟一致性良好只能说明软件数学链、轴映射、命令和反馈基本一致，不能证明真实
 平台的绳索弹性、张力、摩擦、绞盘排绳和结构变形满足要求。
@@ -293,7 +297,9 @@ v_cmd,i = Kff · v_ref,i
 
 ### 6.1 独立使用语义
 
-在 `HardwareInterface::RuntimeTraceUsageProfile` 中增加：
+阶段 B 首版复用现有在线速度 Runtime Trace 配置，读取八轴实际位置和实际速度，
+并通过既有八轴批量速度入口下发命令，不新增第二套板卡 API 链。阶段 C 接入真实
+F/T 时，再在 `HardwareInterface::RuntimeTraceUsageProfile` 中增加：
 
 - `ForceInteractionTransition`；
 - `ForceInteractionRunning`。
@@ -379,7 +385,9 @@ T_c = N · T_trace，N 为正整数
 - **Trace 逻辑序号**是传感器与电机反馈采样主线：用于确认新帧、检测丢帧、
   防止重复消费，并保证六维力和八轴反馈来自同一帧。
 
-启动过程为：
+`HardwareInterface` 已把板卡 Trace 逻辑序号按读回的采样周期映射到主机单调
+时间，并在 `RuntimeTraceSnapshot` 中提供帧序号、帧龄、完整性和映射时间。阶段 B
+首版直接消费该快照，不在上层重复猜测帧宽或重新构造时间戳。启动过程为：
 
 1. 切换力交互 Trace profile 后清空 FIFO；
 2. 取得第一帧可靠同帧数据，建立
@@ -413,7 +421,9 @@ Trace 序号不直接决定“何时调用速度 API”，也不替代主机周�
 - Trace 读取、Newmark、运动学、PID、API 和完整周期耗时。
 
 当实际回调晚到时，先由主机单调时钟计算调度迟到量和漏掉的控制格点数，再用
-Trace 序号核对这段时间内反馈是否正常产生：
+Trace 序号核对这段时间内反馈是否正常产生。阶段 B 首版采用保守实现：每次只
+推进一个固定 `T_c` 的 Newmark 步、只提交一组当前命令，并累计漏周期计数；不会
+突发补发过期硬件命令。历史力样本补推进留到测得确有需要后再实现：
 
 - 尚未到达下一主机控制格点：不重复推进 Newmark；
 - 正常到期且取得新鲜同帧 Trace：以固定 `T_c` 推进一步并下发一组速度；
@@ -452,9 +462,10 @@ Newmark 步长始终是冻结的总体控制周期 `T_c`。不能因为某次 Wi
 
 ## 9. UI 调整方案
 
-现已在 `mainwindow.ui` 中增加独立“六维力交互”页及“软件验证（阶段A）”
-子页；固定控件、分组和布局均保留在 `.ui`，C++ 只负责参数读取、后台计算和
-状态刷新。后续页面继续按下列职责扩展，不把控件塞入遥控页：
+现已在 `mainwindow.ui` 中增加独立“六维力交互”页，以及“软件验证（阶段A）”
+和“电机空转（阶段B）”子页；固定控件、分组和布局均保留在 `.ui`，C++ 只负责
+参数读取、控制编排和状态刷新。后续页面继续按下列职责扩展，不把控件塞入
+遥控页：
 
 1. **输入**：模拟/真实选择，六分量常值、脉冲、正弦或公式；
 2. **传感器**：六通道 Trace 映射状态、预热状态、稳定窗口、确认/清除零漂；
@@ -479,20 +490,20 @@ Newmark 步长始终是冻结的总体控制周期 `T_c`。不能因为某次 Wi
 
 | 位置 | 计划改动 |
 |---|---|
-| `pose_control_module/forceinteractiontypes.h` | 已完成阶段 A 公共帧、力旋量和末端状态；会话状态留待阶段 B |
+| `pose_control_module/forceinteractiontypes.h` | 已完成公共帧、力旋量和末端状态 |
 | `pose_control_module/wrenchsource.*` | 已完成常值、脉冲、正弦和公式模拟输入；真实 Trace 与零漂留待阶段 C |
 | `pose_control_module/wrenchtransformer.*` | 已完成 `S → E质心` 的确定性力旋量变换及未配置拒绝逻辑 |
 | `pose_control_module/cdprdynamics.*` | 已完成纯惯性 Newmark-β 单步及解析解自检 |
 | `pose_control_module/forceinteractionsoftwarevalidator.*` | 已完成阶段 A 后台验证编排和逐步记录接入，不调用雷赛运动 API |
 | `pose_control_module/forceinteractionrunrecorder.*` | 六维力交互阶段 A～D 专用的有界异步 CSV 记录器；当前先由阶段 A 使用 |
-| `pose_control_module/endpointforceinteractioncontrol.*` | 周期状态机、Newmark、运动学、八轴闭环和保护 |
+| `pose_control_module/forceinteractionruntimecontrol.*` | 已完成阶段 B 周期状态机、Newmark、运动学、八轴闭环、保护和记录 |
 | `pose_control_module/compensatedcablekinematics.*` | 复用现有补偿逆运动学，必要时只补公共数据适配与测试 |
 | `pose_control_module/forwardkinematicssolver.*` | 复用现有正运动学，供低频虚拟位姿和离线一致性分析 |
-| `pose_control_module/virtualcdprobserver.*` | 电机 Trace 到虚拟绳长、后台正运动学和一致性统计 |
-| `pose_control_module/controlworker.*` | 会话互斥、Trace格点调度、复合硬件任务、停机与状态发布 |
+| `pose_control_module/virtualcdprobserver.*` | 暂不新增；首版复用主窗口现有绳长换算和 `ForwardKinematicsSolver`，后续规模扩大时再抽取 |
+| `pose_control_module/controlworker.*` | 已接入会话互斥、主机格点调度、Trace消费、批量速度命令、停机与状态发布 |
 | `embedded_module/hardwareinterface.*` | 六维 F/T 对象描述符、新 Trace profile、同帧解码和读回校验 |
 | `embedded_module/hardwareinterface_jogfast.cpp` | 抽取遥控/力交互共用的批量速度复合任务 |
-| `control_interface_module/mainwindow.*`、`mainwindow.ui` | 已接入阶段 A 页面、配置冻结、取消和结果显示；后续状态与操作待扩展 |
+| `control_interface_module/mainwindow.*`、`mainwindow.ui` | 已接入阶段 A/B 页面、配置冻结、准备/启动/停止、5 Hz虚拟正运动学和结果显示 |
 | 工程文件与测试目录 | 注册新增源文件和数学/时序单元测试 |
 
 命名可在动工前按现有工程风格调整，但职责边界不应改变。
@@ -607,6 +618,20 @@ A～D，使用固定字段和可用性掩码：阶段 A 尚不存在的八轴指
 - 虚拟位姿、绳长和八轴跟随误差能够在线低频查看并离线全量复算；
 - 运行结果只能标记为“空载虚拟一致性通过”，不能标记为真实平台验收通过。
 
+**当前落地状态**
+
+- 已增加 `.ui` 固定子页“电机空转（阶段B）”，共享阶段 A 的模拟六维力输入；
+- 已增加 `ForceInteractionRuntimeControl`，按冻结控制周期执行模拟力、安装变换、
+  纯惯性 Newmark、补偿逆运动学、八轴速度前馈和八份独立 PID 状态；
+- 八轴速度和加速度采用共同倍率限幅，保留协同方向；启动前与启动瞬间均复核
+  八轴配置/使能及运动模式互锁；
+- 运行只接受新鲜、完整、时序可靠且 FIFO 已追平的 Trace，新帧超时、周期不整除、
+  位姿/电机位置越界、跟随误差或速度 API 失败均触发整组停止；
+- 复用现有 Runtime Trace 与八轴批量在线速度入口；每周期数据进入六维力交互
+  专用有界异步 CSV，UI 以 5 Hz 计算并显示虚拟实际位姿；
+- 已通过 Qt 6.8.3/MSVC 2022 Release 全量构建，尚未完成八台空载电机验收，
+  因此状态只能写作“首版代码已完成，待阶段 B 实测”。
+
 ### 阶段 C：真实 F/T 与八电机空载联调
 
 **代码任务**
@@ -648,7 +673,7 @@ A～D，使用固定字段和可用性掩码：阶段 A 尚不存在的八轴指
 | 模拟六维力接口 | 阶段 A 已实现 | 支持常值、脉冲、正弦和六分量公式；按传感器原始六维力进入统一安装变换 |
 | 纯惯性 Newmark-β | 阶段 A 已实现 | 已有解析解自检，仍需完成 MATLAB 逐步对照验收 |
 | “只计算”页面 | 阶段 A 已实现 | 固定布局位于 `.ui`，仅允许 Lite；支持仅平动调试、详细结果落盘且不调用硬件运动 API |
-| 八轴力交互控制会话 | 未实现 | 阶段 B 才接硬件 |
+| 八轴力交互控制会话 | 首版已实现 | 模拟力、Newmark、八轴速度闭环、同帧Trace、异步记录和5 Hz虚拟正运动学；待空载实测 |
 | 六维 F/T Trace | 未配置 | 缺少六个对象定义，禁止真实输入启动 |
 | 传感器安装变换 | 安装几何已知 | `R_ES=I`，力臂为局部 `+Z 325.48 mm`；方向和通道未定，禁止真实输入启动 |
 | 绞盘/绳索实机力交互 | 未开始 | 仅在阶段 A～C 验收后进入 |

@@ -1677,7 +1677,9 @@ bool ControlWorker::prepareOnlineVelocityControl(const OnlineVelocityPlan& plan,
         }
         return false;
     };
-    if(endpointRemoteControl.isActive() || endpointRemoteControl.isPrepared()){
+    if(endpointRemoteControl.isActive() || endpointRemoteControl.isPrepared() ||
+            forceInteractionRuntimeControl.isActive() ||
+            forceInteractionRuntimeControl.isPrepared()){
         return fail(QStringLiteral("末端遥控已准备或正在运行，不能同时准备预设在线速度轨迹"));
     }
     if(!hardwareInterface || !cfg.systemRunning || !cfg.useLeadshine ||
@@ -1716,7 +1718,9 @@ bool ControlWorker::prepareOnlineVelocityControl(const OnlineVelocityPlan& plan,
 
 bool ControlWorker::startOnlineVelocityControl(QString* errorMessage)
 {
-    if(endpointRemoteControl.isActive() || endpointRemoteControl.isPrepared()){
+    if(endpointRemoteControl.isActive() || endpointRemoteControl.isPrepared() ||
+            forceInteractionRuntimeControl.isActive() ||
+            forceInteractionRuntimeControl.isPrepared()){
         if(errorMessage){
             *errorMessage = QStringLiteral("末端遥控已准备或正在运行，不能启动预设在线速度轨迹");
         }
@@ -1835,6 +1839,142 @@ void ControlWorker::publishOnlineVelocityStatus()
     onlineVelocityStatusCache = onlineVelocityControl.status();
 }
 
+bool ControlWorker::prepareForceInteractionRuntime(
+        const ForceInteractionRuntimeConfig& runtimeConfig,
+        QString* errorMessage)
+{
+    const Config cfg = currentConfig();
+    const auto fail = [errorMessage](const QString& message){
+        if(errorMessage){
+            *errorMessage = message;
+        }
+        return false;
+    };
+    if(onlineVelocityControl.isActive() || onlineVelocityControl.isPrepared() ||
+            endpointRemoteControl.isActive() || endpointRemoteControl.isPrepared()){
+        return fail(QStringLiteral("预设在线速度或末端遥控已占用八轴速度链"));
+    }
+    if(!hardwareInterface || !cfg.systemRunning || !cfg.useLeadshine ||
+            !hardwareInterface->isLSConnected()){
+        return fail(QStringLiteral("完整系统和雷赛控制器必须已运行"));
+    }
+    if(cfg.axisCount < kOnlineVelocityAxisCount ||
+            static_cast<int>(cfg.axes.size()) < kOnlineVelocityAxisCount){
+        return fail(QStringLiteral("阶段B需要八个已配置电机轴"));
+    }
+    if(cfg.forceThreadEnabled || cfg.pvtActiveOrPaused || cfg.commissioningModeActive){
+        return fail(QStringLiteral("阶段B不能与既有力控、PVT或单轴调试同时运行"));
+    }
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        if(!cfg.axes[axis].isMotorAxis || !hardwareInterface->isMotorEnabled(axis)){
+            return fail(QStringLiteral("阶段B电机轴%1未配置或未使能").arg(axis));
+        }
+        if(runtimeConfig.velocityLimit > cfg.axes[axis].motorVelMax + 1.0e-12){
+            return fail(QStringLiteral("阶段B速度上限超过轴%1既有安全上限").arg(axis));
+        }
+    }
+    if(!forceInteractionRuntimeControl.prepare(runtimeConfig, errorMessage)){
+        return false;
+    }
+    publishForceInteractionRuntimeStatus();
+    return true;
+}
+
+bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
+{
+    if(!forceInteractionRuntimeControl.isPrepared()){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("请先准备阶段B");
+        }
+        return false;
+    }
+    const Config cfg = currentConfig();
+    if(!hardwareInterface || !cfg.systemRunning || !cfg.useLeadshine ||
+            cfg.forceThreadEnabled || cfg.pvtActiveOrPaused ||
+            cfg.commissioningModeActive){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("阶段B启动互锁条件已经变化");
+        }
+        return false;
+    }
+    if(cfg.axisCount < kOnlineVelocityAxisCount ||
+            static_cast<int>(cfg.axes.size()) < kOnlineVelocityAxisCount){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("阶段B启动时八轴配置已经不完整");
+        }
+        return false;
+    }
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        if(!cfg.axes[axis].isMotorAxis || !hardwareInterface->isMotorEnabled(axis)){
+            if(errorMessage){
+                *errorMessage = QStringLiteral("阶段B启动时轴%1未配置或未使能")
+                        .arg(axis);
+            }
+            return false;
+        }
+    }
+    if(!forceInteractionRuntimeControl.start(monotonicNowUs(), errorMessage)){
+        publishForceInteractionRuntimeStatus();
+        return false;
+    }
+    if(!hardwareInterface->setOnlineVelocityRuntimeTraceProfileEnabled(true)){
+        forceInteractionRuntimeControl.stop(true,
+                                             QStringLiteral("阶段B Runtime Trace配置失败"));
+        forceInteractionRuntimeControl.finishRecording();
+        publishForceInteractionRuntimeStatus();
+        if(errorMessage){
+            *errorMessage = QStringLiteral("无法配置阶段B所需八轴位置/速度Trace");
+        }
+        return false;
+    }
+    const std::vector<int> axes{0, 1, 2, 3, 4, 5, 6, 7};
+    hardwareInterface->resetMotorVelBatchFastState(axes);
+    publishForceInteractionRuntimeStatus();
+    return true;
+}
+
+void ControlWorker::stopForceInteractionRuntime(bool emergency,
+                                                const QString& reason)
+{
+    if(!forceInteractionRuntimeControl.isActive() &&
+            !forceInteractionRuntimeControl.isPrepared()){
+        return;
+    }
+    const std::vector<int> axes{0, 1, 2, 3, 4, 5, 6, 7};
+    if(hardwareInterface && forceInteractionRuntimeControl.isActive()){
+        if(emergency){
+            hardwareInterface->emergencyStopAxes(axes);
+        }
+        else{
+            bool ok = true;
+            for(int axis : axes){
+                ok = hardwareInterface->motorStop(axis) && ok;
+            }
+            if(!ok){
+                hardwareInterface->emergencyStopAxes(axes);
+                emergency = true;
+            }
+        }
+        hardwareInterface->resetMotorVelBatchFastState(axes);
+        hardwareInterface->setOnlineVelocityRuntimeTraceProfileEnabled(false);
+    }
+    forceInteractionRuntimeControl.stop(emergency, reason);
+    forceInteractionRuntimeControl.finishRecording();
+    publishForceInteractionRuntimeStatus();
+}
+
+ForceInteractionRuntimeStatus ControlWorker::forceInteractionRuntimeStatus() const
+{
+    QMutexLocker locker(&forceInteractionRuntimeMutex);
+    return forceInteractionRuntimeStatusCache;
+}
+
+void ControlWorker::publishForceInteractionRuntimeStatus()
+{
+    QMutexLocker locker(&forceInteractionRuntimeMutex);
+    forceInteractionRuntimeStatusCache = forceInteractionRuntimeControl.status();
+}
+
 bool ControlWorker::prepareEndpointRemoteControl(
         const EndpointRemoteConfig& remoteConfig,
         quint64 inputSessionToken,
@@ -1847,6 +1987,10 @@ bool ControlWorker::prepareEndpointRemoteControl(
         }
         return false;
     };
+    if(forceInteractionRuntimeControl.isActive() ||
+            forceInteractionRuntimeControl.isPrepared()){
+        return fail(QStringLiteral("阶段B已准备或正在运行，不能同时准备末端遥控"));
+    }
     if(inputSessionToken == 0){
         return fail(QStringLiteral("末端遥控输入会话令牌无效"));
     }
@@ -2671,6 +2815,95 @@ void ControlWorker::processOnlineVelocityControl(
     publishOnlineVelocityStatus();
 }
 
+void ControlWorker::processForceInteractionRuntime(
+        const Config& cfg,
+        const HardwareInterface::RuntimeTraceSnapshot& traceSnapshot,
+        qint64 nowUs)
+{
+    if(!forceInteractionRuntimeControl.isActive()){
+        return;
+    }
+    if(!hardwareInterface || !cfg.systemRunning || !cfg.useLeadshine ||
+            cfg.forceThreadEnabled || cfg.pvtActiveOrPaused ||
+            cfg.commissioningModeActive){
+        stopForceInteractionRuntime(true,
+                                    QStringLiteral("阶段B运行互锁条件变化"));
+        return;
+    }
+
+    ForceInteractionRuntimeFeedback feedback;
+    feedback.wallClockUs = traceSnapshot.wallClockUs;
+    feedback.monotonicUs = traceSnapshot.monotonicUs;
+    feedback.newestFrameAgeUs = traceSnapshot.newestFrameAgeUs;
+    feedback.frameCount = traceSnapshot.frameCount;
+    feedback.traceSamplePeriodUs = traceSnapshot.traceSamplePeriodUs;
+    feedback.logicalFrameSequence = traceSnapshot.logicalFrameSequence;
+    feedback.fromTrace = traceSnapshot.fromTrace;
+    feedback.frameSequenceValid = traceSnapshot.frameSequenceValid;
+    feedback.timingReliable = traceSnapshot.timingReliable;
+    feedback.fifoCaughtUp = traceSnapshot.fifoCaughtUp;
+    feedback.traceLost = traceSnapshot.traceLost;
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    feedback.actualPosition.fill(nan);
+    feedback.actualVelocity.fill(nan);
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        if(axis < static_cast<int>(traceSnapshot.motorPosition.size())){
+            feedback.actualPosition[axis] = traceSnapshot.motorPosition[axis];
+        }
+        if(axis < static_cast<int>(traceSnapshot.motorActualVelocity.size())){
+            feedback.actualVelocity[axis] = traceSnapshot.motorActualVelocity[axis];
+        }
+    }
+
+    const ForceInteractionRuntimeStep step =
+            forceInteractionRuntimeControl.step(feedback, nowUs);
+    if(step.action == ForceInteractionRuntimeStep::Action::None){
+        publishForceInteractionRuntimeStatus();
+        return;
+    }
+    const std::vector<int> axes{0, 1, 2, 3, 4, 5, 6, 7};
+    bool commandOk = true;
+    qint64 apiDurationUs = 0;
+    QElapsedTimer apiTimer;
+    apiTimer.start();
+    if(step.action == ForceInteractionRuntimeStep::Action::EmergencyStop){
+        commandOk = hardwareInterface->emergencyStopAxes(axes);
+    }
+    else if(step.action == ForceInteractionRuntimeStep::Action::NormalStop){
+        for(int axis : axes){
+            commandOk = hardwareInterface->motorStop(axis) && commandOk;
+        }
+        if(!commandOk){
+            hardwareInterface->emergencyStopAxes(axes);
+        }
+    }
+    else{
+        const std::vector<double> command(step.commandVelocity.begin(),
+                                          step.commandVelocity.end());
+        const std::vector<double> position(step.actualPosition.begin(),
+                                           step.actualPosition.end());
+        commandOk = hardwareInterface->motorVelBatchFast(
+                    axes, command,
+                    forceInteractionRuntimeControl.currentConfig().onlineChangeTimeS,
+                    position);
+        if(!commandOk){
+            hardwareInterface->emergencyStopAxes(axes);
+        }
+    }
+    apiDurationUs = apiTimer.nsecsElapsed() / 1000;
+    const qint64 fullCycleUs = std::max<qint64>(0, monotonicNowUs() - nowUs);
+    forceInteractionRuntimeControl.noteCommandResult(step, commandOk,
+                                                     apiDurationUs, fullCycleUs);
+    const bool terminal = step.action !=
+            ForceInteractionRuntimeStep::Action::CommandVelocity || !commandOk;
+    if(terminal){
+        hardwareInterface->resetMotorVelBatchFastState(axes);
+        hardwareInterface->setOnlineVelocityRuntimeTraceProfileEnabled(false);
+        forceInteractionRuntimeControl.finishRecording();
+    }
+    publishForceInteractionRuntimeStatus();
+}
+
 void ControlWorker::clearPreparedEndpointRemoteCommand()
 {
     endpointRemoteDispatchPhase = EndpointRemoteDispatchPhase::Idle;
@@ -3154,6 +3387,12 @@ void ControlWorker::start()
 
 void ControlWorker::stop()
 {
+    if(forceInteractionRuntimeControl.isActive()){
+        stopForceInteractionRuntime(true, QStringLiteral("控制线程停止"));
+    }
+    else if(forceInteractionRuntimeControl.isPrepared()){
+        stopForceInteractionRuntime(false, QStringLiteral("控制线程停止"));
+    }
     if(onlineVelocityControl.isActive()){
         stopOnlineVelocityControl(true, QStringLiteral("控制线程停止"));
     }
@@ -3812,6 +4051,11 @@ void ControlWorker::controlLoop()
                     targetIntervalUs,
                     onlineVelocityControl.currentConfig().periodUs);
     }
+    if(forceInteractionRuntimeControl.isActive()){
+        targetIntervalUs = std::min<qint64>(
+                    targetIntervalUs,
+                    forceInteractionRuntimeControl.currentConfig().periodUs);
+    }
     if(endpointRemoteControl.isActive()){
         const qint64 remotePeriodUs = endpointRemoteControl.currentConfig()
                 .onlineVelocity.periodUs;
@@ -4309,6 +4553,7 @@ void ControlWorker::controlLoop()
 
     // 期望力可能来自 UI 静态值，也可能来自外部轨迹/力位混合模式；统一在这里做通道补齐和上下限裁剪。
     processOnlineVelocityControl(cfg, traceSnapshot, loopNowUs);
+    processForceInteractionRuntime(cfg, traceSnapshot, loopNowUs);
     // 未连接时仍运行一次遥控互锁/故障判定；已连接路径在Trace读取完成后
     // 已优先执行，这里不会重复下发。
     processEndpointRemoteController();

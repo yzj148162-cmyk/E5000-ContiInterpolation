@@ -20,6 +20,7 @@
 #include "hardwareinterface.h"
 #include "onlinevelocitycontrol.h"
 #include "endpointremotecontrol.h"
+#include "forceinteractionruntimecontrol.h"
 
 class ControlWorker : public QObject
 {
@@ -415,6 +416,14 @@ public:
     void stopEndpointRemoteControl(bool emergency,
                                    const QString& reason = QStringLiteral("用户退出末端遥控"));
     EndpointRemoteStatus endpointRemoteStatus() const;
+    // 阶段B模拟六维力空载联调：实时产点并复用八轴在线速度硬件链。
+    bool prepareForceInteractionRuntime(
+            const ForceInteractionRuntimeConfig& config,
+            QString* errorMessage = nullptr);
+    bool startForceInteractionRuntime(QString* errorMessage = nullptr);
+    void stopForceInteractionRuntime(bool emergency,
+                                     const QString& reason = QStringLiteral("用户停止阶段B"));
+    ForceInteractionRuntimeStatus forceInteractionRuntimeStatus() const;
 
 public slots:
     // 启动定时控制循环。
@@ -523,6 +532,11 @@ private:
     void reportEndpointRemoteAttribution(bool finalReport, qint64 nowUs);
     void finishEndpointRemoteAttribution(qint64 nowUs);
     void publishEndpointRemoteStatus();
+    void processForceInteractionRuntime(
+            const Config& config,
+            const HardwareInterface::RuntimeTraceSnapshot& traceSnapshot,
+            qint64 nowUs);
+    void publishForceInteractionRuntimeStatus();
     void clearEndpointRemoteInputMailbox();
     void consumeEndpointRemoteInputMailbox();
     bool consumeEndpointRemoteStopRequest();
@@ -538,6 +552,7 @@ private:
     mutable QMutex timingHistoryMutex;
     mutable QMutex forcePidTraceMutex;
     mutable QMutex onlineVelocityMutex;
+    mutable QMutex forceInteractionRuntimeMutex;
     mutable QMutex endpointRemoteInputMutex;
     Config config;
     Snapshot snapshot;
@@ -598,6 +613,8 @@ private:
     ForceController forceController;
     OnlineVelocityControl onlineVelocityControl;
     OnlineVelocityStatus onlineVelocityStatusCache;
+    ForceInteractionRuntimeControl forceInteractionRuntimeControl;
+    ForceInteractionRuntimeStatus forceInteractionRuntimeStatusCache;
     EndpointRemoteControl endpointRemoteControl;
     EndpointRemoteStatus endpointRemoteStatusCache;
     EndpointRemoteTracePhase endpointRemoteTracePhase =

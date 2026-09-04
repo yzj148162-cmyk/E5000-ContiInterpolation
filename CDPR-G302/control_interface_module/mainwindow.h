@@ -229,6 +229,9 @@ private:
         bool singleMotorPointMoveActive = false;
         bool jogFollowTestActive = false;
         bool onlineVelocityControlActive = false;
+        // 六维力交互阶段B复用在线速度硬件链，但保留独立会话标志，
+        // 防止预设轨迹/遥控的停止与收尾逻辑误处理该会话。
+        bool forceInteractionRuntimeActive = false;
         bool endpointRemoteControlActive = false;
         int singleMotorPointMoveAxis = -1;
         qint64 singleMotorPointMoveStartMs = 0;
@@ -565,6 +568,19 @@ private:
     void refreshForceInteractionValidationInputState();
     void startForceInteractionSoftwareValidation();
     void cancelForceInteractionSoftwareValidation();
+    ForceInteractionRuntimeConfig forceInteractionRuntimeConfigFromUi(
+            QString* errorMessage = nullptr);
+    void prepareForceInteractionRuntimeFromUi();
+    void startForceInteractionRuntime();
+    void stopForceInteractionRuntime(bool emergency = false,
+                                     const QString& reason = QStringLiteral("用户停止阶段B"));
+    void refreshForceInteractionRuntimeUi();
+    void finalizeForceInteractionRuntimeSession(
+            const ForceInteractionRuntimeStatus& status);
+    bool computeForceInteractionRuntimeForwardPose(
+            const ForceInteractionRuntimeStatus& status,
+            std::vector<double>& pose,
+            int* equationCount = nullptr);
 
     // 涓荤嚎绋嬨€備负浠€涔堜娇鐢ㄧ嚎绋嬭€屼笉鐢╭t鐨凲Timer锛堝弬鑰冨姩鎬佹洸绾跨粯鍒剁殑渚嬬▼锛夛紵
     // 鍘熷洜鈶狅細澶氱嚎绋嬪垎鎷呰繍绠楀帇鍔?
@@ -586,6 +602,12 @@ private:
     QThread* endpointRemoteInputSupervisorThread = nullptr;
     EndpointRemoteInputSupervisor* endpointRemoteInputSupervisor = nullptr;
     ForceInteractionValidationWorker* forceInteractionValidationWorker = nullptr;
+    ForwardKinematicsSolver forceInteractionRuntimeForwardSolver;
+    std::vector<double> forceInteractionRuntimeInitialPoseMmRad;
+    std::vector<double> forceInteractionRuntimeLastForwardPose;
+    int forceInteractionRuntimeLastForwardEquationCount = 0;
+    qint64 forceInteractionRuntimeLastForwardSolveMs = -1;
+    bool forceInteractionRuntimeFinalizing = false;
     quint64 endpointRemoteInputSessionToken = 0;
     quint64 endpointRemoteInputSessionCounter = 0;
     GuiRefreshProfile guiRefreshProfile = GuiRefreshProfile::Normal;
