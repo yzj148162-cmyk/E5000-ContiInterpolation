@@ -56,6 +56,7 @@ SOURCES += \
     pose_control_module/linalg.cpp \
     pose_control_module/nokovposecalculator.cpp \
     pose_control_module/onlinevelocitycontrol.cpp \
+    pose_control_module/physicalworkspaceboundary.cpp \
     pose_control_module/optimization.cpp \
     pose_control_module/pidhandler.cpp \
     pose_control_module/positionsimulationmodel.cpp \
@@ -122,6 +123,7 @@ HEADERS += \
     pose_control_module/linalg.h \
     pose_control_module/nokovposecalculator.h \
     pose_control_module/onlinevelocitycontrol.h \
+    pose_control_module/physicalworkspaceboundary.h \
     pose_control_module/optimization.h \
     pose_control_module/pidhandler.h \
     pose_control_module/positionsimulationmodel.h \

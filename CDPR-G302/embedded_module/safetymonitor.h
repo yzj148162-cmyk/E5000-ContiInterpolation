@@ -14,6 +14,8 @@
 #include <limits>
 #include <vector>
 
+#include "physicalworkspaceboundary.h"
+
 class ControlWorker;
 class HardwareInterface;
 class QTimer;
@@ -92,8 +94,11 @@ public:
         double severeForceOverRatio = 1.15;
         double severeSpeedOverRatio = 1.2;
         bool workspaceMonitorEnabled = false;
-        // 工作空间判定只接收活动轨迹点或规划末点，不接收动捕或正运动学估计位姿。
+        // 工作空间判定接收当前运动功能发布的可靠末端位姿；物理边界统一检查
+        // 动平台全部代表点，而不是只检查质心坐标。
         bool hasWorkspacePose = false;
+        bool physicalWorkspaceConfigured = false;
+        PhysicalWorkspaceBoundaryConfig physicalWorkspace;
         int poseTimeoutCycles = 4;
         bool softwareWatchdogEnabled = false;
         qint64 mainThreadHeartbeatMs = -1;

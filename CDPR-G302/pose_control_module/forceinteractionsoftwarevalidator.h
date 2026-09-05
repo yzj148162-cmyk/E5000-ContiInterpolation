@@ -3,6 +3,7 @@
 
 #include "cdprdynamics.h"
 #include "compensatedcablekinematics.h"
+#include "physicalworkspaceboundary.h"
 #include "wrenchsource.h"
 
 #include <atomic>
@@ -23,8 +24,7 @@ struct ForceInteractionValidationConfig
     ForceInteractionPlatformState initialState;
     CompensatedCableKinematics::Configuration kinematics;
     CompensatedCableKinematics::PoseMatrix initialPoseMmRad;
-    std::vector<double> poseLowerBoundsMmRad;
-    std::vector<double> poseUpperBoundsMmRad;
+    PhysicalWorkspaceBoundaryConfig physicalWorkspace;
 };
 
 struct ForceInteractionValidationResult

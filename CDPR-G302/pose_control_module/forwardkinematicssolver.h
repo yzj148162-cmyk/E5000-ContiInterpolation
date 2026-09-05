@@ -7,6 +7,8 @@
 #ifndef FORWARDKINEMATICSSOLVER_H
 #define FORWARDKINEMATICSSOLVER_H
 
+#include "physicalworkspaceboundary.h"
+
 #include <vector>
 
 class ForwardKinematicsSolver
@@ -22,12 +24,16 @@ public:
         std::vector<double> poseLowerBounds;
         std::vector<double> poseUpperBounds;
         bool keepRotation = true;
+        bool enforcePhysicalWorkspace = false;
+        PhysicalWorkspaceBoundaryConfig physicalWorkspace;
     };
 
     struct Result {
         bool success = false;
         std::vector<double> pose;
         int equationCount = 0;
+        QString failureReason;
+        PhysicalWorkspaceBoundaryResult workspaceResult;
     };
 
     Result solve(const Request& request);

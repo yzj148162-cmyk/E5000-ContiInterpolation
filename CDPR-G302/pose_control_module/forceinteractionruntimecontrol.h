@@ -5,10 +5,12 @@
 #include "compensatedcablekinematics.h"
 #include "forceinteractionrunrecorder.h"
 #include "onlinevelocitycontrol.h"
+#include "physicalworkspaceboundary.h"
 #include "wrenchsource.h"
 #include "wrenchtransformer.h"
 
 #include <array>
+#include <limits>
 #include <memory>
 
 struct ForceInteractionRuntimeConfig
@@ -23,8 +25,7 @@ struct ForceInteractionRuntimeConfig
     NewmarkBetaConfig newmark;
     ForceInteractionPlatformState initialState;
     CompensatedCableKinematics::Configuration kinematics;
-    std::array<double, 6> poseLowerBoundsMmRad{};
-    std::array<double, 6> poseUpperBoundsMmRad{};
+    PhysicalWorkspaceBoundaryConfig physicalWorkspace;
     OnlineVelocityAxisArray motorUnitPerRadian{};
     OnlineVelocityAxisArray motorPositionMinimum{};
     OnlineVelocityAxisArray motorPositionMaximum{};
@@ -40,6 +41,8 @@ struct ForceInteractionRuntimeConfig
     double followingErrorLimit = 5.0;
     double onlineChangeTimeS = 0.001;
     qint64 traceTimeoutUs = 100000;
+    DynamicWorkspaceSafetyConfig workspaceSafety;
+    double brakingStopVelocityMmPerSec = 0.1;
     QString recordingDirectory;
 
     bool validate(QString* errorMessage = nullptr) const;
@@ -72,15 +75,27 @@ struct ForceInteractionRuntimeStep
     ForceInteractionRunRecord record;
 };
 
+enum class ForceInteractionControlledStopCause
+{
+    None = 0,
+    UserRequest,
+    DurationReached,
+    AccelerationLimit,
+    WorkspaceBoundary
+};
+
 struct ForceInteractionRuntimeStatus
 {
-    enum class State { Idle, Prepared, WaitingForTrace, Running, Completed, Stopped, Fault };
+    enum class State { Idle, Prepared, WaitingForTrace, Running, Braking,
+                       Completed, Stopped, Fault };
     State state = State::Idle;
     QString message;
     QString recordFile;
     quint64 stepCount = 0;
     quint64 commandCount = 0;
     quint64 missedCycleCount = 0;
+    quint64 acceptedRecordCount = 0;
+    quint64 writtenRecordCount = 0;
     quint64 droppedRecordCount = 0;
     quint64 latestTraceSequence = 0;
     double elapsedS = 0.0;
@@ -89,6 +104,15 @@ struct ForceInteractionRuntimeStatus
     qint64 maximumCalculationUs = 0;
     qint64 latestApiUs = 0;
     qint64 maximumApiUs = 0;
+    bool experimentValid = true;
+    double latestWorkspaceClearanceMm = 0.0;
+    double minimumWorkspaceClearanceMm =
+            std::numeric_limits<double>::infinity();
+    double workspaceTriggerDistanceMm = 0.0;
+    QString safetyStopReason;
+    ForceInteractionControlledStopCause controlledStopCause =
+            ForceInteractionControlledStopCause::None;
+    QString recordingError;
     ForceInteractionPlatformState desiredState;
     OnlineVelocityAxisArray actualStartPosition{};
     OnlineVelocityAxisArray desiredCableLengthMm{};
@@ -113,6 +137,10 @@ public:
     void finishRecording();
     bool isActive() const;
     bool isPrepared() const;
+    bool requestControlledStop(const QString& reason,
+                               bool experimentFailure = false,
+                               ForceInteractionControlledStopCause cause =
+                                   ForceInteractionControlledStopCause::UserRequest);
     const ForceInteractionRuntimeConfig& currentConfig() const;
     ForceInteractionRuntimeStatus status() const;
 
@@ -120,6 +148,8 @@ private:
     void setTerminal(ForceInteractionRuntimeStatus::State state,
                      const QString& message);
     bool feedbackReady(const ForceInteractionRuntimeFeedback& feedback) const;
+    ForceInteractionPlatformState advanceBrakingState(
+            bool& stopped, QString* errorMessage = nullptr);
 
     ForceInteractionRuntimeConfig config_;
     ForceInteractionRuntimeStatus status_;
@@ -127,6 +157,7 @@ private:
     std::unique_ptr<WrenchTransformer> wrenchTransformer_;
     CdprDynamics dynamics_;
     CompensatedCableKinematics kinematics_;
+    PhysicalWorkspaceBoundary physicalBoundary_;
     CompensatedCableKinematics::State kinematicsState_;
     std::unique_ptr<ForceInteractionRunRecorder> recorder_;
     OnlineVelocityAxisArray actualStartPosition_{};
@@ -140,6 +171,8 @@ private:
     qint64 nextDueUs_ = 0;
     quint64 lastFrameSequence_ = 0;
     bool lastFrameSequenceValid_ = false;
+    ForceInteractionPlatformState brakingState_;
+    QString controlledStopReason_;
 };
 
 #endif // FORCEINTERACTIONRUNTIMECONTROL_H

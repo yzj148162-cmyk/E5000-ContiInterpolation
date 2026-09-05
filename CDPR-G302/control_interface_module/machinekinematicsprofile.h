@@ -2,6 +2,7 @@
 #define MACHINEKINEMATICSPROFILE_H
 
 #include "hardwareinterface.h"
+#include "physicalworkspaceboundary.h"
 
 #include <array>
 #include <vector>
@@ -79,14 +80,14 @@ struct MachineKinematicsProfile {
     std::vector<double> ropeElasticFixedLengthL0Mm;
     std::vector<CablePointProfile> cableEndPoints;
     std::vector<CablePointProfile> cableStartPoints;
-    std::vector<double> forwardKinematicsPoseLowerBounds;
-    std::vector<double> forwardKinematicsPoseUpperBounds;
 };
 
 const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind);
 MachineProfileKind currentMachineProfileKind(const Ui::MainWindow* ui);
 const MachineKinematicsProfile& currentMachineKinematicsProfile(
         const Ui::MainWindow* ui);
+PhysicalWorkspaceBoundaryConfig physicalWorkspaceBoundaryConfig(
+        const MachineKinematicsProfile& profile);
 void applyCablePointProfile(const std::vector<QDoubleSpinBox*>& xSpin,
                             const std::vector<QDoubleSpinBox*>& ySpin,
                             const std::vector<QDoubleSpinBox*>& zSpin,

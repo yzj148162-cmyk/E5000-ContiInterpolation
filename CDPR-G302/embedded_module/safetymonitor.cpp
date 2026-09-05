@@ -942,9 +942,11 @@ void SafetyMonitor::evaluateSafety()
     }
 
     if(cfg.workspaceMonitorEnabled && !cfg.singleCableForceDebugMode){
-        // 工作空间监控只使用 MainWindow 提供的活动轨迹点或规划末点。
+        // 工作空间监控使用 MainWindow 提供的当前运动期望位姿；独立线程只做
+        // 全平台几何硬边界复核，动态停车仍由实时控制器按每个控制周期判定。
         // 单绳调试模式下可能没有有效轨迹位姿，因此跳过该项。
-        if(!cfg.hasWorkspacePose || cfg.workspacePose.size() < 3){
+        if(!cfg.hasWorkspacePose || cfg.workspacePose.size() < 6 ||
+                !cfg.physicalWorkspaceConfigured){
             clearWorkspaceWarningState();
             workspaceExceededCycles = 0;
             workspaceMissingPoseCycles++;
@@ -952,7 +954,7 @@ void SafetyMonitor::evaluateSafety()
                 triggerFault(StopLevel::EmergencyStop,
                              FaultCode::SensorInvalid,
                              QStringLiteral("工作空间判定位姿超时"),
-                             QStringLiteral("安全监控在运行期间连续 %1 个周期未收到有效的活动轨迹点或规划末点")
+                             QStringLiteral("安全监控在运行期间连续 %1 个周期未收到有效六维末端位姿或物理边界配置")
                                  .arg(workspaceMissingPoseCycles));
                 return;
             }
@@ -960,74 +962,63 @@ void SafetyMonitor::evaluateSafety()
         else{
             workspaceMissingPoseCycles = 0;
 
-            const double px = cfg.workspacePose[0];
-            const double py = cfg.workspacePose[1];
-            const double pz = cfg.workspacePose[2];
-            if(!std::isfinite(px) || !std::isfinite(py) || !std::isfinite(pz)){
+            std::array<double, 6> poseMmRad{};
+            std::copy_n(cfg.workspacePose.cbegin(), poseMmRad.size(),
+                        poseMmRad.begin());
+            if(!std::all_of(poseMmRad.cbegin(), poseMmRad.cend(),
+                           [](double value){ return std::isfinite(value); })){
                 triggerFault(StopLevel::EmergencyStop,
                              FaultCode::SensorInvalid,
                              QStringLiteral("工作空间判定位姿无效"),
-                             QStringLiteral("活动轨迹点或规划末点存在非数值坐标"));
+                             QStringLiteral("当前运动期望位姿存在非数值坐标"));
                 return;
             }
-
-            const double overflowX = std::max(cfg.workspaceXMin - px, px - cfg.workspaceXMax);
-            const double overflowY = std::max(cfg.workspaceYMin - py, py - cfg.workspaceYMax);
-            const double overflowZ = std::max(cfg.workspaceZMin - pz, pz - cfg.workspaceZMax);
-            const double maxOverflow = std::max({0.0, overflowX, overflowY, overflowZ});
-
-            if(maxOverflow > 0.0){
+            PhysicalWorkspaceBoundary boundary;
+            QString boundaryError;
+            if(!boundary.configure(cfg.physicalWorkspace, &boundaryError)){
+                triggerFault(StopLevel::EmergencyStop,
+                             FaultCode::SensorInvalid,
+                             QStringLiteral("物理工作空间配置无效"),
+                             boundaryError);
+                return;
+            }
+            const PhysicalWorkspaceBoundaryResult result =
+                    boundary.evaluatePose(poseMmRad);
+            if(result.action == PhysicalWorkspaceAction::Invalid){
+                triggerFault(StopLevel::EmergencyStop,
+                             FaultCode::SensorInvalid,
+                             QStringLiteral("物理工作空间判定失败"),
+                             result.reason);
+                return;
+            }
+            if(result.action == PhysicalWorkspaceAction::EmergencyStop){
                 clearWorkspaceWarningState();
                 workspaceExceededCycles++;
-
                 const QString detail = QStringLiteral(
-                            "末端当前位置 px=%1, py=%2, pz=%3 超出安全工作空间 X[%4, %5], Y[%6, %7], Z[%8, %9]")
-                        .arg(px, 0, 'f', 3)
-                        .arg(py, 0, 'f', 3)
-                        .arg(pz, 0, 'f', 3)
-                        .arg(cfg.workspaceXMin, 0, 'f', 3)
-                        .arg(cfg.workspaceXMax, 0, 'f', 3)
-                        .arg(cfg.workspaceYMin, 0, 'f', 3)
-                        .arg(cfg.workspaceYMax, 0, 'f', 3)
-                        .arg(cfg.workspaceZMin, 0, 'f', 3)
-                        .arg(cfg.workspaceZMax, 0, 'f', 3);
-
-                if(maxOverflow >= std::max(cfg.workspaceSevereOverflow, 1.0)){
-                    triggerFault(StopLevel::EmergencyStop,
-                                 FaultCode::WorkspaceExceeded,
-                                 QStringLiteral("末端位姿严重越界"),
-                                 detail);
-                    return;
-                }
-
-                if(workspaceExceededCycles >= std::max(cfg.persistentFaultCycles, 1)){
-                    triggerFault(StopLevel::SafetyStop,
-                                 FaultCode::WorkspaceExceeded,
-                                 QStringLiteral("末端位姿持续越界"),
-                                 detail);
-                    return;
-                }
+                            "%1；限制点=%2，限制轴=%3，最小余量=%4 mm")
+                        .arg(result.reason)
+                        .arg(result.limitingPointIndex + 1)
+                        .arg(result.limitingAxis)
+                        .arg(result.minimumClearanceMm, 0, 'f', 6);
+                triggerFault(StopLevel::EmergencyStop,
+                             FaultCode::WorkspaceExceeded,
+                             QStringLiteral("动平台几何边缘到达物理硬边界"),
+                             detail);
+                return;
             }
             else{
                 workspaceExceededCycles = 0;
-
-                const double marginX = std::min(px - cfg.workspaceXMin, cfg.workspaceXMax - px);
-                const double marginY = std::min(py - cfg.workspaceYMin, cfg.workspaceYMax - py);
-                const double marginZ = std::min(pz - cfg.workspaceZMin, cfg.workspaceZMax - pz);
-                const double minMargin = std::min({marginX, marginY, marginZ});
                 const bool nearBoundary = cfg.workspaceWarningMargin > 0.0 &&
-                        minMargin <= cfg.workspaceWarningMargin;
+                        result.minimumClearanceMm <= cfg.workspaceWarningMargin;
 
                 if(nearBoundary && !workspaceNearBoundaryActive){
                     workspaceNearBoundaryActive = true;
                     triggerFault(StopLevel::Warning,
                                  FaultCode::WorkspaceExceeded,
                                  QStringLiteral("末端位姿接近安全边界"),
-                                 QStringLiteral("末端当前位置 px=%1, py=%2, pz=%3，距离最近安全边界仅 %4 mm")
-                                     .arg(px, 0, 'f', 3)
-                                     .arg(py, 0, 'f', 3)
-                                     .arg(pz, 0, 'f', 3)
-                                     .arg(minMargin, 0, 'f', 3));
+                                 QStringLiteral("平台连接点%1距离机架边界仅%2 mm")
+                                     .arg(result.limitingPointIndex + 1)
+                                     .arg(result.minimumClearanceMm, 0, 'f', 3));
                 }
                 else if(!nearBoundary){
                     clearWorkspaceWarningState();

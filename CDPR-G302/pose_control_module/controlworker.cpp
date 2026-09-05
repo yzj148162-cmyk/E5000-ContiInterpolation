@@ -1940,6 +1940,12 @@ void ControlWorker::stopForceInteractionRuntime(bool emergency,
             !forceInteractionRuntimeControl.isPrepared()){
         return;
     }
+    if(!emergency && forceInteractionRuntimeControl.isActive() &&
+            forceInteractionRuntimeControl.requestControlledStop(reason, false)){
+        publishForceInteractionRuntimeStatus();
+        return;
+    }
+
     const std::vector<int> axes{0, 1, 2, 3, 4, 5, 6, 7};
     if(hardwareInterface && forceInteractionRuntimeControl.isActive()){
         if(emergency){
@@ -2855,8 +2861,22 @@ void ControlWorker::processForceInteractionRuntime(
         }
     }
 
+    const ForceInteractionRuntimeStatus::State stateBeforeStep =
+            forceInteractionRuntimeControl.status().state;
     const ForceInteractionRuntimeStep step =
             forceInteractionRuntimeControl.step(feedback, nowUs);
+    const ForceInteractionRuntimeStatus statusAfterStep =
+            forceInteractionRuntimeControl.status();
+    if(stateBeforeStep != ForceInteractionRuntimeStatus::State::Braking &&
+            statusAfterStep.state == ForceInteractionRuntimeStatus::State::Braking){
+        emit displayInfoSignal(
+                    QStringLiteral("阶段B力输入已冻结并进入协同减速：%1；本次微重力交互有效=%2")
+                    .arg(statusAfterStep.message)
+                    .arg(statusAfterStep.experimentValid ?
+                             QStringLiteral("是") : QStringLiteral("否"))
+                    .toStdString(),
+                    statusAfterStep.experimentValid ? "warning" : "error");
+    }
     if(step.action == ForceInteractionRuntimeStep::Action::None){
         publishForceInteractionRuntimeStatus();
         return;

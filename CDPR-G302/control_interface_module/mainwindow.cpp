@@ -19081,8 +19081,15 @@ void MainWindow::startForceInteractionSoftwareValidation()
     // 阶段A没有逐周期张力解，不启用绳弹性补偿；滑轮与绞盘几何仍复用原工程。
     config.kinematics.ropeElasticConfig.enabled = false;
 
-    config.poseLowerBoundsMmRad = profile.forwardKinematicsPoseLowerBounds;
-    config.poseUpperBoundsMmRad = profile.forwardKinematicsPoseUpperBounds;
+    QString physicalBoundaryError;
+    if(!buildPhysicalWorkspaceBoundaryConfig(config.physicalWorkspace,
+                                             &physicalBoundaryError)){
+        ui->forceInteractionValidationStatusLabel->setText(
+                    QStringLiteral("无法启动：物理工作空间配置无效。"));
+        displayInfo(QStringLiteral("阶段A软件验证无法启动：%1")
+                    .arg(physicalBoundaryError).toStdString(), "error");
+        return;
+    }
 
     ui->forceInteractionValidationResultPlainTextEdit->setPlainText(
                 QStringLiteral("正在后台执行核心数学自检、Newmark单步循环和逆/正运动学往返校验……"));
@@ -19264,17 +19271,13 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
     config.kinematics.pulleyRadiusMm = buildPulleyRadius();
     config.kinematics.ropeElasticConfig = RopeElasticCompensation::defaultConfig();
     config.kinematics.ropeElasticConfig.enabled = false;
-    if(profile.forwardKinematicsPoseLowerBounds.size() < config.poseLowerBoundsMmRad.size() ||
-            profile.forwardKinematicsPoseUpperBounds.size() < config.poseUpperBoundsMmRad.size()){
-        fail(QStringLiteral("G302 模板的六维位姿边界配置不完整"));
+    QString physicalBoundaryError;
+    if(!buildPhysicalWorkspaceBoundaryConfig(config.physicalWorkspace,
+                                             &physicalBoundaryError)){
+        fail(QStringLiteral("物理工作空间配置无效：%1")
+             .arg(physicalBoundaryError));
         return config;
     }
-    std::copy_n(profile.forwardKinematicsPoseLowerBounds.cbegin(),
-                config.poseLowerBoundsMmRad.size(),
-                config.poseLowerBoundsMmRad.begin());
-    std::copy_n(profile.forwardKinematicsPoseUpperBounds.cbegin(),
-                config.poseUpperBoundsMmRad.size(),
-                config.poseUpperBoundsMmRad.begin());
 
     double motorUnitPerRadian = 0.0;
     if(ui->devMotorFeedbackIsRd->isChecked()){
@@ -19318,6 +19321,12 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
     config.onlineChangeTimeS = ui->forceInteractionRuntimeChangeTimeSpinBox->value();
     config.traceTimeoutUs =
             static_cast<qint64>(ui->forceInteractionRuntimeTraceTimeoutSpinBox->value()) * 1000;
+    config.workspaceSafety.stoppingDecelerationMmPerSec2 =
+            ui->forceInteractionRuntimeAccelerationLimitSpinBox->value();
+    config.workspaceSafety.additionalSafetyMarginMm =
+            ui->forceInteractionRuntimeSafetyMarginSpinBox->value();
+    config.workspaceSafety.emergencyLineMarginMm =
+            ui->forceInteractionRuntimeEmergencyMarginSpinBox->value();
     config.recordingDirectory = QDir(uiEventLogDirPath()).filePath(
                 QStringLiteral("force_interaction_runs"));
 
@@ -19382,11 +19391,14 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
     forceInteractionRuntimeLastForwardEquationCount = 0;
     forceInteractionRuntimeLastForwardSolveMs = -1;
     displayInfo(QStringLiteral(
-                    "阶段B已准备：模拟力=%1，周期=%2 ms，最长运行=%3 s，PID=%4，八轴公共加速度缩放=关闭；配置与初始位姿已冻结，尚未下发速度命令")
+                    "阶段B已准备：模拟力=%1，周期=%2 ms，最长运行=%3 s，PID=%4，末端加速度/制动a=%5 mm/s²，附加余量/急停线=%6/%7 mm，八轴公共加速度缩放=关闭；配置与初始位姿已冻结，尚未下发速度命令")
                 .arg(ui->forceInteractionModeComboBox->currentText())
                 .arg(config.periodUs / 1000)
                 .arg(config.maximumTestDurationS, 0, 'f', 3)
                 .arg(config.pidEnabled ? QStringLiteral("开") : QStringLiteral("关"))
+                .arg(config.workspaceSafety.stoppingDecelerationMmPerSec2, 0, 'f', 3)
+                .arg(config.workspaceSafety.additionalSafetyMarginMm, 0, 'f', 3)
+                .arg(config.workspaceSafety.emergencyLineMarginMm, 0, 'f', 3)
                 .toStdString(), "normal");
     refreshForceInteractionValidationInputState();
     refreshForceInteractionRuntimeUi();
@@ -19454,8 +19466,16 @@ void MainWindow::stopForceInteractionRuntime(bool emergency,
     QMetaObject::invokeMethod(controlWorker, [=](){
         controlWorker->stopForceInteractionRuntime(emergency, reason);
     }, Qt::BlockingQueuedConnection);
-    finalizeForceInteractionRuntimeSession(
-                controlWorker->forceInteractionRuntimeStatus());
+    const ForceInteractionRuntimeStatus status =
+            controlWorker->forceInteractionRuntimeStatus();
+    if(status.state == ForceInteractionRuntimeStatus::State::Braking){
+        displayInfo(QStringLiteral("阶段B已进入协同减速：%1")
+                    .arg(status.message).toStdString(), "warning");
+        refreshForceInteractionRuntimeUi();
+    }
+    else{
+        finalizeForceInteractionRuntimeSession(status);
+    }
 }
 
 void MainWindow::finalizeForceInteractionRuntimeSession(
@@ -19480,17 +19500,26 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
     updateCableHomeConfirmEnabled();
     setForceControlSelectionEnabled(true);
     if(wasActive){
-        const char* level = status.state == ForceInteractionRuntimeStatus::State::Fault ?
-                    "error" : "warning";
+        const char* level = status.state == ForceInteractionRuntimeStatus::State::Fault ||
+                !status.experimentValid ? "error" : "warning";
         displayInfo(QStringLiteral(
-                        "阶段B会话结束：%1；步数=%2，命令=%3，漏周期=%4，最大轴误差=%5 unit，最大计算/API=%6/%7 us，记录=%8")
+                        "阶段B会话结束：%1；试验有效=%2%3；步数=%4，命令=%5，漏周期=%6，最大轴误差=%7 unit，末端最小余量=%8 mm，最大计算/API=%9/%10 us，记录接受/写入/丢弃=%11/%12/%13%14，文件=%15")
                     .arg(status.message)
+                    .arg(status.experimentValid ? QStringLiteral("是") : QStringLiteral("否"))
+                    .arg(status.safetyStopReason.isEmpty() ? QString{} :
+                         QStringLiteral("（%1）").arg(status.safetyStopReason))
                     .arg(status.stepCount)
                     .arg(status.commandCount)
                     .arg(status.missedCycleCount)
                     .arg(status.maximumPositionError, 0, 'f', 6)
+                    .arg(status.minimumWorkspaceClearanceMm, 0, 'f', 3)
                     .arg(status.maximumCalculationUs)
                     .arg(status.maximumApiUs)
+                    .arg(status.acceptedRecordCount)
+                    .arg(status.writtenRecordCount)
+                    .arg(status.droppedRecordCount)
+                    .arg(status.recordingError.isEmpty() ? QString{} :
+                         QStringLiteral("（写盘错误：%1）").arg(status.recordingError))
                     .arg(QDir::toNativeSeparators(status.recordFile))
                     .toStdString(), level);
     }
@@ -19574,6 +19603,7 @@ void MainWindow::refreshForceInteractionRuntimeUi()
         case ForceInteractionRuntimeStatus::State::Prepared: return QStringLiteral("已准备");
         case ForceInteractionRuntimeStatus::State::WaitingForTrace: return QStringLiteral("等待Trace");
         case ForceInteractionRuntimeStatus::State::Running: return QStringLiteral("运行中");
+        case ForceInteractionRuntimeStatus::State::Braking: return QStringLiteral("协同减速");
         case ForceInteractionRuntimeStatus::State::Completed: return QStringLiteral("已完成");
         case ForceInteractionRuntimeStatus::State::Stopped: return QStringLiteral("已停止");
         case ForceInteractionRuntimeStatus::State::Fault: return QStringLiteral("故障停止");
@@ -19582,7 +19612,8 @@ void MainWindow::refreshForceInteractionRuntimeUi()
     };
     const bool prepared = status.state == ForceInteractionRuntimeStatus::State::Prepared;
     const bool active = status.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
-            status.state == ForceInteractionRuntimeStatus::State::Running;
+            status.state == ForceInteractionRuntimeStatus::State::Running ||
+            status.state == ForceInteractionRuntimeStatus::State::Braking;
     const bool locked = prepared || active;
     ui->forceInteractionRuntimePrepareButton->setEnabled(
                 !locked && !forceInteractionValidationWorker &&
@@ -19607,7 +19638,8 @@ void MainWindow::refreshForceInteractionRuntimeUi()
     int equationCount = 0;
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     bool forwardAttempted = false;
-    if(status.state == ForceInteractionRuntimeStatus::State::Running &&
+    if((status.state == ForceInteractionRuntimeStatus::State::Running ||
+        status.state == ForceInteractionRuntimeStatus::State::Braking) &&
             (forceInteractionRuntimeLastForwardSolveMs < 0 ||
              nowMs - forceInteractionRuntimeLastForwardSolveMs >= 200)){
         forceInteractionRuntimeLastForwardSolveMs = nowMs;
@@ -19658,7 +19690,14 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                 .arg(status.commandVelocity[axis], 0, 'f', 5);
     }
     detail += QStringLiteral(
-                "Trace序号=%1；本次/最大计算=%2/%3 us；本次/最大API=%4/%5 us；丢记录=%6\n记录：%7")
+                "边界当前/全程最小余量=%1/%2 mm；当前停车触发距离=%3 mm；试验有效=%4%5\n"
+                "Trace序号=%6；本次/最大计算=%7/%8 us；本次/最大API=%9/%10 us；丢记录=%11\n记录：%12")
+            .arg(status.latestWorkspaceClearanceMm, 0, 'f', 3)
+            .arg(status.minimumWorkspaceClearanceMm, 0, 'f', 3)
+            .arg(status.workspaceTriggerDistanceMm, 0, 'f', 3)
+            .arg(status.experimentValid ? QStringLiteral("是") : QStringLiteral("否"))
+            .arg(status.safetyStopReason.isEmpty() ? QString{} :
+                 QStringLiteral("（%1）").arg(status.safetyStopReason))
             .arg(status.latestTraceSequence)
             .arg(status.latestCalculationUs)
             .arg(status.maximumCalculationUs)
@@ -21730,7 +21769,9 @@ void MainWindow::stopOnlineVelocityTest(bool emergency, const QString& reason)
               controlWorker->forceInteractionRuntimeStatus().state ==
                   ForceInteractionRuntimeStatus::State::WaitingForTrace ||
               controlWorker->forceInteractionRuntimeStatus().state ==
-                  ForceInteractionRuntimeStatus::State::Running))){
+                  ForceInteractionRuntimeStatus::State::Running ||
+              controlWorker->forceInteractionRuntimeStatus().state ==
+                  ForceInteractionRuntimeStatus::State::Braking))){
         stopForceInteractionRuntime(emergency, reason);
         return;
     }
@@ -33037,22 +33078,17 @@ bool MainWindow::computeForwardKinematicsEndPoseFromMotorSnapshot(
 void MainWindow::applyForwardKinematicsBoundsForCurrentTemplate(
         ForwardKinematicsSolver::Request& request) const
 {
-    const MachineKinematicsProfile& profile =
-            currentMachineKinematicsProfile(ui);
-    if(profile.forwardKinematicsPoseLowerBounds.size() < 6 ||
-            profile.forwardKinematicsPoseUpperBounds.size() < 6){
+    PhysicalWorkspaceBoundaryConfig boundaryConfig;
+    if(!buildPhysicalWorkspaceBoundaryConfig(boundaryConfig)){
         return;
     }
-
-    request.poseLowerBounds.assign(profile.forwardKinematicsPoseLowerBounds.begin(),
-                                   profile.forwardKinematicsPoseLowerBounds.begin() + 6);
-    request.poseUpperBounds.assign(profile.forwardKinematicsPoseUpperBounds.begin(),
-                                   profile.forwardKinematicsPoseUpperBounds.begin() + 6);
-    const double frameHeightMm =
-            ui->devFrameH && std::isfinite(ui->devFrameH->value()) ?
-                ui->devFrameH->value() :
-                profile.frameHeightMm;
-    request.poseUpperBounds[2] = frameHeightMm;
+    const PhysicalWorkspaceBoundary boundary(boundaryConfig);
+    const auto lower = boundary.solverLowerBounds();
+    const auto upper = boundary.solverUpperBounds();
+    request.poseLowerBounds.assign(lower.begin(), lower.end());
+    request.poseUpperBounds.assign(upper.begin(), upper.end());
+    request.physicalWorkspace = boundaryConfig;
+    request.enforcePhysicalWorkspace = true;
 }
 
 void MainWindow::cacheForwardKinematicsPose(const std::vector<std::vector<double>>& platformPose)
@@ -34014,6 +34050,58 @@ bool MainWindow::buildSafetyWorkspaceBounds(WorkspaceBounds& bounds, QString* er
     return true;
 }
 
+bool MainWindow::buildPhysicalWorkspaceBoundaryConfig(
+        PhysicalWorkspaceBoundaryConfig& config,
+        QString* errorMessage) const
+{
+    const MachineKinematicsProfile& profile =
+            currentMachineKinematicsProfile(ui);
+    config = physicalWorkspaceBoundaryConfig(profile);
+    if(!ui || !ui->devFrameL || !ui->devFrameW || !ui->devFrameH){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("机架结构参数控件尚未初始化");
+        }
+        return false;
+    }
+    const double frameLengthMm = ui->devFrameL->value();
+    const double frameWidthMm = ui->devFrameW->value();
+    const double frameHeightMm = ui->devFrameH->value();
+    if(!std::isfinite(frameLengthMm) || !std::isfinite(frameWidthMm) ||
+            !std::isfinite(frameHeightMm) || frameLengthMm <= 0.0 ||
+            frameWidthMm <= 0.0 || frameHeightMm <= 0.0){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("机架长、宽、高必须为正数");
+        }
+        return false;
+    }
+    config.frameMinimumMm = {{-frameLengthMm * 0.5,
+                              -frameWidthMm * 0.5,
+                              profile.workspaceZMinMm}};
+    config.frameMaximumMm = {{frameLengthMm * 0.5,
+                              frameWidthMm * 0.5,
+                              frameHeightMm}};
+
+    const auto contactGroups = buildCableContactPointPos();
+    if(contactGroups.size() != 1 || contactGroups.front().empty()){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("物理边界要求单动平台且至少包含一个局部几何点");
+        }
+        return false;
+    }
+    config.platformPointsLocalMm.clear();
+    config.platformPointsLocalMm.reserve(contactGroups.front().size());
+    for(const std::vector<double>& point : contactGroups.front()){
+        if(point.size() < 3){
+            if(errorMessage){
+                *errorMessage = QStringLiteral("动平台局部几何点维数不足");
+            }
+            return false;
+        }
+        config.platformPointsLocalMm.push_back({{point[0], point[1], point[2]}});
+    }
+    return config.validate(errorMessage);
+}
+
 bool MainWindow::currentEstimatedEndPose(std::vector<double>& pose, int maxAgeMs) const
 {
     pose.clear();
@@ -34048,6 +34136,25 @@ bool MainWindow::currentEstimatedEndPose(std::vector<double>& pose, int maxAgeMs
 bool MainWindow::currentWorkspaceSafetyPose(std::vector<double>& pose) const
 {
     pose.clear();
+
+    if(runtimeState.forceInteractionRuntimeActive && controlWorker){
+        const ForceInteractionRuntimeStatus forceStatus =
+                controlWorker->forceInteractionRuntimeStatus();
+        if((forceStatus.state == ForceInteractionRuntimeStatus::State::Running ||
+            forceStatus.state == ForceInteractionRuntimeStatus::State::Braking) &&
+                forceStatus.desiredState.poseValid){
+            pose.resize(6, 0.0);
+            for(int dimension = 0; dimension < 3; ++dimension){
+                pose[static_cast<size_t>(dimension)] =
+                        forceStatus.desiredState.pose[static_cast<size_t>(dimension)] * 1000.0;
+            }
+            for(int dimension = 3; dimension < 6; ++dimension){
+                pose[static_cast<size_t>(dimension)] =
+                        forceStatus.desiredState.pose[static_cast<size_t>(dimension)];
+            }
+            return hasFiniteValues(pose, 6);
+        }
+    }
 
     // 遥控期望位姿保持在独立状态中，仅作为本次在线运动的工作空间安全
     // 输入读取，不写入规划轨迹、动捕或正运动学缓存。
@@ -34161,8 +34268,12 @@ bool MainWindow::validateTrajectoryWithinWorkspace(
         const std::vector<std::vector<std::vector<std::vector<double>>>>& plannedEndTraj,
         QString& errorMessage) const
 {
-    WorkspaceBounds bounds;
-    if(!buildSafetyWorkspaceBounds(bounds, &errorMessage)){
+    PhysicalWorkspaceBoundaryConfig boundaryConfig;
+    if(!buildPhysicalWorkspaceBoundaryConfig(boundaryConfig, &errorMessage)){
+        return false;
+    }
+    PhysicalWorkspaceBoundary boundary;
+    if(!boundary.configure(boundaryConfig, &errorMessage)){
         return false;
     }
 
@@ -34200,8 +34311,17 @@ bool MainWindow::validateTrajectoryWithinWorkspace(
             pose[dim] = poseTraj[dim][pointIndex];
         }
 
-        QString poseError;
-        if(!validatePoseWithinWorkspace(pose, bounds, poseError)){
+        std::array<double, 6> poseArray{};
+        std::copy_n(pose.cbegin(), poseArray.size(), poseArray.begin());
+        const PhysicalWorkspaceBoundaryResult result =
+                boundary.evaluatePose(poseArray);
+        if(result.action != PhysicalWorkspaceAction::Safe){
+            const QString poseError = QStringLiteral(
+                        "%1；限制点=%2，限制轴=%3，最小余量=%4 mm")
+                    .arg(result.reason)
+                    .arg(result.limitingPointIndex + 1)
+                    .arg(result.limitingAxis)
+                    .arg(result.minimumClearanceMm, 0, 'f', 6);
             if(timeAxis && pointIndex < static_cast<int>(timeAxis->size())){
                 errorMessage = QStringLiteral("轨迹第%1个点（t=%2 s）越界：%3")
                         .arg(pointIndex + 1)
@@ -37621,6 +37741,14 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
         config.workspacePose.clear();
     }
 
+    QString physicalWorkspaceError;
+    config.physicalWorkspaceConfigured =
+            buildPhysicalWorkspaceBoundaryConfig(config.physicalWorkspace,
+                                                 &physicalWorkspaceError);
+    if(!config.physicalWorkspaceConfigured){
+        config.hasWorkspacePose = false;
+    }
+
     WorkspaceBounds workspaceBounds;
     // 工作空间监控始终使用活动轨迹点、遥控开环期望位姿或规划末点，
     // 不使用动捕或正运动学估计位姿。
@@ -37650,7 +37778,7 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
         config.workspaceSevereOverflow = 1.0;
     }
     else if(!config.commissioningMode &&
-            pretensionConfirmed &&
+            (pretensionConfirmed || runtimeState.forceInteractionRuntimeActive) &&
             buildSafetyWorkspaceBounds(workspaceBounds)){
         config.workspaceMonitorEnabled = true;
         config.workspaceXMin = workspaceBounds.xMin;

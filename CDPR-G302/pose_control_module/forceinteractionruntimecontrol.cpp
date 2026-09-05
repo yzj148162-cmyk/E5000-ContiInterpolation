@@ -20,6 +20,36 @@ double clampValue(double value, double limit)
     return std::max(-limit, std::min(limit, value));
 }
 
+double vectorNorm3(const ForceInteractionVector6& values, int offset = 0)
+{
+    return std::sqrt(values[static_cast<size_t>(offset)] *
+                     values[static_cast<size_t>(offset)] +
+                     values[static_cast<size_t>(offset + 1)] *
+                     values[static_cast<size_t>(offset + 1)] +
+                     values[static_cast<size_t>(offset + 2)] *
+                     values[static_cast<size_t>(offset + 2)]);
+}
+
+bool worldOmegaToZyxEulerRate(const ForceInteractionVector6& pose,
+                              const ForceInteractionVector6& twist,
+                              ForceInteractionVector3& eulerRate)
+{
+    const double pitch = pose[4];
+    const double yaw = pose[5];
+    const double cosinePitch = std::cos(pitch);
+    if(std::fabs(cosinePitch) <= 1.0e-6){
+        return false;
+    }
+    const double projected = std::cos(yaw) * twist[3] +
+            std::sin(yaw) * twist[4];
+    eulerRate[0] = projected / cosinePitch;
+    eulerRate[1] = -std::sin(yaw) * twist[3] +
+            std::cos(yaw) * twist[4];
+    eulerRate[2] = twist[5] + std::tan(pitch) * projected;
+    return std::all_of(eulerRate.cbegin(), eulerRate.cend(),
+                       [](double value){ return std::isfinite(value); });
+}
+
 } // namespace
 
 bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
@@ -39,10 +69,37 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
     if(!initialState.poseValid || rigidBody.massKg <= 0.0){
         return fail(QStringLiteral("初始位姿或刚体质量无效"));
     }
+    QString workspaceError;
+    if(!physicalWorkspace.validate(&workspaceError) ||
+            !workspaceSafety.validate(&workspaceError)){
+        return fail(QStringLiteral("物理工作空间配置无效：%1")
+                    .arg(workspaceError));
+    }
+    PhysicalWorkspaceBoundary initialBoundary;
+    if(!initialBoundary.configure(physicalWorkspace, &workspaceError)){
+        return fail(QStringLiteral("物理工作空间配置无效：%1")
+                    .arg(workspaceError));
+    }
+    std::array<double, 6> initialPoseMmRad{};
+    for(int dimension = 0; dimension < 3; ++dimension){
+        initialPoseMmRad[static_cast<size_t>(dimension)] =
+                initialState.pose[static_cast<size_t>(dimension)] * 1000.0;
+    }
+    for(int dimension = 3; dimension < 6; ++dimension){
+        initialPoseMmRad[static_cast<size_t>(dimension)] =
+                initialState.pose[static_cast<size_t>(dimension)];
+    }
+    const PhysicalWorkspaceBoundaryResult initialWorkspace =
+            initialBoundary.evaluatePose(initialPoseMmRad);
+    if(initialWorkspace.action != PhysicalWorkspaceAction::Safe){
+        return fail(QStringLiteral("初始位姿不满足动平台几何硬边界：%1")
+                    .arg(initialWorkspace.reason));
+    }
     if(!finiteArray(motorUnitPerRadian) || velocityLimit <= 0.0 ||
             followingErrorLimit <= 0.0 ||
             correctionVelocityLimit < 0.0 || integralLimit < 0.0 ||
-            onlineChangeTimeS < 0.0 || traceTimeoutUs <= 0){
+            onlineChangeTimeS < 0.0 || traceTimeoutUs <= 0 ||
+            brakingStopVelocityMmPerSec < 0.0){
         return fail(QStringLiteral("PID、运动限制或Trace参数无效"));
     }
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
@@ -71,6 +128,7 @@ bool ForceInteractionRuntimeControl::prepare(
                                      &error) ||
             !dynamics_.configure(config.rigidBody, config.newmark, &error) ||
             !dynamics_.reset(config.initialState, &error) ||
+            !physicalBoundary_.configure(config.physicalWorkspace, &error) ||
             !kinematics_.initialize(config.kinematics,
                                     {{config.initialState.pose[0] * 1000.0,
                                       config.initialState.pose[1] * 1000.0,
@@ -94,6 +152,8 @@ bool ForceInteractionRuntimeControl::prepare(
     actualStartCaptured_ = false;
     previousErrorValid_ = false;
     lastFrameSequenceValid_ = false;
+    brakingState_ = ForceInteractionPlatformState{};
+    controlledStopReason_.clear();
     integral_.fill(0.0);
     previousError_.fill(0.0);
     return true;
@@ -141,6 +201,122 @@ bool ForceInteractionRuntimeControl::feedbackReady(
             feedback.newestFrameAgeUs <= config_.traceTimeoutUs &&
             finiteArray(feedback.actualPosition) &&
             finiteArray(feedback.actualVelocity);
+}
+
+bool ForceInteractionRuntimeControl::requestControlledStop(
+        const QString& reason, bool experimentFailure,
+        ForceInteractionControlledStopCause cause)
+{
+    if(status_.state == ForceInteractionRuntimeStatus::State::Braking){
+        status_.experimentValid = status_.experimentValid && !experimentFailure;
+        return true;
+    }
+    if(status_.state != ForceInteractionRuntimeStatus::State::Running){
+        return false;
+    }
+    brakingState_ = status_.desiredState;
+    controlledStopReason_ = reason.isEmpty() ?
+                QStringLiteral("请求受控制动") : reason;
+    status_.experimentValid = !experimentFailure;
+    status_.safetyStopReason = experimentFailure ? controlledStopReason_ : QString{};
+    status_.controlledStopCause = cause;
+    status_.state = ForceInteractionRuntimeStatus::State::Braking;
+    status_.message = QStringLiteral("协同减速中：%1").arg(controlledStopReason_);
+    return true;
+}
+
+ForceInteractionPlatformState
+ForceInteractionRuntimeControl::advanceBrakingState(
+        bool& stopped, QString* errorMessage)
+{
+    ForceInteractionPlatformState next = brakingState_;
+    const double dt = config_.periodUs / 1000000.0;
+    const double linearSpeedMPerSec = vectorNorm3(brakingState_.twist);
+    const double angularSpeedRadPerSec = vectorNorm3(brakingState_.twist, 3);
+
+    // a 的外部单位为 mm/s^2。转动时用连接点最大半径折算为边缘线速度，
+    // 再对六维速度统一缩放，避免各自由度分别截断破坏协同运动方向。
+    double maximumRadiusM = 0.0;
+    for(const auto& point : config_.physicalWorkspace.platformPointsLocalMm){
+        const double radiusMm = std::sqrt(point[0] * point[0] +
+                                          point[1] * point[1] +
+                                          point[2] * point[2]);
+        maximumRadiusM = std::max(maximumRadiusM, radiusMm / 1000.0);
+    }
+    const double equivalentSpeedMPerSec = linearSpeedMPerSec +
+            angularSpeedRadPerSec * maximumRadiusM;
+    const double stopThresholdMPerSec =
+            config_.brakingStopVelocityMmPerSec / 1000.0;
+    const double decelerationMPerSec2 =
+            config_.workspaceSafety.stoppingDecelerationMmPerSec2 / 1000.0;
+    const double nextEquivalentSpeed = std::max(
+                0.0, equivalentSpeedMPerSec - decelerationMPerSec2 * dt);
+    const double scale = equivalentSpeedMPerSec > 1.0e-12 ?
+                nextEquivalentSpeed / equivalentSpeedMPerSec : 0.0;
+
+    const ForceInteractionVector6 oldTwist = brakingState_.twist;
+    for(int dimension = 0; dimension < 3; ++dimension){
+        next.twist[static_cast<size_t>(dimension)] =
+                oldTwist[static_cast<size_t>(dimension)] * scale;
+        next.acceleration[static_cast<size_t>(dimension)] =
+                (next.twist[static_cast<size_t>(dimension)] -
+                 oldTwist[static_cast<size_t>(dimension)]) / dt;
+        next.pose[static_cast<size_t>(dimension)] +=
+                0.5 * (oldTwist[static_cast<size_t>(dimension)] +
+                       next.twist[static_cast<size_t>(dimension)]) * dt;
+    }
+    if(config_.translationOnly){
+        for(int dimension = 3; dimension < kForceInteractionDofCount; ++dimension){
+            next.pose[static_cast<size_t>(dimension)] =
+                    brakingState_.pose[static_cast<size_t>(dimension)];
+            next.twist[static_cast<size_t>(dimension)] = 0.0;
+            next.acceleration[static_cast<size_t>(dimension)] = 0.0;
+        }
+    }
+    else{
+        ForceInteractionVector3 oldEulerRate{};
+        ForceInteractionVector6 scaledTwist = oldTwist;
+        for(int dimension = 3; dimension < 6; ++dimension){
+            scaledTwist[static_cast<size_t>(dimension)] =
+                    oldTwist[static_cast<size_t>(dimension)] * scale;
+        }
+        ForceInteractionVector3 newEulerRate{};
+        if(!worldOmegaToZyxEulerRate(brakingState_.pose, oldTwist,
+                                     oldEulerRate) ||
+                !worldOmegaToZyxEulerRate(brakingState_.pose, scaledTwist,
+                                          newEulerRate)){
+            stopped = false;
+            next.poseValid = false;
+            if(errorMessage){
+                *errorMessage = QStringLiteral(
+                            "受控制动接近ZYX欧拉角奇异位姿，无法可靠积分姿态");
+            }
+            return next;
+        }
+        for(int dimension = 3; dimension < 6; ++dimension){
+            const size_t offset = static_cast<size_t>(dimension);
+            next.twist[offset] = scaledTwist[offset];
+            next.acceleration[offset] =
+                    (scaledTwist[offset] - oldTwist[offset]) / dt;
+            next.pose[offset] += 0.5 *
+                    (oldEulerRate[static_cast<size_t>(dimension - 3)] +
+                     newEulerRate[static_cast<size_t>(dimension - 3)]) * dt;
+        }
+    }
+    next.poseValid = true;
+    next.twistValid = true;
+    next.accelerationValid = true;
+    brakingState_ = next;
+    stopped = nextEquivalentSpeed <= stopThresholdMPerSec;
+    if(stopped){
+        brakingState_.twist.fill(0.0);
+        brakingState_.acceleration.fill(0.0);
+        next = brakingState_;
+    }
+    if(errorMessage){
+        errorMessage->clear();
+    }
+    return next;
 }
 
 ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
@@ -212,12 +388,6 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     }
 
     const double elapsedS = (status_.stepCount + 1) * config_.periodUs / 1000000.0;
-    if(config_.maximumTestDurationS > 0.0 && elapsedS > config_.maximumTestDurationS + 1.0e-12){
-        output.action = ForceInteractionRuntimeStep::Action::NormalStop;
-        output.reason = QStringLiteral("阶段B达到最长调试时间");
-        return output;
-    }
-
     QElapsedTimer calculationTimer;
     calculationTimer.start();
     ForceInteractionFrameStamp stamp;
@@ -227,31 +397,91 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     stamp.hostMonotonicTimeUs = feedback.monotonicUs;
     stamp.traceValid = true;
     stamp.valid = true;
-    const ForceInteractionWrenchSample sensorSample =
-            wrenchSource_.sample(stamp, elapsedS);
-    const WrenchTransformResult transformed =
-            wrenchTransformer_->toPlatformCenterOfMass(sensorSample);
-    if(!transformed.sample.valid){
-        output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-        output.reason = transformed.errorMessage.isEmpty() ?
-                    QStringLiteral("阶段B力旋量转换失败") : transformed.errorMessage;
-        return output;
+    ForceInteractionWrenchSample sensorSample;
+    ForceInteractionWrenchSample platformSample;
+    sensorSample.stamp = stamp;
+    platformSample.stamp = stamp;
+    CdprDynamicsStepResult dynamicsResult;
+    ForceInteractionPlatformState desired;
+    bool braking = status_.state == ForceInteractionRuntimeStatus::State::Braking;
+    if(!braking && config_.maximumTestDurationS > 0.0 &&
+            elapsedS > config_.maximumTestDurationS + 1.0e-12){
+        requestControlledStop(
+                    QStringLiteral("达到最长模拟调试时间"), false,
+                    ForceInteractionControlledStopCause::DurationReached);
+        braking = true;
     }
-    ForceInteractionWrenchSample platformSample = transformed.sample;
-    if(config_.translationOnly){
-        platformSample.wrench[3] = 0.0;
-        platformSample.wrench[4] = 0.0;
-        platformSample.wrench[5] = 0.0;
+
+    if(braking){
+        bool stopped = false;
+        QString brakingError;
+        desired = advanceBrakingState(stopped, &brakingError);
+        if(!brakingError.isEmpty()){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = brakingError;
+            return output;
+        }
+        if(stopped){
+            output.action = ForceInteractionRuntimeStep::Action::NormalStop;
+            output.reason = QStringLiteral("%1；末端速度已降至停车阈值")
+                    .arg(controlledStopReason_);
+            return output;
+        }
     }
-    const CdprDynamicsStepResult dynamicsResult =
-            dynamics_.step(platformSample, config_.periodUs / 1000000.0);
-    if(!dynamicsResult.valid){
-        output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-        output.reason = QStringLiteral("阶段B Newmark失败：%1")
-                .arg(dynamicsResult.errorMessage);
-        return output;
+    else{
+        sensorSample = wrenchSource_.sample(stamp, elapsedS);
+        const WrenchTransformResult transformed =
+                wrenchTransformer_->toPlatformCenterOfMass(sensorSample);
+        if(!transformed.sample.valid){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = transformed.errorMessage.isEmpty() ?
+                        QStringLiteral("阶段B力旋量转换失败") : transformed.errorMessage;
+            return output;
+        }
+        platformSample = transformed.sample;
+        if(config_.translationOnly){
+            platformSample.wrench[3] = 0.0;
+            platformSample.wrench[4] = 0.0;
+            platformSample.wrench[5] = 0.0;
+        }
+        dynamicsResult = dynamics_.step(platformSample,
+                                        config_.periodUs / 1000000.0);
+        if(!dynamicsResult.valid){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = QStringLiteral("阶段B Newmark失败：%1")
+                    .arg(dynamicsResult.errorMessage);
+            return output;
+        }
+        desired = dynamicsResult.state;
+        const double accelerationMmPerSec2 =
+                vectorNorm3(desired.acceleration) * 1000.0;
+        if(accelerationMmPerSec2 >
+                config_.workspaceSafety.stoppingDecelerationMmPerSec2){
+            requestControlledStop(
+                        QStringLiteral("末端响应加速度%1 mm/s²超过上限%2 mm/s²")
+                        .arg(accelerationMmPerSec2, 0, 'f', 6)
+                        .arg(config_.workspaceSafety.stoppingDecelerationMmPerSec2,
+                             0, 'f', 6),
+                        true,
+                        ForceInteractionControlledStopCause::AccelerationLimit);
+            braking = true;
+            bool stopped = false;
+            QString brakingError;
+            desired = advanceBrakingState(stopped, &brakingError);
+            if(!brakingError.isEmpty()){
+                output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+                output.reason = brakingError;
+                return output;
+            }
+            if(stopped){
+                output.action = ForceInteractionRuntimeStep::Action::NormalStop;
+                output.reason = QStringLiteral("%1；末端速度已降至停车阈值")
+                        .arg(controlledStopReason_);
+                return output;
+            }
+        }
     }
-    const ForceInteractionPlatformState desired = dynamicsResult.state;
+
     std::vector<double> poseMmRad(6, 0.0);
     for(int dim = 0; dim < 3; ++dim){
         poseMmRad[dim] = desired.pose[dim] * 1000.0;
@@ -259,12 +489,82 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     for(int dim = 3; dim < 6; ++dim){
         poseMmRad[dim] = desired.pose[dim];
     }
-    for(int dim = 0; dim < 6; ++dim){
-        if(!std::isfinite(poseMmRad[dim]) ||
-                poseMmRad[dim] < config_.poseLowerBoundsMmRad[dim] ||
-                poseMmRad[dim] > config_.poseUpperBoundsMmRad[dim]){
+    std::array<double, 6> desiredPoseArray{};
+    std::copy_n(poseMmRad.cbegin(), desiredPoseArray.size(),
+                desiredPoseArray.begin());
+    PhysicalWorkspaceMotionSample motionSample;
+    motionSample.poseMmRad = desiredPoseArray;
+    for(int dimension = 0; dimension < 3; ++dimension){
+        motionSample.twistMmRadPerSec[static_cast<size_t>(dimension)] =
+                desired.twist[static_cast<size_t>(dimension)] * 1000.0;
+        motionSample.accelerationMmRadPerSec2[static_cast<size_t>(dimension)] =
+                desired.acceleration[static_cast<size_t>(dimension)] * 1000.0;
+    }
+    for(int dimension = 3; dimension < 6; ++dimension){
+        motionSample.twistMmRadPerSec[static_cast<size_t>(dimension)] =
+                desired.twist[static_cast<size_t>(dimension)];
+        motionSample.accelerationMmRadPerSec2[static_cast<size_t>(dimension)] =
+                desired.acceleration[static_cast<size_t>(dimension)];
+    }
+    PhysicalWorkspaceBoundaryResult workspaceResult =
+            physicalBoundary_.evaluateMotion(motionSample,
+                                             config_.workspaceSafety);
+    if(workspaceResult.action == PhysicalWorkspaceAction::EmergencyStop ||
+            workspaceResult.action == PhysicalWorkspaceAction::Invalid){
+        output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+        output.reason = QStringLiteral("阶段B末端状态触发物理边界急停：%1")
+                .arg(workspaceResult.reason);
+        return output;
+    }
+    if(!braking && workspaceResult.action == PhysicalWorkspaceAction::ControlledStop){
+        requestControlledStop(
+                    workspaceResult.reason, true,
+                    ForceInteractionControlledStopCause::WorkspaceBoundary);
+        braking = true;
+        bool stopped = false;
+        QString brakingError;
+        desired = advanceBrakingState(stopped, &brakingError);
+        if(!brakingError.isEmpty()){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-            output.reason = QStringLiteral("阶段B期望末端位姿越界（维度%1）").arg(dim);
+            output.reason = brakingError;
+            return output;
+        }
+        if(stopped){
+            output.action = ForceInteractionRuntimeStep::Action::NormalStop;
+            output.reason = QStringLiteral("%1；末端速度已降至停车阈值")
+                    .arg(controlledStopReason_);
+            return output;
+        }
+        for(int dimension = 0; dimension < 3; ++dimension){
+            poseMmRad[static_cast<size_t>(dimension)] =
+                    desired.pose[static_cast<size_t>(dimension)] * 1000.0;
+        }
+        for(int dimension = 3; dimension < 6; ++dimension){
+            poseMmRad[static_cast<size_t>(dimension)] =
+                    desired.pose[static_cast<size_t>(dimension)];
+        }
+        std::copy_n(poseMmRad.cbegin(), desiredPoseArray.size(),
+                    desiredPoseArray.begin());
+        motionSample.poseMmRad = desiredPoseArray;
+        for(int dimension = 0; dimension < 3; ++dimension){
+            motionSample.twistMmRadPerSec[static_cast<size_t>(dimension)] =
+                    desired.twist[static_cast<size_t>(dimension)] * 1000.0;
+            motionSample.accelerationMmRadPerSec2[static_cast<size_t>(dimension)] =
+                    desired.acceleration[static_cast<size_t>(dimension)] * 1000.0;
+        }
+        for(int dimension = 3; dimension < 6; ++dimension){
+            motionSample.twistMmRadPerSec[static_cast<size_t>(dimension)] =
+                    desired.twist[static_cast<size_t>(dimension)];
+            motionSample.accelerationMmRadPerSec2[static_cast<size_t>(dimension)] =
+                    desired.acceleration[static_cast<size_t>(dimension)];
+        }
+        workspaceResult = physicalBoundary_.evaluateMotion(
+                    motionSample, config_.workspaceSafety);
+        if(workspaceResult.action == PhysicalWorkspaceAction::EmergencyStop ||
+                workspaceResult.action == PhysicalWorkspaceAction::Invalid){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = QStringLiteral("受控制动状态已到固定急停线：%1")
+                    .arg(workspaceResult.reason);
             return output;
         }
     }
@@ -338,13 +638,32 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     record.stepIndex = status_.stepCount + 1;
     record.elapsedS = elapsedS;
     record.stamp = stamp;
-    record.availabilityMask = ForceRecordSensorWrench |
-            ForceRecordPlatformWrench | ForceRecordDesiredState |
+    record.availabilityMask = ForceRecordDesiredState |
             ForceRecordCableKinematics | ForceRecordAxisReference |
             ForceRecordAxisCommand | ForceRecordAxisTrace | ForceRecordTiming;
+    if(!braking){
+        record.availabilityMask |= ForceRecordSensorWrench |
+                ForceRecordPlatformWrench;
+    }
     record.sensorWrench = sensorSample.wrench;
     record.platformWrench = platformSample.wrench;
     record.desiredState = desired;
+    record.interactionSegment = braking ? 1 : 0;
+    record.controlledStopCause = static_cast<int>(status_.controlledStopCause);
+    record.workspaceAction = static_cast<int>(workspaceResult.action);
+    record.workspaceMinimumClearanceMm = workspaceResult.minimumClearanceMm;
+    record.workspaceLimitingClearanceMm = workspaceResult.limitingClearanceMm;
+    record.workspaceOutwardSpeedMmPerSec =
+            workspaceResult.limitingOutwardSpeedMmPerSec;
+    record.workspaceOutwardAccelerationMmPerSec2 =
+            workspaceResult.limitingOutwardAccelerationMmPerSec2;
+    record.workspacePureStoppingDistanceMm =
+            workspaceResult.pureStoppingDistanceMm;
+    record.workspaceTriggerDistanceMm = workspaceResult.triggerDistanceMm;
+    record.workspaceLimitingPoint = workspaceResult.limitingPointIndex;
+    record.workspaceLimitingAxis = workspaceResult.limitingAxis;
+    record.workspaceLimitingUpperFace = workspaceResult.limitingUpperFace;
+    record.workspacePointGlobalMm = workspaceResult.platformPointsGlobalMm;
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         record.cableLengthMm[axis] = evaluation.cableLengthMm[axis];
         record.relativeMotorThetaRad[axis] = evaluation.relativeMotorThetaRad[axis];
@@ -371,6 +690,11 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     status_.maximumCalculationUs = std::max(status_.maximumCalculationUs,
                                              record.calculationDurationUs);
     status_.desiredState = desired;
+    status_.latestWorkspaceClearanceMm = workspaceResult.minimumClearanceMm;
+    status_.minimumWorkspaceClearanceMm = std::min(
+                status_.minimumWorkspaceClearanceMm,
+                workspaceResult.minimumClearanceMm);
+    status_.workspaceTriggerDistanceMm = workspaceResult.triggerDistanceMm;
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         status_.desiredCableLengthMm[axis] = evaluation.cableLengthMm[axis];
     }
@@ -438,14 +762,18 @@ void ForceInteractionRuntimeControl::finishRecording()
     }
     recorder_->requestFinish();
     recorder_->finishAndWait();
+    status_.acceptedRecordCount = recorder_->acceptedCount();
+    status_.writtenRecordCount = recorder_->writtenCount();
     status_.droppedRecordCount = recorder_->droppedCount();
+    status_.recordingError = recorder_->writerError();
     recorder_.reset();
 }
 
 bool ForceInteractionRuntimeControl::isActive() const
 {
     return status_.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
-            status_.state == ForceInteractionRuntimeStatus::State::Running;
+            status_.state == ForceInteractionRuntimeStatus::State::Running ||
+            status_.state == ForceInteractionRuntimeStatus::State::Braking;
 }
 
 bool ForceInteractionRuntimeControl::isPrepared() const

@@ -12,14 +12,14 @@ namespace {
 constexpr double kBarycenterForceMinN = 20.0;
 constexpr double kBarycenterForceMaxN = 997.0;
 constexpr double kTorqueServoVelocityLimitRpm = 600.01;
-constexpr double kG3ActualTorqueLimitNm = 60.0;
-constexpr double kLiteActualTorqueLimitNm = 40.0;
+constexpr double kAccActualTorqueLimitNm = 60.0;
+constexpr double kG302ActualTorqueLimitNm = 40.0;
 
 } // namespace
 
 const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind)
 {
-    static const MachineKinematicsProfile g3Profile{
+    static const MachineKinematicsProfile accProfile{
         "ACC",
         HardwareInterface::RuntimeTraceConfigType::ACC,
         12,
@@ -58,7 +58,7 @@ const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind
         10.0,
         10.0,
         997.0,
-        kG3ActualTorqueLimitNm,
+        kAccActualTorqueLimitNm,
         {2, 4, 6, 8},
         {0, 1, 5, 4, 6, 7, 11, 10, 2, 3, 8, 9},
         {1001, 1002, 1007, 1006, 1008, 1009, 1014, 1013, 1003, 1005, 1010, 1012},
@@ -86,7 +86,7 @@ const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind
         }
     };
 
-    static const MachineKinematicsProfile liteProfile{
+    static const MachineKinematicsProfile g302Profile{
         "G302",
         HardwareInterface::RuntimeTraceConfigType::G302,
         8,
@@ -99,7 +99,7 @@ const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind
         2800.0,
         2670.0,
         17.5,
-        -120.0,
+        -100.0,
         300.0,
         100.0,
         {{-500.0, -500.0, 400.0}},
@@ -125,7 +125,7 @@ const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind
         7.5,
         10.0,
         400.0,
-        kLiteActualTorqueLimitNm,
+        kG302ActualTorqueLimitNm,
         {2, 4, 6, 8},
         {4, 5, 7, 6, 0, 1, 3, 2},
         {1005, 1006, 1008, 1007, 1001, 1002, 1004, 1003},
@@ -150,12 +150,10 @@ const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind
             {1222.2815475284799, -1360.0457759840899, 2.3377208657031012},
             {-1354.5388896793299, -1220.15331356819, 1793.0807305997801},
             {-1223.91718422434, -1360.9214460245901, -2.4464367185963987}
-        },
-        {-2800.0, -2800.0, -100.0, -3.14, -3.14, -3.14},
-        {2800.0, 2800.0, 2670.0, 3.14, 3.14, 3.14}
+        }
     };
 
-    return kind == MachineProfileKind::G302 ? liteProfile : g3Profile;
+    return kind == MachineProfileKind::G302 ? g302Profile : accProfile;
 }
 
 MachineProfileKind currentMachineProfileKind(const Ui::MainWindow* ui)
@@ -168,6 +166,26 @@ MachineProfileKind currentMachineProfileKind(const Ui::MainWindow* ui)
 const MachineKinematicsProfile& currentMachineKinematicsProfile(const Ui::MainWindow* ui)
 {
     return machineKinematicsProfile(currentMachineProfileKind(ui));
+}
+
+PhysicalWorkspaceBoundaryConfig physicalWorkspaceBoundaryConfig(
+        const MachineKinematicsProfile& profile)
+{
+    PhysicalWorkspaceBoundaryConfig config;
+    config.frameMinimumMm = {{-profile.frameLengthMm * 0.5,
+                              -profile.frameWidthMm * 0.5,
+                              profile.workspaceZMinMm}};
+    config.frameMaximumMm = {{profile.frameLengthMm * 0.5,
+                              profile.frameWidthMm * 0.5,
+                              profile.frameHeightMm}};
+    config.platformPointsLocalMm.reserve(profile.cableEndPoints.size());
+    for(const CablePointProfile& point : profile.cableEndPoints){
+        config.platformPointsLocalMm.push_back({{point.x, point.y, point.z}});
+    }
+    // 当前两套模板尚无经过实机验收的全局姿态硬边界。几何边界始终启用；
+    // 姿态边界待参数确认后在同一配置中开启，不能借用遥控专用的小角度范围。
+    config.orientationBoundsEnabled = false;
+    return config;
 }
 
 void applyCablePointProfile(const std::vector<QDoubleSpinBox*>& xSpin,

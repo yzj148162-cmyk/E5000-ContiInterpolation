@@ -214,6 +214,25 @@ ForwardKinematicsSolver::Result ForwardKinematicsSolver::solve(const Request& re
         }
     }
     result.success = hasValidPose6(result.pose);
+    if(result.success && request.enforcePhysicalWorkspace){
+        PhysicalWorkspaceBoundary boundary;
+        QString boundaryError;
+        if(!boundary.configure(request.physicalWorkspace, &boundaryError)){
+            result.success = false;
+            result.failureReason = QStringLiteral("正运动学物理边界配置无效：%1")
+                    .arg(boundaryError);
+        }
+        else{
+            std::array<double, 6> pose{};
+            std::copy_n(result.pose.cbegin(), pose.size(), pose.begin());
+            result.workspaceResult = boundary.evaluatePose(pose);
+            if(result.workspaceResult.action != PhysicalWorkspaceAction::Safe){
+                result.success = false;
+                result.failureReason = QStringLiteral("正运动学结果不满足物理工作空间：%1")
+                        .arg(result.workspaceResult.reason);
+            }
+        }
+    }
     if(result.success){
         lastPose = result.pose;
     }

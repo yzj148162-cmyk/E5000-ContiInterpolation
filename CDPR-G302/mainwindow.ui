@@ -16830,12 +16830,58 @@ border-radius: 6px;</string>
                 </widget>
                </item>
                <item row="1" column="2"><widget class="QLabel" name="forceInteractionRuntimeTraceTimeoutTitleLabel"><property name="text"><string>Trace超时</string></property></widget></item>
-               <item row="1" column="3">
-                <widget class="QSpinBox" name="forceInteractionRuntimeTraceTimeoutSpinBox">
-                 <property name="suffix"><string> ms</string></property><property name="minimum"><number>10</number></property><property name="maximum"><number>5000</number></property><property name="value"><number>100</number></property>
-                </widget>
-               </item>
-              </layout>
+                <item row="1" column="3">
+                 <widget class="QSpinBox" name="forceInteractionRuntimeTraceTimeoutSpinBox">
+                  <property name="suffix"><string> ms</string></property><property name="minimum"><number>10</number></property><property name="maximum"><number>5000</number></property><property name="value"><number>100</number></property>
+                 </widget>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="forceInteractionRuntimeAccelerationLimitTitleLabel">
+                  <property name="toolTip"><string>末端平动加速度上限a，同时作为安全停车的末端减速度。正常力响应超过该值时，本次试验判为失败并进入协同减速。</string></property>
+                  <property name="text"><string>末端加速度a</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QDoubleSpinBox" name="forceInteractionRuntimeAccelerationLimitSpinBox">
+                  <property name="toolTip"><string>既是正常响应加速度上限，也是停车距离v²/(2a)和受控制动使用的减速度。</string></property>
+                  <property name="suffix"><string> mm/s²</string></property>
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>1.000000000000000</double></property>
+                  <property name="maximum"><double>100000.000000000000000</double></property>
+                  <property name="value"><double>500.000000000000000</double></property>
+                 </widget>
+                </item>
+                <item row="2" column="2">
+                 <widget class="QLabel" name="forceInteractionRuntimeSafetyMarginTitleLabel">
+                  <property name="toolTip"><string>在理论停车距离v²/(2a)之外增加的保守余量，不包含单独的延迟补偿项。</string></property>
+                  <property name="text"><string>附加安全余量</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="3">
+                 <widget class="QDoubleSpinBox" name="forceInteractionRuntimeSafetyMarginSpinBox">
+                  <property name="suffix"><string> mm</string></property>
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.001000000000000</double></property>
+                  <property name="maximum"><double>1000.000000000000000</double></property>
+                  <property name="value"><double>50.000000000000000</double></property>
+                 </widget>
+                </item>
+                <item row="3" column="0">
+                 <widget class="QLabel" name="forceInteractionRuntimeEmergencyMarginTitleLabel">
+                  <property name="toolTip"><string>距离物理硬边界的固定急停线；连接点进入该距离后立即急停。</string></property>
+                  <property name="text"><string>固定急停线</string></property>
+                 </widget>
+                </item>
+                <item row="3" column="1">
+                 <widget class="QDoubleSpinBox" name="forceInteractionRuntimeEmergencyMarginSpinBox">
+                  <property name="suffix"><string> mm</string></property>
+                  <property name="decimals"><number>3</number></property>
+                  <property name="minimum"><double>0.000000000000000</double></property>
+                  <property name="maximum"><double>999.000000000000000</double></property>
+                  <property name="value"><double>10.000000000000000</double></property>
+                 </widget>
+                </item>
+               </layout>
              </widget>
             </item>
             <item>

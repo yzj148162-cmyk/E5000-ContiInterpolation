@@ -59,6 +59,22 @@ struct ForceInteractionRunRecord
     bool poseBoundsViolation = false;
     bool roundTripToleranceViolation = false;
 
+    // 0=有效力交互，1=安全制动。边界动作取 PhysicalWorkspaceAction 的整数值。
+    int interactionSegment = 0;
+    int controlledStopCause = 0;
+    int workspaceAction = 0;
+    double workspaceMinimumClearanceMm = 0.0;
+    double workspaceLimitingClearanceMm = 0.0;
+    double workspaceOutwardSpeedMmPerSec = 0.0;
+    double workspaceOutwardAccelerationMmPerSec2 = 0.0;
+    double workspacePureStoppingDistanceMm = 0.0;
+    double workspaceTriggerDistanceMm = 0.0;
+    int workspaceLimitingPoint = -1;
+    int workspaceLimitingAxis = -1;
+    bool workspaceLimitingUpperFace = false;
+    std::array<std::array<double, 3>,
+               kForceInteractionCableCount> workspacePointGlobalMm{};
+
     std::array<double, kForceInteractionCableCount> axisReferencePosition{};
     std::array<double, kForceInteractionCableCount> axisReferenceVelocity{};
     std::array<double, kForceInteractionCableCount> axisPidCorrectionVelocity{};

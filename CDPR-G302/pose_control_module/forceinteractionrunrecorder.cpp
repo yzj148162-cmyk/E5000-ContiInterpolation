@@ -32,6 +32,26 @@ void writeGroupHeader(QTextStream& stream, const char* name, int count)
     }
 }
 
+void writeWorkspacePointHeader(QTextStream& stream)
+{
+    static const char* const axes[] = {"x", "y", "z"};
+    for(int point = 0; point < kForceInteractionCableCount; ++point){
+        for(const char* axis : axes){
+            stream << ",workspace_point_" << point << '_' << axis << "_mm";
+        }
+    }
+}
+
+void writeWorkspacePoints(
+        QTextStream& stream,
+        const std::array<std::array<double, 3>,
+                         kForceInteractionCableCount>& points)
+{
+    for(const auto& point : points){
+        writeArray(stream, point);
+    }
+}
+
 } // namespace
 
 ForceInteractionRunRecorder::ForceInteractionRunRecorder(QObject* parent)
@@ -194,7 +214,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v1\n"
+    stream << "# schema=force_interaction_run_v3\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -219,7 +239,12 @@ void ForceInteractionRunRecorder::run()
     writeGroupHeader(stream, "forward_pose_mm_rad", kForceInteractionDofCount);
     stream << ",translation_roundtrip_error_mm,orientation_roundtrip_error_deg,"
               "maximum_cable_residual_mm,newmark_iterations,newmark_residual,"
-              "pose_bounds_violation,roundtrip_tolerance_violation";
+              "pose_bounds_violation,roundtrip_tolerance_violation,"
+              "interaction_segment,controlled_stop_cause,workspace_action,workspace_minimum_clearance_mm,workspace_limiting_clearance_mm,"
+              "workspace_outward_speed_mm_s,workspace_outward_acceleration_mm_s2,"
+              "workspace_pure_stopping_distance_mm,workspace_trigger_distance_mm,"
+              "workspace_limiting_point,workspace_limiting_axis,workspace_limiting_upper_face";
+    writeWorkspacePointHeader(stream);
     writeGroupHeader(stream, "axis_reference_position", kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_reference_velocity", kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_pid_correction_velocity", kForceInteractionCableCount);
@@ -267,7 +292,20 @@ void ForceInteractionRunRecorder::run()
                    << ',' << record.newmarkIterations
                    << ',' << record.newmarkResidual
                    << ',' << (record.poseBoundsViolation ? 1 : 0)
-                   << ',' << (record.roundTripToleranceViolation ? 1 : 0);
+                   << ',' << (record.roundTripToleranceViolation ? 1 : 0)
+                   << ',' << record.interactionSegment
+                   << ',' << record.controlledStopCause
+                   << ',' << record.workspaceAction
+                   << ',' << record.workspaceMinimumClearanceMm
+                   << ',' << record.workspaceLimitingClearanceMm
+                   << ',' << record.workspaceOutwardSpeedMmPerSec
+                   << ',' << record.workspaceOutwardAccelerationMmPerSec2
+                   << ',' << record.workspacePureStoppingDistanceMm
+                   << ',' << record.workspaceTriggerDistanceMm
+                   << ',' << record.workspaceLimitingPoint
+                   << ',' << record.workspaceLimitingAxis
+                   << ',' << (record.workspaceLimitingUpperFace ? 1 : 0);
+            writeWorkspacePoints(stream, record.workspacePointGlobalMm);
             writeArray(stream, record.axisReferencePosition);
             writeArray(stream, record.axisReferenceVelocity);
             writeArray(stream, record.axisPidCorrectionVelocity);

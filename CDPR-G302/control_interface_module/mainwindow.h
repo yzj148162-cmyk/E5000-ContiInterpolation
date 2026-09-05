@@ -2733,6 +2733,10 @@ private:
     void triggerInjectedPlcCommunicationFault();
     // 从 UI 构建工作空间边界。
     bool buildSafetyWorkspaceBounds(WorkspaceBounds& bounds, QString* errorMessage = nullptr) const;
+    // 从当前机器模板及结构参数构建唯一物理边界；阶段A/B和正运动学共用。
+    bool buildPhysicalWorkspaceBoundaryConfig(
+            PhysicalWorkspaceBoundaryConfig& config,
+            QString* errorMessage = nullptr) const;
     // 读取当前实际末端位姿。
     bool currentActualEndPose(std::vector<double>& pose, int maxAgeMs = 500) const;
     // 校验单个位姿是否在工作空间内。

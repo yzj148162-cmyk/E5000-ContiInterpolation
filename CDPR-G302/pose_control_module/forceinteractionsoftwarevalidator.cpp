@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 
@@ -37,6 +38,67 @@ CompensatedCableKinematics::PoseMatrix toPoseMmRad(
 bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
                        QString* errorMessage)
 {
+    PhysicalWorkspaceBoundary boundary;
+    QString boundaryError;
+    if(!boundary.configure(configuration.physicalWorkspace, &boundaryError)){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("统一物理工作空间配置自检失败：%1")
+                    .arg(boundaryError);
+        }
+        return false;
+    }
+    std::array<double, 6> centerPose{};
+    for(int axis = 0; axis < 3; ++axis){
+        centerPose[axis] = 0.5 *
+                (configuration.physicalWorkspace.frameMinimumMm[axis] +
+                 configuration.physicalWorkspace.frameMaximumMm[axis]);
+    }
+    const PhysicalWorkspaceBoundaryResult centerResult =
+            boundary.evaluatePose(centerPose);
+    if(centerResult.action != PhysicalWorkspaceAction::Safe){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("机架中心位姿未通过八连接点物理边界自检：%1")
+                    .arg(centerResult.reason);
+        }
+        return false;
+    }
+    double maximumLocalX = -std::numeric_limits<double>::infinity();
+    for(const auto& point : configuration.physicalWorkspace.platformPointsLocalMm){
+        maximumLocalX = std::max(maximumLocalX, point[0]);
+    }
+    std::array<double, 6> outsidePose = centerPose;
+    outsidePose[0] = configuration.physicalWorkspace.frameMaximumMm[0] -
+            maximumLocalX + 0.001;
+    const PhysicalWorkspaceBoundaryResult outsideResult =
+            boundary.evaluatePose(outsidePose);
+    if(outsideResult.action != PhysicalWorkspaceAction::EmergencyStop ||
+            outsideResult.physicallyInside){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("连接点越过机架X上边界的自检未能检出");
+        }
+        return false;
+    }
+    PhysicalWorkspaceMotionSample brakingSample;
+    brakingSample.poseMmRad = centerPose;
+    brakingSample.poseMmRad[0] =
+            configuration.physicalWorkspace.frameMaximumMm[0] - maximumLocalX - 100.0;
+    brakingSample.twistMmRadPerSec[0] = 100.0;
+    DynamicWorkspaceSafetyConfig safety;
+    safety.stoppingDecelerationMmPerSec2 = 100.0;
+    safety.additionalSafetyMarginMm = 60.0;
+    safety.emergencyLineMarginMm = 10.0;
+    const PhysicalWorkspaceBoundaryResult brakingResult =
+            boundary.evaluateMotion(brakingSample, safety);
+    if(brakingResult.action != PhysicalWorkspaceAction::ControlledStop ||
+            std::abs(brakingResult.pureStoppingDistanceMm - 50.0) > 1.0e-9 ||
+            std::abs(brakingResult.triggerDistanceMm - 110.0) > 1.0e-9){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("动态停车距离自检失败：%1")
+                    .arg(brakingResult.reason);
+        }
+        return false;
+    }
+
     // 自检和正式仿真必须使用同一份冻结安装参数，避免出现“自检使用实测
     // 力臂、正式循环却把模拟量直接当作质心力旋量”的双重语义。
     WrenchTransformer transformer(configuration.sensorTransform);
@@ -226,6 +288,23 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
     const int stepCount = std::max(1, static_cast<int>(
             std::ceil(configuration.durationS / configuration.controlPeriodS)));
     CompensatedCableKinematics::State kinematicsState = kinematics.initialState();
+    PhysicalWorkspaceBoundary physicalBoundary;
+    if(!physicalBoundary.configure(configuration.physicalWorkspace, &error)){
+        result.summary = failureSummary(QStringLiteral("物理工作空间配置"), error);
+        return result;
+    }
+    std::array<double, 6> initialPoseArray{};
+    std::copy_n(configuration.initialPoseMmRad.front().cbegin(),
+                initialPoseArray.size(), initialPoseArray.begin());
+    const PhysicalWorkspaceBoundaryResult initialWorkspace =
+            physicalBoundary.evaluatePose(initialPoseArray);
+    if(initialWorkspace.action != PhysicalWorkspaceAction::Safe){
+        result.summary = failureSummary(
+                    QStringLiteral("初始位姿物理边界"),
+                    QStringLiteral("%1；必须先调整程序控制起点，不能带着非法初态开始仿真")
+                    .arg(initialWorkspace.reason));
+        return result;
+    }
     ForwardKinematicsSolver forwardSolver;
     forwardSolver.setInitialPose(configuration.initialPoseMmRad.front());
     WrenchTransformer wrenchTransformer(configuration.sensorTransform);
@@ -325,18 +404,13 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                     result.maximumNewmarkResidual, dynamicsStep.residual);
 
         const auto poseMmRad = toPoseMmRad(dynamicsStep.state);
-        bool poseOutsideBounds = false;
-        if(configuration.poseLowerBoundsMmRad.size() >= 6 &&
-                configuration.poseUpperBoundsMmRad.size() >= 6){
-            for(int dimension = 0; dimension < 6; ++dimension){
-                const double value = poseMmRad[0][static_cast<size_t>(dimension)];
-                if(value < configuration.poseLowerBoundsMmRad[static_cast<size_t>(dimension)] ||
-                        value > configuration.poseUpperBoundsMmRad[static_cast<size_t>(dimension)]){
-                    poseOutsideBounds = true;
-                    break;
-                }
-            }
-        }
+        std::array<double, 6> desiredPoseArray{};
+        std::copy_n(poseMmRad.front().cbegin(), desiredPoseArray.size(),
+                    desiredPoseArray.begin());
+        const PhysicalWorkspaceBoundaryResult desiredWorkspace =
+                physicalBoundary.evaluatePose(desiredPoseArray);
+        const bool poseOutsideBounds =
+                desiredWorkspace.action != PhysicalWorkspaceAction::Safe;
         if(poseOutsideBounds && result.firstPoseBoundsViolationStep == 0){
             result.firstPoseBoundsViolationStep = stepIndex;
             result.firstPoseBoundsViolationState = dynamicsStep.state;
@@ -367,15 +441,23 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
             request.cableLength = evaluation.cableLengthMm;
             request.pulleyRadius = configuration.kinematics.pulleyRadiusMm;
             request.initialPose = forwardSolver.initialPose();
-            request.poseLowerBounds = configuration.poseLowerBoundsMmRad;
-            request.poseUpperBounds = configuration.poseUpperBoundsMmRad;
+            const auto solverLower = physicalBoundary.solverLowerBounds();
+            const auto solverUpper = physicalBoundary.solverUpperBounds();
+            request.poseLowerBounds.assign(solverLower.begin(), solverLower.end());
+            request.poseUpperBounds.assign(solverUpper.begin(), solverUpper.end());
             request.keepRotation = true;
+            request.enforcePhysicalWorkspace = true;
+            request.physicalWorkspace = configuration.physicalWorkspace;
             const ForwardKinematicsSolver::Result forward =
                     forwardSolver.solve(request);
             if(!forward.success || forward.pose.size() < 6){
                 result.summary = failureSummary(
                             QStringLiteral("正运动学"),
-                            QStringLiteral("第%1步未收敛到有限六维位姿").arg(stepIndex));
+                            QStringLiteral("第%1步求解失败：%2")
+                            .arg(stepIndex)
+                            .arg(forward.failureReason.isEmpty() ?
+                                 QStringLiteral("未收敛到物理工作空间内的有限六维位姿") :
+                                 forward.failureReason));
                 finishRecording();
                 appendRecordingSummary();
                 return result;
@@ -455,6 +537,21 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                     translationError > translationToleranceMm ||
                     orientationErrorDeg > orientationToleranceDeg ||
                     stepMaximumCableResidualMm > cableResidualToleranceMm;
+            record.interactionSegment = 0;
+            record.workspaceAction = static_cast<int>(desiredWorkspace.action);
+            record.workspaceMinimumClearanceMm = desiredWorkspace.minimumClearanceMm;
+            record.workspaceLimitingClearanceMm = desiredWorkspace.limitingClearanceMm;
+            record.workspaceOutwardSpeedMmPerSec =
+                    desiredWorkspace.limitingOutwardSpeedMmPerSec;
+            record.workspaceOutwardAccelerationMmPerSec2 =
+                    desiredWorkspace.limitingOutwardAccelerationMmPerSec2;
+            record.workspacePureStoppingDistanceMm =
+                    desiredWorkspace.pureStoppingDistanceMm;
+            record.workspaceTriggerDistanceMm = desiredWorkspace.triggerDistanceMm;
+            record.workspaceLimitingPoint = desiredWorkspace.limitingPointIndex;
+            record.workspaceLimitingAxis = desiredWorkspace.limitingAxis;
+            record.workspaceLimitingUpperFace = desiredWorkspace.limitingUpperFace;
+            record.workspacePointGlobalMm = desiredWorkspace.platformPointsGlobalMm;
             record.calculationDurationUs = stepTimer.nsecsElapsed() / 1000;
             record.fullCycleDurationUs = record.calculationDurationUs;
             recorder.tryAppend(record);
@@ -485,7 +582,7 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                 "数学步=%17，逐步运动学往返校验=%18（每步一次）\n"
                 "Newmark最大迭代/残差=%19/%20\n"
                 "运动学往返最大误差：平移=%21 mm（第%22步），姿态=%23 deg（第%24步），绳长残差=%25 mm（第%26步）\n"
-                "首次越出G302正运动学边界：%27\n"
+                "首次越出G302物理工作空间：%27\n"
                 "首次往返误差超限：%28\n"
                 "最大相对电机角=%29 rad\n"
                 "末态位姿(SI)=[%30, %31, %32 m, %33, %34, %35 rad]\n"
@@ -588,24 +685,16 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                 .arg(configuration.wrenchProfile.expressions[4])
                 .arg(configuration.wrenchProfile.expressions[5]);
     }
-    if(configuration.poseLowerBoundsMmRad.size() >= 6 &&
-            configuration.poseUpperBoundsMmRad.size() >= 6){
-        result.summary += QStringLiteral(
-                    "\nLite正运动学边界：下界=[%1, %2, %3 mm, %4, %5, %6 rad]，"
-                    "上界=[%7, %8, %9 mm, %10, %11, %12 rad]")
-                .arg(configuration.poseLowerBoundsMmRad[0], 0, 'g', 8)
-                .arg(configuration.poseLowerBoundsMmRad[1], 0, 'g', 8)
-                .arg(configuration.poseLowerBoundsMmRad[2], 0, 'g', 8)
-                .arg(configuration.poseLowerBoundsMmRad[3], 0, 'g', 8)
-                .arg(configuration.poseLowerBoundsMmRad[4], 0, 'g', 8)
-                .arg(configuration.poseLowerBoundsMmRad[5], 0, 'g', 8)
-                .arg(configuration.poseUpperBoundsMmRad[0], 0, 'g', 8)
-                .arg(configuration.poseUpperBoundsMmRad[1], 0, 'g', 8)
-                .arg(configuration.poseUpperBoundsMmRad[2], 0, 'g', 8)
-                .arg(configuration.poseUpperBoundsMmRad[3], 0, 'g', 8)
-                .arg(configuration.poseUpperBoundsMmRad[4], 0, 'g', 8)
-                .arg(configuration.poseUpperBoundsMmRad[5], 0, 'g', 8);
-    }
+    result.summary += QStringLiteral(
+                "\nG302统一物理机架边界：X[%1, %2] mm，Y[%3, %4] mm，Z[%5, %6] mm；"
+                "逐步检查全部%7个动平台局部几何点")
+            .arg(configuration.physicalWorkspace.frameMinimumMm[0], 0, 'g', 8)
+            .arg(configuration.physicalWorkspace.frameMaximumMm[0], 0, 'g', 8)
+            .arg(configuration.physicalWorkspace.frameMinimumMm[1], 0, 'g', 8)
+            .arg(configuration.physicalWorkspace.frameMaximumMm[1], 0, 'g', 8)
+            .arg(configuration.physicalWorkspace.frameMinimumMm[2], 0, 'g', 8)
+            .arg(configuration.physicalWorkspace.frameMaximumMm[2], 0, 'g', 8)
+            .arg(configuration.physicalWorkspace.platformPointsLocalMm.size());
     appendRecordingSummary();
     return result;
 }
