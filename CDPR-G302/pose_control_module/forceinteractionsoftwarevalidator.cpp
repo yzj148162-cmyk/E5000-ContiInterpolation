@@ -186,7 +186,7 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
             configuration.machineTemplateName.trimmed().isEmpty() ||
             !configuration.sensorTransform.configured){
         result.summary = failureSummary(QStringLiteral("输入校验"),
-                                        QStringLiteral("Lite模板、F/T安装参数、周期、时长或单末端初始位姿无效"));
+                                        QStringLiteral("G302模板、F/T安装参数、周期、时长或单末端初始位姿无效"));
         return result;
     }
 
@@ -477,7 +477,7 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
             result.writtenRecords == static_cast<quint64>(result.completedSteps);
     result.summary = QStringLiteral(
                 "阶段A软件验证%1\n"
-                "模板：%2（阶段A仅允许Lite）\n"
+                "模板：%2（阶段A仅允许G302）\n"
                 "输入：%3；周期=%4 ms，时长=%5 s；仅平动=%6\n"
                 "F/T安装：r_ES=[%7, %8, %9] m，R_ES=I；模拟量先按传感器原始力旋量转换到质心\n"
                 "初始位姿(SI)=[%10, %11, %12 m, %13, %14, %15 rad]\n"
@@ -485,7 +485,7 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
                 "数学步=%17，逐步运动学往返校验=%18（每步一次）\n"
                 "Newmark最大迭代/残差=%19/%20\n"
                 "运动学往返最大误差：平移=%21 mm（第%22步），姿态=%23 deg（第%24步），绳长残差=%25 mm（第%26步）\n"
-                "首次越出Lite正运动学边界：%27\n"
+                "首次越出G302正运动学边界：%27\n"
                 "首次往返误差超限：%28\n"
                 "最大相对电机角=%29 rad\n"
                 "末态位姿(SI)=[%30, %31, %32 m, %33, %34, %35 rad]\n"

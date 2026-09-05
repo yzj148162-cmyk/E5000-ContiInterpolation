@@ -254,11 +254,11 @@ public:
     };
 
     enum class RuntimeTraceConfigType {
-        G3 = 0,
-        Lite
+        ACC = 0,
+        G302
     };
 
-    // Runtime Trace的使用语义与G3/Lite硬件布局正交。显式状态用于约束
+    // Runtime Trace的使用语义与ACC/G302硬件布局正交。显式状态用于约束
     // 末端遥控专用解析和命令授权，避免由多个布尔开关推断当前用途。
     enum class RuntimeTraceUsageProfile {
         Base = 0,
@@ -276,7 +276,7 @@ public:
         PositionFallback
     };
 
-    // Lite EtherCAT topology used by Runtime Trace.  The temporary seven-axis
+    // G302 EtherCAT topology used by Runtime Trace.  The temporary seven-axis
     // layout omits hardware axis 7 (the former slave 1008), so the force
     // transmitter moves from slave 1009 to slave 1008.  Keep the standard
     // eight-axis layout available for restoring the complete machine later.
@@ -563,13 +563,13 @@ public:
     bool clearAllLeadshineAxisErrorCodes();
     // 查询当前雷赛硬件是否连接。
     bool isLSConnected() const;
-    // 锁存 Lite 会话临时零点：优先选 Trace feedback，否则选 command；
+    // 锁存 G302 会话临时零点：优先选 Trace feedback，否则选 command；
     // 输出实际锁存的通道和原始脉冲，后续安全位置只允许同通道作差。
     bool setMotorHomeForAxis(int logicalIndex,
                              double homeValue,
                              bool* usesFeedback = nullptr,
                              qint64* rawPulse = nullptr);
-    // 原子锁存多个 Lite 轴的 motorHome 和会话安全零点；安全原始位置来自同一帧新鲜 Trace。
+    // 原子锁存多个 G302 轴的 motorHome 和会话安全零点；安全原始位置来自同一帧新鲜 Trace。
     // 请求 commandRawPulse 输出时，每轴 command 也成为必要字段并从该帧一并返回。
     // 任一轴无效时不提交任何轴，避免整机基准只更新一部分。
     bool setMotorHomesForAxes(const std::vector<int>& logicalIndices,
@@ -665,7 +665,7 @@ public:
     bool readMotorRelativeCurPos(int index, double& relativePosition);
     // 读取指定轴以软件安全零位为基准的位置。
     bool readMotorSafetyRelativeCurPos(int index, double& relativePosition);
-    // 只读取指定逻辑轴的当前速度，避免 Lite 单轴调试轮询其他轴。
+    // 只读取指定逻辑轴的当前速度，避免 G302 单轴调试轮询其他轴。
     bool readMotorCurrentSpeedUnit(int index, double& velocity);
     // 只返回指定逻辑轴的新鲜 Trace 实际转矩缓存；保留电机坐标正负号，不做绳索方向换算。
     bool readMotorTorqueNmTraceCached(int index, double& torqueNm);
@@ -792,7 +792,7 @@ public:
     RuntimeTraceUsageProfile runtimeTraceUsageProfile() const;
     void setLiteRuntimeTraceTopology(LiteRuntimeTraceTopology topology);
     LiteRuntimeTraceTopology liteRuntimeTraceTopology() const;
-    // Restrict runtime Trace feedback to one motor/sensor during Lite
+    // Restrict runtime Trace feedback to one motor/sensor during G302
     // commissioning so absent axes are never polled as a side effect.
     void setRuntimeTraceCommissioningSelection(int logicalAxis, int sensorIndex);
     void clearRuntimeTraceCommissioningSelection();
@@ -952,7 +952,7 @@ private:
     std::vector<double> motorHomePos;
     std::vector<qint64> motorSafetyHomeTraceCommandRawPulse;
     std::vector<double> motorSafetyHomeEncoderUnit;
-    // Lite 单轴会话的 Trace 临时零点。零点锁存后必须始终使用同一
+    // G302 单轴会话的 Trace 临时零点。零点锁存后必须始终使用同一
     // Trace 通道作差；valid 独立保存，原始脉冲恰好为 0 仍是合法零点。
     std::vector<qint64> motorSessionSafetyHomeTraceRawPulse;
     std::vector<bool> motorSessionSafetyHomeTraceValid;
@@ -982,7 +982,7 @@ private:
     std::vector<bool> forceSensorCacheValid;
     std::vector<qint64> forceSensorTraceValueMonotonicUs;
     int nextForceSensorPollIndex = 0;
-    RuntimeTraceConfigType activeRuntimeTraceConfigType = RuntimeTraceConfigType::G3;
+    RuntimeTraceConfigType activeRuntimeTraceConfigType = RuntimeTraceConfigType::ACC;
     RuntimeTraceUsageProfile activeRuntimeTraceUsageProfile =
             RuntimeTraceUsageProfile::Base;
     quint64 runtimeTraceUsageProfileGeneration = 1;

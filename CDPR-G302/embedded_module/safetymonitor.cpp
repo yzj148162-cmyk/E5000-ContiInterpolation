@@ -545,7 +545,7 @@ void SafetyMonitor::evaluateSafety()
 
     // isLSConnected() only represents whether the software once opened the card.
     // The complete-machine path therefore queries the master independently.
-    // Lite commissioning uses the continuously refreshed Trace timestamps below,
+    // G302 commissioning uses the continuously refreshed Trace timestamps below,
     // because a synchronous master query would block its shared HardwareThread.
     if(!cfg.commissioningMode &&
             (lastControllerCommunicationCheckMs < 0 ||
@@ -635,7 +635,7 @@ void SafetyMonitor::evaluateSafety()
     if(cfg.commissioningMode &&
             !cfg.commissioningHardwareCommandActive &&
             !cfg.commissioningControlSnapshotStartupActive){
-        // Lite 单轴调试的 ControlWorker 和所有雷赛调用共用 HardwareThread。
+        // G302 单轴调试的 ControlWorker 和所有雷赛调用共用 HardwareThread。
         // nmc_get_master_state 等同步诊断可能占用该线程约 1 s，若由安全
         // 线程高频插入，会反过来阻塞 Trace 并制造“控制快照超时”。这里
         // 使用控制快照随同携带的 Trace 帧时间戳检查总线反馈新鲜度。
@@ -659,8 +659,8 @@ void SafetyMonitor::evaluateSafety()
                 nowMs - commissioningTraceValidationStartMs > traceFreshTimeoutMs){
             triggerFault(StopLevel::EmergencyStop,
                          FaultCode::HardwareDisconnected,
-                         QStringLiteral("Lite Runtime Trace反馈超时"),
-                         QStringLiteral("Lite单轴安全监控检测到控制线程仍在运行，但最近Runtime Trace硬件帧已超过%1 ms未更新"
+                         QStringLiteral("G302 Runtime Trace反馈超时"),
+                         QStringLiteral("G302单轴安全监控检测到控制线程仍在运行，但最近Runtime Trace硬件帧已超过%1 ms未更新"
                                         "（帧年龄=%2 ms，快照序号=%3），已请求当前调试轴急停。")
                              .arg(traceFreshTimeoutMs)
                              .arg(traceFrameAgeMs == std::numeric_limits<qint64>::max() ?
@@ -688,7 +688,7 @@ void SafetyMonitor::evaluateSafety()
                     triggerFault(StopLevel::EmergencyStop,
                                  FaultCode::SensorInvalid,
                                  QStringLiteral("目标张力传感器反馈超时"),
-                                 QStringLiteral("Lite单轴力控使用的张力传感器通道%1已超过%2 ms没有新鲜Trace数据，已执行当前轴急停。")
+                                 QStringLiteral("G302单轴力控使用的张力传感器通道%1已超过%2 ms没有新鲜Trace数据，已执行当前轴急停。")
                                      .arg(axis.sensorIndex + 1)
                                      .arg(kCommissioningForceSensorTraceFreshTimeoutUs / 1000));
                     return;

@@ -244,13 +244,13 @@ public:
         bool endpointRemoteControlRunning = false;
         EndpointRemoteTracePhase endpointRemoteTracePhase =
                 EndpointRemoteTracePhase::Inactive;
-        // 原始电机坐标实际力矩；Lite 中正=放绳、负=收绳。
+        // 原始电机坐标实际力矩；G302 中正=放绳、负=收绳。
         std::vector<double> motorTorqueNm;
         // 已完成绳索方向映射、准备下发的原始电机坐标力矩命令。
         std::vector<double> motorCommand;
         std::vector<double> forceSensorValue;
         std::vector<double> expectedForce;
-        // 最近一次 Runtime Trace 硬件帧元数据。SafetyMonitor 在 Lite
+        // 最近一次 Runtime Trace 硬件帧元数据。SafetyMonitor 在 G302
         // 单轴模式下用它判断现场总线反馈是否新鲜，避免额外诊断 API
         // 阻塞同一个 HardwareThread。
         qint64 runtimeTraceFrameWallClockUs = 0;

@@ -216,10 +216,10 @@ private:
         bool hardwareExclusiveCommandActive = false;
         int hardwareExclusiveCommandDepth = 0;
         int hardwareExclusiveSnapshotTimeoutMs = 0;
-        // 仅标记 Lite 单轴调试页面主动发起的硬件调用；用于临时放宽该
-        // 路径的看门狗阈值，不影响 G3、Lite 完整启动或其他运行路径。
+        // 仅标记 G302 单轴调试页面主动发起的硬件调用；用于临时放宽该
+        // 路径的看门狗阈值，不影响 ACC、G302 完整启动或其他运行路径。
         bool liteCommissioningHardwareCommandActive = false;
-        // Lite 首次使能后，ControlWorker 在线程启动到首帧快照之间允许
+        // G302 首次使能后，ControlWorker 在线程启动到首帧快照之间允许
         // 一个有界启动窗口；首帧到达后立即恢复正常快照超时判据。
         bool liteCommissioningControlStartupActive = false;
         quint64 liteCommissioningControlStartupSequence = 0;
@@ -414,13 +414,13 @@ private:
     void setupLiteCommissioningTab();
     void updateLiteCommissioningTabAvailability();
     bool isLiteTemplateActive() const;
-    // Lite 位置模式 UI 直接使用程序内部平台坐标；G3 保留原 15° Rx 偏置。
+    // G302 位置模式 UI 直接使用程序内部平台坐标；ACC 保留原 15° Rx 偏置。
     double positionModeUiRxOffsetRad() const;
     HardwareInterface::LiteRuntimeTraceTopology selectedLiteRuntimeTraceTopology() const;
     bool liteCommissioningAxisAvailableInSelectedTopology(int axisIndex) const;
     int selectedLiteCommissioningAxis() const;
     void populateLiteCommissioningAxisOptions();
-    // 在 HardwareThread 执行 Lite 调试硬件调用；GUI等待期间周期喂狗。
+    // 在 HardwareThread 执行 G302 调试硬件调用；GUI等待期间周期喂狗。
     void runLiteCommissioningHardwareCommand(
             const std::function<void()>& work,
             const QString& operationName = QString());
@@ -1065,7 +1065,7 @@ private:
     qint64 lastForwardKinematicsPoseTimestampMs = -1;
     bool lastForwardKinematicsPoseLoadedFromSnapshot = false;
     bool currentRuntimeMotorHomeReferenceLoaded = false;
-    // 当前连接实际使用的命令零位；Lite 中固定为完整启动时的上电位置。
+    // 当前连接实际使用的命令零位；G302 中固定为完整启动时的上电位置。
     std::vector<double> currentRuntimeMotorHomePos;
     std::vector<double> currentRuntimeMotorHomeEncoderPos;
     // 外部已知位姿确认瞬间的电机位置，与上面的固定命令零位分开保存。
@@ -1739,7 +1739,7 @@ private:
     double convertMotorFeedbackToCableValue(int axisIndex, double rawValue) const;
     // 返回轴到绳索角度的比例。
     double motorCableAngleScale(int axisIndex) const;
-    // 返回电机硬件方向符号；绳索轴会合并当前机型方向（Lite 相对 G3 反向）。
+    // 返回电机硬件方向符号；绳索轴会合并当前机型方向（G302 相对 ACC 反向）。
     double motorHardwareDirectionSign(int axisIndex) const;
     // 将电机反馈单位增量转换为转数。
     double motorFeedbackUnitDeltaToRevolutions(int axisIndex, double unitDelta) const;
@@ -1888,9 +1888,9 @@ private:
     bool hasReportErr = false;
     // 末端数量变化后刷新对应 UI 和参数数组。
     void endChange(int areaNum);
-    // 将 G3 模板的绳索接点和出绳点几何写入 UI。
+    // 将 ACC 模板的绳索接点和出绳点几何写入 UI。
     void applyG3TemplateGeometry();
-    // 将 Lite 模板的绳索接点和出绳点几何写入 UI。
+    // 将 G302 模板的绳索接点和出绳点几何写入 UI。
     void applyLiteTemplateGeometry();
     // 刷新运行期轴数量和力传感器数量缓存。
     void refreshAxisRuntimeCounts();
@@ -1959,7 +1959,7 @@ private:
     // 连接硬件后自动应用保存的零位参考。
     bool applySavedZeroMotorHomeSnapshotOnConnect(bool announce = false);
     // 启动/重连后使用当前上电读取的电机位置作为本次临时零位。
-    // Lite 同时以同一时刻的 8 轴 Trace 建立仅本次连接有效的安全相对位置基准。
+    // G302 同时以同一时刻的 8 轴 Trace 建立仅本次连接有效的安全相对位置基准。
     bool applyStartupMotorHomeReference();
     bool latchLiteFullSystemSessionSafetyReference(
             const std::vector<double>& motorHome,
@@ -1976,7 +1976,7 @@ private:
     bool confirmZeroCalibrationWorkflow();
     // 用当前电机位置确认已知运行位姿。
     bool confirmKnownRuntimePoseFromCurrentMotorPosition(bool keepForceControlThreadRunning = false);
-    // Lite 专用：更新动捕后，将当前静止预紧状态确认为绞盘轴向零位、motorHome 和安全行程基准。
+    // G302 专用：更新动捕后，将当前静止预紧状态确认为绞盘轴向零位、motorHome 和安全行程基准。
     void requestLiteWinchReferenceConfirmation();
     bool finalizeLiteWinchReferenceConfirmation(
             const std::vector<std::vector<double>>& rigidPose);
@@ -2397,7 +2397,7 @@ private:
     int selectedSingleMotorIndex() const;
     // 初始化直线模组高度控制 UI。
     void initializeLinearModuleHeightUi();
-    // 判断当前模板是否启用直线模组高度模块；G3始终保留，Lite由模板开关控制。
+    // 判断当前模板是否启用直线模组高度模块；ACC始终保留，G302由模板开关控制。
     bool linearModuleHeightModuleEnabled() const;
     // 返回配置为直线模组的轴索引。
     std::vector<int> configuredLinearModuleAxisIndices() const;
@@ -2534,9 +2534,9 @@ private:
 
     // 参数变化后联动刷新 UI、硬件配置和缓存。
     void paraChange();
-    // 将 G3 模板的默认参数写入 UI。
+    // 将 ACC 模板的默认参数写入 UI。
     void applyG3TemplateParameters();
-    // 将 Lite 模板的默认参数写入 UI。
+    // 将 G302 模板的默认参数写入 UI。
     void applyLiteTemplateParameters();
     // 将 UI 参数写入内部缓存和硬件接口。
     void updatePara();
@@ -3114,7 +3114,7 @@ private:
     int axisForceSensorNum = 0;
     QStringList messageHistoryEntries;
     QStringList pendingUiEventLogLines;
-    // Lite 普通调试事件只在主线程入队，由现有 250 ms 日志定时器批量追加。
+    // G302 普通调试事件只在主线程入队，由现有 250 ms 日志定时器批量追加。
     // 不得在按钮回调中复用完整故障快照或同步重写结构化故障文件。
     QStringList pendingLiteCommissioningEventLogLines;
     // 启动自检属于运行审计而非 SafetyMonitor 故障；无论通过或失败都只

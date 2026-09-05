@@ -308,7 +308,7 @@ public:
                                                 QString& errorMessage);
 
     // 读取外部位姿轨迹文件，并解析分段标记、时间戳和首末端起点。
-    // 分段位姿文件的起终点按位置模式 UI 坐标解释；Lite 传 0，G3 传既有 15° Rx 偏置。
+    // 分段位姿文件的起终点按位置模式 UI 坐标解释；G302 传 0，ACC 传既有 15° Rx 偏置。
     static bool loadPoseFile(const QString& path,
                              int expectedEndNum,
                              double positionModeUiRxOffsetRad,

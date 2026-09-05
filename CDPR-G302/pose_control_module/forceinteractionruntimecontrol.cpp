@@ -30,8 +30,8 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
         }
         return false;
     };
-    if(machineTemplateName.compare(QStringLiteral("Lite"), Qt::CaseInsensitive) != 0){
-        return fail(QStringLiteral("阶段B仅允许Lite模板"));
+    if(machineTemplateName.compare(QStringLiteral("G302"), Qt::CaseInsensitive) != 0){
+        return fail(QStringLiteral("阶段B仅允许G302模板"));
     }
     if(periodUs < 1000 || periodUs > 20000){
         return fail(QStringLiteral("控制周期必须位于1~20 ms"));

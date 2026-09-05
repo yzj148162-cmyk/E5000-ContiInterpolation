@@ -12,12 +12,12 @@ namespace Ui {
 class MainWindow;
 }
 
-// G3/Lite 机型的不可变运动学、轴映射和传感器参数表。
+// ACC/G302 机型的不可变运动学、轴映射和传感器参数表。
 namespace MachineKinematicsProfileCatalog {
 
 enum class MachineProfileKind {
-    G3,
-    Lite
+    ACC,
+    G302
 };
 
 struct CablePointProfile {
@@ -29,7 +29,7 @@ struct CablePointProfile {
 struct MachineKinematicsProfile {
     const char* name = "";
     HardwareInterface::RuntimeTraceConfigType runtimeTraceConfigType =
-            HardwareInterface::RuntimeTraceConfigType::G3;
+            HardwareInterface::RuntimeTraceConfigType::ACC;
     int axisCount = 0;
     int modeledCableAxisCount = 0;
     bool linearModuleHeightModuleEnabled = true;
@@ -43,7 +43,7 @@ struct MachineKinematicsProfile {
     double workspaceZMinMm = 0.0;
     double workspaceWarningMarginMm = 0.0;
     double workspaceSevereOverflowMm = 0.0;
-    // Lite末端开环遥控专用的固定保守平移工作空间。姿态不在下述平动安全范围时，
+    // G302末端开环遥控专用的固定保守平移工作空间。姿态不在下述平动安全范围时，
     // 平移会被禁止，只允许先用转动模式恢复。
     std::array<double, 3> endpointRemoteWorkspaceMinimumMm{{0.0, 0.0, 0.0}};
     std::array<double, 3> endpointRemoteWorkspaceMaximumMm{{0.0, 0.0, 0.0}};
@@ -62,7 +62,7 @@ struct MachineKinematicsProfile {
     double leadshineRatedMotorTorqueNm = 0.0;
     double torqueServoVelocityLimitRpm = 0.0;
     double cableWinchRadiusMm = 0.0;
-    // 绳索收紧控制量到电机位置/力矩命令的机型方向符号：G3=+1，Lite=-1。
+    // 绳索收紧控制量到电机位置/力矩命令的机型方向符号：ACC=+1，G302=-1。
     double cableMotorDirectionSign = 1.0;
     double winchPitchMmPerRev = 0.0;
     double winchProjectionMm = 0.0;

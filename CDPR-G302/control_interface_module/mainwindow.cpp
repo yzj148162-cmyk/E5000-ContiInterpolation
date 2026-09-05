@@ -230,8 +230,8 @@ bool isControlBoxAutoResumeMode(const QString& mode)
             isControlBoxParametricResumeMode(mode);
 }
 
-const QString kParameterTemplateG3 = QStringLiteral("标准模板");
-const QString kParameterTemplateLite = QStringLiteral("Lite模板");
+const QString kParameterTemplateG3 = QStringLiteral("ACC模板");
+const QString kParameterTemplateLite = QStringLiteral("G302模板");
 const QString kParameterTemplateCurrent = QStringLiteral("当前界面配置");
 constexpr int kUdpRealtimeLocalPort = 10092;
 constexpr int kUdpRealtimeDefaultRemotePort = 10093;
@@ -1107,7 +1107,7 @@ QDoubleSpinBox* ensureStructureWorkspaceWarningMarginUi(QWidget* root)
     spinBox->setKeyboardTracking(false);
     spinBox->setToolTip(toolTip);
     spinBox->setValue(
-                machineKinematicsProfile(MachineProfileKind::G3).workspaceWarningMarginMm);
+                machineKinematicsProfile(MachineProfileKind::ACC).workspaceWarningMarginMm);
 
     grid->addWidget(label, 3, 0, 1, 1);
     grid->addWidget(spinBox, 3, 1, 1, 1);
@@ -4601,7 +4601,7 @@ void MainWindow::refreshConnectionStatusUi(bool force)
         QString tooltip;
         QString stateText;
         if(liteSelectedOnlyDiagnostics && i != liteSelectedAxis){
-            tooltip = QStringLiteral("Lite 单轴调试中未轮询该电机。");
+            tooltip = QStringLiteral("G302 单轴调试中未轮询该电机。");
             stateText = QStringLiteral("未轮询");
         }
         else if(liteSelectedOnlyDiagnostics && !liteSelectedAxisAvailable){
@@ -4672,7 +4672,7 @@ void MainWindow::refreshConnectionStatusUi(bool force)
     for(int i = 0; i < sensorCount; ++i){
         HardwareInterface::ConnectionState state = HardwareInterface::ConnectionState::Disconnected;
         QString tooltip = liteSelectedOnlyDiagnostics && i != liteSelectedSensor ?
-                    QStringLiteral("Lite 单轴调试中未轮询该张力通道。") :
+                    QStringLiteral("G302 单轴调试中未轮询该张力通道。") :
                     QStringLiteral("张力通道%1当前未配置。").arg(i + 1);
 
         if(i < static_cast<int>(diagnostics.forceSensors.size()) &&
@@ -4831,7 +4831,7 @@ void MainWindow::refreshPrimaryOperationUiState(const RobotStateSnapshot& robotS
                     "border-radius: 4px; padding: 6px 8px; font-weight: 700; }");
     }
     else if(liteCommissioning){
-        stateText = QStringLiteral("主控状态：Lite 单轴调试（整机未就绪）");
+        stateText = QStringLiteral("主控状态：G302 单轴调试（整机未就绪）");
         stateStyle = QStringLiteral(
                     "QLabel { color: #92400e; background: #fff7ed; border: 1px solid #fdba74; "
                     "border-radius: 4px; padding: 6px 8px; font-weight: 700; }");
@@ -4857,7 +4857,7 @@ void MainWindow::refreshPrimaryOperationUiState(const RobotStateSnapshot& robotS
     if(liteCommissioning){
         pauseEnabled = false;
         servoHoldEnabled = false;
-        servoHoldToolTip = QStringLiteral("Lite 单轴调试中禁止使用整机软件抱闸，请在调试页停止并失能当前轴。");
+        servoHoldToolTip = QStringLiteral("G302 单轴调试中禁止使用整机软件抱闸，请在调试页停止并失能当前轴。");
     }
     setTextIfChanged(ui->mainPauseSwitch, pauseButtonText);
     setEnabledIfChanged(ui->mainPauseSwitch, pauseEnabled);
@@ -5275,8 +5275,8 @@ bool MainWindow::applySavedZeroMotorHomeSnapshotOnConnect(bool announce)
         hardwareInterface.setMotorSafetyHomeTraceCommandRawPulse(std::vector<qint64>());
         if(announce){
             displayInfo(savedLiteWinchReference ?
-                        "警告：保存的Lite绞盘基准缺少完整Trace command_raw，已忽略并改用本次上电临时基准" :
-                        "未找到由“Lite绞盘基准确认”生成的有效记录，本次启动将使用上电位置作为临时基准",
+                        "警告：保存的G302绞盘基准缺少完整Trace command_raw，已忽略并改用本次上电临时基准" :
+                        "未找到由“G302绞盘基准确认”生成的有效记录，本次启动将使用上电位置作为临时基准",
                         savedLiteWinchReference ? "warning" : "normal");
         }
         return false;
@@ -5296,8 +5296,8 @@ bool MainWindow::applySavedZeroMotorHomeSnapshotOnConnect(bool announce)
     }
     const std::vector<std::vector<double>> currentZeroPose =
             normalizedPoseMatrix(configuredCableHomePlatformPose());
-    // Lite 绞盘基准把点击时的电机坐标与动捕位姿作为不可拆分的一对保存。
-    // 重新连接时必须优先恢复这对数据；G3 继续沿用原先以当前界面机械零位姿为准的行为。
+    // G302 绞盘基准把点击时的电机坐标与动捕位姿作为不可拆分的一对保存。
+    // 重新连接时必须优先恢复这对数据；ACC 继续沿用原先以当前界面机械零位姿为准的行为。
     zeroMotorHomePlatformPose = isLiteTemplateActive() ?
                 savedZeroPose :
                 (currentZeroPose.empty() ? savedZeroPose : currentZeroPose);
@@ -5346,7 +5346,7 @@ bool MainWindow::applySavedZeroMotorHomeSnapshotOnConnect(bool announce)
                                                   QStringLiteral("使用当前界面值"),
                          formatCalibrationVectorPreview(zeroMotorHomePlatformPose.front(), 6),
                          isLiteTemplateActive() ?
-                             QStringLiteral("；Lite命令motorHome和软件行程零点已恢复到该确认点") :
+                             QStringLiteral("；G302命令motorHome和软件行程零点已恢复到该确认点") :
                              QString())
                     .toStdString());
         if(savedTraceCommandRawPulse.empty()){
@@ -5389,7 +5389,7 @@ bool MainWindow::latchLiteFullSystemSessionSafetyReference(
         axisHomes.push_back(motorHome[axisIndex]);
     }
     if(static_cast<int>(logicalAxes.size()) != profile.modeledCableAxisCount){
-        displayInfo(QStringLiteral("%1失败：Lite 整机需要同时锁存 %2 个绳索电机，当前有效建模轴为 %3 个")
+        displayInfo(QStringLiteral("%1失败：G302 整机需要同时锁存 %2 个绳索电机，当前有效建模轴为 %3 个")
                     .arg(operationName)
                     .arg(profile.modeledCableAxisCount)
                     .arg(static_cast<int>(logicalAxes.size()))
@@ -5424,7 +5424,7 @@ bool MainWindow::latchLiteFullSystemSessionSafetyReference(
 
     const int feedbackAxisCount = static_cast<int>(
                 std::count(usesFeedback.begin(), usesFeedback.end(), true));
-    displayInfo(QStringLiteral("%1：已以上电 Trace 位置原子建立 %2 轴会话安全相对位置基准（反馈通道 %3 轴，命令通道 %4 轴）；该基准仅本次连接有效且不覆盖 G3 持久机械零位")
+    displayInfo(QStringLiteral("%1：已以上电 Trace 位置原子建立 %2 轴会话安全相对位置基准（反馈通道 %3 轴，命令通道 %4 轴）；该基准仅本次连接有效且不覆盖 ACC 持久机械零位")
                 .arg(operationName)
                 .arg(profile.modeledCableAxisCount)
                 .arg(feedbackAxisCount)
@@ -5511,14 +5511,14 @@ bool MainWindow::applyStartupMotorHomeReference()
 
     const int axisCount = ui->devAxisNum->value();
 
-    // 电机坐标掉电保持。若存在由显式Lite绞盘基准按钮生成的完整记录，
+    // 电机坐标掉电保持。若存在由显式G302绞盘基准按钮生成的完整记录，
     // 启动时恢复该机械零位等效点；否则才使用本次上电位置建立临时基准。
     if(applySavedZeroMotorHomeSnapshotOnConnect(true) &&
             liteWinchReferenceConfirmed){
         const std::vector<int> logicalAxes = safetyTraceRawAxes();
         for(const int axisIndex : logicalAxes){
             if(axisIndex < 0 || axisIndex >= static_cast<int>(zeroMotorHomePos.size())){
-                displayInfo("Lite 整机启动失败：保存的绞盘基准轴索引不完整", "error");
+                displayInfo("G302 整机启动失败：保存的绞盘基准轴索引不完整", "error");
                 return false;
             }
         }
@@ -5537,7 +5537,7 @@ bool MainWindow::applyStartupMotorHomeReference()
                     &traceRestartFailureReason)){
             // readRuntimeTraceCached()仍保留原有的1秒冷却重试；这里不提前失败，
             // 让启动等待覆盖一次自动恢复机会并保留最终底层状态。
-            displayInfo(QStringLiteral("Lite 整机启动：新的硬件Trace会话初始化失败，将在等待窗口内继续重试：%1")
+            displayInfo(QStringLiteral("G302 整机启动：新的硬件Trace会话初始化失败，将在等待窗口内继续重试：%1")
                         .arg(traceRestartFailureReason.isEmpty() ?
                                  QStringLiteral("未返回详细原因") :
                                  traceRestartFailureReason)
@@ -5569,7 +5569,7 @@ bool MainWindow::applyStartupMotorHomeReference()
                     QString recoveryRestartFailureReason;
                     if(hardwareInterface.restartRuntimeTraceForFreshSnapshot(
                                 &recoveryRestartFailureReason)){
-                        displayInfo("Lite 整机启动：检测到Trace旧帧积压持续发散，已清空FIFO并重启一次硬件Trace会话",
+                        displayInfo("G302 整机启动：检测到Trace旧帧积压持续发散，已清空FIFO并重启一次硬件Trace会话",
                                     "warning");
                     }
                     else if(!recoveryRestartFailureReason.isEmpty()){
@@ -5593,7 +5593,7 @@ bool MainWindow::applyStartupMotorHomeReference()
                     zeroMotorHomeTraceCommandRawPulse);
         if(!traceVerified ||
                 currentTraceCommandRaw.size() != logicalAxes.size()){
-            displayInfo(QStringLiteral("Lite 整机启动失败：等待%1 ms后仍无法取得完整新鲜的8轴Trace command_raw，拒绝改用其他位置源；底层状态：%2")
+            displayInfo(QStringLiteral("G302 整机启动失败：等待%1 ms后仍无法取得完整新鲜的8轴Trace command_raw，拒绝改用其他位置源；底层状态：%2")
                         .arg(traceWaitTimer.elapsed())
                         .arg(traceFailureReason.isEmpty() ?
                                  QStringLiteral("未返回详细原因") :
@@ -5611,7 +5611,7 @@ bool MainWindow::applyStartupMotorHomeReference()
         refreshMotorPosDisplay();
         updateControlWorkerConfig();
         updateSafetyMonitorConfig();
-        displayInfo(QStringLiteral("Lite 整机已在%1 ms内取得重连后的新鲜8轴Trace，并恢复保存的绞盘基准：命令motorHome、动捕位姿和软件行程零点均以最近一次“Lite绞盘基准确认”为准")
+        displayInfo(QStringLiteral("G302 整机已在%1 ms内取得重连后的新鲜8轴Trace，并恢复保存的绞盘基准：命令motorHome、动捕位姿和软件行程零点均以最近一次“G302绞盘基准确认”为准")
                     .arg(traceWaitTimer.elapsed()).toStdString());
         return true;
     }
@@ -5620,7 +5620,7 @@ bool MainWindow::applyStartupMotorHomeReference()
     if(axisCount <= 0 ||
             static_cast<int>(motorHome.size()) < axisCount ||
             !hasFiniteValues(motorHome, axisCount)){
-        displayInfo("Lite 整机启动失败：无法完整读取上电后的 8 轴位置", "error");
+        displayInfo("G302 整机启动失败：无法完整读取上电后的 8 轴位置", "error");
         return false;
     }
     if(static_cast<int>(motorHome.size()) > axisCount){
@@ -5628,7 +5628,7 @@ bool MainWindow::applyStartupMotorHomeReference()
     }
     if(!latchLiteFullSystemSessionSafetyReference(
                 motorHome,
-                QStringLiteral("Lite 整机启动安全基准"))){
+                QStringLiteral("G302 整机启动安全基准"))){
         return false;
     }
 
@@ -5640,7 +5640,7 @@ bool MainWindow::applyStartupMotorHomeReference()
     refreshMotorPosDisplay();
     updateControlWorkerConfig();
     updateSafetyMonitorConfig();
-    displayInfo("Lite 整机未找到有效的已确认绞盘基准，已将当前上电位置设为本次临时命令motorHome和同帧Trace安全基准");
+    displayInfo("G302 整机未找到有效的已确认绞盘基准，已将当前上电位置设为本次临时命令motorHome和同帧Trace安全基准");
     return true;
 }
 
@@ -5880,7 +5880,7 @@ bool MainWindow::loadCalibrationSnapshotFromFile(const QString& filePath, bool a
     if(isLiteTemplateActive() &&
             loadedLiteWinchReference &&
             traceCommandRawPulse.empty()){
-        displayInfo("错误：Lite绞盘基准记录缺少完整有效的8轴Trace command_raw，拒绝加载该安全基准",
+        displayInfo("错误：G302绞盘基准记录缺少完整有效的8轴Trace command_raw，拒绝加载该安全基准",
                     "error");
         return false;
     }
@@ -6052,9 +6052,9 @@ void MainWindow::initializeCalibrationUi()
     connect(calibrationKnownRuntimePoseButton, &QPushButton::clicked, this, [this](){
         confirmKnownRuntimePoseFromCurrentMotorPosition();
     });
-    calibrationLiteWinchReferenceButton->setText(QStringLiteral("Lite绞盘基准确认"));
+    calibrationLiteWinchReferenceButton->setText(QStringLiteral("G302绞盘基准确认"));
     calibrationLiteWinchReferenceButton->setToolTip(
-                QStringLiteral("仅用于Lite整机：重新采集动捕，并把当前张紧静止状态同时设为motorHome、安全行程零点、绞盘轴向零偏零点和绝对绳长参考；不下发运动"));
+                QStringLiteral("仅用于G302整机：重新采集动捕，并把当前张紧静止状态同时设为motorHome、安全行程零点、绞盘轴向零偏零点和绝对绳长参考；不下发运动"));
     connect(calibrationLiteWinchReferenceButton, &QPushButton::clicked,
             this, &MainWindow::requestLiteWinchReferenceConfirmation);
     if(ui->calibrationKnownPosePx){
@@ -6186,7 +6186,7 @@ bool MainWindow::confirmZeroCalibrationWorkflow()
 {
     if(isLiteTemplateActive() && !runtimeState.systemRunning &&
             runtimeState.hardwareRunState != HardwareRunState::Disconnected){
-        displayInfo("错误：Lite 单轴调试连接中禁止执行整机零位校准确认；请使用调试页的临时零点", "error");
+        displayInfo("错误：G302 单轴调试连接中禁止执行整机零位校准确认；请使用调试页的临时零点", "error");
         return false;
     }
     if(calibrationWorkflowStage == CalibrationWorkflowStage::AwaitingPretensionStart){
@@ -6281,7 +6281,7 @@ bool MainWindow::confirmKnownRuntimePoseFromCurrentMotorPosition(bool keepForceC
 {
     if(isLiteTemplateActive() && !runtimeState.systemRunning &&
             runtimeState.hardwareRunState != HardwareRunState::Disconnected){
-        displayInfo("错误：Lite 单轴调试连接中禁止读取全机位置确认已知位姿", "error");
+        displayInfo("错误：G302 单轴调试连接中禁止读取全机位置确认已知位姿", "error");
         return false;
     }
     const QString operationName = QStringLiteral("已知位姿点确认");
@@ -6350,7 +6350,7 @@ bool MainWindow::confirmKnownRuntimePoseFromCurrentMotorPosition(bool keepForceC
                         .arg(operationName).toStdString(), "error");
             return false;
         }
-        // Lite 的 motorHome 仅由完整启动时的上电位置建立。动捕重复纠偏只更新
+        // G302 的 motorHome 仅由完整启动时的上电位置建立。动捕重复纠偏只更新
         // “当前电机位置—已知平台位姿”参考，不改命令零位和会话安全基准。
         retainedMotorHomeEncoderPos.clear();
     }
@@ -6640,7 +6640,7 @@ bool MainWindow::confirmKnownRuntimePoseFromCurrentMotorPosition(bool keepForceC
     displayInfo(QStringLiteral("%1完成：外部已知位姿及对应电机参考位置已更新，%2；位姿已写入 saved_current_pose；运行结果 %3；新文件 %4%5")
                 .arg(operationName)
                 .arg(keepStartupMotorHome ?
-                         QStringLiteral("Lite motorHome 仍保持本次上电位置不变") :
+                         QStringLiteral("G302 motorHome 仍保持本次上电位置不变") :
                          QStringLiteral("当前电机位置已作为本次运行软件零点"))
                 .arg(runtimeWritePath)
                 .arg(historyPath)
@@ -6653,9 +6653,9 @@ bool MainWindow::confirmKnownRuntimePoseFromCurrentMotorPosition(bool keepForceC
 
 void MainWindow::requestLiteWinchReferenceConfirmation()
 {
-    const QString operationName = QStringLiteral("Lite绞盘基准确认");
+    const QString operationName = QStringLiteral("G302绞盘基准确认");
     if(!isLiteTemplateActive()){
-        displayInfo(QStringLiteral("%1仅允许在Lite模板下执行").arg(operationName).toStdString(),
+        displayInfo(QStringLiteral("%1仅允许在G302模板下执行").arg(operationName).toStdString(),
                     "error");
         return;
     }
@@ -6667,7 +6667,7 @@ void MainWindow::requestLiteWinchReferenceConfirmation()
     if(!ui->devUseLS->isChecked() || !hardwareInterface.isLSConnected() ||
             !runtimeState.systemRunning ||
             runtimeState.hardwareRunState != HardwareRunState::FullRobotReady){
-        displayInfo(QStringLiteral("%1失败：请先完成Lite整机启动并保持8轴控制卡连接")
+        displayInfo(QStringLiteral("%1失败：请先完成G302整机启动并保持8轴控制卡连接")
                     .arg(operationName).toStdString(), "error");
         return;
     }
@@ -6733,7 +6733,7 @@ void MainWindow::requestLiteWinchReferenceConfirmation()
     liteWinchReferenceCapturePending = true;
     motiveFitConfirmed = false;
     if(QLabel* statusLabel = findOptionalUiObject<QLabel>(this, "mainMocapPoseStatusLabel")){
-        statusLabel->setText(QStringLiteral("Lite基准采集中"));
+        statusLabel->setText(QStringLiteral("G302基准采集中"));
     }
     refreshCalibrationUiState();
     displayInfo(QStringLiteral("%1：开始重新采集%2帧动捕；采样成功后才会提交motorHome和安全基准")
@@ -6748,7 +6748,7 @@ void MainWindow::requestLiteWinchReferenceConfirmation()
     if(!captureRequested){
         liteWinchReferenceCapturePending = false;
         if(QLabel* statusLabel = findOptionalUiObject<QLabel>(this, "mainMocapPoseStatusLabel")){
-            statusLabel->setText(QStringLiteral("Lite基准采样请求失败"));
+            statusLabel->setText(QStringLiteral("G302基准采样请求失败"));
         }
         refreshCalibrationUiState();
         displayInfo(QStringLiteral("%1失败：动捕采样请求未能发送，所有电机和安全基准均未修改")
@@ -6759,14 +6759,14 @@ void MainWindow::requestLiteWinchReferenceConfirmation()
 bool MainWindow::finalizeLiteWinchReferenceConfirmation(
         const std::vector<std::vector<double>>& rigidPose)
 {
-    const QString operationName = QStringLiteral("Lite绞盘基准确认");
+    const QString operationName = QStringLiteral("G302绞盘基准确认");
     liteWinchReferenceCapturePending = false;
     if(!isLiteTemplateActive() ||
             !ui->devUseLS->isChecked() ||
             !hardwareInterface.isLSConnected() ||
             !runtimeState.systemRunning ||
             runtimeState.hardwareRunState != HardwareRunState::FullRobotReady){
-        displayInfo(QStringLiteral("%1失败：动捕采样完成时Lite整机运行状态已经变化，未提交基准")
+        displayInfo(QStringLiteral("%1失败：动捕采样完成时G302整机运行状态已经变化，未提交基准")
                     .arg(operationName).toStdString(), "error");
         refreshCalibrationUiState();
         return false;
@@ -6898,7 +6898,7 @@ bool MainWindow::finalizeLiteWinchReferenceConfirmation(
     const std::vector<std::vector<double>> poseMatrix = {pose};
     hardwareInterface.useStaticMotorHome = false;
 
-    // Lite 专用确认点同时承担G3预紧确认后的四个基准语义。
+    // G302 专用确认点同时承担ACC预紧确认后的四个基准语义。
     zeroMotorHomeReferenceLoaded = true;
     liteWinchReferenceConfirmed = true;
     zeroMotorHomePos = motorHome;
@@ -7946,7 +7946,7 @@ void MainWindow::startZeroCalibrationWorkflow()
 {
     if(isLiteTemplateActive() && !runtimeState.systemRunning &&
             runtimeState.hardwareRunState != HardwareRunState::Disconnected){
-        displayInfo("错误：Lite 单轴调试连接中禁止启动整机机械零位校准；请使用调试页的临时零点", "error");
+        displayInfo("错误：G302 单轴调试连接中禁止启动整机机械零位校准；请使用调试页的临时零点", "error");
         return;
     }
     refreshAxisRuntimeCounts();
@@ -8032,7 +8032,7 @@ void MainWindow::startZeroCalibrationPretensionWorkflow()
 {
     if(isLiteTemplateActive() && !runtimeState.systemRunning &&
             runtimeState.hardwareRunState != HardwareRunState::Disconnected){
-        displayInfo("错误：Lite 单轴调试连接中禁止启动整机零位预紧流程", "error");
+        displayInfo("错误：G302 单轴调试连接中禁止启动整机零位预紧流程", "error");
         return;
     }
     refreshAxisRuntimeCounts();
@@ -10916,7 +10916,7 @@ bool MainWindow::loadSavedCurrentPoseSnapshot(bool announce,
             savedPoseCoordinateSystem == QStringLiteral("cabin_ui") ||
             savedPoseCoordinateSystem == QStringLiteral("ui");
     if(hasFiniteValues(pose, 6) && savedPoseUsesCabinUiCoordinate){
-        // 旧 Lite/G3 快照已经把当时使用的偏置写入文件。恢复时必须按
+        // 旧 G302/ACC 快照已经把当时使用的偏置写入文件。恢复时必须按
         // 文件语义转换，不能按当前模板的新规则重新解释历史 pose。
         const double savedUiRxOffsetRad =
                 savedCurrentPose.value(QStringLiteral("ui_to_platform_rx_offset_rad"))
@@ -11537,15 +11537,15 @@ void MainWindow::enforceMachineTorqueLimitsOnUi()
 {
     const bool lite = isLiteTemplateActive();
     const double actualTorqueLimitNm =
-            machineKinematicsProfile(lite ? MachineProfileKind::Lite :
-                                             MachineProfileKind::G3)
+            machineKinematicsProfile(lite ? MachineProfileKind::G302 :
+                                             MachineProfileKind::ACC)
             .actualTorqueLimitNm;
     if(ui && ui->motorTorqueLimitNm){
         ui->motorTorqueLimitNm->setMaximum(actualTorqueLimitNm);
         ui->motorTorqueLimitNm->setValue(
                     std::min(ui->motorTorqueLimitNm->value(), actualTorqueLimitNm));
         ui->motorTorqueLimitNm->setToolTip(
-                    QStringLiteral("手动设置实际转矩限幅；G3默认60N·m，Lite默认且最高40N·m。原始值按当前模板额定转矩的千分之一换算后与该限幅比较。"));
+                    QStringLiteral("手动设置实际转矩限幅；ACC默认60N·m，G302默认且最高40N·m。原始值按当前模板额定转矩的千分之一换算后与该限幅比较。"));
     }
 
     const auto limitPositiveSpin = [this, lite](const char* objectName,
@@ -13491,7 +13491,7 @@ bool MainWindow::saveLinearModuleTraceRecoveryWindow(const QString& reason, bool
 {
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过直线模组Trace恢复点保存", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过直线模组Trace恢复点保存", "warning");
         }
         return false;
     }
@@ -13598,7 +13598,7 @@ void MainWindow::refreshLinearModuleTraceRecoveryStateAfterPowerOn(bool announce
 
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过直线模组Trace恢复状态刷新", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过直线模组Trace恢复状态刷新", "warning");
         }
         return;
     }
@@ -13697,7 +13697,7 @@ bool MainWindow::restoreLinearModuleTraceRecoveryPvtFromUi()
 {
     const QString actionName = QStringLiteral("直线模组Trace编码器位置恢复");
     if(!linearModuleHeightModuleEnabled()){
-        displayInfo("Lite模板未启用直线模组高度模块，不能执行直线模组Trace恢复", "warning");
+        displayInfo("G302模板未启用直线模组高度模块，不能执行直线模组Trace恢复", "warning");
         return false;
     }
     if(!ensureSafetyReadyForMotion(actionName)){
@@ -15098,10 +15098,10 @@ void MainWindow::refreshCalibrationUiState()
     QString stageText = QStringLiteral("待开始");
 
     if(liteWinchReferenceCapturePending){
-        statusText = QStringLiteral("Lite基准：正在采集动捕位姿");
+        statusText = QStringLiteral("G302基准：正在采集动捕位姿");
         statusStyle = warningStyle;
         actionText = QStringLiteral("操作：请保持平台静止；绳索张紧状态由用户人工确认，软件不做张力容差检查。采样成功且8轴Trace锁存完成前，不会修改motorHome、绞盘零偏或安全行程基准。");
-        stageText = QStringLiteral("Lite绞盘基准采集中");
+        stageText = QStringLiteral("G302绞盘基准采集中");
     }
 
     if(!liteWinchReferenceCapturePending){
@@ -15303,8 +15303,8 @@ void MainWindow::refreshCalibrationUiState()
                             motiveLocalHandlerThread->isInit &&
                             !liteWinchReferenceCapturePending);
         const QString buttonText = liteWinchReferenceCapturePending ?
-                    QStringLiteral("Lite基准采集中...") :
-                    QStringLiteral("Lite绞盘基准确认");
+                    QStringLiteral("G302基准采集中...") :
+                    QStringLiteral("G302绞盘基准确认");
         if(calibrationLiteWinchReferenceButton->text() != buttonText){
             calibrationLiteWinchReferenceButton->setText(buttonText);
         }
@@ -18970,7 +18970,7 @@ void MainWindow::refreshForceInteractionValidationInputState()
     ui->forceInteractionValidationStartButton->setEnabled(!running && !runtimeLocked && liteTemplate);
     ui->forceInteractionValidationStartButton->setToolTip(
                 liteTemplate ? QString() :
-                               QStringLiteral("请先在“控制界面”选择Lite模板"));
+                               QStringLiteral("请先在“控制界面”选择G302模板"));
     ui->forceInteractionValidationCancelButton->setEnabled(running);
 }
 
@@ -18982,8 +18982,8 @@ void MainWindow::startForceInteractionSoftwareValidation()
     }
     if(!isLiteTemplateActive()){
         ui->forceInteractionValidationStatusLabel->setText(
-                    QStringLiteral("无法启动：请先在“控制界面”选择Lite模板。"));
-        displayInfo("阶段A软件验证无法启动：当前不是Lite模板", "error");
+                    QStringLiteral("无法启动：请先在“控制界面”选择G302模板。"));
+        displayInfo("阶段A软件验证无法启动：当前不是G302模板", "error");
         return;
     }
     if(endMassVec.empty() || endIxxVec.empty() || endIyyVec.empty() ||
@@ -19266,7 +19266,7 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
     config.kinematics.ropeElasticConfig.enabled = false;
     if(profile.forwardKinematicsPoseLowerBounds.size() < config.poseLowerBoundsMmRad.size() ||
             profile.forwardKinematicsPoseUpperBounds.size() < config.poseUpperBoundsMmRad.size()){
-        fail(QStringLiteral("Lite 模板的六维位姿边界配置不完整"));
+        fail(QStringLiteral("G302 模板的六维位姿边界配置不完整"));
         return config;
     }
     std::copy_n(profile.forwardKinematicsPoseLowerBounds.cbegin(),
@@ -19342,7 +19342,7 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
         return;
     }
     if(!isLiteTemplateActive()){
-        displayInfo("阶段B准备失败：当前仅允许Lite模板", "error");
+        displayInfo("阶段B准备失败：当前仅允许G302模板", "error");
         return;
     }
     if(currentRobotState(false).anyMotionRunning){
@@ -19855,7 +19855,7 @@ void MainWindow::setupOnlineVelocityTestTab()
     endpointRemoteBoundaryGuardLabel->setStyleSheet(QStringLiteral(
                 "QLabel { background:#fff8dc; color:#7a4c00; padding:4px; }"));
     endpointRemoteWorkspaceLabel = new QLabel(
-                QStringLiteral("Lite固定安全立方体：X/Y∈(-500,500) mm，Z∈(400,1400) mm；Rx/Ry边界由50 mm体素表决定"),
+                QStringLiteral("G302固定安全立方体：X/Y∈(-500,500) mm，Z∈(400,1400) mm；Rx/Ry边界由50 mm体素表决定"),
                 remoteGroup);
     endpointRemoteVoxelAngleLabel = new QLabel(
                 QStringLiteral("期望位置体素角度范围：尚未进入遥控"),
@@ -20060,7 +20060,7 @@ void MainWindow::updateEndpointRemoteBoundaryGuardLabel()
     previewConfig.translationAccelerationMmPerSec2 =
             endpointRemoteAccelerationSpin->value();
     const MachineKinematicsProfile& liteProfile =
-            machineKinematicsProfile(MachineProfileKind::Lite);
+            machineKinematicsProfile(MachineProfileKind::G302);
     const double guardMm = previewConfig.outwardRestartGuardMm();
     const double releaseDistanceMm = guardMm +
             liteProfile.endpointRemoteBoundaryReleaseHysteresisMm;
@@ -20193,7 +20193,7 @@ EndpointRemoteConfig MainWindow::endpointRemoteConfigFromUi(
     std::array<double, 2> commonRxRange{};
     std::array<double, 2> commonRyRange{};
     if(voxelAngleLimits.commonRxRyRange(&commonRxRange, &commonRyRange)){
-        // 平动“姿态已回正”要求能在整个Lite安全立方体内成立，因此取所有
+        // 平动“姿态已回正”要求能在整个G302安全立方体内成立，因此取所有
         // 体素Rx/Ry范围的交集，而不是只取当前位置较宽松的局部范围。
         config.translationSafeOrientationMinimumRad[0] = commonRxRange[0];
         config.translationSafeOrientationMaximumRad[0] = commonRxRange[1];
@@ -20274,7 +20274,7 @@ void MainWindow::enterEndpointRemoteControl()
         return;
     }
     if(!isLiteTemplateActive()){
-        displayInfo("末端遥控进入失败：固定保守安全立方体仅适用于Lite场景", "error");
+        displayInfo("末端遥控进入失败：固定保守安全立方体仅适用于G302场景", "error");
         return;
     }
     if(!controlWorker || !ccThread || !ccThread->isRunning()){
@@ -20335,7 +20335,7 @@ void MainWindow::enterEndpointRemoteControl()
         }
     }
     const MachineKinematicsProfile& profile =
-            machineKinematicsProfile(MachineProfileKind::Lite);
+            machineKinematicsProfile(MachineProfileKind::G302);
     const double attitudeError =
             platformPoseOrientationDistanceRad(initialPose, trustedPose);
     if(!std::isfinite(attitudeError) ||
@@ -20363,7 +20363,7 @@ void MainWindow::enterEndpointRemoteControl()
                     profile.endpointRemoteWorkspaceMaximumMm[dim];
         if(programStartOutside || trustedPoseOutside){
             displayInfo(QStringLiteral(
-                            "末端遥控进入失败：维度%1程序起点/可信真实位姿=%2/%3 mm，不在Lite固定安全立方体开区间(%4,%5) mm内")
+                            "末端遥控进入失败：维度%1程序起点/可信真实位姿=%2/%3 mm，不在G302固定安全立方体开区间(%4,%5) mm内")
                         .arg(dim)
                         .arg(initialPose[dim], 0, 'f', 3)
                         .arg(trustedPose[dim], 0, 'f', 3)
@@ -20395,7 +20395,7 @@ void MainWindow::enterEndpointRemoteControl()
                 std::abs(voxelAngleLimits.workspaceMaximumMm[dim] -
                          profile.endpointRemoteWorkspaceMaximumMm[dim]) > 1.0e-6){
             displayInfo(QStringLiteral(
-                            "末端遥控进入失败：体素角度表维度%1范围[%2,%3] mm与Lite工作空间[%4,%5] mm不一致")
+                            "末端遥控进入失败：体素角度表维度%1范围[%2,%3] mm与G302工作空间[%4,%5] mm不一致")
                         .arg(dim)
                         .arg(voxelAngleLimits.workspaceMinimumMm[dim], 0, 'f', 3)
                         .arg(voxelAngleLimits.workspaceMaximumMm[dim], 0, 'f', 3)
@@ -20546,7 +20546,7 @@ void MainWindow::enterEndpointRemoteControl()
 
     if(!confirmMotorCommandFromUi(
             QStringLiteral("末端开环遥控"),
-            QStringLiteral("将锁存当前程序起点作为本次遥控唯一真实末端位姿；平动限制在Lite固定安全立方体X/Y(-500,500)、Z(400,1400) mm内，Rx/Ry按当前50 mm体素角度表限制。平动制动轨迹不能穿入姿态不兼容的相邻体素，转动制动轨迹不能越过当前体素角度边界。之后只按有效速度命令和标称在线周期积分开环期望位姿。请从极低速度、单方向、短时间开始验证。"))){
+            QStringLiteral("将锁存当前程序起点作为本次遥控唯一真实末端位姿；平动限制在G302固定安全立方体X/Y(-500,500)、Z(400,1400) mm内，Rx/Ry按当前50 mm体素角度表限制。平动制动轨迹不能穿入姿态不兼容的相邻体素，转动制动轨迹不能越过当前体素角度边界。之后只按有效速度命令和标称在线周期积分开环期望位姿。请从极低速度、单方向、短时间开始验证。"))){
         return;
     }
 
@@ -20601,7 +20601,7 @@ void MainWindow::enterEndpointRemoteControl()
     syncSafetyMonitorConfig(true);
     setForceControlSelectionEnabled(false);
     updateCableHomeConfirmEnabled();
-    displayInfo(QStringLiteral("末端遥控已进入，已锁存真实起点、Trace序号%1和输入会话%2；X56独立采集20 ms、监督心跳50 ms、采集快照超时100 ms、当前输入源/心跳失效上限%3 ms；ControlWorker配置版本%4（EndpointRemoteFrozen，运行期仅由明确事件更新互锁）；已加载%5个50 mm体素的Rx/Ry边界，Lite平动边界及跨体素姿态保护已启用，正在等待在线速度Trace；方向键和X56仅在运行状态生效")
+    displayInfo(QStringLiteral("末端遥控已进入，已锁存真实起点、Trace序号%1和输入会话%2；X56独立采集20 ms、监督心跳50 ms、采集快照超时100 ms、当前输入源/心跳失效上限%3 ms；ControlWorker配置版本%4（EndpointRemoteFrozen，运行期仅由明确事件更新互锁）；已加载%5个50 mm体素的Rx/Ry边界，G302平动边界及跨体素姿态保护已启用，正在等待在线速度Trace；方向键和X56仅在运行状态生效")
                 .arg(traceSequence)
                 .arg(inputSessionToken)
                 .arg(remoteConfig.inputHeartbeatTimeoutUs / 1000)
@@ -21984,9 +21984,9 @@ void MainWindow::refreshOnlineVelocityTestUi()
     }
     if(endpointRemoteWorkspaceLabel){
         const MachineKinematicsProfile& liteProfile =
-                machineKinematicsProfile(MachineProfileKind::Lite);
+                machineKinematicsProfile(MachineProfileKind::G302);
         endpointRemoteWorkspaceLabel->setText(QStringLiteral(
-                    "Lite固定安全立方体：X[%1,%2]、Y[%3,%4]、Z[%5,%6] mm；软边界%7 mm；Rx/Ry硬边界随当前50 mm体素变化，平动回正阈值取全部体素交集；Rz进入遥控时锁存且不再积分，仍校验硬边界±5°；平动安全范围±2.5°")
+                    "G302固定安全立方体：X[%1,%2]、Y[%3,%4]、Z[%5,%6] mm；软边界%7 mm；Rx/Ry硬边界随当前50 mm体素变化，平动回正阈值取全部体素交集；Rz进入遥控时锁存且不再积分，仍校验硬边界±5°；平动安全范围±2.5°")
                 .arg(liteProfile.endpointRemoteWorkspaceMinimumMm[0], 0, 'f', 1)
                 .arg(liteProfile.endpointRemoteWorkspaceMaximumMm[0], 0, 'f', 1)
                 .arg(liteProfile.endpointRemoteWorkspaceMinimumMm[1], 0, 'f', 1)
@@ -22194,7 +22194,7 @@ void MainWindow::setupLiteCommissioningTab()
     QVBoxLayout* pageLayout = new QVBoxLayout(liteCommissioningTab);
 
     liteCommissioningBannerLabel = new QLabel(
-                QStringLiteral("Lite 单轴维护调试：完整整机启动请使用左侧“启动整机”。本页维护连接仅允许选定轴调试，连接检查不会写轴参数、清错或使能。"),
+                QStringLiteral("G302 单轴维护调试：完整整机启动请使用左侧“启动整机”。本页维护连接仅允许选定轴调试，连接检查不会写轴参数、清错或使能。"),
                 liteCommissioningTab);
     liteCommissioningBannerLabel->setWordWrap(true);
     liteCommissioningBannerLabel->setStyleSheet(
@@ -22301,7 +22301,7 @@ void MainWindow::setupLiteCommissioningTab()
     pageLayout->addWidget(liteFullStartupButton);
     pageLayout->addStretch(1);
 
-    ui->tabWidget->addTab(liteCommissioningTab, QStringLiteral("Lite 单轴维护"));
+    ui->tabWidget->addTab(liteCommissioningTab, QStringLiteral("G302 单轴维护"));
 
     connect(liteCommissioningConnectionButton, &QPushButton::clicked,
             this, &MainWindow::toggleLiteControllerConnection);
@@ -22415,13 +22415,13 @@ void MainWindow::setupLiteCommissioningTab()
 
 bool MainWindow::isLiteTemplateActive() const
 {
-    return currentMachineProfileKind(ui) == MachineProfileKind::Lite;
+    return currentMachineProfileKind(ui) == MachineProfileKind::G302;
 }
 
 double MainWindow::positionModeUiRxOffsetRad() const
 {
-    // Lite 的位置模式起终点 UI 与程序内部平台位姿使用同一坐标系。
-    // G3 继续保留既有的舱体 UI -> 平台内部坐标 15° Rx 偏置。
+    // G302 的位置模式起终点 UI 与程序内部平台位姿使用同一坐标系。
+    // ACC 继续保留既有的舱体 UI -> 平台内部坐标 15° Rx 偏置。
     return isLiteTemplateActive() ? 0.0 : kG3CabinUiToPlatformRxOffsetRad;
 }
 
@@ -22493,15 +22493,15 @@ void MainWindow::updateLiteCommissioningTabAvailability()
     if(tabIndex >= 0){
         ui->tabWidget->setTabEnabled(tabIndex, liteActive);
         ui->tabWidget->setTabText(tabIndex,
-                                  liteActive ? QStringLiteral("Lite 单轴维护") :
-                                               QStringLiteral("Lite 单轴维护（仅 Lite）"));
+                                  liteActive ? QStringLiteral("G302 单轴维护") :
+                                               QStringLiteral("G302 单轴维护（仅 G302）"));
     }
     if(!liteActive &&
             hardwareInterface.isLSConnected() &&
             !runtimeState.systemRunning &&
             runtimeState.hardwareRunState != HardwareRunState::Disconnected){
         toggleLiteControllerConnection();
-        displayInfo("切换出 Lite 模板时已断开单轴调试连接并清除临时零点", "warning");
+        displayInfo("切换出 G302 模板时已断开单轴调试连接并清除临时零点", "warning");
     }
     if(ui->mainSwitch){
         if(liteActive){
@@ -22575,7 +22575,7 @@ void MainWindow::runLiteCommissioningHardwareCommand(
     }
     const qint64 elapsedMs = elapsedTimer.elapsed();
     if(elapsedMs >= 500){
-        displayInfo(QStringLiteral("Lite 单轴硬件调用%1实际等待 %2 ms；等待期间已周期刷新主线程心跳")
+        displayInfo(QStringLiteral("G302 单轴硬件调用%1实际等待 %2 ms；等待期间已周期刷新主线程心跳")
                     .arg(operationName.isEmpty() ?
                              QString() : QStringLiteral("［%1］").arg(operationName))
                     .arg(elapsedMs)
@@ -22788,7 +22788,7 @@ void MainWindow::refreshLiteCommissioningUiState()
 bool MainWindow::ensureLiteControllerReady(const QString& actionName, bool requireBusOperational)
 {
     if(!isLiteTemplateActive()){
-        displayInfo(QStringLiteral("错误：%1仅适用于 Lite 模板").arg(actionName).toStdString(), "error");
+        displayInfo(QStringLiteral("错误：%1仅适用于 G302 模板").arg(actionName).toStdString(), "error");
         return false;
     }
     if(!ui->devUseLS->isChecked() || !hardwareInterface.isLSConnected()){
@@ -22800,7 +22800,7 @@ bool MainWindow::ensureLiteControllerReady(const QString& actionName, bool requi
                 liteCommissioningControllerDiagnostics :
                 HardwareInterface::ConnectionItemDiagnostics();
     if(requireBusOperational && !liteCommissioningControllerDiagnosticsValid){
-        displayInfo(QStringLiteral("错误：%1失败，尚无有效的 Lite 控制卡诊断，请先点击刷新只读诊断")
+        displayInfo(QStringLiteral("错误：%1失败，尚无有效的 G302 控制卡诊断，请先点击刷新只读诊断")
                     .arg(actionName).toStdString(), "error");
         return false;
     }
@@ -22825,7 +22825,7 @@ bool MainWindow::ensureLiteAxisReady(int axisIndex,
                                      bool requireSessionZero)
 {
     if(axisIndex < 0 || axisIndex >= static_cast<int>(liteAxisCommissioningStates.size())){
-        displayInfo(QStringLiteral("错误：%1失败，未选择有效 Lite 电机").arg(actionName).toStdString(), "error");
+        displayInfo(QStringLiteral("错误：%1失败，未选择有效 G302 电机").arg(actionName).toStdString(), "error");
         return false;
     }
     if(!liteCommissioningAxisAvailableInSelectedTopology(axisIndex)){
@@ -22869,7 +22869,7 @@ bool MainWindow::ensureLiteAxisReady(int axisIndex,
 void MainWindow::toggleLiteControllerConnection()
 {
     if(runtimeState.systemRunning){
-        displayInfo("错误：整机正在运行，不能使用 Lite 单轴维护连接按钮；请使用左侧“断连”结束整机运行", "error");
+        displayInfo("错误：整机正在运行，不能使用 G302 单轴维护连接按钮；请使用左侧“断连”结束整机运行", "error");
         return;
     }
     if(hardwareInterface.isLSConnected()){
@@ -22902,7 +22902,7 @@ void MainWindow::toggleLiteControllerConnection()
             hardwareInterface.disconnectLS();
             hardwareInterface.clearRuntimeTraceCommissioningSelection();
         }, QStringLiteral("断开控制卡"));
-        // Lite session limits overwrite one entry in HardwareInterface only.
+        // G302 session limits overwrite one entry in HardwareInterface only.
         // Invalidate the full-limit cache so the next complete startup restores
         // every axis from the normal UI configuration.
         lastSyncedMotorSoftwareMinPos.clear();
@@ -22940,7 +22940,7 @@ void MainWindow::toggleLiteControllerConnection()
     clearHybridPoseForceModeState(false);
     cancelManualForceControlPretensionRamp(true);
     if(!applyLeadshineHardwareConfigFromUi(nullptr, nullptr, false)){
-        displayInfo("错误：Lite 连接检查前的轴映射校验失败", "error");
+        displayInfo("错误：G302 连接检查前的轴映射校验失败", "error");
         return;
     }
     bool connected = false;
@@ -23303,7 +23303,7 @@ void MainWindow::prepareSelectedLiteAxisForceControl()
 void MainWindow::startLiteFullSystemFromUi()
 {
     if(!isLiteTemplateActive()){
-        displayInfo("错误：完整 Lite 启动入口仅适用于 Lite 模板", "error");
+        displayInfo("错误：完整 G302 启动入口仅适用于 G302 模板", "error");
         return;
     }
     if(selectedLiteRuntimeTraceTopology() !=
@@ -23312,7 +23312,7 @@ void MainWindow::startLiteFullSystemFromUi()
         return;
     }
     if(hardwareInterface.isLSConnected() && !runtimeState.systemRunning){
-        displayInfo("完整整机启动被拒绝：请先在“Lite 单轴维护”页点击“单轴维护：断开控制卡”，再执行完整启动", "error");
+        displayInfo("完整整机启动被拒绝：请先在“G302 单轴维护”页点击“单轴维护：断开控制卡”，再执行完整启动", "error");
         return;
     }
     runSwitch();
@@ -23379,10 +23379,10 @@ void MainWindow::appendLiteCommissioningEvent(const QString& eventType,
 {
     refreshSafetyMonitorHeartbeat();
     const QString summary = axisIndex >= 0 ?
-                QStringLiteral("Lite 单轴调试：%1，%2")
+                QStringLiteral("G302 单轴调试：%1，%2")
                 .arg(eventType, motorAxisDisplayName(axisIndex)) :
-                QStringLiteral("Lite 单轴调试：%1").arg(eventType);
-    // Lite 调试按钮属于高频操作记录，不是安全故障。此前复用完整故障
+                QStringLiteral("G302 单轴调试：%1").arg(eventType);
+    // G302 调试按钮属于高频操作记录，不是安全故障。此前复用完整故障
     // 快照会同步采集位姿/参数，并读取、解析、整体重写持续增长的故障
     // JSON；单条记录即可阻塞主线程数秒。这里仅在内存中生成固定大小的
     // JSONL 行并入队，实际追加写入由原有 250 ms 日志定时器批量完成。
@@ -23565,7 +23565,7 @@ bool MainWindow::readJogFollowAxisPosition(int axisIndex, double& position)
     if(isLiteTemplateActive() && !runtimeState.systemRunning &&
             runtimeState.hardwareRunState != HardwareRunState::Disconnected){
         // Never turn a failed selected-axis Trace read into an implicit poll of
-        // every configured motor while Lite hardware is intentionally absent.
+        // every configured motor while G302 hardware is intentionally absent.
         return false;
     }
     if(jogFollowTestRunning){
@@ -23622,7 +23622,7 @@ void MainWindow::startJogFollowPositionTest()
                                      true,
                                      true,
                                      true)){
-            updateJogFollowStatus(QStringLiteral("错误：Lite 单轴调试授权条件未满足。"),
+            updateJogFollowStatus(QStringLiteral("错误：G302 单轴调试授权条件未满足。"),
                                   QStringLiteral("error"));
             return;
         }
@@ -23694,7 +23694,7 @@ void MainWindow::startJogFollowPositionTest()
         const double commissioningMaxVel = liteCommissioningMaxVelocitySpin->value();
         if(std::fabs(targetDelta) > maxTravel || maxVel > commissioningMaxVel){
             updateJogFollowStatus(
-                        QStringLiteral("错误：JOG命令超过 Lite 调试上限：|增量|<=%1 unit，速度<=%2 unit/s。")
+                        QStringLiteral("错误：JOG命令超过 G302 调试上限：|增量|<=%1 unit，速度<=%2 unit/s。")
                         .arg(maxTravel, 0, 'f', 6)
                         .arg(commissioningMaxVel, 0, 'f', 6),
                         QStringLiteral("error"));
@@ -24215,7 +24215,7 @@ void MainWindow::runSoftwareConfigurationReportStepTests()
                             hardwareInterface.forceSensorDiagnostics(sensorIndex);
                 }
             }
-        }, QStringLiteral("Lite 单轴软件配置自检"));
+        }, QStringLiteral("G302 单轴软件配置自检"));
     }
     else{
         connectionDiagnostics = hardwareInterface.connectionDiagnostics();
@@ -24665,15 +24665,15 @@ void MainWindow::runSoftwareConfigurationReportStepTests()
             liteCommissioningSetZeroButton &&
             liteCommissioningPrepareForceButton;
     addRecord(QStringLiteral("TEST_LITE_COMMISSIONING"), QStringLiteral("1"),
-              QStringLiteral("检查 Lite 调试页逐轴操作入口"),
+              QStringLiteral("检查 G302 调试页逐轴操作入口"),
               QStringLiteral("目标轴选择、逐轴配置/清错/使能/失能/会话零点/0525准备入口均存在"),
               liteTemplate ? (liteUiReady ? QStringLiteral("pass") : QStringLiteral("fail")) : liteStatus,
               liteTemplate ?
-                  QStringLiteral("Lite 调试页控件完整=%1；当前选择逻辑轴=%2。")
+                  QStringLiteral("G302 调试页控件完整=%1；当前选择逻辑轴=%2。")
                   .arg(yesNo(liteUiReady))
                   .arg(selectedLiteCommissioningAxis()) :
-                  QStringLiteral("当前不是 Lite 模板，本项不适用。"),
-              QStringLiteral("Lite 单轴调试Tab"), QStringLiteral("Lite 单轴调试"));
+                  QStringLiteral("当前不是 G302 模板，本项不适用。"),
+              QStringLiteral("G302 单轴调试Tab"), QStringLiteral("G302 单轴调试"));
     const bool liteLimitsValid = liteCommissioningMaxTravelSpin &&
             liteCommissioningMaxVelocitySpin &&
             liteCommissioningMaxTorqueSpin &&
@@ -24701,8 +24701,8 @@ void MainWindow::runSoftwareConfigurationReportStepTests()
                   .arg(liteCommissioningMaxForceSpin->value(), 0, 'f', 1)
                   .arg(liteDurationLimitText) :
                   (liteTemplate ? QStringLiteral("一个或多个安全上限无效。") :
-                                  QStringLiteral("当前不是 Lite 模板，本项不适用。")),
-              QStringLiteral("Lite 单轴调试Tab"), QStringLiteral("Lite 单轴调试"));
+                                  QStringLiteral("当前不是 G302 模板，本项不适用。")),
+              QStringLiteral("G302 单轴调试Tab"), QStringLiteral("G302 单轴调试"));
     const bool runStateValid =
             (!runtimeState.systemRunning ||
              runtimeState.hardwareRunState == HardwareRunState::FullRobotReady) &&
@@ -24717,7 +24717,7 @@ void MainWindow::runSoftwareConfigurationReportStepTests()
               .arg(static_cast<int>(runtimeState.hardwareRunState))
               .arg(runtimeState.commissioningAxisIndex)
               .arg(yesNo(runtimeState.safetyArmed)),
-              maintenanceInfoEvidence, QStringLiteral("Lite 单轴调试"));
+              maintenanceInfoEvidence, QStringLiteral("G302 单轴调试"));
     addRecord(QStringLiteral("TEST_LITE_COMMISSIONING"), QStringLiteral("4"),
               QStringLiteral("检查不完整硬件自检的只读范围"),
               QStringLiteral("单轴调试态只读取当前目标轴及其映射传感器"),
@@ -24727,7 +24727,7 @@ void MainWindow::runSoftwareConfigurationReportStepTests()
                   QStringLiteral("本次自检使用 controllerDiagnostics、motorAxisDiagnostics(%1)，轴已配置时再读取目标传感器单通道诊断；未调用全轴连接诊断。")
                   .arg(runtimeState.commissioningAxisIndex) :
                   QStringLiteral("当前不在单轴调试态；连接后可重新运行自检验证。"),
-              diagnosticsPath, QStringLiteral("Lite 单轴调试"));
+              diagnosticsPath, QStringLiteral("G302 单轴调试"));
 
     bool liteCableDirectionValid = true;
     QStringList liteCableDirectionEvidence;
@@ -24739,7 +24739,7 @@ void MainWindow::runSoftwareConfigurationReportStepTests()
         // 仿真内部以收绳量为正：伸长对应负转角，缩短对应正转角。
         const double extensionCommandSign = directionSign * -1.0;
         const double retractionCommandSign = directionSign;
-        // 力控内部以增大绳力/收绳为正控制量，映射到 Lite 电机坐标后应为负力矩。
+        // 力控内部以增大绳力/收绳为正控制量，映射到 G302 电机坐标后应为负力矩。
         const double payoutTorqueCommandSign = -directionSign;
         const double takeupTorqueCommandSign = directionSign;
         liteCableDirectionValid = liteCableDirectionValid &&
@@ -24757,17 +24757,17 @@ void MainWindow::runSoftwareConfigurationReportStepTests()
                     .arg(takeupTorqueCommandSign, 0, 'f', 0));
     }
     addRecord(QStringLiteral("TEST_LITE_COMMISSIONING"), QStringLiteral("5"),
-              QStringLiteral("检查 Lite 绳索电机方向映射"),
-              QStringLiteral("Lite 绳索伸长/放绳映射为正位置/力矩，缩短/收绳映射为负位置/力矩"),
+              QStringLiteral("检查 G302 绳索电机方向映射"),
+              QStringLiteral("G302 绳索伸长/放绳映射为正位置/力矩，缩短/收绳映射为负位置/力矩"),
               liteTemplate ?
                   (liteCableDirectionValid && !liteCableDirectionEvidence.isEmpty() ?
                        QStringLiteral("pass") : QStringLiteral("fail")) :
                   liteStatus,
               liteTemplate ?
                   liteCableDirectionEvidence.join(QStringLiteral("；")) :
-                  QStringLiteral("当前不是 Lite 模板，本项不适用。"),
+                  QStringLiteral("当前不是 G302 模板，本项不适用。"),
               QStringLiteral("机型运动学配置/电机方向换算"),
-              QStringLiteral("Lite 单轴调试"));
+              QStringLiteral("G302 单轴调试"));
 
     const QString moduleStatusItem = QStringLiteral("程序模块运行状态检测");
     int moduleStatusStep = 1;
@@ -25517,7 +25517,7 @@ void MainWindow::setupMotorTorqueTestTab()
     motorTorqueTargetSpin->setSuffix(QStringLiteral(" N·m"));
     motorTorqueTargetSpin->setKeyboardTracking(false);
     motorTorqueTargetSpin->setToolTip(
-                QStringLiteral("这里输入原始电机坐标力矩。Lite 绳索电机：正力矩表示放绳，负力矩表示收绳；软件不会在直接转矩调试中自动翻转符号。"));
+                QStringLiteral("这里输入原始电机坐标力矩。G302 绳索电机：正力矩表示放绳，负力矩表示收绳；软件不会在直接转矩调试中自动翻转符号。"));
 
     const auto initLimitSpin = [](QDoubleSpinBox* spin){
         spin->setRange(-100000000.0, 100000000.0);
@@ -25529,7 +25529,7 @@ void MainWindow::setupMotorTorqueTestTab()
     initLimitSpin(motorTorquePosMaxSpin);
     initLimitSpin(motorTorqueVelMaxSpin);
     const MachineKinematicsProfile& defaultProfile =
-            machineKinematicsProfile(MachineProfileKind::G3);
+            machineKinematicsProfile(MachineProfileKind::ACC);
     motorTorquePosMinSpin->setValue(-defaultProfile.cableMotorPosLimitRev);
     motorTorquePosMaxSpin->setValue(defaultProfile.cableMotorPosLimitRev);
     motorTorqueVelMaxSpin->setRange(0.0, 100000000.0);
@@ -25547,7 +25547,7 @@ void MainWindow::setupMotorTorqueTestTab()
     initReadSpin(motorTorqueActualTorqueSpin);
     motorTorqueActualTorqueSpin->setSuffix(QStringLiteral(" N·m"));
     motorTorqueActualTorqueSpin->setToolTip(
-                QStringLiteral("实际力矩保留雷赛反馈的原始电机坐标符号。Lite：正力矩表示放绳，负力矩表示收绳。"));
+                QStringLiteral("实际力矩保留雷赛反馈的原始电机坐标符号。G302：正力矩表示放绳，负力矩表示收绳。"));
     motorTorqueSampleDurationSpin->setRange(0.1, 30.0);
     motorTorqueSampleDurationSpin->setDecimals(2);
     motorTorqueSampleDurationSpin->setSingleStep(0.1);
@@ -25616,7 +25616,7 @@ void MainWindow::setupMotorTorqueTestTab()
                 runtimeState.hardwareRunState != HardwareRunState::Disconnected;
         if(liteCommissioning){
             if(axisIndex != selectedLiteCommissioningAxis()){
-                displayInfo("错误：转矩调试页选择与 Lite 单轴调试页目标电机不一致", "error");
+                displayInfo("错误：转矩调试页选择与 G302 单轴调试页目标电机不一致", "error");
                 return;
             }
             if(!ensureLiteControllerReady(QStringLiteral("转矩调试使能")) ||
@@ -25988,7 +25988,7 @@ void MainWindow::startMotorTorqueDebug()
         if(!motorTorqueTargetSpin ||
                 !std::isfinite(motorTorqueTargetSpin->value()) ||
                 std::fabs(motorTorqueTargetSpin->value()) > liteTorqueLimit){
-            displayInfo(QStringLiteral("错误：目标力矩超过 Lite 上限 ±%1 N·m")
+            displayInfo(QStringLiteral("错误：目标力矩超过 G302 上限 ±%1 N·m")
                         .arg(liteTorqueLimit, 0, 'f', 3).toStdString(),
                         "error");
             return;
@@ -30418,7 +30418,7 @@ void MainWindow::handleMotivePoseCaptureCompleted(std::vector<std::vector<double
         liteWinchReferenceCapturePending = false;
         motiveFitConfirmed = false;
         displayInfo(wasLiteWinchReferenceCapture ?
-                    "错误：Lite绞盘基准采样返回无效位姿，motorHome、绞盘零偏和安全行程基准均未修改" :
+                    "错误：G302绞盘基准采样返回无效位姿，motorHome、绞盘零偏和安全行程基准均未修改" :
                     "错误：动捕采样完成但位姿结果无效，无法更新动捕位姿",
                     "error");
         refreshCalibrationUiState();
@@ -30453,7 +30453,7 @@ void MainWindow::handleMotivePoseCaptureFailed(std::string reason, int markerCou
                 .toStdString(),
                 "error");
     if(wasLiteWinchReferenceCapture){
-        displayInfo("Lite绞盘基准确认已取消：动捕采样失败，motorHome、绞盘零偏和安全行程基准均未修改",
+        displayInfo("G302绞盘基准确认已取消：动捕采样失败，motorHome、绞盘零偏和安全行程基准均未修改",
                     "error");
     }
     refreshCalibrationUiState();
@@ -30677,8 +30677,8 @@ double MainWindow::motorHardwareDirectionSign(int axisIndex) const
         return configuredDirection;
     }
 
-    // 仿真/绞盘补偿内部沿用 G3 的“收绳量为正”角度语义。Lite 电机物理
-    // 正方向与 G3 相反，因此在所有绳长<->电机命令/反馈边界统一额外乘 -1。
+    // 仿真/绞盘补偿内部沿用 ACC 的“收绳量为正”角度语义。G302 电机物理
+    // 正方向与 ACC 相反，因此在所有绳长<->电机命令/反馈边界统一额外乘 -1。
     const double profileDirection =
             currentMachineKinematicsProfile(ui).cableMotorDirectionSign < 0.0 ?
                 -1.0 : 1.0;
@@ -31620,7 +31620,7 @@ bool MainWindow::initPara(){
 
     // 参数默认值集中在这里写入，便于新设备上电后先得到一套可理解、可追踪的初始状态。
     const MachineKinematicsProfile& defaultProfile =
-            machineKinematicsProfile(MachineProfileKind::G3);
+            machineKinematicsProfile(MachineProfileKind::ACC);
     ui->devCtrlCycleMs->setValue(kDefaultControlCycleMs);
     optionalSpinBoxSetValue(this, "devBarycenterForceMinN", defaultProfile.barycenterForceMinN);
     optionalSpinBoxSetValue(this, "devBarycenterForceMaxN", defaultProfile.barycenterForceMaxN);
@@ -32142,7 +32142,7 @@ bool MainWindow::initPara(){
                         jogFollowTestRunning){
                     const QSignalBlocker blocker(ui->mainFCThread);
                     ui->mainFCThread->setChecked(false);
-                    displayInfo(QStringLiteral("错误：Lite 单绳力控启动被拒绝。请使用调试页准备0525 PID，确保只选目标轴传感器且期望力不超过有效上限%1 N")
+                    displayInfo(QStringLiteral("错误：G302 单绳力控启动被拒绝。请使用调试页准备0525 PID，确保只选目标轴传感器且期望力不超过有效上限%1 N")
                                 .arg(effectiveForceLimit, 0, 'f', 1)
                                 .toStdString(),
                                 "error");
@@ -32510,8 +32510,8 @@ bool MainWindow::initPara(){
     connect(pvtExecutionWorker, &PvtExecutionWorker::displayInfoSignal, this, &MainWindow::displayInfo);
     positionThread->start();
 
-    // initPara 末尾会把默认模板设为 Lite；初始化起点时直接采用 Lite
-    // 的零偏置，避免在单选框切换前先写入 G3 的 15° UI 偏置。
+    // initPara 末尾会把默认模板设为 G302；初始化起点时直接采用 G302
+    // 的零偏置，避免在单选框切换前先写入 ACC 的 15° UI 偏置。
     const std::vector<double> initialUiPose =
             platformPoseToPositionModeUiPose({kGlobalInitialPosePxMm,
                                               kGlobalInitialPosePyMm,
@@ -37455,7 +37455,7 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
             runtimeState.liteCommissioningControlStartupActive = false;
             runtimeState.liteCommissioningControlStartupSequence = 0;
             safetyMonitorConfigDirty = true;
-            displayInfo(QStringLiteral("Lite 单轴调试：ControlWorker 首帧已到（快照序号=%1），安全监控已恢复正常快照超时阈值")
+            displayInfo(QStringLiteral("G302 单轴调试：ControlWorker 首帧已到（快照序号=%1），安全监控已恢复正常快照超时阈值")
                         .arg(startupSnapshot.sequence)
                         .toStdString());
         }
@@ -37565,7 +37565,7 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
             isLiteTemplateActive() &&
             runtimeState.liteCommissioningHardwareCommandActive;
     if(liteCommissioningHardwareCommandWatchdogWindow){
-        // 仅在 Lite 单轴页主动发起的阻塞硬件调用期间，将最终判定阈值
+        // 仅在 G302 单轴页主动发起的阻塞硬件调用期间，将最终判定阈值
         // 临时设为准确的 10 s；命令结束后立即恢复原有 4 s + 1 s 宽限。
         config.mainThreadHeartbeatTimeoutMs =
                 kLiteCommissioningHardwareCommandTimeoutMs;
@@ -37629,7 +37629,7 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
             runtimeState.endpointRemoteControlActive &&
             isLiteTemplateActive()){
         const MachineKinematicsProfile& liteProfile =
-                machineKinematicsProfile(MachineProfileKind::Lite);
+                machineKinematicsProfile(MachineProfileKind::G302);
         config.workspaceMonitorEnabled = true;
         config.workspaceXMin =
                 liteProfile.endpointRemoteWorkspaceMinimumMm[0];
@@ -44421,7 +44421,7 @@ void MainWindow::runSwitch(){
     if(isLiteTemplateActive() &&
             !runtimeState.systemRunning &&
             hardwareInterface.isLSConnected()){
-        displayInfo("整机启动被拒绝：当前存在未完成整机初始化的控制卡连接；请先在“Lite 单轴维护”页断开控制卡，再重新点击“启动整机”", "error");
+        displayInfo("整机启动被拒绝：当前存在未完成整机初始化的控制卡连接；请先在“G302 单轴维护”页断开控制卡，再重新点击“启动整机”", "error");
         return;
     }
     runFullSystemSwitch();
@@ -44516,14 +44516,14 @@ void MainWindow::runFullSystemSwitch(){
             return;
         }
         const QString safetyReferenceText = liteWinchReferenceConfirmed ?
-                    QStringLiteral("已恢复最近一次Lite绞盘确认点作为motorHome和安全行程基准") :
+                    QStringLiteral("已恢复最近一次G302绞盘确认点作为motorHome和安全行程基准") :
                     QStringLiteral("当前8轴上电位置已建立为临时motorHome和安全行程基准");
         if(hasRestoredRuntimePretensionSnapshot()){
-            displayInfo(QStringLiteral("Lite 整机已使能：%1；当前已由用户操作恢复上一运行位姿缓存，请核对后再继续")
+            displayInfo(QStringLiteral("G302 整机已使能：%1；当前已由用户操作恢复上一运行位姿缓存，请核对后再继续")
                         .arg(safetyReferenceText).toStdString());
         }
         else{
-            displayInfo(QStringLiteral("Lite 整机已使能：%1；当前没有运行位姿缓存。首次建立或需要重设绞盘机械基准时，请全绳张紧后点击“Lite绞盘基准确认”；仅校正运行起点时使用“动捕位姿填入起点”")
+            displayInfo(QStringLiteral("G302 整机已使能：%1；当前没有运行位姿缓存。首次建立或需要重设绞盘机械基准时，请全绳张紧后点击“G302绞盘基准确认”；仅校正运行起点时使用“动捕位姿填入起点”")
                         .arg(safetyReferenceText).toStdString());
         }
     };
@@ -44556,7 +44556,7 @@ void MainWindow::runFullSystemSwitch(){
         return;
     }
 
-    // 完整启动恢复原有全轴 Trace 采集范围；Lite 单轴选择只在调试会话内有效。
+    // 完整启动恢复原有全轴 Trace 采集范围；G302 单轴选择只在调试会话内有效。
     hardwareInterface.clearRuntimeTraceCommissioningSelection();
 
     auto clearForceControlUserOptionsBeforeStartup = [this](){
@@ -44641,7 +44641,7 @@ void MainWindow::runFullSystemSwitch(){
             ensureLinearModuleHeightReference(true, true);
             refreshLinearModuleHeightUi(false);
             if(!applyStartupMotorHomeReference()){
-                abortStartupAfterEnable(QStringLiteral("主控反馈：Lite 整机启动失败，8 轴上电安全相对位置基准建立失败；已失能并断开控制卡"));
+                abortStartupAfterEnable(QStringLiteral("主控反馈：G302 整机启动失败，8 轴上电安全相对位置基准建立失败；已失能并断开控制卡"));
                 return;
             }
             refreshMotorPositionLimitRecoveryStateFromHardware(true);
@@ -44734,7 +44734,7 @@ void MainWindow::runFullSystemSwitch(){
         ensureLinearModuleHeightReference(true, true);
         refreshLinearModuleHeightUi(false);
         if(!applyStartupMotorHomeReference()){
-            abortStartupAfterEnable(QStringLiteral("主控反馈：Lite 整机启动失败，8 轴上电安全相对位置基准建立失败；已失能并断开控制卡"));
+            abortStartupAfterEnable(QStringLiteral("主控反馈：G302 整机启动失败，8 轴上电安全相对位置基准建立失败；已失能并断开控制卡"));
             return;
         }
         refreshMotorPositionLimitRecoveryStateFromHardware(true);
@@ -45007,7 +45007,7 @@ bool MainWindow::loadLinearModuleHeightReference(bool announce)
     linearModuleHeightReferences.clear();
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过高度参考读取", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过高度参考读取", "warning");
         }
         return false;
     }
@@ -45130,7 +45130,7 @@ bool MainWindow::saveLinearModuleHeightReference(double referenceHeightM, bool a
 {
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过高度参考保存", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过高度参考保存", "warning");
         }
         return false;
     }
@@ -45261,7 +45261,7 @@ bool MainWindow::ensureLinearModuleHeightReference(bool allowDefaultReference, b
 {
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过高度参考初始化", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过高度参考初始化", "warning");
         }
         return false;
     }
@@ -45350,7 +45350,7 @@ bool MainWindow::syncWorkspaceHeightWithLinearModuleHeight(
 {
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过工作空间高度同步", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过工作空间高度同步", "warning");
         }
         return false;
     }
@@ -45417,7 +45417,7 @@ bool MainWindow::syncUpperAnchorStartPosWithLinearModuleHeight(bool announce)
 {
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过上层锚点座Z同步", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过上层锚点座Z同步", "warning");
         }
         return false;
     }
@@ -45444,7 +45444,7 @@ bool MainWindow::syncUpperAnchorStartPosWithLinearModuleHeight(const std::vector
 {
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过上层锚点座Z同步", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过上层锚点座Z同步", "warning");
         }
         return false;
     }
@@ -45552,7 +45552,7 @@ bool MainWindow::currentLinearModuleHeights(std::vector<int>& axes,
 
     if(!linearModuleHeightModuleEnabled()){
         if(errorMessage){
-            *errorMessage = QStringLiteral("Lite模板未启用直线模组高度模块");
+            *errorMessage = QStringLiteral("G302模板未启用直线模组高度模块");
         }
         return false;
     }
@@ -45639,7 +45639,7 @@ bool MainWindow::refreshLinearModuleHeightUi(bool announce)
     if(!moduleEnabled){
         ui->linearModuleHeightTable->setRowCount(0);
         const QString message =
-                QStringLiteral("Lite模板未启用直线模组高度模块；上层锚点座Z和工作空间高度不随直线模组高度同步");
+                QStringLiteral("G302模板未启用直线模组高度模块；上层锚点座Z和工作空间高度不随直线模组高度同步");
         updateLinearModuleHeightStatus(message, QStringLiteral("warning"));
         if(announce){
             displayInfo(message.toStdString(), "warning");
@@ -45735,7 +45735,7 @@ bool MainWindow::validateLinearModuleAxisEquivForMotion(const std::vector<int>& 
 bool MainWindow::enableLinearModuleMotors()
 {
     if(!linearModuleHeightModuleEnabled()){
-        displayInfo("Lite模板未启用直线模组高度模块，不能使能直线模组电机", "warning");
+        displayInfo("G302模板未启用直线模组高度模块，不能使能直线模组电机", "warning");
         return false;
     }
     if(!ui->devUseLS->isChecked()){
@@ -45781,7 +45781,7 @@ bool MainWindow::disableLinearModuleMotors(const std::vector<int>& axes, bool an
 {
     if(!linearModuleHeightModuleEnabled()){
         if(announce){
-            displayInfo("Lite模板未启用直线模组高度模块，跳过直线模组电机断使能", "warning");
+            displayInfo("G302模板未启用直线模组高度模块，跳过直线模组电机断使能", "warning");
         }
         return false;
     }
@@ -45826,7 +45826,7 @@ bool MainWindow::startLinearModuleHeightMove()
 {
     const QString actionName = QStringLiteral("直线模组高度同步调整");
     if(!linearModuleHeightModuleEnabled()){
-        displayInfo("Lite模板未启用直线模组高度模块，不能执行直线模组高度同步调整", "warning");
+        displayInfo("G302模板未启用直线模组高度模块，不能执行直线模组高度同步调整", "warning");
         return false;
     }
     if(!ensureSafetyReadyForMotion(actionName)){
@@ -45996,7 +45996,7 @@ bool MainWindow::startLinearModuleHeightMove()
 bool MainWindow::stopLinearModuleHeightMove()
 {
     if(!linearModuleHeightModuleEnabled()){
-        displayInfo("Lite模板未启用直线模组高度模块，不能执行直线模组高度停止", "warning");
+        displayInfo("G302模板未启用直线模组高度模块，不能执行直线模组高度停止", "warning");
         return false;
     }
     if(!ui->devUseLS->isChecked()){
@@ -46428,14 +46428,14 @@ bool MainWindow::validateMotorCommandLimits(int axisIndex,
     double currentSafetyRelative = std::numeric_limits<double>::quiet_NaN();
     bool currentSafetyRelativeValid = false;
     if(liteSingleAxisCommissioning){
-        // Lite 单轴调试允许其他轴离线，只读取本次调试的逻辑轴。
+        // G302 单轴调试允许其他轴离线，只读取本次调试的逻辑轴。
         currentSafetyRelativeValid =
                 hardwareInterface.readMotorSafetyRelativeCurPos(axisIndex,
                                                                  currentSafetyRelative) &&
                 std::isfinite(currentSafetyRelative);
     }
     else{
-        // G3、Lite 完整启动及其他多轴流程保持原有的全轴读取语义。
+        // ACC、G302 完整启动及其他多轴流程保持原有的全轴读取语义。
         const std::vector<double> currentSafetyRelativeAll =
                 hardwareInterface.getAllMotorSafetyRelativePosUnit();
         if(axisIndex < static_cast<int>(currentSafetyRelativeAll.size()) &&
@@ -46698,7 +46698,7 @@ bool MainWindow::validateMotorRelativeMoveLimits(int axisIndex,
             axisIndex == runtimeState.commissioningAxisIndex;
     bool currentSafetyRelativeValid = false;
     if(liteSingleAxisCommissioning){
-        // 仅 Lite 单轴调试允许绕开其他离线轴，读取当前轴的同源 Trace
+        // 仅 G302 单轴调试允许绕开其他离线轴，读取当前轴的同源 Trace
         // 临时安全位置；其余场景继续沿用全轴读取和完整性要求。
         currentSafetyRelativeValid =
                 hardwareInterface.readMotorSafetyRelativeCurPos(axisIndex,
@@ -46959,7 +46959,7 @@ bool MainWindow::moveAllCableMotorsNegativeHalfTurn()
         }
 
         // 内部以收绳为正；放绳半圈需要取反后再映射到当前机型的硬件方向。
-        // 默认配置下 G3 下发负半圈，Lite 下发正半圈。
+        // 默认配置下 ACC 下发负半圈，G302 下发正半圈。
         const double payoutMotorDelta =
                 -motorHardwareDirectionSign(axisIndex) * halfTurn;
         const double absoluteTarget = motorAbsPos[axisIndex] + payoutMotorDelta;
@@ -47090,7 +47090,7 @@ void MainWindow::refreshSingleMotorEnableStateUi(){
     if(liteCommissioning &&
             axisIndex >= 0 &&
             axisIndex < static_cast<int>(liteAxisCommissioningStates.size())){
-        // Lite 单轴页的周期 UI 刷新只读取最近一次显式诊断/命令结果，
+        // G302 单轴页的周期 UI 刷新只读取最近一次显式诊断/命令结果，
         // 不同步等待 HardwareThread 查询驱动状态。
         enabled = liteAxisCommissioningStates[axisIndex].enabled;
     }
@@ -47138,7 +47138,7 @@ void MainWindow::singleMotorEnable(){
             runtimeState.hardwareRunState != HardwareRunState::Disconnected;
     if(liteCommissioning){
         if(axisIndex != selectedLiteCommissioningAxis()){
-            displayInfo("错误：单电机页选择与 Lite 单轴调试页目标电机不一致", "error");
+            displayInfo("错误：单电机页选择与 G302 单轴调试页目标电机不一致", "error");
             return;
         }
         if(!ensureLiteControllerReady(QStringLiteral("单电机使能")) ||
@@ -47219,7 +47219,7 @@ void MainWindow::singleMotorStart(){
         const double maxVelocity = liteCommissioningMaxVelocitySpin->value();
         if(!std::isfinite(relativeMoveDist) || std::fabs(relativeMoveDist) > maxTravel ||
                 !std::isfinite(targetVel) || targetVel <= 0.0 || targetVel > maxVelocity){
-            displayInfo(QStringLiteral("错误：单电机点位命令超过 Lite 调试上限：|位移|<=%1 unit，速度<=%2 unit/s")
+            displayInfo(QStringLiteral("错误：单电机点位命令超过 G302 调试上限：|位移|<=%1 unit，速度<=%2 unit/s")
                         .arg(maxTravel, 0, 'f', 6)
                         .arg(maxVelocity, 0, 'f', 6)
                         .toStdString(),
@@ -47426,7 +47426,7 @@ void MainWindow::resetMotorPosDisplayZero(){
         return;
     }
     if(runtimeState.hardwareRunState == HardwareRunState::SingleAxisCommissioning){
-        displayInfo("错误：Lite 单轴调试中禁止使用整机位置清零，请在 Lite 调试页设置当前轴会话零点", "error");
+        displayInfo("错误：G302 单轴调试中禁止使用整机位置清零，请在 G302 调试页设置当前轴会话零点", "error");
         return;
     }
     if(!hardwareInterface.isLSConnected()){
@@ -49444,7 +49444,7 @@ void MainWindow::endChange(int areaNum){
 
 void MainWindow::applyG3TemplateGeometry(){
     const MachineKinematicsProfile& profile =
-            machineKinematicsProfile(MachineProfileKind::G3);
+            machineKinematicsProfile(MachineProfileKind::ACC);
     applyCablePointProfile(axisCableEndPosXVec,
                            axisCableEndPosYVec,
                            axisCableEndPosZVec,
@@ -49460,7 +49460,7 @@ void MainWindow::applyG3TemplateGeometry(){
 
 void MainWindow::applyLiteTemplateGeometry(){
     const MachineKinematicsProfile& profile =
-            machineKinematicsProfile(MachineProfileKind::Lite);
+            machineKinematicsProfile(MachineProfileKind::G302);
     applyCablePointProfile(axisCableEndPosXVec,
                            axisCableEndPosYVec,
                            axisCableEndPosZVec,
@@ -49945,7 +49945,7 @@ void MainWindow::paraChange(){
 
 void MainWindow::applyG3TemplateParameters(){
         const MachineKinematicsProfile& profile =
-                machineKinematicsProfile(MachineProfileKind::G3);
+                machineKinematicsProfile(MachineProfileKind::ACC);
         hardwareInterface.setRuntimeTraceConfigType(profile.runtimeTraceConfigType);
         hardwareInterface.setLeadshineRatedMotorTorqueNm(profile.leadshineRatedMotorTorqueNm);
         if(motorTorqueServoVelocityLimitSpin){
@@ -50213,22 +50213,22 @@ void MainWindow::applyG3TemplateParameters(){
 }
 
 void MainWindow::applyLiteTemplateParameters(){
-    // Lite 先复用 G3 原始模板，再在本函数中覆盖缩小版物理场景的差异参数。
+    // G302 先复用 ACC 原始模板，再在本函数中覆盖缩小版物理场景的差异参数。
     applyG3TemplateParameters();
     endMassVec[0]->setValue(kLiteDefaultEndMassKg);
     const MachineKinematicsProfile& profile =
-            machineKinematicsProfile(MachineProfileKind::Lite);
+            machineKinematicsProfile(MachineProfileKind::G302);
     QString ignoredForcePidWarning;
     applyForcePidParameterSnapshot(liteForcePidDefaultWidgetValues(),
                                    &ignoredForcePidWarning);
     hardwareInterface.setRuntimeTraceConfigType(profile.runtimeTraceConfigType);
     hardwareInterface.setLeadshineRatedMotorTorqueNm(profile.leadshineRatedMotorTorqueNm);
-    ui->devFSDataLen->setValue(profile.forceSensorDataLen);// Lite 12通道变送器PDO为DINT
+    ui->devFSDataLen->setValue(profile.forceSensorDataLen);// G302 12通道变送器PDO为DINT
     ui->axisIsForceSensorSigned->setChecked(profile.forceSensorSigned);
     ui->axisIsStaticSensorHome->setChecked(profile.staticSensorHome);
-    ui->devFrameL->setValue(profile.frameLengthMm);// Lite x轴平行边，单位 mm
-    ui->devFrameW->setValue(profile.frameWidthMm);// Lite y轴平行边，单位 mm
-    ui->devFrameH->setValue(profile.frameHeightMm);// Lite z轴高度，单位 mm
+    ui->devFrameL->setValue(profile.frameLengthMm);// G302 x轴平行边，单位 mm
+    ui->devFrameW->setValue(profile.frameWidthMm);// G302 y轴平行边，单位 mm
+    ui->devFrameH->setValue(profile.frameHeightMm);// G302 z轴高度，单位 mm
     ui->devPulleyRadius->setValue(profile.pulleyRadiusMm);
     optionalSpinBoxSetValue(this, "devBarycenterForceMinN", profile.barycenterForceMinN);
     optionalSpinBoxSetValue(this, "devBarycenterForceMaxN", profile.barycenterForceMaxN);
@@ -50364,7 +50364,7 @@ void MainWindow::updatePara(){
         }
         else{
             appendUnique(skippedItems,
-                         QStringLiteral("上锚点Z和工作空间高度随直线模组高度同步（Lite模板未启用）"));
+                         QStringLiteral("上锚点Z和工作空间高度随直线模组高度同步（G302模板未启用）"));
         }
         updateControlWorkerConfig();
         const int sensorSampleHz = configuredSensorSampleFrequencyHz();
@@ -50506,7 +50506,7 @@ void MainWindow::updatePara(){
     }
     else{
         appendUnique(skippedItems,
-                     QStringLiteral("上锚点Z和工作空间高度随直线模组高度同步（Lite模板未启用）"));
+                     QStringLiteral("上锚点Z和工作空间高度随直线模组高度同步（G302模板未启用）"));
     }
     updateControlWorkerConfig();
     const int sensorSampleHz = configuredSensorSampleFrequencyHz();
@@ -50575,8 +50575,8 @@ bool MainWindow::applyLeadshineHardwareConfigFromUi(QStringList* appliedItems,
             hardwareInterface.isLSConnected() &&
             runtimeState.hardwareRunState == HardwareRunState::SingleAxisCommissioning){
         appendItem(skippedItems,
-                   QStringLiteral("Lite 单轴调试中拒绝全轴参数写入"));
-        displayInfo("错误：Lite 单轴调试连接中禁止下发全轴参数，请使用调试页的“下发当前轴参数”", "error");
+                   QStringLiteral("G302 单轴调试中拒绝全轴参数写入"));
+        displayInfo("错误：G302 单轴调试连接中禁止下发全轴参数，请使用调试页的“下发当前轴参数”", "error");
         return false;
     }
 
@@ -50662,13 +50662,13 @@ bool MainWindow::applyLeadshineHardwareConfigFromUi(QStringList* appliedItems,
             currentMachineKinematicsProfile(ui);
     const double ratedMotorTorqueNm = profile.leadshineRatedMotorTorqueNm;
     hardwareInterface.setRuntimeTraceConfigType(profile.runtimeTraceConfigType);
-    if(profile.runtimeTraceConfigType == HardwareInterface::RuntimeTraceConfigType::Lite){
+    if(profile.runtimeTraceConfigType == HardwareInterface::RuntimeTraceConfigType::G302){
         hardwareInterface.setLiteRuntimeTraceTopology(selectedLiteRuntimeTraceTopology());
         appendItem(appliedItems,
                    selectedLiteRuntimeTraceTopology() ==
                        HardwareInterface::LiteRuntimeTraceTopology::TemporarySevenAxisSensorSlave1008 ?
-                       QStringLiteral("下发Lite Trace拓扑：临时7轴，硬件轴7排除，力传感器从站1008") :
-                       QStringLiteral("下发Lite Trace拓扑：标准8轴，力传感器从站1009"));
+                       QStringLiteral("下发G302 Trace拓扑：临时7轴，硬件轴7排除，力传感器从站1008") :
+                       QStringLiteral("下发G302 Trace拓扑：标准8轴，力传感器从站1009"));
     }
     hardwareInterface.setLeadshineRatedMotorTorqueNm(ratedMotorTorqueNm);
     hardwareInterface.setMotorPara(motorIDVec, comType, {}, {}, {}, motorSlaveIdVec,
@@ -50777,7 +50777,7 @@ bool MainWindow::applyLeadshineAxisEquivFromUi()
     }
     if(hardwareInterface.isLSConnected() &&
             runtimeState.hardwareRunState == HardwareRunState::SingleAxisCommissioning){
-        displayInfo("错误：Lite 单轴调试中禁止批量更新轴当量，请重新下发当前轴参数", "error");
+        displayInfo("错误：G302 单轴调试中禁止批量更新轴当量，请重新下发当前轴参数", "error");
         return false;
     }
 
@@ -51634,7 +51634,7 @@ void MainWindow::updateCableHomeConfirmEnabled(){
 bool MainWindow::setCableHome(){
     if(isLiteTemplateActive() && !runtimeState.systemRunning &&
             runtimeState.hardwareRunState != HardwareRunState::Disconnected){
-        displayInfo("错误：Lite 单轴调试连接中禁止执行整机预紧确认；请使用调试页的临时零点", "error");
+        displayInfo("错误：G302 单轴调试连接中禁止执行整机预紧确认；请使用调试页的临时零点", "error");
         return false;
     }
     QString pretensionErrorMessage;
@@ -51788,10 +51788,10 @@ bool MainWindow::setCableHome(){
     if(keepStartupMotorHome){
         retainedMotorHome = hardwareInterface.getAllMotorHome();
         if(retainedMotorHome.empty()){
-            displayInfo("警告：Lite 预紧确认无法读取本次上电 motorHome；未覆盖电机零位", "warning");
+            displayInfo("警告：G302 预紧确认无法读取本次上电 motorHome；未覆盖电机零位", "warning");
         }
         else{
-            displayInfo("Lite 预紧确认仅更新位姿/绳长参考，motorHome 继续保持本次上电位置");
+            displayInfo("G302 预紧确认仅更新位姿/绳长参考，motorHome 继续保持本次上电位置");
         }
     }
     else{
@@ -51820,7 +51820,7 @@ bool MainWindow::setCableHome(){
         }
         if(!baseValid || retainedTrajectoryMotorBase.empty()){
             retainedTrajectoryMotorBase.clear();
-            displayInfo("警告：Lite 预紧确认无法生成当前位置相对上电 motorHome 的PVT起点基值", "warning");
+            displayInfo("警告：G302 预紧确认无法生成当前位置相对上电 motorHome 的PVT起点基值", "warning");
         }
     }
     if(runtimePosePretension &&
@@ -52157,7 +52157,7 @@ void MainWindow::setUIVec(){
     for(QDoubleSpinBox* torqueFeedbackSpin : mainMotorTorqueData){
         if(torqueFeedbackSpin){
             torqueFeedbackSpin->setToolTip(
-                        QStringLiteral("电机坐标实际力矩。Lite：正值表示放绳，负值表示收绳；显示值不乘绳索方向符号。"));
+                        QStringLiteral("电机坐标实际力矩。G302：正值表示放绳，负值表示收绳；显示值不乘绳索方向符号。"));
         }
     }
 }

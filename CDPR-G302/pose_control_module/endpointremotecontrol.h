@@ -110,7 +110,7 @@ struct EndpointRemoteConfig {
     // G = vmax^2 / (2 * asafe) + vmax * Tresponse + Epose。
     // Tresponse沿用遥控安全调度预算：候选积分、命令响应和允许漏拍补推
     // 各一个配置周期。
-    // 这两个参数只属于 Lite 末端遥控 profile，不改变普通在线速度控制。
+    // 这两个参数只属于 G302 末端遥控 profile，不改变普通在线速度控制。
     double outwardRestartSafeAccelerationRatio =
             kEndpointRemoteOutwardRestartSafeAccelerationRatio;
     double outwardRestartPoseErrorMarginMm =

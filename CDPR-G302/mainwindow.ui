@@ -6150,12 +6150,12 @@ border-radius: 6px;</string>
                       </property>
                       <item>
                        <property name="text">
-                        <string>标准模板</string>
+                        <string>ACC模板</string>
                        </property>
                       </item>
                       <item>
                        <property name="text">
-                        <string>Lite模板</string>
+                        <string>G302模板</string>
                        </property>
                       </item>
                       <item>
@@ -6282,7 +6282,7 @@ border-radius: 6px;</string>
                              </sizepolicy>
                             </property>
                             <property name="text">
-                             <string>标准模式</string>
+                             <string>ACC模板</string>
                             </property>
                             <property name="checked">
                              <bool>false</bool>
@@ -6301,7 +6301,7 @@ border-radius: 6px;</string>
                              </sizepolicy>
                             </property>
                             <property name="text">
-                             <string>Lite模板</string>
+                             <string>G302模板</string>
                             </property>
                             <property name="checked">
                              <bool>true</bool>
@@ -6656,10 +6656,10 @@ border-radius: 6px;</string>
                      </sizepolicy>
                     </property>
                     <property name="toolTip">
-                     <string>仅用于Lite整机：重新采集动捕，并把当前张紧静止状态同时设为motorHome、安全行程零点、绞盘轴向零偏零点和绝对绳长参考；不下发运动</string>
+                     <string>仅用于G302整机：重新采集动捕，并把当前张紧静止状态同时设为motorHome、安全行程零点、绞盘轴向零偏零点和绝对绳长参考；不下发运动</string>
                     </property>
                     <property name="text">
-                     <string>Lite绞盘基准确认</string>
+                     <string>G302绞盘基准确认</string>
                     </property>
                    </widget>
                   </item>
@@ -10561,7 +10561,7 @@ border-radius: 6px;</string>
                <bool>false</bool>
               </property>
               <property name="toolTip">
-               <string>手动设置实际转矩限幅；G3默认60N·m，Lite默认且最高40N·m。原始值按当前模板额定转矩的千分之一换算后与该限幅比较。</string>
+               <string>手动设置实际转矩限幅；ACC默认60N·m，G302默认且最高40N·m。原始值按当前模板额定转矩的千分之一换算后与该限幅比较。</string>
               </property>
               <property name="suffix">
                <string> N·m</string>
@@ -16536,7 +16536,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QLabel" name="forceInteractionValidationHintLabel">
               <property name="text">
-               <string>阶段A仅使用控制界面的Lite模板。模拟量按传感器坐标系S的原始六维力输入，经实测安装关系转换到平台质心，再进入纯惯性Newmark-β、补偿逆运动学和每步正运动学往返校验；全程不调用雷赛运动API。</string>
+               <string>阶段A仅使用控制界面的G302模板。模拟量按传感器坐标系S的原始六维力输入，经实测安装关系转换到平台质心，再进入纯惯性Newmark-β、补偿逆运动学和每步正运动学往返校验；全程不调用雷赛运动API。</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>

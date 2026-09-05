@@ -218,7 +218,7 @@ double normalizedLeadshineRatedMotorTorqueNm(double ratedTorqueNm)
 
 int leadshineTorqueNmToRaw(double torqueNm, double ratedTorqueNm)
 {
-    // 这里只做 Nm<->额定转矩原始值的比例换算并保留符号。Lite 的绳索
+    // 这里只做 Nm<->额定转矩原始值的比例换算并保留符号。G302 的绳索
     // 正/负方向由上层控制策略处理：正电机力矩=放绳，负电机力矩=收绳。
     const double ratedTorque = normalizedLeadshineRatedMotorTorqueNm(ratedTorqueNm);
     const double rawTorque = torqueNm *
@@ -612,7 +612,7 @@ bool HardwareInterface::safetyRelativeMotorTargetFromAbsoluteDirect(
         return std::isfinite(relativePosition);
     }
 
-    // Lite 会话零点建立后，安全位置只能来自锁存时选定的同一 Trace
+    // G302 会话零点建立后，安全位置只能来自锁存时选定的同一 Trace
     // 通道；Trace 失效时不允许退回另一种位置量继续下发命令。
     if(hasValidMotorSessionSafetyTraceHome(logicalIndex)){
         return false;
@@ -1482,7 +1482,7 @@ void HardwareInterface::setMotorSafetyHomeTraceCommandRawPulse(std::vector<qint6
             motorSafetyHomeTraceCommandRawPulse.size() > motorIdVec.size()){
         motorSafetyHomeTraceCommandRawPulse.resize(motorIdVec.size());
     }
-    // 切换到完整系统的持久化 command 零位语义时，退出 Lite 会话零点。
+    // 切换到完整系统的持久化 command 零位语义时，退出 G302 会话零点。
     motorSessionSafetyHomeTraceRawPulse.assign(motorIdVec.size(), 0);
     motorSessionSafetyHomeTraceValid.assign(motorIdVec.size(), false);
     motorSessionSafetyHomeTraceUsesFeedback.assign(motorIdVec.size(), false);
@@ -1624,7 +1624,7 @@ bool HardwareInterface::setMotorHomesForAxes(const std::vector<int>& logicalIndi
             return false;
         }
         // 调用方请求 command 原始脉冲时，将它视作本次原子提交的必要字段。
-        // Lite 绞盘基准必须与 motorHome/安全基准来自同一帧，不能提交后再读另一帧补齐。
+        // G302 绞盘基准必须与 motorHome/安全基准来自同一帧，不能提交后再读另一帧补齐。
         if(commandRawPulse &&
                 (!commandValid ||
                  latestMotorTracePositionFrame.commandRawPulse[logicalIndex] == 0)){
@@ -2412,7 +2412,7 @@ bool HardwareInterface::disconnectLS() {
     activePvtStartMonotonicUs = 0;
 
     // Only issue disable commands for axes that this process observed as
-    // enabled. A Lite commissioning session may intentionally have absent
+    // enabled. A G302 commissioning session may intentionally have absent
     // axes, so disconnect must not turn into an all-axis communication test.
     for(int logicalIndex = 0;
         logicalIndex < static_cast<int>(motorCurState.size());
@@ -4389,7 +4389,7 @@ bool HardwareInterface::motorTorqueStart(int index, double torqueNm)
     }
 
     const double limitedTorqueNm =
-            activeRuntimeTraceConfigType == RuntimeTraceConfigType::Lite ?
+            activeRuntimeTraceConfigType == RuntimeTraceConfigType::G302 ?
                 std::clamp(torqueNm,
                            -kLiteMotorTorqueCommandLimitNm,
                            kLiteMotorTorqueCommandLimitNm) :
@@ -4463,7 +4463,7 @@ bool HardwareInterface::motorTorqueChange(int index, double torqueNm)
     }
 
     const double limitedTorqueNm =
-            activeRuntimeTraceConfigType == RuntimeTraceConfigType::Lite ?
+            activeRuntimeTraceConfigType == RuntimeTraceConfigType::G302 ?
                 std::clamp(torqueNm,
                            -kLiteMotorTorqueCommandLimitNm,
                            kLiteMotorTorqueCommandLimitNm) :
@@ -6042,7 +6042,7 @@ bool HardwareInterface::configureRuntimeTraceRead()
         if(hardwareAxis < 0){
             continue;
         }
-        if(activeRuntimeTraceConfigType == RuntimeTraceConfigType::Lite &&
+        if(activeRuntimeTraceConfigType == RuntimeTraceConfigType::G302 &&
                 activeLiteRuntimeTraceTopology ==
                     LiteRuntimeTraceTopology::TemporarySevenAxisSensorSlave1008 &&
                 hardwareAxis == 7){
@@ -6081,7 +6081,7 @@ bool HardwareInterface::configureRuntimeTraceRead()
     };
     const auto liteRuntimeTraceProfile = [&]() {
         RuntimeTraceProfile profile = g3RuntimeTraceProfile();
-        // Standard Lite hardware axes 0..7 map to slaves 1001..1008.  In the
+        // Standard G302 hardware axes 0..7 map to slaves 1001..1008.  In the
         // temporary seven-axis topology hardware axis 7 is filtered above and
         // the force transmitter occupies the now-vacant slave address 1008.
         profile.traceDataIndexByLogicalAxis = {
@@ -6121,7 +6121,7 @@ bool HardwareInterface::configureRuntimeTraceRead()
         return profile;
     };
     const RuntimeTraceProfile traceProfile =
-            activeRuntimeTraceConfigType == RuntimeTraceConfigType::Lite ?
+            activeRuntimeTraceConfigType == RuntimeTraceConfigType::G302 ?
                 liteRuntimeTraceProfile() :
                 g3RuntimeTraceProfile();
     const auto traceDataIndexForAxis = [&](const RuntimeTraceAxis& axis) -> int {
@@ -7825,7 +7825,7 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
                 motorComType[axis] == COM_EC_LS &&
                 resolveLeadshineAxisIndex(axis) >= 0){
             const int hardwareAxis = resolveLeadshineAxisIndex(axis);
-            if(activeRuntimeTraceConfigType == RuntimeTraceConfigType::Lite &&
+            if(activeRuntimeTraceConfigType == RuntimeTraceConfigType::G302 &&
                     activeLiteRuntimeTraceTopology ==
                         LiteRuntimeTraceTopology::TemporarySevenAxisSensorSlave1008 &&
                     hardwareAxis == 7){

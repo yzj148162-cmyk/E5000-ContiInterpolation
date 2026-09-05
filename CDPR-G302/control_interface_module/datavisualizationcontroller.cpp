@@ -2038,7 +2038,7 @@ bool MainWindow::buildMotorPositionCableLengthForVisualization(
     if(currentRuntimeMotorHomeReferenceLoaded &&
             hasFinitePoseMatrix(currentRuntimeMotorHomePlatformPose)){
         // 平台位姿与 reference_motor_pos 是同一时刻采集的一对参考。
-        // motor_home_pos 在旧Lite快照中可能仍是上电零点，不能优先与当前平台位姿混用。
+        // motor_home_pos 在旧G302快照中可能仍是上电零点，不能优先与当前平台位姿混用。
         const std::vector<double>& runtimeReference =
                 isLiteTemplateActive() ?
                     (useEncoderHome ?

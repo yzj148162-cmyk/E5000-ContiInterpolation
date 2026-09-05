@@ -20,8 +20,8 @@ constexpr double kLiteActualTorqueLimitNm = 40.0;
 const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind)
 {
     static const MachineKinematicsProfile g3Profile{
-        "G3",
-        HardwareInterface::RuntimeTraceConfigType::G3,
+        "ACC",
+        HardwareInterface::RuntimeTraceConfigType::ACC,
         12,
         8,
         true,
@@ -87,8 +87,8 @@ const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind
     };
 
     static const MachineKinematicsProfile liteProfile{
-        "Lite",
-        HardwareInterface::RuntimeTraceConfigType::Lite,
+        "G302",
+        HardwareInterface::RuntimeTraceConfigType::G302,
         8,
         8,
         false,
@@ -155,14 +155,14 @@ const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind
         {2800.0, 2800.0, 2670.0, 3.14, 3.14, 3.14}
     };
 
-    return kind == MachineProfileKind::Lite ? liteProfile : g3Profile;
+    return kind == MachineProfileKind::G302 ? liteProfile : g3Profile;
 }
 
 MachineProfileKind currentMachineProfileKind(const Ui::MainWindow* ui)
 {
     return ui && ui->devUseLite && ui->devUseLite->isChecked()
-            ? MachineProfileKind::Lite
-            : MachineProfileKind::G3;
+            ? MachineProfileKind::G302
+            : MachineProfileKind::ACC;
 }
 
 const MachineKinematicsProfile& currentMachineKinematicsProfile(const Ui::MainWindow* ui)
