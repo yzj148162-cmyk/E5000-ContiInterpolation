@@ -582,7 +582,11 @@ private:
     bool computeForceInteractionRuntimeForwardPose(
             const ForceInteractionRuntimeStatus& status,
             std::vector<double>& pose,
-            int* equationCount = nullptr);
+            int* equationCount = nullptr,
+            double* rmsCableResidualMm = nullptr,
+            double* maximumCableResidualMm = nullptr,
+            int* terminationType = nullptr,
+            int* iterationCount = nullptr);
 
     // 涓荤嚎绋嬨€備负浠€涔堜娇鐢ㄧ嚎绋嬭€屼笉鐢╭t鐨凲Timer锛堝弬鑰冨姩鎬佹洸绾跨粯鍒剁殑渚嬬▼锛夛紵
     // 鍘熷洜鈶狅細澶氱嚎绋嬪垎鎷呰繍绠楀帇鍔?
@@ -618,6 +622,11 @@ private:
     std::vector<double> forceInteractionRuntimeInitialPoseMmRad;
     std::vector<double> forceInteractionRuntimeLastForwardPose;
     int forceInteractionRuntimeLastForwardEquationCount = 0;
+    double forceInteractionRuntimeLastForwardRmsResidualMm = 0.0;
+    double forceInteractionRuntimeLastForwardMaximumResidualMm = 0.0;
+    int forceInteractionRuntimeLastForwardTerminationType = 0;
+    int forceInteractionRuntimeLastForwardIterationCount = 0;
+    quint64 forceInteractionRuntimeLastForwardTraceSequence = 0;
     qint64 forceInteractionRuntimeLastForwardSolveMs = -1;
     bool forceInteractionRuntimeFinalizing = false;
     quint64 endpointRemoteInputSessionToken = 0;

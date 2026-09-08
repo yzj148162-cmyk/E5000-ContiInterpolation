@@ -32,6 +32,10 @@ public:
         bool success = false;
         std::vector<double> pose;
         int equationCount = 0;
+        int terminationType = 0;
+        int iterationCount = 0;
+        double rmsCableResidualMm = 0.0;
+        double maximumCableResidualMm = 0.0;
         QString failureReason;
         PhysicalWorkspaceBoundaryResult workspaceResult;
     };

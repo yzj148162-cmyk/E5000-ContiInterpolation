@@ -19430,6 +19430,11 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
                 forceInteractionRuntimeInitialPoseMmRad);
     forceInteractionRuntimeLastForwardPose.clear();
     forceInteractionRuntimeLastForwardEquationCount = 0;
+    forceInteractionRuntimeLastForwardRmsResidualMm = 0.0;
+    forceInteractionRuntimeLastForwardMaximumResidualMm = 0.0;
+    forceInteractionRuntimeLastForwardTerminationType = 0;
+    forceInteractionRuntimeLastForwardIterationCount = 0;
+    forceInteractionRuntimeLastForwardTraceSequence = 0;
     forceInteractionRuntimeLastForwardSolveMs = -1;
     displayInfo(QStringLiteral(
                     "阶段B已准备：模拟力=%1，周期=%2 ms，最长运行=%3 s，PID=%4，末端加速度/制动a=%5 mm/s²，附加余量/急停线=%6/%7 mm，八轴公共加速度缩放=关闭；配置与初始位姿已冻结，尚未下发速度命令")
@@ -19613,11 +19618,27 @@ void MainWindow::startForceInteractionBoundaryLogAnalysis(
 bool MainWindow::computeForceInteractionRuntimeForwardPose(
         const ForceInteractionRuntimeStatus& status,
         std::vector<double>& pose,
-        int* equationCount)
+        int* equationCount,
+        double* rmsCableResidualMm,
+        double* maximumCableResidualMm,
+        int* terminationType,
+        int* iterationCount)
 {
     pose.clear();
     if(equationCount){
         *equationCount = 0;
+    }
+    if(rmsCableResidualMm){
+        *rmsCableResidualMm = 0.0;
+    }
+    if(maximumCableResidualMm){
+        *maximumCableResidualMm = 0.0;
+    }
+    if(terminationType){
+        *terminationType = 0;
+    }
+    if(iterationCount){
+        *iterationCount = 0;
     }
     if(forceInteractionRuntimeInitialPoseMmRad.size() < 6 ||
             status.stepCount == 0 ||
@@ -19688,6 +19709,18 @@ bool MainWindow::computeForceInteractionRuntimeForwardPose(
     if(equationCount){
         *equationCount = result.equationCount;
     }
+    if(rmsCableResidualMm){
+        *rmsCableResidualMm = result.rmsCableResidualMm;
+    }
+    if(maximumCableResidualMm){
+        *maximumCableResidualMm = result.maximumCableResidualMm;
+    }
+    if(terminationType){
+        *terminationType = result.terminationType;
+    }
+    if(iterationCount){
+        *iterationCount = result.iterationCount;
+    }
     if(!result.success || result.pose.size() < 6 ||
             !hasFiniteValues(result.pose, 6)){
         return false;
@@ -19744,6 +19777,10 @@ void MainWindow::refreshForceInteractionRuntimeUi()
 
     std::vector<double> virtualPose;
     int equationCount = 0;
+    double rmsCableResidualMm = 0.0;
+    double maximumCableResidualMm = 0.0;
+    int terminationType = 0;
+    int iterationCount = 0;
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     bool forwardAttempted = false;
     if((status.state == ForceInteractionRuntimeStatus::State::Running ||
@@ -19752,15 +19789,29 @@ void MainWindow::refreshForceInteractionRuntimeUi()
              nowMs - forceInteractionRuntimeLastForwardSolveMs >= 200)){
         forceInteractionRuntimeLastForwardSolveMs = nowMs;
         forwardAttempted = true;
-        if(computeForceInteractionRuntimeForwardPose(status, virtualPose,
-                                                     &equationCount)){
+        if(computeForceInteractionRuntimeForwardPose(
+                    status, virtualPose, &equationCount,
+                    &rmsCableResidualMm, &maximumCableResidualMm,
+                    &terminationType, &iterationCount)){
             forceInteractionRuntimeLastForwardPose = virtualPose;
             forceInteractionRuntimeLastForwardEquationCount = equationCount;
+            forceInteractionRuntimeLastForwardRmsResidualMm = rmsCableResidualMm;
+            forceInteractionRuntimeLastForwardMaximumResidualMm =
+                    maximumCableResidualMm;
+            forceInteractionRuntimeLastForwardTerminationType = terminationType;
+            forceInteractionRuntimeLastForwardIterationCount = iterationCount;
+            forceInteractionRuntimeLastForwardTraceSequence =
+                    status.latestTraceSequence;
         }
     }
     else if(forceInteractionRuntimeLastForwardPose.size() >= 6){
         virtualPose = forceInteractionRuntimeLastForwardPose;
         equationCount = forceInteractionRuntimeLastForwardEquationCount;
+        rmsCableResidualMm = forceInteractionRuntimeLastForwardRmsResidualMm;
+        maximumCableResidualMm =
+                forceInteractionRuntimeLastForwardMaximumResidualMm;
+        terminationType = forceInteractionRuntimeLastForwardTerminationType;
+        iterationCount = forceInteractionRuntimeLastForwardIterationCount;
     }
 
     QString detail = QStringLiteral(
@@ -19773,14 +19824,19 @@ void MainWindow::refreshForceInteractionRuntimeUi()
             .arg(status.desiredState.pose[5], 0, 'f', 6);
     if(virtualPose.size() >= 6){
         detail += QStringLiteral(
-                    "虚拟实际位姿（5 Hz）：[%1, %2, %3] mm；[%4, %5, %6] rad；方程=%7\n")
+                    "虚拟实际位姿（5 Hz）：[%1, %2, %3] mm；[%4, %5, %6] rad；方程=%7，残差RMS/最大=%8/%9 mm，termination/迭代=%10/%11，Trace序号=%12\n")
                 .arg(virtualPose[0], 0, 'f', 3)
                 .arg(virtualPose[1], 0, 'f', 3)
                 .arg(virtualPose[2], 0, 'f', 3)
                 .arg(virtualPose[3], 0, 'f', 6)
                 .arg(virtualPose[4], 0, 'f', 6)
                 .arg(virtualPose[5], 0, 'f', 6)
-                .arg(equationCount);
+                .arg(equationCount)
+                .arg(rmsCableResidualMm, 0, 'f', 6)
+                .arg(maximumCableResidualMm, 0, 'f', 6)
+                .arg(terminationType)
+                .arg(iterationCount)
+                .arg(forceInteractionRuntimeLastForwardTraceSequence);
     }
     else{
         detail += forwardAttempted ?

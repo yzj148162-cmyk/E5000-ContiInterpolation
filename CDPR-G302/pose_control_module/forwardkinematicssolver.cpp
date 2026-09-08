@@ -203,6 +203,8 @@ ForwardKinematicsSolver::Result ForwardKinematicsSolver::solve(const Request& re
     context.request = &effectiveRequest;
     minlmoptimize(state, cableLengthResidual, nullptr, &context);
     minlmresults(state, x, report);
+    result.terminationType = static_cast<int>(report.terminationtype);
+    result.iterationCount = static_cast<int>(report.iterationscount);
 
     result.pose.resize(6);
     for(int i=0; i<6; ++i){
@@ -213,7 +215,47 @@ ForwardKinematicsSolver::Result ForwardKinematicsSolver::solve(const Request& re
             result.pose[i] = 0.0;
         }
     }
-    result.success = hasValidPose6(result.pose);
+    bool residualValid = false;
+    if(hasValidPose6(result.pose)){
+        real_1d_array finalX;
+        finalX.setcontent(6, result.pose.data());
+        real_1d_array residual;
+        residual.setlength(result.equationCount);
+        cableLengthResidual(finalX, residual, &context);
+        double sumSquares = 0.0;
+        double maximumAbsolute = 0.0;
+        residualValid = true;
+        for(int index = 0; index < result.equationCount; ++index){
+            const double value = residual[index];
+            if(!std::isfinite(value)){
+                residualValid = false;
+                break;
+            }
+            sumSquares += value * value;
+            maximumAbsolute = std::max(maximumAbsolute, std::abs(value));
+        }
+        if(residualValid){
+            result.rmsCableResidualMm = std::sqrt(
+                        sumSquares / static_cast<double>(result.equationCount));
+            result.maximumCableResidualMm = maximumAbsolute;
+        }
+    }
+    result.success = hasValidPose6(result.pose) &&
+            result.terminationType > 0 && residualValid;
+    if(!result.success && result.failureReason.isEmpty()){
+        if(result.terminationType <= 0){
+            result.failureReason = QStringLiteral(
+                        "正运动学优化器异常终止（termination=%1，iterations=%2）")
+                    .arg(result.terminationType)
+                    .arg(result.iterationCount);
+        }
+        else if(!residualValid){
+            result.failureReason = QStringLiteral("正运动学绳长残差无效");
+        }
+        else{
+            result.failureReason = QStringLiteral("正运动学返回非有限位姿");
+        }
+    }
     if(result.success && request.enforcePhysicalWorkspace){
         PhysicalWorkspaceBoundary boundary;
         QString boundaryError;
