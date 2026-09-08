@@ -94,6 +94,9 @@ public:
         double severeForceOverRatio = 1.15;
         double severeSpeedOverRatio = 1.2;
         bool workspaceMonitorEnabled = false;
+        // 六维力实时控制运行时，安全线程直接读取 ControlWorker 发布的逐步期望状态，
+        // 避免依赖 UI 低频转发，并用 stepCount 检测状态停更。
+        bool forceInteractionWorkspacePoseSource = false;
         // 工作空间判定接收当前运动功能发布的可靠末端位姿；物理边界统一检查
         // 动平台全部代表点，而不是只检查质心坐标。
         bool hasWorkspacePose = false;
@@ -216,6 +219,8 @@ private:
     std::vector<int> highForceCycles;
     std::vector<int> overSpeedCycles;
     int workspaceMissingPoseCycles = 0;
+    quint64 workspaceLastForceInteractionStep = 0;
+    bool workspaceForceInteractionStepSeen = false;
     int workspaceExceededCycles = 0;
     bool workspaceNearBoundaryActive = false;
 };

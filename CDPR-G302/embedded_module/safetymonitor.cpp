@@ -202,6 +202,8 @@ void SafetyMonitor::ensureAxisStateSize(int axisCount, int sensorCount)
 void SafetyMonitor::resetWorkspaceState()
 {
     workspaceMissingPoseCycles = 0;
+    workspaceLastForceInteractionStep = 0;
+    workspaceForceInteractionStepSeen = false;
     workspaceExceededCycles = 0;
     clearWorkspaceWarningState();
 }
@@ -942,10 +944,66 @@ void SafetyMonitor::evaluateSafety()
     }
 
     if(cfg.workspaceMonitorEnabled && !cfg.singleCableForceDebugMode){
-        // 工作空间监控使用 MainWindow 提供的当前运动期望位姿；独立线程只做
-        // 全平台几何硬边界复核，动态停车仍由实时控制器按每个控制周期判定。
+        // 六维力运行时直接读取 ControlWorker 每步发布的期望位姿；其他模式仍使用
+        // MainWindow 汇总的当前命令位姿。独立线程只做全平台几何硬边界复核，
+        // 动态停车仍由实时控制器按每个控制周期判定。
         // 单绳调试模式下可能没有有效轨迹位姿，因此跳过该项。
-        if(!cfg.hasWorkspacePose || cfg.workspacePose.size() < 6 ||
+        bool hasWorkspacePose = cfg.hasWorkspacePose;
+        std::vector<double> workspacePose = cfg.workspacePose;
+        bool forceInteractionPoseStale = false;
+        if(cfg.forceInteractionWorkspacePoseSource){
+            hasWorkspacePose = false;
+            workspacePose.clear();
+            if(controlWorker){
+                const ForceInteractionRuntimeStatus status =
+                        controlWorker->forceInteractionRuntimeStatus();
+                const bool active =
+                        status.state == ForceInteractionRuntimeStatus::State::Running ||
+                        status.state == ForceInteractionRuntimeStatus::State::Braking;
+                if(active && status.desiredState.poseValid){
+                    workspacePose.resize(6, 0.0);
+                    for(int dimension = 0; dimension < 3; ++dimension){
+                        workspacePose[static_cast<size_t>(dimension)] =
+                                status.desiredState.pose[static_cast<size_t>(dimension)] * 1000.0;
+                    }
+                    for(int dimension = 3; dimension < 6; ++dimension){
+                        workspacePose[static_cast<size_t>(dimension)] =
+                                status.desiredState.pose[static_cast<size_t>(dimension)];
+                    }
+                    hasWorkspacePose = std::all_of(
+                                workspacePose.cbegin(), workspacePose.cend(),
+                                [](double value){ return std::isfinite(value); });
+                    if(hasWorkspacePose){
+                        if(!workspaceForceInteractionStepSeen ||
+                                status.stepCount != workspaceLastForceInteractionStep){
+                            workspaceForceInteractionStepSeen = true;
+                            workspaceLastForceInteractionStep = status.stepCount;
+                            workspaceMissingPoseCycles = 0;
+                        }
+                        else{
+                            workspaceMissingPoseCycles++;
+                            forceInteractionPoseStale =
+                                    workspaceMissingPoseCycles >=
+                                    std::max(cfg.poseTimeoutCycles, 1);
+                        }
+                    }
+                }
+            }
+        }
+
+        if(forceInteractionPoseStale){
+            clearWorkspaceWarningState();
+            workspaceExceededCycles = 0;
+            triggerFault(StopLevel::EmergencyStop,
+                         FaultCode::SensorInvalid,
+                         QStringLiteral("六维力工作空间位姿停更"),
+                         QStringLiteral("ControlWorker 的六维力期望状态已连续 %1 个安全周期未推进（最后步号=%2），已执行安全急停。")
+                             .arg(workspaceMissingPoseCycles)
+                             .arg(workspaceLastForceInteractionStep));
+            return;
+        }
+
+        if(!hasWorkspacePose || workspacePose.size() < 6 ||
                 !cfg.physicalWorkspaceConfigured){
             clearWorkspaceWarningState();
             workspaceExceededCycles = 0;
@@ -960,10 +1018,12 @@ void SafetyMonitor::evaluateSafety()
             }
         }
         else{
-            workspaceMissingPoseCycles = 0;
+            if(!cfg.forceInteractionWorkspacePoseSource){
+                workspaceMissingPoseCycles = 0;
+            }
 
             std::array<double, 6> poseMmRad{};
-            std::copy_n(cfg.workspacePose.cbegin(), poseMmRad.size(),
+            std::copy_n(workspacePose.cbegin(), poseMmRad.size(),
                         poseMmRad.begin());
             if(!std::all_of(poseMmRad.cbegin(), poseMmRad.cend(),
                            [](double value){ return std::isfinite(value); })){

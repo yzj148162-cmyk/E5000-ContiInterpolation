@@ -37686,6 +37686,7 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
     config.motionActive = runtimeState.pvtCommandActive ||
             runtimeState.pvtMotionProtectedActive ||
             config.forceThreadRunning ||
+            runtimeState.forceInteractionRuntimeActive ||
             runtimeState.motorTorqueDebugActive ||
             runtimeState.singleMotorPointMoveActive ||
             runtimeState.jogFollowTestActive ||
@@ -37779,6 +37780,8 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
 
     std::vector<double> workspacePose;
     currentWorkspaceSafetyPose(workspacePose);
+    config.forceInteractionWorkspacePoseSource =
+            runtimeState.forceInteractionRuntimeActive;
     config.hasWorkspacePose = hasFiniteValues(workspacePose, 6);
     if(config.hasWorkspacePose){
         config.workspacePose = workspacePose;
