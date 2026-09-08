@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <cmath>
-#include <limits>
 
 namespace {
 
@@ -38,63 +37,12 @@ CompensatedCableKinematics::PoseMatrix toPoseMmRad(
 bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
                        QString* errorMessage)
 {
-    PhysicalWorkspaceBoundary boundary;
     QString boundaryError;
-    if(!boundary.configure(configuration.physicalWorkspace, &boundaryError)){
+    if(!runPhysicalWorkspaceBoundarySelfChecks(
+               configuration.physicalWorkspace, &boundaryError)){
         if(errorMessage){
-            *errorMessage = QStringLiteral("统一物理工作空间配置自检失败：%1")
+            *errorMessage = QStringLiteral("统一物理工作空间验收矩阵失败：%1")
                     .arg(boundaryError);
-        }
-        return false;
-    }
-    std::array<double, 6> centerPose{};
-    for(int axis = 0; axis < 3; ++axis){
-        centerPose[axis] = 0.5 *
-                (configuration.physicalWorkspace.frameMinimumMm[axis] +
-                 configuration.physicalWorkspace.frameMaximumMm[axis]);
-    }
-    const PhysicalWorkspaceBoundaryResult centerResult =
-            boundary.evaluatePose(centerPose);
-    if(centerResult.action != PhysicalWorkspaceAction::Safe){
-        if(errorMessage){
-            *errorMessage = QStringLiteral("机架中心位姿未通过八连接点物理边界自检：%1")
-                    .arg(centerResult.reason);
-        }
-        return false;
-    }
-    double maximumLocalX = -std::numeric_limits<double>::infinity();
-    for(const auto& point : configuration.physicalWorkspace.platformPointsLocalMm){
-        maximumLocalX = std::max(maximumLocalX, point[0]);
-    }
-    std::array<double, 6> outsidePose = centerPose;
-    outsidePose[0] = configuration.physicalWorkspace.frameMaximumMm[0] -
-            maximumLocalX + 0.001;
-    const PhysicalWorkspaceBoundaryResult outsideResult =
-            boundary.evaluatePose(outsidePose);
-    if(outsideResult.action != PhysicalWorkspaceAction::EmergencyStop ||
-            outsideResult.physicallyInside){
-        if(errorMessage){
-            *errorMessage = QStringLiteral("连接点越过机架X上边界的自检未能检出");
-        }
-        return false;
-    }
-    PhysicalWorkspaceMotionSample brakingSample;
-    brakingSample.poseMmRad = centerPose;
-    brakingSample.poseMmRad[0] =
-            configuration.physicalWorkspace.frameMaximumMm[0] - maximumLocalX - 100.0;
-    brakingSample.twistMmRadPerSec[0] = 100.0;
-    DynamicWorkspaceSafetyConfig safety;
-    safety.stoppingDecelerationMmPerSec2 = 100.0;
-    safety.additionalSafetyMarginMm = 60.0;
-    safety.emergencyLineMarginMm = 10.0;
-    const PhysicalWorkspaceBoundaryResult brakingResult =
-            boundary.evaluateMotion(brakingSample, safety);
-    if(brakingResult.action != PhysicalWorkspaceAction::ControlledStop ||
-            std::abs(brakingResult.pureStoppingDistanceMm - 50.0) > 1.0e-9 ||
-            std::abs(brakingResult.triggerDistanceMm - 110.0) > 1.0e-9){
-        if(errorMessage){
-            *errorMessage = QStringLiteral("动态停车距离自检失败：%1")
-                    .arg(brakingResult.reason);
         }
         return false;
     }

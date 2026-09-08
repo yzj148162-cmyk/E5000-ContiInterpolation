@@ -402,3 +402,223 @@ std::array<double, 6> PhysicalWorkspaceBoundary::solverUpperBounds() const
              config_.orientationBoundsEnabled ? config_.orientationMaximumRad[1] : 3.14,
              config_.orientationBoundsEnabled ? config_.orientationMaximumRad[2] : 3.14}};
 }
+
+bool runPhysicalWorkspaceBoundarySelfChecks(
+        const PhysicalWorkspaceBoundaryConfig& config,
+        QString* errorMessage)
+{
+    const auto fail = [errorMessage](const QString& message){
+        if(errorMessage){
+            *errorMessage = message;
+        }
+        return false;
+    };
+    const auto requireAction = [&fail](
+            const PhysicalWorkspaceBoundaryResult& result,
+            PhysicalWorkspaceAction expected,
+            const QString& caseName){
+        if(result.action != expected){
+            return fail(QStringLiteral("%1：动作不符，实际原因=%2")
+                        .arg(caseName, result.reason));
+        }
+        return true;
+    };
+
+    PhysicalWorkspaceBoundary boundary;
+    QString error;
+    if(!boundary.configure(config, &error)){
+        return fail(QStringLiteral("统一物理工作空间配置无效：%1").arg(error));
+    }
+
+    std::array<double, 6> centerPose{};
+    for(int axis = 0; axis < 3; ++axis){
+        centerPose[axis] = 0.5 *
+                (config.frameMinimumMm[axis] + config.frameMaximumMm[axis]);
+    }
+    const PhysicalWorkspaceBoundaryResult centerResult =
+            boundary.evaluatePose(centerPose);
+    if(!requireAction(centerResult, PhysicalWorkspaceAction::Safe,
+                      QStringLiteral("机架中心")) ||
+            !centerResult.physicallyInside || !centerResult.orientationInside){
+        return fail(QStringLiteral("机架中心的八连接点或姿态未处于物理边界内"));
+    }
+
+    Vector3 localMinimum{{
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity(),
+        std::numeric_limits<double>::infinity()
+    }};
+    Vector3 localMaximum{{
+        -std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity(),
+        -std::numeric_limits<double>::infinity()
+    }};
+    for(const Vector3& point : config.platformPointsLocalMm){
+        for(int axis = 0; axis < 3; ++axis){
+            localMinimum[axis] = std::min(localMinimum[axis], point[axis]);
+            localMaximum[axis] = std::max(localMaximum[axis], point[axis]);
+        }
+    }
+
+    // Zero-attitude acceptance matrix: every frame face is checked just
+    // inside, exactly on the face, and just outside. Touching the physical
+    // frame is an emergency condition even though its signed clearance is 0.
+    constexpr double kBoundaryProbeMm = 1.0e-3;
+    for(int axis = 0; axis < 3; ++axis){
+        for(int face = 0; face < 2; ++face){
+            const bool upper = face == 1;
+            const double touchingCenter = upper ?
+                        config.frameMaximumMm[axis] - localMaximum[axis] :
+                        config.frameMinimumMm[axis] - localMinimum[axis];
+            const double inwardDirection = upper ? -1.0 : 1.0;
+            const QString casePrefix = QStringLiteral("%1%2边界")
+                    .arg(QString::fromLatin1(axis == 0 ? "X" : axis == 1 ? "Y" : "Z"),
+                         upper ? QStringLiteral("上") : QStringLiteral("下"));
+
+            std::array<double, 6> pose = centerPose;
+            pose[axis] = touchingCenter + inwardDirection * kBoundaryProbeMm;
+            const PhysicalWorkspaceBoundaryResult inside = boundary.evaluatePose(pose);
+            if(!requireAction(inside, PhysicalWorkspaceAction::Safe,
+                              casePrefix + QStringLiteral("内侧")) ||
+                    !inside.physicallyInside){
+                return fail(casePrefix + QStringLiteral("内侧点未被判为安全"));
+            }
+
+            pose[axis] = touchingCenter;
+            const PhysicalWorkspaceBoundaryResult touching = boundary.evaluatePose(pose);
+            if(!requireAction(touching, PhysicalWorkspaceAction::EmergencyStop,
+                              casePrefix + QStringLiteral("触边")) ||
+                    !touching.physicallyInside || touching.limitingAxis != axis ||
+                    touching.limitingUpperFace != upper){
+                return fail(casePrefix + QStringLiteral("触边判定或限制面识别错误"));
+            }
+
+            pose[axis] = touchingCenter - inwardDirection * kBoundaryProbeMm;
+            const PhysicalWorkspaceBoundaryResult outside = boundary.evaluatePose(pose);
+            if(!requireAction(outside, PhysicalWorkspaceAction::EmergencyStop,
+                              casePrefix + QStringLiteral("越界")) ||
+                    outside.physicallyInside || outside.limitingAxis != axis ||
+                    outside.limitingUpperFace != upper){
+                return fail(casePrefix + QStringLiteral("越界判定或限制面识别错误"));
+            }
+        }
+    }
+
+    // Verify that platform points are transformed by the pose, rather than
+    // incorrectly treating their local coordinates as global coordinates.
+    constexpr double kPi = 3.14159265358979323846;
+    std::array<double, 6> yawPose = centerPose;
+    double yaw = 0.5 * kPi;
+    if(config.orientationBoundsEnabled &&
+            (yaw < config.orientationMinimumRad[2] ||
+             yaw > config.orientationMaximumRad[2])){
+        yaw = 0.5 * (config.orientationMinimumRad[2] +
+                     config.orientationMaximumRad[2]);
+        if(std::abs(yaw) < 1.0e-6){
+            yaw = 0.5 * config.orientationMaximumRad[2];
+        }
+    }
+    yawPose[5] = yaw;
+    const PhysicalWorkspaceBoundaryResult yawResult = boundary.evaluatePose(yawPose);
+    if(!requireAction(yawResult, PhysicalWorkspaceAction::Safe,
+                      QStringLiteral("非零姿态坐标变换"))){
+        return false;
+    }
+    const int storedPointCount = std::min(
+                static_cast<int>(config.platformPointsLocalMm.size()),
+                kPhysicalWorkspaceMaximumPlatformPoints);
+    if(yawResult.platformPointCount != storedPointCount){
+        return fail(QStringLiteral("非零姿态自检返回的连接点数量错误"));
+    }
+    const double cosine = std::cos(yaw);
+    const double sine = std::sin(yaw);
+    for(int index = 0; index < storedPointCount; ++index){
+        const Vector3& local = config.platformPointsLocalMm[index];
+        const Vector3 expected{{
+            centerPose[0] + cosine * local[0] - sine * local[1],
+            centerPose[1] + sine * local[0] + cosine * local[1],
+            centerPose[2] + local[2]
+        }};
+        for(int axis = 0; axis < 3; ++axis){
+            if(std::abs(yawResult.platformPointsGlobalMm[index][axis] -
+                        expected[axis]) > 1.0e-9){
+                return fail(QStringLiteral("非零姿态下连接点%1第%2维坐标变换错误")
+                            .arg(index + 1).arg(axis));
+            }
+        }
+    }
+
+    if(config.orientationBoundsEnabled){
+        for(int axis = 0; axis < 3; ++axis){
+            std::array<double, 6> pose = centerPose;
+            pose[axis + 3] = config.orientationMaximumRad[axis] + 1.0e-6;
+            const PhysicalWorkspaceBoundaryResult outside = boundary.evaluatePose(pose);
+            if(outside.action != PhysicalWorkspaceAction::EmergencyStop ||
+                    outside.orientationInside){
+                return fail(QStringLiteral("姿态第%1维越界未被检出").arg(axis));
+            }
+        }
+    }
+
+    DynamicWorkspaceSafetyConfig safety;
+    safety.stoppingDecelerationMmPerSec2 = 100.0;
+    safety.additionalSafetyMarginMm = 60.0;
+    safety.emergencyLineMarginMm = 10.0;
+    const double upperXTouchingCenter =
+            config.frameMaximumMm[0] - localMaximum[0];
+    const auto upperXSample = [&](double clearanceMm,
+                                  double velocityMmPerSec,
+                                  double accelerationMmPerSec2){
+        PhysicalWorkspaceMotionSample sample;
+        sample.poseMmRad = centerPose;
+        sample.poseMmRad[0] = upperXTouchingCenter - clearanceMm;
+        sample.twistMmRadPerSec[0] = velocityMmPerSec;
+        sample.accelerationMmRadPerSec2[0] = accelerationMmPerSec2;
+        return sample;
+    };
+
+    // v=100 mm/s and a=100 mm/s^2 give a pure stopping distance of 50 mm;
+    // adding the 60 mm margin produces a 110 mm trigger distance.
+    const PhysicalWorkspaceBoundaryResult approaching =
+            boundary.evaluateMotion(upperXSample(100.0, 100.0, 0.0), safety);
+    if(!requireAction(approaching, PhysicalWorkspaceAction::ControlledStop,
+                      QStringLiteral("动态停车触发")) ||
+            std::abs(approaching.pureStoppingDistanceMm - 50.0) > 1.0e-9 ||
+            std::abs(approaching.triggerDistanceMm - 110.0) > 1.0e-9){
+        return fail(QStringLiteral("动态停车距离计算错误"));
+    }
+
+    const PhysicalWorkspaceBoundaryResult alreadyDecelerating =
+            boundary.evaluateMotion(upperXSample(100.0, 100.0, -1.0), safety);
+    if(!requireAction(alreadyDecelerating, PhysicalWorkspaceAction::Safe,
+                      QStringLiteral("已主动减速"))){
+        return false;
+    }
+
+    const PhysicalWorkspaceBoundaryResult insufficientDistance =
+            boundary.evaluateMotion(upperXSample(40.0, 100.0, -1.0), safety);
+    if(!requireAction(insufficientDistance,
+                      PhysicalWorkspaceAction::ControlledStop,
+                      QStringLiteral("已减速但纯制动距离不足"))){
+        return false;
+    }
+
+    const PhysicalWorkspaceBoundaryResult movingInward =
+            boundary.evaluateMotion(upperXSample(100.0, -100.0, 0.0), safety);
+    if(!requireAction(movingInward, PhysicalWorkspaceAction::Safe,
+                      QStringLiteral("靠近上边界但向内运动"))){
+        return false;
+    }
+
+    const PhysicalWorkspaceBoundaryResult emergencyLine =
+            boundary.evaluateMotion(upperXSample(9.999, -100.0, 0.0), safety);
+    if(!requireAction(emergencyLine, PhysicalWorkspaceAction::EmergencyStop,
+                      QStringLiteral("固定急停线"))){
+        return false;
+    }
+
+    if(errorMessage){
+        errorMessage->clear();
+    }
+    return true;
+}

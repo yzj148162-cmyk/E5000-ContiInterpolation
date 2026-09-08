@@ -101,4 +101,11 @@ private:
     bool configured_ = false;
 };
 
+// Runs the same deterministic boundary acceptance matrix used by Stage A.
+// Keeping it beside the production evaluator prevents the validator from
+// silently testing a second implementation of the boundary rules.
+bool runPhysicalWorkspaceBoundarySelfChecks(
+        const PhysicalWorkspaceBoundaryConfig& config,
+        QString* errorMessage = nullptr);
+
 #endif // PHYSICALWORKSPACEBOUNDARY_H
