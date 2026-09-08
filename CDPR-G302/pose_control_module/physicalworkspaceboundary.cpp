@@ -56,6 +56,13 @@ Vector3 cross(const Vector3& left, const Vector3& right)
     }};
 }
 
+double norm(const Vector3& value)
+{
+    return std::sqrt(value[0] * value[0] +
+                     value[1] * value[1] +
+                     value[2] * value[2]);
+}
+
 QString faceName(int axis, bool upper)
 {
     static const char* const names[] = {"X", "Y", "Z"};
@@ -266,6 +273,16 @@ PhysicalWorkspaceBoundaryResult PhysicalWorkspaceBoundary::evaluateMotion(
     const Vector3 angularAcceleration{{sample.accelerationMmRadPerSec2[3],
                                        sample.accelerationMmRadPerSec2[4],
                                        sample.accelerationMmRadPerSec2[5]}};
+    double maximumPointRadiusMm = 0.0;
+    for(const Vector3& localPoint : config_.platformPointsLocalMm){
+        maximumPointRadiusMm = std::max(maximumPointRadiusMm,
+                                        norm(localPoint));
+    }
+    // 协同制动按六维速度整体等比例衰减，其等效速度与运行控制器保持一致。
+    // 对某一边界法向，恒定速度方向下的实际滑行量为
+    // v_out*v_equivalent/(2*a)，斜向或转动运动不能仍按 v_out^2/(2*a) 估算。
+    const double brakingEquivalentSpeedMmPerSec =
+            norm(linearVelocity) + norm(angularVelocity) * maximumPointRadiusMm;
     result.platformPointCount = std::min(
                 static_cast<int>(config_.platformPointsLocalMm.size()),
                 kPhysicalWorkspaceMaximumPlatformPoints);
@@ -289,7 +306,8 @@ PhysicalWorkspaceBoundaryResult PhysicalWorkspaceBoundary::evaluateMotion(
                                                       direction * point.velocity[axis]);
                 const double outwardAcceleration =
                         direction * point.acceleration[axis];
-                const double pureStoppingDistance = outwardSpeed * outwardSpeed /
+                const double pureStoppingDistance = outwardSpeed *
+                        brakingEquivalentSpeedMmPerSec /
                         (2.0 * safety.stoppingDecelerationMmPerSec2);
                 const double triggerDistance = pureStoppingDistance +
                         safety.additionalSafetyMarginMm;
@@ -586,6 +604,22 @@ bool runPhysicalWorkspaceBoundarySelfChecks(
             std::abs(approaching.pureStoppingDistanceMm - 50.0) > 1.0e-9 ||
             std::abs(approaching.triggerDistanceMm - 110.0) > 1.0e-9){
         return fail(QStringLiteral("动态停车距离计算错误"));
+    }
+
+    // X/Y 均为 100 mm/s 时，公共缩放制动下 X 法向滑行量是
+    // 100*sqrt(2)*100/(2*100)=70.710678... mm，而不是只看 X 得到的 50 mm。
+    PhysicalWorkspaceMotionSample diagonal =
+            upperXSample(120.0, 100.0, 0.0);
+    diagonal.twistMmRadPerSec[1] = 100.0;
+    const PhysicalWorkspaceBoundaryResult diagonalApproaching =
+            boundary.evaluateMotion(diagonal, safety);
+    const double expectedDiagonalStoppingDistance = 50.0 * std::sqrt(2.0);
+    if(!requireAction(diagonalApproaching,
+                      PhysicalWorkspaceAction::ControlledStop,
+                      QStringLiteral("斜向协同停车触发")) ||
+            std::abs(diagonalApproaching.pureStoppingDistanceMm -
+                     expectedDiagonalStoppingDistance) > 1.0e-9){
+        return fail(QStringLiteral("斜向协同停车距离计算错误"));
     }
 
     const PhysicalWorkspaceBoundaryResult alreadyDecelerating =

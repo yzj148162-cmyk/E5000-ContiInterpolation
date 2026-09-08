@@ -62,7 +62,8 @@ struct PhysicalWorkspaceBoundaryResult
 
 struct DynamicWorkspaceSafetyConfig
 {
-    // 不使用单独总延迟项：d_trigger=v_out^2/(2*a)+margin。
+    // 不使用单独总延迟项。单向运动退化为 v_out^2/(2*a)+margin；
+    // 多自由度协同制动按 v_out*v_equivalent/(2*a)+margin 计算。
     double stoppingDecelerationMmPerSec2 = 500.0;
     double additionalSafetyMarginMm = 50.0;
     double emergencyLineMarginMm = 10.0;
