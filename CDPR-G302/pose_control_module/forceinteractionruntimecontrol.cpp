@@ -174,6 +174,9 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
     metadata.machineTemplateName = config_.machineTemplateName;
     metadata.controlPeriodS = config_.periodUs / 1000000.0;
     metadata.plannedDurationS = config_.maximumTestDurationS;
+    metadata.workspaceReplayEnabled = true;
+    metadata.physicalWorkspace = config_.physicalWorkspace;
+    metadata.workspaceSafety = config_.workspaceSafety;
     QString recordError;
     if(!recorder_->begin(config_.recordingDirectory, metadata,
                          &status_.recordFile, &recordError)){

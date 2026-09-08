@@ -2,6 +2,7 @@
 #define FORCEINTERACTIONRUNRECORDER_H
 
 #include "forceinteractiontypes.h"
+#include "physicalworkspaceboundary.h"
 
 #include <array>
 #include <atomic>
@@ -33,6 +34,9 @@ struct ForceInteractionRunMetadata
     QString machineTemplateName;
     double controlPeriodS = 0.0;
     double plannedDurationS = 0.0;
+    bool workspaceReplayEnabled = false;
+    PhysicalWorkspaceBoundaryConfig physicalWorkspace;
+    DynamicWorkspaceSafetyConfig workspaceSafety;
 };
 
 // 固定字段覆盖阶段A～D。某阶段尚不存在的数据由 availabilityMask 明确标为

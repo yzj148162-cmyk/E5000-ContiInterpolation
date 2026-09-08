@@ -84,6 +84,7 @@ class QTableWidget;
 class QTextStream;
 class QTimer;
 class EndpointRemoteInputSupervisor;
+class ForceInteractionBoundaryLogAnalysisWorker;
 class ForceInteractionValidationWorker;
 class MotorTorqueTestWorker;
 class MonitorThread;
@@ -577,6 +578,7 @@ private:
     void refreshForceInteractionRuntimeUi();
     void finalizeForceInteractionRuntimeSession(
             const ForceInteractionRuntimeStatus& status);
+    void startForceInteractionBoundaryLogAnalysis(const QString& csvPath);
     bool computeForceInteractionRuntimeForwardPose(
             const ForceInteractionRuntimeStatus& status,
             std::vector<double>& pose,
@@ -602,6 +604,9 @@ private:
     QThread* endpointRemoteInputSupervisorThread = nullptr;
     EndpointRemoteInputSupervisor* endpointRemoteInputSupervisor = nullptr;
     ForceInteractionValidationWorker* forceInteractionValidationWorker = nullptr;
+    ForceInteractionBoundaryLogAnalysisWorker*
+            forceInteractionBoundaryLogAnalysisWorker = nullptr;
+    QString forceInteractionBoundaryAnalysisSummary;
     ForwardKinematicsSolver forceInteractionRuntimeForwardSolver;
     std::vector<double> forceInteractionRuntimeInitialPoseMmRad;
     std::vector<double> forceInteractionRuntimeLastForwardPose;

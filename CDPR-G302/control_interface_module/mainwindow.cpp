@@ -8,6 +8,7 @@
 #include "runtimefeatureswitches.h"
 #include "softwarefaultguard.h"
 #include "endpointremoteinputsupervisor.h"
+#include "forceinteractionboundaryloganalyzer.h"
 #include "forceinteractionsoftwarevalidator.h"
 #include "structuredfaultlogwriter.h"
 
@@ -3901,6 +3902,11 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    if(forceInteractionBoundaryLogAnalysisWorker){
+        forceInteractionBoundaryLogAnalysisWorker->wait();
+        delete forceInteractionBoundaryLogAnalysisWorker;
+        forceInteractionBoundaryLogAnalysisWorker = nullptr;
+    }
     if(forceInteractionValidationWorker){
         forceInteractionValidationWorker->requestCancellation();
         forceInteractionValidationWorker->wait();
@@ -18948,7 +18954,8 @@ void MainWindow::refreshForceInteractionValidationInputState()
     const bool runtimeLocked =
             runtimeStatus.state == ForceInteractionRuntimeStatus::State::Prepared ||
             runtimeStatus.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
-            runtimeStatus.state == ForceInteractionRuntimeStatus::State::Running;
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::Running ||
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::Braking;
     const bool running = forceInteractionValidationWorker != nullptr;
     const SimulatedWrenchMode mode = static_cast<SimulatedWrenchMode>(
                 ui->forceInteractionModeComboBox->currentIndex());
@@ -19385,6 +19392,7 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
         refreshForceInteractionRuntimeUi();
         return;
     }
+    forceInteractionBoundaryAnalysisSummary.clear();
     forceInteractionRuntimeForwardSolver.setInitialPose(
                 forceInteractionRuntimeInitialPoseMmRad);
     forceInteractionRuntimeLastForwardPose.clear();
@@ -19523,10 +19531,44 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
                     .arg(QDir::toNativeSeparators(status.recordFile))
                     .toStdString(), level);
     }
+    if(!status.recordFile.trimmed().isEmpty() &&
+            status.writtenRecordCount > 0 &&
+            status.recordingError.isEmpty()){
+        startForceInteractionBoundaryLogAnalysis(status.recordFile);
+    }
     forceInteractionRuntimeFinalizing = false;
     refreshForceInteractionValidationInputState();
     refreshForceInteractionRuntimeUi();
     refreshRunModeUiState();
+}
+
+void MainWindow::startForceInteractionBoundaryLogAnalysis(
+        const QString& csvPath)
+{
+    if(csvPath.trimmed().isEmpty()){
+        return;
+    }
+    if(forceInteractionBoundaryLogAnalysisWorker){
+        displayInfo("阶段B边界离线复算未启动：上一份记录仍在分析", "warning");
+        return;
+    }
+    forceInteractionBoundaryAnalysisSummary = QStringLiteral(
+                "阶段B边界离线复算中：%1")
+            .arg(QDir::toNativeSeparators(csvPath));
+    auto* worker = new ForceInteractionBoundaryLogAnalysisWorker(csvPath, this);
+    forceInteractionBoundaryLogAnalysisWorker = worker;
+    connect(worker, &QThread::finished, this, [this, worker](){
+        const ForceInteractionBoundaryLogAnalysisResult analysis = worker->result();
+        forceInteractionBoundaryAnalysisSummary = analysis.summary;
+        displayInfo(analysis.summary.toStdString(),
+                    analysis.passed ? "normal" : "error");
+        if(forceInteractionBoundaryLogAnalysisWorker == worker){
+            forceInteractionBoundaryLogAnalysisWorker = nullptr;
+        }
+        worker->deleteLater();
+        refreshForceInteractionRuntimeUi();
+    });
+    worker->start(QThread::LowPriority);
 }
 
 bool MainWindow::computeForceInteractionRuntimeForwardPose(
@@ -19617,6 +19659,7 @@ void MainWindow::refreshForceInteractionRuntimeUi()
     const bool locked = prepared || active;
     ui->forceInteractionRuntimePrepareButton->setEnabled(
                 !locked && !forceInteractionValidationWorker &&
+                !forceInteractionBoundaryLogAnalysisWorker &&
                 isLiteTemplateActive() && !currentRobotState(false).anyMotionRunning);
     ui->forceInteractionRuntimeStartButton->setEnabled(prepared);
     // “减速停止”在已准备但尚未启动时兼作“取消准备”，防止冻结配置后无处退出。
@@ -19705,6 +19748,9 @@ void MainWindow::refreshForceInteractionRuntimeUi()
             .arg(status.maximumApiUs)
             .arg(status.droppedRecordCount)
             .arg(QDir::toNativeSeparators(status.recordFile));
+    if(!forceInteractionBoundaryAnalysisSummary.isEmpty()){
+        detail += QLatin1Char('\n') + forceInteractionBoundaryAnalysisSummary;
+    }
     if(ui->forceInteractionRuntimeResultPlainTextEdit->toPlainText() != detail){
         ui->forceInteractionRuntimeResultPlainTextEdit->setPlainText(detail);
     }

@@ -52,6 +52,14 @@ void writeWorkspacePoints(
     }
 }
 
+void writeVector3Metadata(QTextStream& stream,
+                          const char* key,
+                          const std::array<double, 3>& values)
+{
+    stream << "# " << key << '=' << values[0] << ';' << values[1] << ';'
+           << values[2] << '\n';
+}
+
 } // namespace
 
 ForceInteractionRunRecorder::ForceInteractionRunRecorder(QObject* parent)
@@ -214,7 +222,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v3\n"
+    stream << "# schema=force_interaction_run_v4\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -226,6 +234,42 @@ void ForceInteractionRunRecorder::run()
            << "# availability_mask:1=sensor_wrench,2=platform_wrench,4=desired_state,"
               "8=cable_kinematics,16=forward_kinematics,32=axis_reference,"
               "64=axis_command,128=axis_trace,256=timing\n";
+    stream << "# workspace_replay_enabled="
+           << (metadata_.workspaceReplayEnabled ? 1 : 0) << '\n';
+    if(metadata_.workspaceReplayEnabled){
+        writeVector3Metadata(stream, "workspace_frame_min_mm",
+                             metadata_.physicalWorkspace.frameMinimumMm);
+        writeVector3Metadata(stream, "workspace_frame_max_mm",
+                             metadata_.physicalWorkspace.frameMaximumMm);
+        stream << "# workspace_orientation_enabled="
+               << (metadata_.physicalWorkspace.orientationBoundsEnabled ? 1 : 0)
+               << '\n';
+        writeVector3Metadata(stream, "workspace_orientation_min_rad",
+                             metadata_.physicalWorkspace.orientationMinimumRad);
+        writeVector3Metadata(stream, "workspace_orientation_max_rad",
+                             metadata_.physicalWorkspace.orientationMaximumRad);
+        stream << "# workspace_point_count="
+               << metadata_.physicalWorkspace.platformPointsLocalMm.size() << '\n';
+        for(size_t point = 0;
+            point < metadata_.physicalWorkspace.platformPointsLocalMm.size();
+            ++point){
+            const QByteArray key = QStringLiteral("workspace_point_local_mm_%1")
+                    .arg(point).toLatin1();
+            writeVector3Metadata(stream, key.constData(),
+                                 metadata_.physicalWorkspace.platformPointsLocalMm[point]);
+        }
+        stream << "# stopping_deceleration_mm_s2="
+               << metadata_.workspaceSafety.stoppingDecelerationMmPerSec2 << '\n'
+               << "# additional_safety_margin_mm="
+               << metadata_.workspaceSafety.additionalSafetyMarginMm << '\n'
+               << "# emergency_line_margin_mm="
+               << metadata_.workspaceSafety.emergencyLineMarginMm << '\n'
+               << "# outward_velocity_tolerance_mm_s="
+               << metadata_.workspaceSafety.outwardVelocityToleranceMmPerSec << '\n'
+               << "# outward_acceleration_tolerance_mm_s2="
+               << metadata_.workspaceSafety.outwardAccelerationToleranceMmPerSec2
+               << '\n';
+    }
 
     stream << "step_index,elapsed_s,availability_mask,host_monotonic_us,"
               "trace_sequence,trace_time_us,trace_valid";
@@ -325,6 +369,10 @@ void ForceInteractionRunRecorder::run()
             break;
         }
     }
+    stream.flush();
+    stream << "# recorder_accepted=" << accepted_.load() << '\n'
+           << "# recorder_written=" << written_.load() << '\n'
+           << "# recorder_dropped=" << dropped_.load() << '\n';
     stream.flush();
     if(file.error() != QFileDevice::NoError && writerError_.isEmpty()){
         writerError_ = QStringLiteral("六维力交互CSV刷新失败：%1")
