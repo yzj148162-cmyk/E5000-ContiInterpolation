@@ -124,6 +124,12 @@ struct ForceInteractionRuntimeStatus
 class ForceInteractionRuntimeControl
 {
 public:
+    // Deterministic pure-software acceptance for the coordinated braking
+    // state and fault-latching invariants. Stage A invokes this exact code.
+    static bool runControlledStopSelfChecks(
+            const PhysicalWorkspaceBoundaryConfig& physicalWorkspace,
+            QString* errorMessage = nullptr);
+
     bool prepare(const ForceInteractionRuntimeConfig& config,
                  QString* errorMessage = nullptr);
     bool start(qint64 nowUs, QString* errorMessage = nullptr);

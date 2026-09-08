@@ -212,6 +212,15 @@ bool ForceInteractionRuntimeControl::requestControlledStop(
 {
     if(status_.state == ForceInteractionRuntimeStatus::State::Braking){
         status_.experimentValid = status_.experimentValid && !experimentFailure;
+        if(experimentFailure){
+            const QString escalatedReason = reason.isEmpty() ?
+                        QStringLiteral("协同减速期间出现新的安全失败") : reason;
+            status_.safetyStopReason = escalatedReason;
+            controlledStopReason_ = escalatedReason;
+            status_.controlledStopCause = cause;
+            status_.message = QStringLiteral("协同减速中：%1")
+                    .arg(escalatedReason);
+        }
         return true;
     }
     if(status_.state != ForceInteractionRuntimeStatus::State::Running){
@@ -220,8 +229,10 @@ bool ForceInteractionRuntimeControl::requestControlledStop(
     brakingState_ = status_.desiredState;
     controlledStopReason_ = reason.isEmpty() ?
                 QStringLiteral("请求受控制动") : reason;
-    status_.experimentValid = !experimentFailure;
-    status_.safetyStopReason = experimentFailure ? controlledStopReason_ : QString{};
+    status_.experimentValid = status_.experimentValid && !experimentFailure;
+    if(experimentFailure){
+        status_.safetyStopReason = controlledStopReason_;
+    }
     status_.controlledStopCause = cause;
     status_.state = ForceInteractionRuntimeStatus::State::Braking;
     status_.message = QStringLiteral("协同减速中：%1").arg(controlledStopReason_);
@@ -746,6 +757,13 @@ void ForceInteractionRuntimeControl::setTerminal(
 {
     status_.state = state;
     status_.message = message;
+    if(state == ForceInteractionRuntimeStatus::State::Fault){
+        status_.experimentValid = false;
+        if(status_.safetyStopReason.isEmpty()){
+            status_.safetyStopReason = message.isEmpty() ?
+                        QStringLiteral("阶段B发生未分类故障") : message;
+        }
+    }
 }
 
 void ForceInteractionRuntimeControl::stop(bool fault, const QString& reason)
@@ -792,4 +810,138 @@ const ForceInteractionRuntimeConfig& ForceInteractionRuntimeControl::currentConf
 ForceInteractionRuntimeStatus ForceInteractionRuntimeControl::status() const
 {
     return status_;
+}
+
+bool ForceInteractionRuntimeControl::runControlledStopSelfChecks(
+        const PhysicalWorkspaceBoundaryConfig& physicalWorkspace,
+        QString* errorMessage)
+{
+    const auto fail = [errorMessage](const QString& message){
+        if(errorMessage){
+            *errorMessage = message;
+        }
+        return false;
+    };
+    QString validationError;
+    if(!physicalWorkspace.validate(&validationError)){
+        return fail(QStringLiteral("协同制动自检的物理边界无效：%1")
+                    .arg(validationError));
+    }
+
+    ForceInteractionRuntimeControl control;
+    control.config_.periodUs = 5000;
+    control.config_.translationOnly = true;
+    control.config_.physicalWorkspace = physicalWorkspace;
+    control.config_.workspaceSafety.stoppingDecelerationMmPerSec2 = 100.0;
+    control.config_.workspaceSafety.additionalSafetyMarginMm = 60.0;
+    control.config_.workspaceSafety.emergencyLineMarginMm = 10.0;
+    control.config_.brakingStopVelocityMmPerSec = 0.0;
+
+    ForceInteractionPlatformState initial;
+    for(int axis = 0; axis < 3; ++axis){
+        initial.pose[static_cast<size_t>(axis)] = 0.0005 *
+                (physicalWorkspace.frameMinimumMm[axis] +
+                 physicalWorkspace.frameMaximumMm[axis]);
+    }
+    initial.poseValid = true;
+    initial.twistValid = true;
+    initial.accelerationValid = true;
+    initial.twist[0] = 0.1; // 100 mm/s
+
+    const auto arm = [&control, &initial](
+            ForceInteractionControlledStopCause cause,
+            bool experimentFailure,
+            const QString& reason){
+        control.status_ = ForceInteractionRuntimeStatus{};
+        control.status_.state = ForceInteractionRuntimeStatus::State::Running;
+        control.status_.desiredState = initial;
+        control.status_.experimentValid = true;
+        control.brakingState_ = {};
+        control.controlledStopReason_.clear();
+        return control.requestControlledStop(reason, experimentFailure, cause);
+    };
+
+    const struct StopCase {
+        ForceInteractionControlledStopCause cause;
+        bool failure;
+        const char* name;
+    } stopCases[] = {
+        {ForceInteractionControlledStopCause::UserRequest, false, "用户停止"},
+        {ForceInteractionControlledStopCause::DurationReached, false, "时长到达"},
+        {ForceInteractionControlledStopCause::WorkspaceBoundary, true, "动态边界"}
+    };
+    for(const StopCase& stopCase : stopCases){
+        const QString name = QString::fromUtf8(stopCase.name);
+        if(!arm(stopCase.cause, stopCase.failure, name) ||
+                control.status_.state !=
+                    ForceInteractionRuntimeStatus::State::Braking ||
+                control.status_.controlledStopCause != stopCase.cause ||
+                control.status_.experimentValid == stopCase.failure ||
+                (stopCase.failure && control.status_.safetyStopReason != name)){
+            return fail(QStringLiteral("%1未正确进入协同制动或试验有效性错误")
+                        .arg(name));
+        }
+    }
+
+    // A safety failure arriving after a benign stop request must replace the
+    // benign cause in the final diagnostic; it must never leave “valid=yes”.
+    if(!arm(ForceInteractionControlledStopCause::UserRequest, false,
+            QStringLiteral("用户停止")) ||
+            !control.requestControlledStop(
+                QStringLiteral("制动期间到达动态边界"), true,
+                ForceInteractionControlledStopCause::WorkspaceBoundary) ||
+            control.status_.experimentValid ||
+            control.status_.controlledStopCause !=
+                ForceInteractionControlledStopCause::WorkspaceBoundary ||
+            control.status_.safetyStopReason !=
+                QStringLiteral("制动期间到达动态边界")){
+        return fail(QStringLiteral("协同制动期间的安全原因升级未锁存"));
+    }
+
+    if(!arm(ForceInteractionControlledStopCause::DurationReached, false,
+            QStringLiteral("时长到达"))){
+        return fail(QStringLiteral("无法进入平动协同制动自检"));
+    }
+    const double startX = control.brakingState_.pose[0];
+    double previousSpeed = vectorNorm3(control.brakingState_.twist);
+    bool stopped = false;
+    int brakingSteps = 0;
+    for(; brakingSteps < 10000 && !stopped; ++brakingSteps){
+        QString brakingError;
+        const ForceInteractionPlatformState next =
+                control.advanceBrakingState(stopped, &brakingError);
+        const double speed = vectorNorm3(next.twist);
+        const double acceleration = vectorNorm3(next.acceleration);
+        if(!brakingError.isEmpty() || !next.poseValid || !next.twistValid ||
+                !next.accelerationValid || speed > previousSpeed + 1.0e-12 ||
+                next.twist[0] < -1.0e-12 ||
+                acceleration > 0.100000001){
+            return fail(QStringLiteral("平动协同制动未保持单调减速或超出配置减速度"));
+        }
+        previousSpeed = speed;
+    }
+    if(!stopped || brakingSteps != 200 ||
+            std::abs(control.brakingState_.pose[0] - startX - 0.05) > 1.0e-10 ||
+            vectorNorm3(control.brakingState_.twist) > 1.0e-12){
+        return fail(QStringLiteral(
+                    "平动协同制动距离/步数错误：步数=%1，位移=%2 m")
+                    .arg(brakingSteps)
+                    .arg(control.brakingState_.pose[0] - startX, 0, 'g', 12));
+    }
+
+    // A terminal fault from Trace/API/boundary paths must always invalidate
+    // the experiment and retain a useful first failure reason.
+    control.status_ = ForceInteractionRuntimeStatus{};
+    control.status_.experimentValid = true;
+    control.setTerminal(ForceInteractionRuntimeStatus::State::Fault,
+                        QStringLiteral("Trace失效自检"));
+    if(control.status_.experimentValid ||
+            control.status_.safetyStopReason != QStringLiteral("Trace失效自检")){
+        return fail(QStringLiteral("阶段B故障未使试验无效或未锁存原因"));
+    }
+
+    if(errorMessage){
+        errorMessage->clear();
+    }
+    return true;
 }

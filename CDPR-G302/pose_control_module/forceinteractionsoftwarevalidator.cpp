@@ -1,6 +1,7 @@
 #include "forceinteractionsoftwarevalidator.h"
 
 #include "forceinteractionrunrecorder.h"
+#include "forceinteractionruntimecontrol.h"
 #include "forwardkinematicssolver.h"
 #include "wrenchtransformer.h"
 
@@ -42,6 +43,14 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
                configuration.physicalWorkspace, &boundaryError)){
         if(errorMessage){
             *errorMessage = QStringLiteral("统一物理工作空间验收矩阵失败：%1")
+                    .arg(boundaryError);
+        }
+        return false;
+    }
+    if(!ForceInteractionRuntimeControl::runControlledStopSelfChecks(
+               configuration.physicalWorkspace, &boundaryError)){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("阶段B协同制动验收失败：%1")
                     .arg(boundaryError);
         }
         return false;
