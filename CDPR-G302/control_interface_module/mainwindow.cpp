@@ -19388,6 +19388,7 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
     }, Qt::BlockingQueuedConnection);
     if(!prepared){
         forceInteractionRuntimePhysicalWorkspaceValid = false;
+        forceInteractionRuntimeForwardKinematicsConfigValid = false;
         displayInfo(QStringLiteral("阶段B准备失败：%1").arg(errorMessage).toStdString(),
                     "error");
         refreshForceInteractionRuntimeUi();
@@ -19395,6 +19396,35 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
     }
     forceInteractionRuntimePhysicalWorkspace = config.physicalWorkspace;
     forceInteractionRuntimePhysicalWorkspaceValid = true;
+    forceInteractionRuntimeForwardKinematicsConfig = config.kinematics;
+    forceInteractionRuntimeMotorUnitPerRadian = config.motorUnitPerRadian;
+    forceInteractionRuntimeReferenceCableLengthMm.clear();
+    CompensatedCableKinematics frozenForwardKinematics;
+    QString frozenForwardError;
+    forceInteractionRuntimeForwardKinematicsConfigValid =
+            frozenForwardKinematics.initialize(
+                forceInteractionRuntimeForwardKinematicsConfig,
+                {forceInteractionRuntimeInitialPoseMmRad}, {},
+                &frozenForwardError);
+    if(forceInteractionRuntimeForwardKinematicsConfigValid){
+        forceInteractionRuntimeReferenceCableLengthMm =
+                frozenForwardKinematics.cableLengthsForPose(
+                    {forceInteractionRuntimeInitialPoseMmRad},
+                    &frozenForwardError);
+        forceInteractionRuntimeForwardKinematicsConfigValid =
+                forceInteractionRuntimeReferenceCableLengthMm.size() ==
+                kOnlineVelocityAxisCount;
+        if(!forceInteractionRuntimeForwardKinematicsConfigValid &&
+                frozenForwardError.isEmpty()){
+            frozenForwardError = QStringLiteral("初始绳长不是完整八轴数据");
+        }
+    }
+    if(!forceInteractionRuntimeForwardKinematicsConfigValid){
+        forceInteractionRuntimeReferenceCableLengthMm.clear();
+        displayInfo(QStringLiteral(
+                        "阶段B准备警告：5 Hz虚拟实际正运动学冻结失败（%1）；不影响高频控制，但本次不显示虚拟实际位姿")
+                    .arg(frozenForwardError).toStdString(), "warning");
+    }
     forceInteractionBoundaryAnalysisSummary.clear();
     forceInteractionRuntimeForwardSolver.setInitialPose(
                 forceInteractionRuntimeInitialPoseMmRad);
@@ -19450,6 +19480,7 @@ void MainWindow::startForceInteractionRuntime()
         runtimeState.forceInteractionRuntimeActive = false;
         runtimeState.onlineVelocityControlActive = false;
         forceInteractionRuntimePhysicalWorkspaceValid = false;
+        forceInteractionRuntimeForwardKinematicsConfigValid = false;
         markControlWorkerConfigDirty();
         syncControlWorkerConfig(true);
         syncSafetyMonitorConfig(true);
@@ -19473,6 +19504,7 @@ void MainWindow::stopForceInteractionRuntime(bool emergency,
         runtimeState.forceInteractionRuntimeActive = false;
         runtimeState.onlineVelocityControlActive = false;
         forceInteractionRuntimePhysicalWorkspaceValid = false;
+        forceInteractionRuntimeForwardKinematicsConfigValid = false;
         refreshForceInteractionRuntimeUi();
         return;
     }
@@ -19511,6 +19543,7 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
     syncControlWorkerConfig(true);
     syncSafetyMonitorConfig(true);
     forceInteractionRuntimePhysicalWorkspaceValid = false;
+    forceInteractionRuntimeForwardKinematicsConfigValid = false;
     updateCableHomeConfirmEnabled();
     setForceControlSelectionEnabled(true);
     if(wasActive){
@@ -19587,43 +19620,69 @@ bool MainWindow::computeForceInteractionRuntimeForwardPose(
         *equationCount = 0;
     }
     if(forceInteractionRuntimeInitialPoseMmRad.size() < 6 ||
-            status.stepCount == 0){
+            status.stepCount == 0 ||
+            !forceInteractionRuntimePhysicalWorkspaceValid ||
+            !forceInteractionRuntimeForwardKinematicsConfigValid ||
+            forceInteractionRuntimeReferenceCableLengthMm.size() !=
+            kOnlineVelocityAxisCount){
         return false;
     }
-    const std::vector<double> motorPosition(status.actualPosition.begin(),
-                                            status.actualPosition.end());
-    const std::vector<double> homePosition(status.actualStartPosition.begin(),
-                                           status.actualStartPosition.end());
-    QVector<double> flatCableLength;
-    if(!buildCableLengthForVisualizationFromReference(
-            motorPosition, homePosition,
-            {forceInteractionRuntimeInitialPoseMmRad},
-            flatCableLength)){
-        return false;
-    }
-    const std::vector<std::vector<std::vector<double>>> contactPointByEnd =
-            buildCableContactPointPos();
-    const std::vector<std::vector<std::vector<double>>> anchorPosByEnd =
-            splitAnchorPositionsByEnd(buildFixedAnchorHome());
-    if(contactPointByEnd.empty() || anchorPosByEnd.empty() ||
-            flatCableLength.size() < kOnlineVelocityAxisCount){
+    const auto& kinematics = forceInteractionRuntimeForwardKinematicsConfig;
+    if(kinematics.endCableContactPos.size() != 1 ||
+            kinematics.endCableContactPos.front().size() <
+            kOnlineVelocityAxisCount ||
+            kinematics.anchorCableCoordinate.size() <
+            kOnlineVelocityAxisCount ||
+            kinematics.winchConfig.size() < kOnlineVelocityAxisCount ||
+            kinematics.cableMotorScaleRadPerMm.size() <
+            kOnlineVelocityAxisCount){
         return false;
     }
 
     ForwardKinematicsSolver::Request request;
-    request.anchorPos = anchorPosByEnd.front();
-    request.contactPointLocal = contactPointByEnd.front();
+    request.anchorPos = kinematics.anchorCableCoordinate;
+    request.contactPointLocal = kinematics.endCableContactPos.front();
     request.cableLength.reserve(kOnlineVelocityAxisCount);
-    for(int cable = 0; cable < kOnlineVelocityAxisCount; ++cable){
-        request.cableLength.push_back(flatCableLength[cable]);
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        const double motorUnitPerRadian =
+                forceInteractionRuntimeMotorUnitPerRadian[axis];
+        const double angleScale =
+                std::abs(kinematics.cableMotorScaleRadPerMm[axis]);
+        if(!std::isfinite(status.actualPosition[axis]) ||
+                !std::isfinite(status.actualStartPosition[axis]) ||
+                !std::isfinite(motorUnitPerRadian) ||
+                std::abs(motorUnitPerRadian) <= 1.0e-12 ||
+                !std::isfinite(angleScale) || angleScale <= 1.0e-12){
+            return false;
+        }
+        const double motorThetaRad =
+                (status.actualPosition[axis] -
+                 status.actualStartPosition[axis]) / motorUnitPerRadian;
+        const double platformDeltaMm =
+                WinchCompensation::platformDeltaFromMotorTheta(
+                    kinematics.winchConfig[axis], motorThetaRad, angleScale);
+        const double cableLengthMm =
+                forceInteractionRuntimeReferenceCableLengthMm[axis] -
+                platformDeltaMm;
+        if(!std::isfinite(cableLengthMm)){
+            return false;
+        }
+        request.cableLength.push_back(cableLengthMm);
     }
-    request.pulleyRadius = buildPulleyRadius();
+    request.pulleyRadius = kinematics.pulleyRadiusMm;
     request.initialPose = forceInteractionRuntimeForwardSolver.initialPose();
     if(request.initialPose.size() < 6 || !hasFiniteValues(request.initialPose, 6)){
         request.initialPose = forceInteractionRuntimeInitialPoseMmRad;
     }
     request.keepRotation = true;
-    applyForwardKinematicsBoundsForCurrentTemplate(request);
+    request.enforcePhysicalWorkspace = true;
+    request.physicalWorkspace = forceInteractionRuntimePhysicalWorkspace;
+    PhysicalWorkspaceBoundary physicalBoundary(
+                forceInteractionRuntimePhysicalWorkspace);
+    const auto lowerBounds = physicalBoundary.solverLowerBounds();
+    const auto upperBounds = physicalBoundary.solverUpperBounds();
+    request.poseLowerBounds.assign(lowerBounds.begin(), lowerBounds.end());
+    request.poseUpperBounds.assign(upperBounds.begin(), upperBounds.end());
     const ForwardKinematicsSolver::Result result =
             forceInteractionRuntimeForwardSolver.solve(request);
     if(equationCount){

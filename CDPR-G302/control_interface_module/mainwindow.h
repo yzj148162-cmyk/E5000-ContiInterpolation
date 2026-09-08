@@ -609,6 +609,11 @@ private:
     QString forceInteractionBoundaryAnalysisSummary;
     PhysicalWorkspaceBoundaryConfig forceInteractionRuntimePhysicalWorkspace;
     bool forceInteractionRuntimePhysicalWorkspaceValid = false;
+    CompensatedCableKinematics::Configuration
+            forceInteractionRuntimeForwardKinematicsConfig;
+    OnlineVelocityAxisArray forceInteractionRuntimeMotorUnitPerRadian{};
+    std::vector<double> forceInteractionRuntimeReferenceCableLengthMm;
+    bool forceInteractionRuntimeForwardKinematicsConfigValid = false;
     ForwardKinematicsSolver forceInteractionRuntimeForwardSolver;
     std::vector<double> forceInteractionRuntimeInitialPoseMmRad;
     std::vector<double> forceInteractionRuntimeLastForwardPose;
