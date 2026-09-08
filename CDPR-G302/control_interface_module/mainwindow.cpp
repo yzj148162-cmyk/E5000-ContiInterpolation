@@ -19387,11 +19387,14 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
                                                                  &errorMessage);
     }, Qt::BlockingQueuedConnection);
     if(!prepared){
+        forceInteractionRuntimePhysicalWorkspaceValid = false;
         displayInfo(QStringLiteral("阶段B准备失败：%1").arg(errorMessage).toStdString(),
                     "error");
         refreshForceInteractionRuntimeUi();
         return;
     }
+    forceInteractionRuntimePhysicalWorkspace = config.physicalWorkspace;
+    forceInteractionRuntimePhysicalWorkspaceValid = true;
     forceInteractionBoundaryAnalysisSummary.clear();
     forceInteractionRuntimeForwardSolver.setInitialPose(
                 forceInteractionRuntimeInitialPoseMmRad);
@@ -19446,6 +19449,7 @@ void MainWindow::startForceInteractionRuntime()
         }, Qt::BlockingQueuedConnection);
         runtimeState.forceInteractionRuntimeActive = false;
         runtimeState.onlineVelocityControlActive = false;
+        forceInteractionRuntimePhysicalWorkspaceValid = false;
         markControlWorkerConfigDirty();
         syncControlWorkerConfig(true);
         syncSafetyMonitorConfig(true);
@@ -19468,6 +19472,7 @@ void MainWindow::stopForceInteractionRuntime(bool emergency,
     if(!controlWorker || !ccThread || !ccThread->isRunning()){
         runtimeState.forceInteractionRuntimeActive = false;
         runtimeState.onlineVelocityControlActive = false;
+        forceInteractionRuntimePhysicalWorkspaceValid = false;
         refreshForceInteractionRuntimeUi();
         return;
     }
@@ -19505,6 +19510,7 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
     markControlWorkerConfigDirty();
     syncControlWorkerConfig(true);
     syncSafetyMonitorConfig(true);
+    forceInteractionRuntimePhysicalWorkspaceValid = false;
     updateCableHomeConfirmEnabled();
     setForceControlSelectionEnabled(true);
     if(wasActive){
@@ -37791,9 +37797,17 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
     }
 
     QString physicalWorkspaceError;
-    config.physicalWorkspaceConfigured =
-            buildPhysicalWorkspaceBoundaryConfig(config.physicalWorkspace,
-                                                 &physicalWorkspaceError);
+    if(config.forceInteractionWorkspacePoseSource &&
+            forceInteractionRuntimePhysicalWorkspaceValid){
+        config.physicalWorkspace = forceInteractionRuntimePhysicalWorkspace;
+        config.physicalWorkspaceConfigured =
+                config.physicalWorkspace.validate(&physicalWorkspaceError);
+    }
+    else{
+        config.physicalWorkspaceConfigured =
+                buildPhysicalWorkspaceBoundaryConfig(config.physicalWorkspace,
+                                                     &physicalWorkspaceError);
+    }
     if(!config.physicalWorkspaceConfigured){
         config.hasWorkspacePose = false;
     }

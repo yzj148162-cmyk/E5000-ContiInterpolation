@@ -607,6 +607,8 @@ private:
     ForceInteractionBoundaryLogAnalysisWorker*
             forceInteractionBoundaryLogAnalysisWorker = nullptr;
     QString forceInteractionBoundaryAnalysisSummary;
+    PhysicalWorkspaceBoundaryConfig forceInteractionRuntimePhysicalWorkspace;
+    bool forceInteractionRuntimePhysicalWorkspaceValid = false;
     ForwardKinematicsSolver forceInteractionRuntimeForwardSolver;
     std::vector<double> forceInteractionRuntimeInitialPoseMmRad;
     std::vector<double> forceInteractionRuntimeLastForwardPose;
