@@ -37,6 +37,11 @@ struct ForceInteractionRunMetadata
     bool workspaceReplayEnabled = false;
     PhysicalWorkspaceBoundaryConfig physicalWorkspace;
     DynamicWorkspaceSafetyConfig workspaceSafety;
+    bool motorSafetyRelativeBoundsEnabled = false;
+    std::array<double, kForceInteractionCableCount>
+            motorSafetyRelativeMinimum{};
+    std::array<double, kForceInteractionCableCount>
+            motorSafetyRelativeMaximum{};
 };
 
 // Written once after the asynchronous queue has drained. The runtime layer
@@ -98,10 +103,14 @@ struct ForceInteractionRunRecord
                kForceInteractionCableCount> workspacePointGlobalMm{};
 
     std::array<double, kForceInteractionCableCount> axisReferencePosition{};
+    std::array<double, kForceInteractionCableCount>
+            axisSafetyRelativeReferencePosition{};
     std::array<double, kForceInteractionCableCount> axisReferenceVelocity{};
     std::array<double, kForceInteractionCableCount> axisPidCorrectionVelocity{};
     std::array<double, kForceInteractionCableCount> axisCommandVelocity{};
     std::array<double, kForceInteractionCableCount> axisTracePosition{};
+    std::array<double, kForceInteractionCableCount>
+            axisSafetyRelativeTracePosition{};
     std::array<double, kForceInteractionCableCount> axisTraceVelocity{};
 
     qint64 calculationDurationUs = 0;

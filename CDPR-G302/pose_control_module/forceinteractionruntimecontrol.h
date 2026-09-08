@@ -27,8 +27,10 @@ struct ForceInteractionRuntimeConfig
     CompensatedCableKinematics::Configuration kinematics;
     PhysicalWorkspaceBoundaryConfig physicalWorkspace;
     OnlineVelocityAxisArray motorUnitPerRadian{};
-    OnlineVelocityAxisArray motorPositionMinimum{};
-    OnlineVelocityAxisArray motorPositionMaximum{};
+    // 以G302绞盘确认点（未确认时为本次上电同帧Trace位置）为零点的
+    // 电机安全相对位置边界，单位与电机位置反馈一致。
+    OnlineVelocityAxisArray motorSafetyRelativeMinimum{};
+    OnlineVelocityAxisArray motorSafetyRelativeMaximum{};
     bool feedForwardEnabled = true;
     double feedForwardGain = 1.0;
     bool pidEnabled = true;
@@ -51,6 +53,9 @@ struct ForceInteractionRuntimeConfig
 struct ForceInteractionRuntimeFeedback
 {
     OnlineVelocityAxisArray actualPosition{};
+    // 与actualPosition来自同一Trace帧，坐标原点是本次G302绞盘安全基准。
+    OnlineVelocityAxisArray safetyRelativePosition{};
+    std::array<bool, kOnlineVelocityAxisCount> safetyRelativePositionFromTrace{};
     OnlineVelocityAxisArray actualVelocity{};
     qint64 wallClockUs = 0;
     qint64 monotonicUs = 0;
@@ -115,8 +120,11 @@ struct ForceInteractionRuntimeStatus
     QString recordingError;
     ForceInteractionPlatformState desiredState;
     OnlineVelocityAxisArray actualStartPosition{};
+    OnlineVelocityAxisArray actualStartSafetyRelativePosition{};
     OnlineVelocityAxisArray desiredCableLengthMm{};
     OnlineVelocityAxisArray referencePosition{};
+    OnlineVelocityAxisArray safetyRelativeReferencePosition{};
+    OnlineVelocityAxisArray safetyRelativeActualPosition{};
     OnlineVelocityAxisArray actualPosition{};
     OnlineVelocityAxisArray commandVelocity{};
 };
@@ -167,6 +175,7 @@ private:
     CompensatedCableKinematics::State kinematicsState_;
     std::unique_ptr<ForceInteractionRunRecorder> recorder_;
     OnlineVelocityAxisArray actualStartPosition_{};
+    OnlineVelocityAxisArray actualStartSafetyRelativePosition_{};
     OnlineVelocityAxisArray lastReferencePosition_{};
     OnlineVelocityAxisArray integral_{};
     OnlineVelocityAxisArray previousError_{};

@@ -238,6 +238,7 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     bool terminalSafetyReasonRead = false;
     bool schemaV4 = false;
     bool schemaV5 = false;
+    bool schemaV6 = false;
     QStringList header;
 
     QTextStream stream(&file);
@@ -253,6 +254,11 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
                     QStringLiteral("# schema=force_interaction_run_v5")){
                 schemaV5 = true;
                 result.sourceSchemaVersion = 5;
+            }
+            else if(line.trimmed() ==
+                    QStringLiteral("# schema=force_interaction_run_v6")){
+                schemaV6 = true;
+                result.sourceSchemaVersion = 6;
             }
             QString value = valueAfterEquals(line,
                                                QStringLiteral("workspace_replay_enabled"));
@@ -442,14 +448,14 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     const bool orientationMetadataComplete =
             !boundaryConfig.orientationBoundsEnabled ||
             (orientationMinimumRead && orientationMaximumRead);
-    const bool v5TerminalMetadataComplete = !schemaV5 ||
+    const bool v5TerminalMetadataComplete = !(schemaV5 || schemaV6) ||
             (terminalSummaryPresenceRead && result.terminalSummaryPresent &&
              terminalStateRead && terminalCauseRead &&
              terminalExperimentValidRead && terminalStepCountRead &&
              terminalCommandCountRead && terminalMissedCycleCountRead &&
              terminalElapsedRead && terminalClearanceRead &&
              terminalReasonRead && terminalSafetyReasonRead);
-    if((!schemaV4 && !schemaV5) || !replayEnabled ||
+    if((!schemaV4 && !schemaV5 && !schemaV6) || !replayEnabled ||
             !frameMinimumRead || !frameMaximumRead ||
             !orientationEnabledRead ||
             pointCount <= 0 || pointCount > kPhysicalWorkspaceMaximumPlatformPoints ||
@@ -463,7 +469,7 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
             !boundaryConfig.validate(&configError) ||
             !safetyConfig.validate(&configError)){
         result.errorMessage = configError.isEmpty() ?
-                    QStringLiteral("CSV不是带完整边界快照的v4/v5阶段B记录，或v5终态摘要不完整") :
+                    QStringLiteral("CSV不是带完整边界快照的v4/v5/v6阶段B记录，或终态摘要不完整") :
                     configError;
         result.summary = QStringLiteral("阶段B边界离线复算失败：%1")
                 .arg(result.errorMessage);
@@ -714,7 +720,8 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     }
     file.close();
 
-    if(schemaV5){
+    const bool schemaHasTerminalSummary = schemaV5 || schemaV6;
+    if(schemaHasTerminalSummary){
         constexpr int kCompletedState = 5;
         constexpr int kStoppedState = 6;
         constexpr int kFaultState = 7;
@@ -747,8 +754,8 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
             result.recorderDroppedRows == 0 &&
             result.recorderAcceptedRows == result.recorderWrittenRows &&
             result.recorderWrittenRows == result.dataRows &&
-            (!schemaV5 || result.terminalSummaryValid);
-    const QString terminalText = schemaV5 ?
+            (!schemaHasTerminalSummary || result.terminalSummaryValid);
+    const QString terminalText = schemaHasTerminalSummary ?
                 QStringLiteral("终态摘要=%1（状态/原因/试验有效=%2/%3/%4）")
                     .arg(result.terminalSummaryValid ?
                              QStringLiteral("通过") : QStringLiteral("未通过"))

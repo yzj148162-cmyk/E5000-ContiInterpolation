@@ -625,6 +625,14 @@ public:
                            const std::vector<double>& velocity,
                            double changeTimeSec,
                            std::vector<double> currentAbsolutePosition);
+    // 六维力等已取得完整同帧Trace的控制路径使用；直接复用该帧安全相对位置
+    // 做限位准入，禁止在硬件线程内再次逐轴读取位置。
+    bool motorVelBatchFastWithSafetySnapshot(
+            const std::vector<int>& motorIndex,
+            const std::vector<double>& velocity,
+            double changeTimeSec,
+            std::vector<double> currentAbsolutePosition,
+            std::vector<double> currentSafetyRelativePosition);
     // 末端遥控专用低延迟批量JOG入口。安全位置、驱动状态和Trace时序必须
     // 全部来自调用方同一帧上下文；函数内部禁止再次读取Trace或直接位置。
     bool motorVelBatchFastEndpointRemote(
@@ -1429,6 +1437,7 @@ private:
             const std::vector<double>& velocity,
             double changeTimeSec,
             const std::vector<double>& currentAbsolutePosition,
+            const std::vector<double>* currentSafetyRelativePosition,
             const EndpointRemoteVelocitySafetyContext* endpointRemoteSafetyContext,
             qint64 maximumFeedbackAgeUs,
             quint64 endpointRemoteSessionToken,

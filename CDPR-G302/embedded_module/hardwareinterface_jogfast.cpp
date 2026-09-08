@@ -47,11 +47,32 @@ bool HardwareInterface::motorVelBatchFast(const std::vector<int>& motorIndex,
                                    changeTimeSec,
                                    currentAbsolutePosition,
                                    nullptr,
+                                   nullptr,
                                    0,
                                    0,
                                    nullptr);
     });
     return ok;
+}
+
+bool HardwareInterface::motorVelBatchFastWithSafetySnapshot(
+        const std::vector<int>& motorIndex,
+        const std::vector<double>& velocity,
+        double changeTimeSec,
+        std::vector<double> currentAbsolutePosition,
+        std::vector<double> currentSafetyRelativePosition)
+{
+    return runOnHardwareThread([&]() -> bool {
+        return motorVelBatchFastDirect(motorIndex,
+                                       velocity,
+                                       changeTimeSec,
+                                       currentAbsolutePosition,
+                                       &currentSafetyRelativePosition,
+                                       nullptr,
+                                       0,
+                                       0,
+                                       nullptr);
+    });
 }
 
 bool HardwareInterface::motorVelBatchFastEndpointRemote(
@@ -90,6 +111,7 @@ bool HardwareInterface::motorVelBatchFastEndpointRemote(
                                                   velocity,
                                                   changeTimeSec,
                                                   currentAbsolutePosition,
+                                                  nullptr,
                                                   &safetyContext,
                                                   maximumFeedbackAgeUs,
                                                   sessionToken,
@@ -257,6 +279,7 @@ HardwareInterface::readRuntimeTraceAndMotorVelBatchFastEndpointRemote(
                     velocity,
                     changeTimeSec,
                     currentAbsolutePosition,
+                    nullptr,
                     &context,
                     maximumFeedbackAgeUs,
                     sessionToken,
@@ -287,6 +310,7 @@ bool HardwareInterface::motorVelBatchFastDirect(
         const std::vector<double>& velocity,
         double changeTimeSec,
         const std::vector<double>& currentAbsolutePosition,
+        const std::vector<double>* currentSafetyRelativePosition,
         const EndpointRemoteVelocitySafetyContext* endpointRemoteSafetyContext,
         qint64 maximumFeedbackAgeUs,
         quint64 endpointRemoteSessionToken,
@@ -401,6 +425,14 @@ bool HardwareInterface::motorVelBatchFastDirect(
                         .arg(static_cast<int>(currentAbsolutePosition.size())),
                     EndpointRemoteVelocityCommandOutcome::CommandValidationRejected);
     }
+    if(currentSafetyRelativePosition &&
+            currentSafetyRelativePosition->size() != motorIndex.size()){
+        return failCommand(
+                    QString("Fast batch JOG safety-relative position size mismatch: axes=%1 positions=%2.")
+                        .arg(static_cast<int>(motorIndex.size()))
+                        .arg(static_cast<int>(currentSafetyRelativePosition->size())),
+                    EndpointRemoteVelocityCommandOutcome::CommandValidationRejected);
+    }
     if(motorIndex.empty()){
         return true;
     }
@@ -512,6 +544,14 @@ bool HardwareInterface::motorVelBatchFastDirect(
                         context.motorSafetyRelativePosition[logicalAxis],
                         signedVelocity,
                         QStringLiteral("endpoint remote fast batch JOG velocity command"),
+                        &limitError);
+        }
+        else if(currentSafetyRelativePosition){
+            limitValid = validateVelocityMotorSoftwareLimitFromSnapshot(
+                        logicalAxis,
+                        (*currentSafetyRelativePosition)[axisColumn],
+                        signedVelocity,
+                        QStringLiteral("force-interaction same-frame fast batch JOG velocity command"),
                         &limitError);
         }
         else{

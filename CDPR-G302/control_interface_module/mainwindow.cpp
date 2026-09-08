@@ -19309,8 +19309,8 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
             fail(QStringLiteral("轴%1软件位置边界无效").arg(axis));
             return config;
         }
-        config.motorPositionMinimum[axis] = axisMotorMinVec[axis]->value();
-        config.motorPositionMaximum[axis] = axisMotorMaxVec[axis]->value();
+        config.motorSafetyRelativeMinimum[axis] = axisMotorMinVec[axis]->value();
+        config.motorSafetyRelativeMaximum[axis] = axisMotorMaxVec[axis]->value();
     }
 
     config.feedForwardEnabled = ui->forceInteractionRuntimeFeedForwardCheckBox->isChecked();

@@ -2851,6 +2851,8 @@ void ControlWorker::processForceInteractionRuntime(
     feedback.traceLost = traceSnapshot.traceLost;
     const double nan = std::numeric_limits<double>::quiet_NaN();
     feedback.actualPosition.fill(nan);
+    feedback.safetyRelativePosition.fill(nan);
+    feedback.safetyRelativePositionFromTrace.fill(false);
     feedback.actualVelocity.fill(nan);
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         if(axis < static_cast<int>(traceSnapshot.motorPosition.size())){
@@ -2858,6 +2860,23 @@ void ControlWorker::processForceInteractionRuntime(
         }
         if(axis < static_cast<int>(traceSnapshot.motorActualVelocity.size())){
             feedback.actualVelocity[axis] = traceSnapshot.motorActualVelocity[axis];
+        }
+        if(axis < static_cast<int>(
+                traceSnapshot.motorSafetyRelativePosition.size())){
+            feedback.safetyRelativePosition[axis] =
+                    traceSnapshot.motorSafetyRelativePosition[axis];
+        }
+        if(axis < static_cast<int>(
+                traceSnapshot.motorSafetyRelativePositionSource.size())){
+            const HardwareInterface::MotorSafetyRelativePositionSource source =
+                    traceSnapshot.motorSafetyRelativePositionSource[axis];
+            feedback.safetyRelativePositionFromTrace[axis] =
+                    source == HardwareInterface::MotorSafetyRelativePositionSource::
+                        TraceCommandPersistentHome ||
+                    source == HardwareInterface::MotorSafetyRelativePositionSource::
+                        TraceCommandSessionHome ||
+                    source == HardwareInterface::MotorSafetyRelativePositionSource::
+                        TraceFeedbackSessionHome;
         }
     }
 
@@ -2902,10 +2921,13 @@ void ControlWorker::processForceInteractionRuntime(
                                           step.commandVelocity.end());
         const std::vector<double> position(step.actualPosition.begin(),
                                            step.actualPosition.end());
-        commandOk = hardwareInterface->motorVelBatchFast(
+        const std::vector<double> safetyRelativePosition(
+                    feedback.safetyRelativePosition.begin(),
+                    feedback.safetyRelativePosition.end());
+        commandOk = hardwareInterface->motorVelBatchFastWithSafetySnapshot(
                     axes, command,
                     forceInteractionRuntimeControl.currentConfig().onlineChangeTimeS,
-                    position);
+                    position, safetyRelativePosition);
         if(!commandOk){
             hardwareInterface->emergencyStopAxes(axes);
         }

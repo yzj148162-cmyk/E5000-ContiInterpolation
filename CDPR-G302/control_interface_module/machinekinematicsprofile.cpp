@@ -14,6 +14,10 @@ constexpr double kBarycenterForceMaxN = 997.0;
 constexpr double kTorqueServoVelocityLimitRpm = 600.01;
 constexpr double kAccActualTorqueLimitNm = 60.0;
 constexpr double kG302ActualTorqueLimitNm = 40.0;
+// G302实物绞盘：直径160 mm；安全行程以确认/上电时建立的同帧Trace
+// 相对位置基准为零点，收绳和放绳两个方向均不得超过6.5圈。
+constexpr double kG302WinchRadiusMm = 80.0;
+constexpr double kG302WinchTravelLimitRev = 6.5;
 
 } // namespace
 
@@ -116,11 +120,11 @@ const MachineKinematicsProfile& machineKinematicsProfile(MachineProfileKind kind
         400.0,
         34.5,
         450.0,
-        76.0,
+        kG302WinchRadiusMm,
         -1.0,
         5.5,
         680.0,
-        7.0,
+        kG302WinchTravelLimitRev,
         300.0,
         7.5,
         10.0,

@@ -50,6 +50,55 @@ bool worldOmegaToZyxEulerRate(const ForceInteractionVector6& pose,
                        [](double value){ return std::isfinite(value); });
 }
 
+bool validateMotorSafetyRelativeTravel(
+        const ForceInteractionRuntimeConfig& config,
+        const OnlineVelocityAxisArray& startSafetyRelativePosition,
+        const OnlineVelocityAxisArray& actualSafetyRelativePosition,
+        const OnlineVelocityAxisArray& relativeCommandPosition,
+        OnlineVelocityAxisArray* referenceSafetyRelativePosition,
+        QString* errorMessage)
+{
+    const auto fail = [errorMessage](const QString& message){
+        if(errorMessage){
+            *errorMessage = message;
+        }
+        return false;
+    };
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        const double minimum = config.motorSafetyRelativeMinimum[axis];
+        const double maximum = config.motorSafetyRelativeMaximum[axis];
+        const double actual = actualSafetyRelativePosition[axis];
+        const double reference = startSafetyRelativePosition[axis] +
+                relativeCommandPosition[axis];
+        if(!std::isfinite(minimum) || !std::isfinite(maximum) ||
+                minimum >= maximum || !std::isfinite(actual) ||
+                !std::isfinite(reference)){
+            return fail(QStringLiteral("轴%1绞盘安全相对位置或边界无效")
+                        .arg(axis));
+        }
+        if(actual < minimum || actual > maximum){
+            return fail(QStringLiteral(
+                        "轴%1绞盘实际安全相对位置%2已越过[%3, %4]")
+                        .arg(axis)
+                        .arg(actual, 0, 'f', 6)
+                        .arg(minimum, 0, 'f', 6)
+                        .arg(maximum, 0, 'f', 6));
+        }
+        if(reference < minimum || reference > maximum){
+            return fail(QStringLiteral(
+                        "轴%1绞盘期望安全相对位置%2将越过[%3, %4]")
+                        .arg(axis)
+                        .arg(reference, 0, 'f', 6)
+                        .arg(minimum, 0, 'f', 6)
+                        .arg(maximum, 0, 'f', 6));
+        }
+        if(referenceSafetyRelativePosition){
+            (*referenceSafetyRelativePosition)[axis] = reference;
+        }
+    }
+    return true;
+}
+
 } // namespace
 
 bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
@@ -104,7 +153,8 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
     }
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         if(std::fabs(motorUnitPerRadian[axis]) <= 1.0e-12 ||
-                motorPositionMinimum[axis] >= motorPositionMaximum[axis]){
+                motorSafetyRelativeMinimum[axis] >=
+                    motorSafetyRelativeMaximum[axis]){
             return fail(QStringLiteral("轴%1单位换算或位置边界无效").arg(axis));
         }
     }
@@ -177,6 +227,11 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
     metadata.workspaceReplayEnabled = true;
     metadata.physicalWorkspace = config_.physicalWorkspace;
     metadata.workspaceSafety = config_.workspaceSafety;
+    metadata.motorSafetyRelativeBoundsEnabled = true;
+    metadata.motorSafetyRelativeMinimum =
+            config_.motorSafetyRelativeMinimum;
+    metadata.motorSafetyRelativeMaximum =
+            config_.motorSafetyRelativeMaximum;
     QString recordError;
     if(!recorder_->begin(config_.recordingDirectory, metadata,
                          &status_.recordFile, &recordError)){
@@ -203,6 +258,10 @@ bool ForceInteractionRuntimeControl::feedbackReady(
             feedback.newestFrameAgeUs >= 0 &&
             feedback.newestFrameAgeUs <= config_.traceTimeoutUs &&
             finiteArray(feedback.actualPosition) &&
+            finiteArray(feedback.safetyRelativePosition) &&
+            std::all_of(feedback.safetyRelativePositionFromTrace.cbegin(),
+                        feedback.safetyRelativePositionFromTrace.cend(),
+                        [](bool valid){ return valid; }) &&
             finiteArray(feedback.actualVelocity);
 }
 
@@ -394,8 +453,11 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
 
     if(!actualStartCaptured_){
         actualStartPosition_ = feedback.actualPosition;
+        actualStartSafetyRelativePosition_ = feedback.safetyRelativePosition;
         lastReferencePosition_ = actualStartPosition_;
         status_.actualStartPosition = actualStartPosition_;
+        status_.actualStartSafetyRelativePosition =
+                actualStartSafetyRelativePosition_;
         actualStartCaptured_ = true;
         status_.state = ForceInteractionRuntimeStatus::State::Running;
         status_.message = QStringLiteral("阶段B运行中");
@@ -596,16 +658,27 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     OnlineVelocityAxisArray referenceVelocity{};
     OnlineVelocityAxisArray correction{};
     OnlineVelocityAxisArray command{};
+    OnlineVelocityAxisArray relativeCommandPosition{};
+    OnlineVelocityAxisArray safetyRelativeReference{};
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        relativeCommandPosition[axis] =
+                evaluation.relativeMotorThetaRad[axis] *
+                config_.motorUnitPerRadian[axis];
+    }
+    QString motorTravelError;
+    if(!validateMotorSafetyRelativeTravel(
+            config_, actualStartSafetyRelativePosition_,
+            feedback.safetyRelativePosition, relativeCommandPosition,
+            &safetyRelativeReference, &motorTravelError)){
+        output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+        output.reason = QStringLiteral("阶段B绞盘行程保护：%1")
+                .arg(motorTravelError);
+        return output;
+    }
     double maximumError = 0.0;
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         reference[axis] = actualStartPosition_[axis] +
-                evaluation.relativeMotorThetaRad[axis] * config_.motorUnitPerRadian[axis];
-        if(reference[axis] < config_.motorPositionMinimum[axis] ||
-                reference[axis] > config_.motorPositionMaximum[axis]){
-            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-            output.reason = QStringLiteral("阶段B轴%1期望位置越界").arg(axis);
-            return output;
-        }
+                relativeCommandPosition[axis];
         referenceVelocity[axis] = (reference[axis] - lastReferencePosition_[axis]) / dt;
         const double error = reference[axis] - feedback.actualPosition[axis];
         maximumError = std::max(maximumError, std::fabs(error));
@@ -682,10 +755,14 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         record.cableLengthMm[axis] = evaluation.cableLengthMm[axis];
         record.relativeMotorThetaRad[axis] = evaluation.relativeMotorThetaRad[axis];
         record.axisReferencePosition[axis] = reference[axis];
+        record.axisSafetyRelativeReferencePosition[axis] =
+                safetyRelativeReference[axis];
         record.axisReferenceVelocity[axis] = referenceVelocity[axis];
         record.axisPidCorrectionVelocity[axis] = correction[axis];
         record.axisCommandVelocity[axis] = command[axis];
         record.axisTracePosition[axis] = feedback.actualPosition[axis];
+        record.axisSafetyRelativeTracePosition[axis] =
+                feedback.safetyRelativePosition[axis];
         record.axisTraceVelocity[axis] = feedback.actualVelocity[axis];
     }
     record.newmarkIterations = dynamicsResult.iterations;
@@ -713,6 +790,8 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         status_.desiredCableLengthMm[axis] = evaluation.cableLengthMm[axis];
     }
     status_.referencePosition = reference;
+    status_.safetyRelativeReferencePosition = safetyRelativeReference;
+    status_.safetyRelativeActualPosition = feedback.safetyRelativePosition;
     status_.actualPosition = feedback.actualPosition;
     status_.commandVelocity = command;
     return output;
@@ -943,6 +1022,40 @@ bool ForceInteractionRuntimeControl::runControlledStopSelfChecks(
                     "平动协同制动距离/步数错误：步数=%1，位移=%2 m")
                     .arg(brakingSteps)
                     .arg(control.brakingState_.pose[0] - startX, 0, 'g', 12));
+    }
+
+    // 绞盘限位必须使用安全相对坐标，而不能把绝对编码器位置与±圈数直接比较。
+    // 用非零起点验证“本次运行增量 + 已锁存安全相对起点”的精确关系。
+    ForceInteractionRuntimeConfig travelConfig;
+    travelConfig.motorSafetyRelativeMinimum.fill(-6.5);
+    travelConfig.motorSafetyRelativeMaximum.fill(6.5);
+    OnlineVelocityAxisArray safetyStart{};
+    OnlineVelocityAxisArray safetyActual{};
+    OnlineVelocityAxisArray relativeCommand{};
+    OnlineVelocityAxisArray safetyReference{};
+    safetyStart.fill(2.0);
+    safetyActual.fill(2.0);
+    relativeCommand.fill(4.4);
+    QString travelError;
+    if(!validateMotorSafetyRelativeTravel(
+            travelConfig, safetyStart, safetyActual, relativeCommand,
+            &safetyReference, &travelError) ||
+            std::fabs(safetyReference[0] - 6.4) > 1.0e-12){
+        return fail(QStringLiteral("绞盘安全相对位置有效区间自检失败：%1")
+                    .arg(travelError));
+    }
+    relativeCommand[3] = 4.6;
+    if(validateMotorSafetyRelativeTravel(
+            travelConfig, safetyStart, safetyActual, relativeCommand,
+            &safetyReference, &travelError) || !travelError.contains("轴3")){
+        return fail(QStringLiteral("绞盘期望安全相对位置越界未被拒绝"));
+    }
+    relativeCommand.fill(0.0);
+    safetyActual[5] = -6.6;
+    if(validateMotorSafetyRelativeTravel(
+            travelConfig, safetyStart, safetyActual, relativeCommand,
+            &safetyReference, &travelError) || !travelError.contains("轴5")){
+        return fail(QStringLiteral("绞盘实际安全相对位置越界未被拒绝"));
     }
 
     // A terminal fault from Trace/API/boundary paths must always invalidate

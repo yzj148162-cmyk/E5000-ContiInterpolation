@@ -25,6 +25,21 @@ void writeArray(QTextStream& stream, const std::array<double, Size>& values)
     }
 }
 
+template<std::size_t Size>
+void writeArrayMetadata(QTextStream& stream,
+                        const char* key,
+                        const std::array<double, Size>& values)
+{
+    stream << "# " << key << '=';
+    for(std::size_t index = 0; index < Size; ++index){
+        if(index > 0){
+            stream << ';';
+        }
+        stream << values[index];
+    }
+    stream << '\n';
+}
+
 void writeGroupHeader(QTextStream& stream, const char* name, int count)
 {
     for(int index = 0; index < count; ++index){
@@ -230,7 +245,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v5\n"
+    stream << "# schema=force_interaction_run_v6\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -278,6 +293,14 @@ void ForceInteractionRunRecorder::run()
                << metadata_.workspaceSafety.outwardAccelerationToleranceMmPerSec2
                << '\n';
     }
+    stream << "# motor_safety_relative_bounds_enabled="
+           << (metadata_.motorSafetyRelativeBoundsEnabled ? 1 : 0) << '\n';
+    if(metadata_.motorSafetyRelativeBoundsEnabled){
+        writeArrayMetadata(stream, "motor_safety_relative_minimum",
+                           metadata_.motorSafetyRelativeMinimum);
+        writeArrayMetadata(stream, "motor_safety_relative_maximum",
+                           metadata_.motorSafetyRelativeMaximum);
+    }
 
     stream << "step_index,elapsed_s,availability_mask,host_monotonic_us,"
               "trace_sequence,trace_time_us,trace_valid";
@@ -298,10 +321,14 @@ void ForceInteractionRunRecorder::run()
               "workspace_limiting_point,workspace_limiting_axis,workspace_limiting_upper_face";
     writeWorkspacePointHeader(stream);
     writeGroupHeader(stream, "axis_reference_position", kForceInteractionCableCount);
+    writeGroupHeader(stream, "axis_safety_relative_reference_position",
+                     kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_reference_velocity", kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_pid_correction_velocity", kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_command_velocity", kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_trace_position", kForceInteractionCableCount);
+    writeGroupHeader(stream, "axis_safety_relative_trace_position",
+                     kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_trace_velocity", kForceInteractionCableCount);
     stream << ",calculation_us,hardware_api_us,full_cycle_us\n";
     ready_.release();
@@ -359,10 +386,12 @@ void ForceInteractionRunRecorder::run()
                    << ',' << (record.workspaceLimitingUpperFace ? 1 : 0);
             writeWorkspacePoints(stream, record.workspacePointGlobalMm);
             writeArray(stream, record.axisReferencePosition);
+            writeArray(stream, record.axisSafetyRelativeReferencePosition);
             writeArray(stream, record.axisReferenceVelocity);
             writeArray(stream, record.axisPidCorrectionVelocity);
             writeArray(stream, record.axisCommandVelocity);
             writeArray(stream, record.axisTracePosition);
+            writeArray(stream, record.axisSafetyRelativeTracePosition);
             writeArray(stream, record.axisTraceVelocity);
             stream << ',' << record.calculationDurationUs
                    << ',' << record.hardwareApiDurationUs
