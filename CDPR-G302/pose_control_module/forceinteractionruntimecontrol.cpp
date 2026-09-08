@@ -781,6 +781,22 @@ void ForceInteractionRuntimeControl::finishRecording()
     if(!recorder_){
         return;
     }
+    ForceInteractionRunTerminalSummary terminalSummary;
+    terminalSummary.present = true;
+    terminalSummary.terminalState = static_cast<int>(status_.state);
+    terminalSummary.controlledStopCause =
+            static_cast<int>(status_.controlledStopCause);
+    terminalSummary.experimentValid = status_.experimentValid;
+    terminalSummary.finalStepCount = status_.stepCount;
+    terminalSummary.finalCommandCount = status_.commandCount;
+    terminalSummary.missedCycleCount = status_.missedCycleCount;
+    terminalSummary.elapsedS = status_.elapsedS;
+    terminalSummary.minimumWorkspaceClearanceMm =
+            std::isfinite(status_.minimumWorkspaceClearanceMm) ?
+                status_.minimumWorkspaceClearanceMm : 0.0;
+    terminalSummary.terminalReason = status_.message;
+    terminalSummary.safetyStopReason = status_.safetyStopReason;
+    recorder_->setTerminalSummary(terminalSummary);
     recorder_->requestFinish();
     recorder_->finishAndWait();
     status_.acceptedRecordCount = recorder_->acceptedCount();

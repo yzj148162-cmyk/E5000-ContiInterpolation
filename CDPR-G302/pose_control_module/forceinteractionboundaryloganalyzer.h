@@ -8,6 +8,7 @@
 struct ForceInteractionBoundaryLogAnalysisResult
 {
     bool passed = false;
+    int sourceSchemaVersion = 0;
     quint64 dataRows = 0;
     quint64 replayedRows = 0;
     quint64 malformedRows = 0;
@@ -21,6 +22,18 @@ struct ForceInteractionBoundaryLogAnalysisResult
     quint64 recorderAcceptedRows = 0;
     quint64 recorderWrittenRows = 0;
     quint64 recorderDroppedRows = 0;
+    bool terminalSummaryPresent = false;
+    bool terminalSummaryValid = false;
+    int terminalState = -1;
+    int terminalControlledStopCause = 0;
+    bool terminalExperimentValid = false;
+    quint64 terminalFinalStepCount = 0;
+    quint64 terminalFinalCommandCount = 0;
+    quint64 terminalMissedCycleCount = 0;
+    double terminalElapsedS = 0.0;
+    double terminalMinimumWorkspaceClearanceMm = 0.0;
+    QString terminalReason;
+    QString terminalSafetyReason;
     double maximumClearanceDifferenceMm = 0.0;
     double maximumTriggerDistanceDifferenceMm = 0.0;
     double maximumPointDifferenceMm = 0.0;

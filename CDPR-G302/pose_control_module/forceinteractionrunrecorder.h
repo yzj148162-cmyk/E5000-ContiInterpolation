@@ -39,6 +39,24 @@ struct ForceInteractionRunMetadata
     DynamicWorkspaceSafetyConfig workspaceSafety;
 };
 
+// Written once after the asynchronous queue has drained. The runtime layer
+// supplies enum values as integers so the recorder remains independent of the
+// control-state implementation.
+struct ForceInteractionRunTerminalSummary
+{
+    bool present = false;
+    int terminalState = -1;
+    int controlledStopCause = 0;
+    bool experimentValid = false;
+    quint64 finalStepCount = 0;
+    quint64 finalCommandCount = 0;
+    quint64 missedCycleCount = 0;
+    double elapsedS = 0.0;
+    double minimumWorkspaceClearanceMm = 0.0;
+    QString terminalReason;
+    QString safetyStopReason;
+};
+
 // 固定字段覆盖阶段A～D。某阶段尚不存在的数据由 availabilityMask 明确标为
 // 不可用，避免后续扩展时反复改变CSV列定义。
 struct ForceInteractionRunRecord
@@ -104,6 +122,7 @@ public:
                QString* outputPath = nullptr,
                QString* errorMessage = nullptr);
     void tryAppend(const ForceInteractionRunRecord& record);
+    void setTerminalSummary(const ForceInteractionRunTerminalSummary& summary);
     void requestFinish();
     void finishAndWait();
 
@@ -123,6 +142,7 @@ private:
     QString openError_;
     QString writerError_;
     ForceInteractionRunMetadata metadata_;
+    ForceInteractionRunTerminalSummary terminalSummary_;
     QMutex queueMutex_;
     QWaitCondition queueReady_;
     QSemaphore ready_;

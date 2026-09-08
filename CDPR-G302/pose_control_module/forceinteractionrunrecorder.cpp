@@ -119,6 +119,7 @@ bool ForceInteractionRunRecorder::begin(
         queue_.resize(kMaximumQueuedRecords);
         queueHead_ = 0;
         queuedRecordCount_ = 0;
+        terminalSummary_ = ForceInteractionRunTerminalSummary{};
     }
 
     start(QThread::LowPriority);
@@ -165,6 +166,13 @@ void ForceInteractionRunRecorder::tryAppend(
     accepted_.fetch_add(1);
     queueReady_.wakeOne();
     queueMutex_.unlock();
+}
+
+void ForceInteractionRunRecorder::setTerminalSummary(
+        const ForceInteractionRunTerminalSummary& summary)
+{
+    QMutexLocker locker(&queueMutex_);
+    terminalSummary_ = summary;
 }
 
 void ForceInteractionRunRecorder::requestFinish()
@@ -222,7 +230,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v4\n"
+    stream << "# schema=force_interaction_run_v5\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -369,11 +377,40 @@ void ForceInteractionRunRecorder::run()
             break;
         }
     }
-    stream.flush();
+    ForceInteractionRunTerminalSummary terminalSummary;
+    {
+        QMutexLocker locker(&queueMutex_);
+        terminalSummary = terminalSummary_;
+    }
+    stream << "# terminal_summary_present="
+           << (terminalSummary.present ? 1 : 0) << '\n';
+    if(terminalSummary.present){
+        stream << "# terminal_state=" << terminalSummary.terminalState << '\n'
+               << "# terminal_controlled_stop_cause="
+               << terminalSummary.controlledStopCause << '\n'
+               << "# terminal_experiment_valid="
+               << (terminalSummary.experimentValid ? 1 : 0) << '\n'
+               << "# terminal_final_step_count="
+               << terminalSummary.finalStepCount << '\n'
+               << "# terminal_final_command_count="
+               << terminalSummary.finalCommandCount << '\n'
+               << "# terminal_missed_cycle_count="
+               << terminalSummary.missedCycleCount << '\n'
+               << "# terminal_elapsed_s=" << terminalSummary.elapsedS << '\n'
+               << "# terminal_minimum_workspace_clearance_mm="
+               << terminalSummary.minimumWorkspaceClearanceMm << '\n'
+               << "# terminal_reason="
+               << csvSafe(terminalSummary.terminalReason) << '\n'
+               << "# terminal_safety_reason="
+               << csvSafe(terminalSummary.safetyStopReason) << '\n';
+    }
     stream << "# recorder_accepted=" << accepted_.load() << '\n'
            << "# recorder_written=" << written_.load() << '\n'
            << "# recorder_dropped=" << dropped_.load() << '\n';
     stream.flush();
+    if(stream.status() != QTextStream::Ok && writerError_.isEmpty()){
+        writerError_ = QStringLiteral("六维力交互CSV终态摘要写入失败");
+    }
     if(file.error() != QFileDevice::NoError && writerError_.isEmpty()){
         writerError_ = QStringLiteral("六维力交互CSV刷新失败：%1")
                 .arg(file.errorString());

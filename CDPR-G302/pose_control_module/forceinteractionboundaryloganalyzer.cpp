@@ -48,6 +48,17 @@ bool parseUnsigned(const QString& text, quint64& value)
     return ok;
 }
 
+QString parseQuotedMetadataString(QString text)
+{
+    text = text.trimmed();
+    if(text.size() >= 2 && text.front() == QLatin1Char('"') &&
+            text.back() == QLatin1Char('"')){
+        text = text.mid(1, text.size() - 2);
+        text.replace(QStringLiteral("\"\""), QStringLiteral("\""));
+    }
+    return text;
+}
+
 bool parseVector3(const QString& text, std::array<double, 3>& values)
 {
     const QStringList parts = text.split(QLatin1Char(';'));
@@ -98,11 +109,13 @@ bool writeReport(const ForceInteractionBoundaryLogAnalysisResult& result,
 {
     QJsonObject root;
     root.insert(QStringLiteral("schema"),
-                QStringLiteral("force_interaction_boundary_analysis_v1"));
+                QStringLiteral("force_interaction_boundary_analysis_v2"));
     root.insert(QStringLiteral("generated_at"),
                 QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
     root.insert(QStringLiteral("csv_path"), result.csvPath);
     root.insert(QStringLiteral("passed"), result.passed);
+    root.insert(QStringLiteral("source_schema_version"),
+                result.sourceSchemaVersion);
     root.insert(QStringLiteral("data_rows"), static_cast<double>(result.dataRows));
     root.insert(QStringLiteral("replayed_rows"), static_cast<double>(result.replayedRows));
     root.insert(QStringLiteral("malformed_rows"), static_cast<double>(result.malformedRows));
@@ -125,6 +138,27 @@ bool writeReport(const ForceInteractionBoundaryLogAnalysisResult& result,
                 static_cast<double>(result.recorderWrittenRows));
     root.insert(QStringLiteral("recorder_dropped_rows"),
                 static_cast<double>(result.recorderDroppedRows));
+    root.insert(QStringLiteral("terminal_summary_present"),
+                result.terminalSummaryPresent);
+    root.insert(QStringLiteral("terminal_summary_valid"),
+                result.terminalSummaryValid);
+    root.insert(QStringLiteral("terminal_state"), result.terminalState);
+    root.insert(QStringLiteral("terminal_controlled_stop_cause"),
+                result.terminalControlledStopCause);
+    root.insert(QStringLiteral("terminal_experiment_valid"),
+                result.terminalExperimentValid);
+    root.insert(QStringLiteral("terminal_final_step_count"),
+                static_cast<double>(result.terminalFinalStepCount));
+    root.insert(QStringLiteral("terminal_final_command_count"),
+                static_cast<double>(result.terminalFinalCommandCount));
+    root.insert(QStringLiteral("terminal_missed_cycle_count"),
+                static_cast<double>(result.terminalMissedCycleCount));
+    root.insert(QStringLiteral("terminal_elapsed_s"), result.terminalElapsedS);
+    root.insert(QStringLiteral("terminal_minimum_workspace_clearance_mm"),
+                result.terminalMinimumWorkspaceClearanceMm);
+    root.insert(QStringLiteral("terminal_reason"), result.terminalReason);
+    root.insert(QStringLiteral("terminal_safety_reason"),
+                result.terminalSafetyReason);
     root.insert(QStringLiteral("maximum_clearance_difference_mm"),
                 result.maximumClearanceDifferenceMm);
     root.insert(QStringLiteral("maximum_trigger_distance_difference_mm"),
@@ -191,7 +225,19 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     bool recorderAcceptedRead = false;
     bool recorderWrittenRead = false;
     bool recorderDroppedRead = false;
+    bool terminalSummaryPresenceRead = false;
+    bool terminalStateRead = false;
+    bool terminalCauseRead = false;
+    bool terminalExperimentValidRead = false;
+    bool terminalStepCountRead = false;
+    bool terminalCommandCountRead = false;
+    bool terminalMissedCycleCountRead = false;
+    bool terminalElapsedRead = false;
+    bool terminalClearanceRead = false;
+    bool terminalReasonRead = false;
+    bool terminalSafetyReasonRead = false;
     bool schemaV4 = false;
+    bool schemaV5 = false;
     QStringList header;
 
     QTextStream stream(&file);
@@ -201,6 +247,12 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
         if(line.startsWith(QLatin1Char('#'))){
             if(line.trimmed() == QStringLiteral("# schema=force_interaction_run_v4")){
                 schemaV4 = true;
+                result.sourceSchemaVersion = 4;
+            }
+            else if(line.trimmed() ==
+                    QStringLiteral("# schema=force_interaction_run_v5")){
+                schemaV5 = true;
+                result.sourceSchemaVersion = 5;
             }
             QString value = valueAfterEquals(line,
                                                QStringLiteral("workspace_replay_enabled"));
@@ -306,6 +358,74 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
                 recorderDroppedRead = parseUnsigned(
                             value, result.recorderDroppedRows);
             }
+            value = valueAfterEquals(line,
+                                     QStringLiteral("terminal_summary_present"));
+            if(!value.isEmpty()){
+                int present = 0;
+                terminalSummaryPresenceRead = parseInt(value, present);
+                result.terminalSummaryPresent =
+                        terminalSummaryPresenceRead && present == 1;
+            }
+            value = valueAfterEquals(line, QStringLiteral("terminal_state"));
+            if(!value.isEmpty()){
+                terminalStateRead = parseInt(value, result.terminalState);
+            }
+            value = valueAfterEquals(
+                        line, QStringLiteral("terminal_controlled_stop_cause"));
+            if(!value.isEmpty()){
+                terminalCauseRead = parseInt(
+                            value, result.terminalControlledStopCause);
+            }
+            value = valueAfterEquals(
+                        line, QStringLiteral("terminal_experiment_valid"));
+            if(!value.isEmpty()){
+                int valid = 0;
+                terminalExperimentValidRead = parseInt(value, valid) &&
+                        (valid == 0 || valid == 1);
+                result.terminalExperimentValid = valid == 1;
+            }
+            value = valueAfterEquals(
+                        line, QStringLiteral("terminal_final_step_count"));
+            if(!value.isEmpty()){
+                terminalStepCountRead = parseUnsigned(
+                            value, result.terminalFinalStepCount);
+            }
+            value = valueAfterEquals(
+                        line, QStringLiteral("terminal_final_command_count"));
+            if(!value.isEmpty()){
+                terminalCommandCountRead = parseUnsigned(
+                            value, result.terminalFinalCommandCount);
+            }
+            value = valueAfterEquals(
+                        line, QStringLiteral("terminal_missed_cycle_count"));
+            if(!value.isEmpty()){
+                terminalMissedCycleCountRead = parseUnsigned(
+                            value, result.terminalMissedCycleCount);
+            }
+            value = valueAfterEquals(line, QStringLiteral("terminal_elapsed_s"));
+            if(!value.isEmpty()){
+                terminalElapsedRead = parseDouble(value, result.terminalElapsedS) &&
+                        result.terminalElapsedS >= 0.0;
+            }
+            value = valueAfterEquals(
+                        line,
+                        QStringLiteral("terminal_minimum_workspace_clearance_mm"));
+            if(!value.isEmpty()){
+                terminalClearanceRead = parseDouble(
+                            value,
+                            result.terminalMinimumWorkspaceClearanceMm);
+            }
+            value = valueAfterEquals(line, QStringLiteral("terminal_reason"));
+            if(!value.isEmpty()){
+                result.terminalReason = parseQuotedMetadataString(value);
+                terminalReasonRead = true;
+            }
+            value = valueAfterEquals(
+                        line, QStringLiteral("terminal_safety_reason"));
+            if(!value.isEmpty()){
+                result.terminalSafetyReason = parseQuotedMetadataString(value);
+                terminalSafetyReasonRead = true;
+            }
             continue;
         }
         if(line.trimmed().isEmpty()){
@@ -322,7 +442,15 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     const bool orientationMetadataComplete =
             !boundaryConfig.orientationBoundsEnabled ||
             (orientationMinimumRead && orientationMaximumRead);
-    if(!schemaV4 || !replayEnabled || !frameMinimumRead || !frameMaximumRead ||
+    const bool v5TerminalMetadataComplete = !schemaV5 ||
+            (terminalSummaryPresenceRead && result.terminalSummaryPresent &&
+             terminalStateRead && terminalCauseRead &&
+             terminalExperimentValidRead && terminalStepCountRead &&
+             terminalCommandCountRead && terminalMissedCycleCountRead &&
+             terminalElapsedRead && terminalClearanceRead &&
+             terminalReasonRead && terminalSafetyReasonRead);
+    if((!schemaV4 && !schemaV5) || !replayEnabled ||
+            !frameMinimumRead || !frameMaximumRead ||
             !orientationEnabledRead ||
             pointCount <= 0 || pointCount > kPhysicalWorkspaceMaximumPlatformPoints ||
             static_cast<int>(boundaryConfig.platformPointsLocalMm.size()) != pointCount ||
@@ -331,10 +459,11 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
             !velocityToleranceRead || !accelerationToleranceRead ||
             !recorderAcceptedRead || !recorderWrittenRead ||
             !recorderDroppedRead ||
+            !v5TerminalMetadataComplete ||
             !boundaryConfig.validate(&configError) ||
             !safetyConfig.validate(&configError)){
         result.errorMessage = configError.isEmpty() ?
-                    QStringLiteral("CSV不是带完整边界快照的v4阶段B记录") :
+                    QStringLiteral("CSV不是带完整边界快照的v4/v5阶段B记录，或v5终态摘要不完整") :
                     configError;
         result.summary = QStringLiteral("阶段B边界离线复算失败：%1")
                 .arg(result.errorMessage);
@@ -585,6 +714,31 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     }
     file.close();
 
+    if(schemaV5){
+        constexpr int kCompletedState = 5;
+        constexpr int kStoppedState = 6;
+        constexpr int kFaultState = 7;
+        const bool stateIsTerminal =
+                result.terminalState == kCompletedState ||
+                result.terminalState == kStoppedState ||
+                result.terminalState == kFaultState;
+        const bool invalidReasonConsistent =
+                result.terminalExperimentValid ||
+                !result.terminalSafetyReason.trimmed().isEmpty();
+        const bool faultConsistent = result.terminalState != kFaultState ||
+                (!result.terminalExperimentValid &&
+                 !result.terminalSafetyReason.trimmed().isEmpty());
+        const bool countConsistent =
+                result.terminalFinalCommandCount ==
+                    result.recorderAcceptedRows + result.recorderDroppedRows &&
+                result.terminalFinalStepCount >=
+                    result.terminalFinalCommandCount;
+        result.terminalSummaryValid = result.terminalSummaryPresent &&
+                stateIsTerminal && invalidReasonConsistent && faultConsistent &&
+                countConsistent &&
+                !result.terminalReason.trimmed().isEmpty();
+    }
+
     result.passed = result.dataRows > 0 &&
             result.replayedRows == result.dataRows &&
             result.malformedRows == 0 && result.mismatchRows == 0 &&
@@ -592,11 +746,20 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
             result.traceNonMonotonicRows == 0 &&
             result.recorderDroppedRows == 0 &&
             result.recorderAcceptedRows == result.recorderWrittenRows &&
-            result.recorderWrittenRows == result.dataRows;
+            result.recorderWrittenRows == result.dataRows &&
+            (!schemaV5 || result.terminalSummaryValid);
+    const QString terminalText = schemaV5 ?
+                QStringLiteral("终态摘要=%1（状态/原因/试验有效=%2/%3/%4）")
+                    .arg(result.terminalSummaryValid ?
+                             QStringLiteral("通过") : QStringLiteral("未通过"))
+                    .arg(result.terminalState)
+                    .arg(result.terminalControlledStopCause)
+                    .arg(result.terminalExperimentValid ? 1 : 0) :
+                QStringLiteral("终态摘要=旧v4记录未提供（仅复算周期数据）");
     result.summary = QStringLiteral(
                 "阶段B边界离线复算%1：复算/数据=%2/%3行，在线结论不一致=%4行（动作=%5，连接点=%6），"
                 "格式错误=%7行，Trace无效/非递增=%8/%9行，有效交互/制动=%10/%11行，"
-                "记录接受/写入/丢弃=%12/%13/%14，最大余量/触发距离/连接点差=%15/%16/%17 mm。报告=%18")
+                "记录接受/写入/丢弃=%12/%13/%14，最大余量/触发距离/连接点差=%15/%16/%17 mm，%18。报告=%19")
             .arg(result.passed ? QStringLiteral("通过") : QStringLiteral("未通过"))
             .arg(result.replayedRows)
             .arg(result.dataRows)
@@ -614,6 +777,7 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
             .arg(result.maximumClearanceDifferenceMm, 0, 'g', 8)
             .arg(result.maximumTriggerDistanceDifferenceMm, 0, 'g', 8)
             .arg(result.maximumPointDifferenceMm, 0, 'g', 8)
+            .arg(terminalText)
             .arg(QFileInfo(result.reportPath).absoluteFilePath());
 
     QString reportError;
