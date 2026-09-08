@@ -17,10 +17,10 @@ QString csvSafe(QString value)
     return QStringLiteral("\"") + value + QStringLiteral("\"");
 }
 
-template<std::size_t Size>
-void writeArray(QTextStream& stream, const std::array<double, Size>& values)
+template<typename Value, std::size_t Size>
+void writeArray(QTextStream& stream, const std::array<Value, Size>& values)
 {
-    for(double value : values){
+    for(const Value& value : values){
         stream << ',' << value;
     }
 }
@@ -245,7 +245,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v6\n"
+    stream << "# schema=force_interaction_run_v7\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -330,6 +330,8 @@ void ForceInteractionRunRecorder::run()
     writeGroupHeader(stream, "axis_safety_relative_trace_position",
                      kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_trace_velocity", kForceInteractionCableCount);
+    writeGroupHeader(stream, "axis_status_word", kForceInteractionCableCount);
+    writeGroupHeader(stream, "axis_state_machine", kForceInteractionCableCount);
     stream << ",calculation_us,hardware_api_us,full_cycle_us\n";
     ready_.release();
 
@@ -393,6 +395,8 @@ void ForceInteractionRunRecorder::run()
             writeArray(stream, record.axisTracePosition);
             writeArray(stream, record.axisSafetyRelativeTracePosition);
             writeArray(stream, record.axisTraceVelocity);
+            writeArray(stream, record.axisStatusWord);
+            writeArray(stream, record.axisStateMachine);
             stream << ',' << record.calculationDurationUs
                    << ',' << record.hardwareApiDurationUs
                    << ',' << record.fullCycleDurationUs << '\n';

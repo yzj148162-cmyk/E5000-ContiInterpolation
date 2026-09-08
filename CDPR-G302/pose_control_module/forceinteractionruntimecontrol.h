@@ -57,6 +57,8 @@ struct ForceInteractionRuntimeFeedback
     OnlineVelocityAxisArray safetyRelativePosition{};
     std::array<bool, kOnlineVelocityAxisCount> safetyRelativePositionFromTrace{};
     OnlineVelocityAxisArray actualVelocity{};
+    std::array<quint16, kOnlineVelocityAxisCount> motorStatusWord{};
+    std::array<int, kOnlineVelocityAxisCount> motorStateMachine{};
     qint64 wallClockUs = 0;
     qint64 monotonicUs = 0;
     qint64 newestFrameAgeUs = -1;
@@ -127,6 +129,8 @@ struct ForceInteractionRuntimeStatus
     OnlineVelocityAxisArray safetyRelativeActualPosition{};
     OnlineVelocityAxisArray actualPosition{};
     OnlineVelocityAxisArray commandVelocity{};
+    std::array<quint16, kOnlineVelocityAxisCount> motorStatusWord{};
+    std::array<int, kOnlineVelocityAxisCount> motorStateMachine{};
 };
 
 class ForceInteractionRuntimeControl

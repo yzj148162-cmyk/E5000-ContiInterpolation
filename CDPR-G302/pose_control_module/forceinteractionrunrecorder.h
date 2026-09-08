@@ -112,6 +112,8 @@ struct ForceInteractionRunRecord
     std::array<double, kForceInteractionCableCount>
             axisSafetyRelativeTracePosition{};
     std::array<double, kForceInteractionCableCount> axisTraceVelocity{};
+    std::array<quint16, kForceInteractionCableCount> axisStatusWord{};
+    std::array<int, kForceInteractionCableCount> axisStateMachine{};
 
     qint64 calculationDurationUs = 0;
     qint64 hardwareApiDurationUs = 0;

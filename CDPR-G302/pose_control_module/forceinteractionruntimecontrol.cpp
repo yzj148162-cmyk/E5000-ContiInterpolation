@@ -262,7 +262,10 @@ bool ForceInteractionRuntimeControl::feedbackReady(
             std::all_of(feedback.safetyRelativePositionFromTrace.cbegin(),
                         feedback.safetyRelativePositionFromTrace.cend(),
                         [](bool valid){ return valid; }) &&
-            finiteArray(feedback.actualVelocity);
+            finiteArray(feedback.actualVelocity) &&
+            std::all_of(feedback.motorStateMachine.cbegin(),
+                        feedback.motorStateMachine.cend(),
+                        [](int state){ return state >= 0; });
 }
 
 bool ForceInteractionRuntimeControl::requestControlledStop(
@@ -414,14 +417,22 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                 nowUs - freshnessAnchorUs > config_.traceTimeoutUs){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = QStringLiteral(
-                        "阶段B可靠Trace超时：fromTrace=%1，序号有效=%2，时序可靠=%3，FIFO已追平=%4，丢帧=%5，帧龄=%6 us，逻辑序号=%7")
+                        "阶段B可靠Trace超时：fromTrace=%1，序号有效=%2，时序可靠=%3，FIFO已追平=%4，丢帧=%5，帧龄=%6 us，逻辑序号=%7，安全相对位置/状态字完整=%8/%9")
                     .arg(feedback.fromTrace ? 1 : 0)
                     .arg(feedback.frameSequenceValid ? 1 : 0)
                     .arg(feedback.timingReliable ? 1 : 0)
                     .arg(feedback.fifoCaughtUp ? 1 : 0)
                     .arg(feedback.traceLost ? 1 : 0)
                     .arg(feedback.newestFrameAgeUs)
-                    .arg(feedback.logicalFrameSequence);
+                    .arg(feedback.logicalFrameSequence)
+                    .arg(std::all_of(
+                             feedback.safetyRelativePositionFromTrace.cbegin(),
+                             feedback.safetyRelativePositionFromTrace.cend(),
+                             [](bool valid){ return valid; }) ? 1 : 0)
+                    .arg(std::all_of(
+                             feedback.motorStateMachine.cbegin(),
+                             feedback.motorStateMachine.cend(),
+                             [](int state){ return state >= 0; }) ? 1 : 0);
         }
         return output;
     }
@@ -433,6 +444,18 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                 .arg(config_.periodUs)
                 .arg(feedback.traceSamplePeriodUs);
         return output;
+    }
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        if(feedback.motorStateMachine[axis] != 4){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = QStringLiteral(
+                        "阶段B轴%1同帧驱动状态异常：0x6041=0x%2，状态=%3，要求=4(Operation enabled)")
+                    .arg(axis)
+                    .arg(QString::number(feedback.motorStatusWord[axis], 16)
+                         .rightJustified(4, QLatin1Char('0')).toUpper())
+                    .arg(feedback.motorStateMachine[axis]);
+            return output;
+        }
     }
     if(!actualStartCaptured_){
         // Trace配置及FIFO追平发生在启动请求之后；第一帧可靠反馈才是模型时间零点，
@@ -764,6 +787,8 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         record.axisSafetyRelativeTracePosition[axis] =
                 feedback.safetyRelativePosition[axis];
         record.axisTraceVelocity[axis] = feedback.actualVelocity[axis];
+        record.axisStatusWord[axis] = feedback.motorStatusWord[axis];
+        record.axisStateMachine[axis] = feedback.motorStateMachine[axis];
     }
     record.newmarkIterations = dynamicsResult.iterations;
     record.newmarkResidual = dynamicsResult.residual;
@@ -794,6 +819,8 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     status_.safetyRelativeActualPosition = feedback.safetyRelativePosition;
     status_.actualPosition = feedback.actualPosition;
     status_.commandVelocity = command;
+    status_.motorStatusWord = feedback.motorStatusWord;
+    status_.motorStateMachine = feedback.motorStateMachine;
     return output;
 }
 

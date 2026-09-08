@@ -2854,6 +2854,8 @@ void ControlWorker::processForceInteractionRuntime(
     feedback.safetyRelativePosition.fill(nan);
     feedback.safetyRelativePositionFromTrace.fill(false);
     feedback.actualVelocity.fill(nan);
+    feedback.motorStatusWord.fill(0);
+    feedback.motorStateMachine.fill(-1);
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         if(axis < static_cast<int>(traceSnapshot.motorPosition.size())){
             feedback.actualPosition[axis] = traceSnapshot.motorPosition[axis];
@@ -2877,6 +2879,14 @@ void ControlWorker::processForceInteractionRuntime(
                         TraceCommandSessionHome ||
                     source == HardwareInterface::MotorSafetyRelativePositionSource::
                         TraceFeedbackSessionHome;
+        }
+        if(axis < static_cast<int>(traceSnapshot.motorStatusWord.size())){
+            feedback.motorStatusWord[axis] =
+                    traceSnapshot.motorStatusWord[axis];
+        }
+        if(axis < static_cast<int>(traceSnapshot.motorStateMachine.size())){
+            feedback.motorStateMachine[axis] =
+                    traceSnapshot.motorStateMachine[axis];
         }
     }
 
