@@ -4,22 +4,32 @@
 #include "cdprdynamics.h"
 #include "compensatedcablekinematics.h"
 #include "forceinteractionrunrecorder.h"
+#include "forcewrenchconditioner.h"
+#include "ftsensortypes.h"
 #include "onlinevelocitycontrol.h"
 #include "physicalworkspaceboundary.h"
 #include "wrenchsource.h"
 #include "wrenchtransformer.h"
 
 #include <array>
+#include <deque>
 #include <limits>
 #include <memory>
 
 struct ForceInteractionRuntimeConfig
 {
     QString machineTemplateName;
+    ForceInteractionWrenchSourceKind wrenchSourceKind =
+            ForceInteractionWrenchSourceKind::Simulated;
     int periodUs = 5000;
     double maximumTestDurationS = 10.0;
     bool translationOnly = true;
     SimulatedWrenchProfile wrenchProfile;
+    ForceInteractionVector6 ftSoftwareZero{};
+    quint32 ftStatusMask = 0xffffffffu;
+    quint32 ftExpectedStatus = 0u;
+    qint64 ftSampleTimeoutUs = 50000;
+    ForceWrenchConditioningConfig realFtConditioning;
     ForceSensorTransformConfig sensorTransform;
     ForceInteractionRigidBodyConfig rigidBody;
     NewmarkBetaConfig newmark;
@@ -39,8 +49,10 @@ struct ForceInteractionRuntimeConfig
     double kd = 0.0;
     double integralLimit = 10.0;
     double correctionVelocityLimit = 20.0;
-    double velocityLimit = 90.0;
+    double velocityLimit = 360.0;
     double followingErrorLimit = 5.0;
+    std::array<double, kOnlineVelocityAxisCount> traceDelayMs{};
+    std::array<bool, kOnlineVelocityAxisCount> traceDelayValid{};
     double onlineChangeTimeS = 0.001;
     qint64 traceTimeoutUs = 100000;
     DynamicWorkspaceSafetyConfig workspaceSafety;
@@ -59,6 +71,9 @@ struct ForceInteractionRuntimeFeedback
     OnlineVelocityAxisArray actualVelocity{};
     std::array<quint16, kOnlineVelocityAxisCount> motorStatusWord{};
     std::array<int, kOnlineVelocityAxisCount> motorStateMachine{};
+    FtSensorTraceSample ftSensor;
+    quint32 traceFrameSequence = 0;
+    bool ftRuntimeProfileActive = false;
     qint64 wallClockUs = 0;
     qint64 monotonicUs = 0;
     qint64 newestFrameAgeUs = -1;
@@ -88,7 +103,8 @@ enum class ForceInteractionControlledStopCause
     UserRequest,
     DurationReached,
     AccelerationLimit,
-    WorkspaceBoundary
+    WorkspaceBoundary,
+    ForceSensorInput
 };
 
 struct ForceInteractionRuntimeStatus
@@ -96,6 +112,8 @@ struct ForceInteractionRuntimeStatus
     enum class State { Idle, Prepared, WaitingForTrace, Running, Braking,
                        Completed, Stopped, Fault };
     State state = State::Idle;
+    ForceInteractionWrenchSourceKind wrenchSourceKind =
+            ForceInteractionWrenchSourceKind::Simulated;
     QString message;
     QString recordFile;
     quint64 stepCount = 0;
@@ -106,6 +124,16 @@ struct ForceInteractionRuntimeStatus
     quint64 droppedRecordCount = 0;
     quint64 latestTraceSequence = 0;
     double elapsedS = 0.0;
+    double modelElapsedS = 0.0;
+    // Stage C only: the maximum test duration starts at the first sample that
+    // passes the force/torque gate, not while the operator is still waiting
+    // to touch the sensor. Stage B is active immediately and does not use this
+    // separate clock.
+    bool interactionTriggered = false;
+    double interactionElapsedS = 0.0;
+    qint64 modelLagUs = 0;
+    int latestIntegrationSteps = 0;
+    int maximumIntegrationSteps = 0;
     double maximumPositionError = 0.0;
     qint64 latestCalculationUs = 0;
     qint64 maximumCalculationUs = 0;
@@ -120,6 +148,16 @@ struct ForceInteractionRuntimeStatus
     ForceInteractionControlledStopCause controlledStopCause =
             ForceInteractionControlledStopCause::None;
     QString recordingError;
+    quint32 latestFtStatusCode = 0;
+    quint32 latestFtSampleCounter = 0;
+    double latestFtTemperatureC = 0.0;
+    qint64 latestFtSampleAgeUs = -1;
+    ForceInteractionVector6 latestUnfilteredPlatformWrench{};
+    ForceInteractionVector6 latestFilteredPlatformWrench{};
+    ForceInteractionVector6 latestAppliedPlatformWrench{};
+    bool latestForceGateActive = false;
+    bool latestTorqueGateActive = false;
+    ForceInteractionVector6 frozenFtSoftwareZero{};
     ForceInteractionPlatformState desiredState;
     OnlineVelocityAxisArray actualStartPosition{};
     OnlineVelocityAxisArray actualStartSafetyRelativePosition{};
@@ -153,6 +191,10 @@ public:
                            qint64 fullCycleDurationUs);
     void stop(bool fault, const QString& reason);
     void finishRecording();
+    // Clear the completed/stopped hardware-session state after the controller
+    // is disconnected. Persisted calibration files and offline analysis data
+    // are owned elsewhere and are intentionally not removed here.
+    void resetSession();
     bool isActive() const;
     bool isPrepared() const;
     bool requestControlledStop(const QString& reason,
@@ -163,16 +205,28 @@ public:
     ForceInteractionRuntimeStatus status() const;
 
 private:
+    struct ReferenceHistorySample {
+        double elapsedS = 0.0;
+        OnlineVelocityAxisArray reference{};
+    };
+    bool alignedReferenceAt(int axis, quint64 feedbackSequence,
+                            int traceSamplePeriodUs, double* reference) const;
     void setTerminal(ForceInteractionRuntimeStatus::State state,
                      const QString& message);
     bool feedbackReady(const ForceInteractionRuntimeFeedback& feedback) const;
     ForceInteractionPlatformState advanceBrakingState(
             bool& stopped, QString* errorMessage = nullptr);
+    bool realFtSample(const ForceInteractionRuntimeFeedback& feedback,
+                      qint64 nowUs,
+                      ForceInteractionWrenchSample& sample,
+                      qint64& sampleAgeUs,
+                      QString* errorMessage = nullptr);
 
     ForceInteractionRuntimeConfig config_;
     ForceInteractionRuntimeStatus status_;
     SimulatedWrenchSource wrenchSource_;
     std::unique_ptr<WrenchTransformer> wrenchTransformer_;
+    ForceWrenchConditioner wrenchConditioner_;
     CdprDynamics dynamics_;
     CompensatedCableKinematics kinematics_;
     PhysicalWorkspaceBoundary physicalBoundary_;
@@ -183,13 +237,22 @@ private:
     OnlineVelocityAxisArray lastReferencePosition_{};
     OnlineVelocityAxisArray integral_{};
     OnlineVelocityAxisArray previousError_{};
+    std::deque<ReferenceHistorySample> referenceHistory_;
     bool actualStartCaptured_ = false;
     bool previousErrorValid_ = false;
     qint64 waitStartUs_ = 0;
     qint64 lastGoodTraceUs_ = 0;
     qint64 nextDueUs_ = 0;
+    qint64 hostStartUs_ = 0;
+    qint64 realFtInteractionStartUs_ = 0;
+    qint64 lastCommandUs_ = 0;
+    quint64 modelStepCount_ = 0;
+    quint64 startTraceSequence_ = 0;
     quint64 lastFrameSequence_ = 0;
     bool lastFrameSequenceValid_ = false;
+    quint32 lastFtSampleCounter_ = 0;
+    qint64 lastFtCounterChangeUs_ = 0;
+    bool lastFtSampleCounterValid_ = false;
     ForceInteractionPlatformState brakingState_;
     QString controlledStopReason_;
 };

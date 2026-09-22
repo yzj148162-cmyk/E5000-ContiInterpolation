@@ -2,6 +2,7 @@
 #define FORCEINTERACTIONRUNRECORDER_H
 
 #include "forceinteractiontypes.h"
+#include "forcewrenchconditioner.h"
 #include "physicalworkspaceboundary.h"
 
 #include <array>
@@ -24,7 +25,8 @@ enum ForceInteractionRecordAvailability : quint32
     ForceRecordAxisReference = 1u << 5,
     ForceRecordAxisCommand = 1u << 6,
     ForceRecordAxisTrace = 1u << 7,
-    ForceRecordTiming = 1u << 8
+    ForceRecordTiming = 1u << 8,
+    ForceRecordFtDiagnostics = 1u << 9
 };
 
 struct ForceInteractionRunMetadata
@@ -38,6 +40,8 @@ struct ForceInteractionRunMetadata
     PhysicalWorkspaceBoundaryConfig physicalWorkspace;
     DynamicWorkspaceSafetyConfig workspaceSafety;
     bool motorSafetyRelativeBoundsEnabled = false;
+    bool realFtConditioningEnabled = false;
+    ForceWrenchConditioningConfig realFtConditioning;
     std::array<double, kForceInteractionCableCount>
             motorSafetyRelativeMinimum{};
     std::array<double, kForceInteractionCableCount>
@@ -68,11 +72,25 @@ struct ForceInteractionRunRecord
 {
     quint64 stepIndex = 0;
     double elapsedS = 0.0;
+    double modelElapsedS = 0.0;
+    qint64 modelLagUs = 0;
+    int integrationSteps = 0;
     ForceInteractionFrameStamp stamp;
     quint32 availabilityMask = 0;
 
     ForceInteractionVector6 sensorWrench{};
+    ForceInteractionVector6 platformWrenchUnfiltered{};
+    ForceInteractionVector6 platformWrenchFiltered{};
     ForceInteractionVector6 platformWrench{};
+    bool forceGateActive = false;
+    bool torqueGateActive = false;
+    ForceInteractionVector6 ftEngineeringValue{};
+    ForceInteractionVector6 ftSoftwareZero{};
+    ForceInteractionVector6 ftZeroCorrected{};
+    quint32 ftStatusCode = 0;
+    quint32 ftSampleCounter = 0;
+    double ftTemperatureC = 0.0;
+    qint64 ftSampleAgeUs = -1;
     ForceInteractionPlatformState desiredState;
     std::array<double, kForceInteractionCableCount> cableLengthMm{};
     std::array<double, kForceInteractionCableCount> relativeMotorThetaRad{};
@@ -103,6 +121,9 @@ struct ForceInteractionRunRecord
                kForceInteractionCableCount> workspacePointGlobalMm{};
 
     std::array<double, kForceInteractionCableCount> axisReferencePosition{};
+    std::array<double, kForceInteractionCableCount> axisAlignedReferencePosition{};
+    std::array<double, kForceInteractionCableCount> axisAlignedFollowingError{};
+    std::array<int, kForceInteractionCableCount> axisAlignedReferenceValid{};
     std::array<double, kForceInteractionCableCount>
             axisSafetyRelativeReferencePosition{};
     std::array<double, kForceInteractionCableCount> axisReferenceVelocity{};

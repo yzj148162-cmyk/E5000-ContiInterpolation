@@ -1,0 +1,69 @@
+function test_replay_pipeline_smoke
+% End-to-end no-hardware test of JSON/CSV loading and result generation.
+root = string(tempname);
+mkdir(root);
+cleanup = onCleanup(@() rmdir(root,'s'));
+
+anchors = [ ...
+ -1359.7418  1227.8132 1794.6246; -1223.4262  1359.1054    2.4284; ...
+  1364.2568  1227.3729 1787.7869;  1225.0618  1361.8618   -2.3197; ...
+  1366.5515 -1220.2830 1790.4813;  1222.2815 -1360.0458    2.3377; ...
+ -1354.5389 -1220.1533 1793.0807; -1223.9172 -1360.9214   -2.4464];
+local = [ ...
+ -235.61   76.55 -123.87; -145.62  200.42  123.87; ...
+  235.61   76.55 -123.87;  145.62  200.42  123.87; ...
+  145.62 -200.42 -123.87;  235.61  -76.55  123.87; ...
+ -145.62 -200.42 -123.87; -235.61  -76.55  123.87];
+pose = [120 -80 650 0.025 -0.018 0.012];
+
+cfg.schema = 'cdpr_g302_matlab_replay_config_v1';
+cfg.csv_file = 'smoke.csv';
+cfg.translation_only = false;
+cfg.geometry.base_anchor_global_mm = anchors;
+cfg.geometry.platform_attachment_local_mm_by_end = {local};
+cfg.geometry.pulley_radius_mm = 0;
+cfg.geometry.initial_pose_mm_rad = pose;
+cfg.geometry.reference_cable_length_mm = cdpr_cable_lengths(pose,cfg);
+cfg.workspace = struct('frame_minimum_mm',[-1400;-1400;-100], ...
+    'frame_maximum_mm',[1400;1400;2670], ...
+    'orientation_bounds_enabled',false, ...
+    'orientation_minimum_rad',[-3.14;-3.14;-3.14], ...
+    'orientation_maximum_rad',[3.14;3.14;3.14]);
+winch = struct('enabled',false,'radius_mm',80, ...
+    'pitch_mm_per_rev',0,'projection_mm',0, ...
+    'initial_axial_offset_valid',false,'initial_axial_offset_mm',0);
+axis = struct('motor_unit_per_radian',180/pi, ...
+    'fallback_motor_rad_per_mm',1/80,'winch',winch);
+cfg.axes = repmat(axis,8,1);
+
+T = table(1,1e6,1,1e3,1,0,0, ...
+    'VariableNames',{'step_index','host_monotonic_us','trace_sequence', ...
+    'trace_time_us','trace_valid','interaction_segment','controlled_stop_cause'});
+for i=1:6
+    value=pose(i); if i<=3, value=value/1000; end
+    T.(sprintf('desired_pose_si_%d',i-1))=value;
+end
+for i=1:3
+    T.(sprintf('platform_wrench_%d',i-1))=i;
+end
+for i=1:8
+    T.(sprintf('axis_safety_relative_trace_position_%d',i-1))=0;
+end
+writetable(T,fullfile(root,cfg.csv_file));
+configFile=fullfile(root,'smoke_replay_config.json');
+fid=fopen(configFile,'w'); cleaner=onCleanup(@() fclose(fid));
+fwrite(fid,jsonencode(cfg,'PrettyPrint',true),'char'); clear cleaner;
+
+result=replay_force_interaction_run(configFile,'Animate',false);
+assert(result.metrics.solvedRows==1 && result.metrics.translationMaximumMm<1e-6);
+assert(isequal(result.sample.platformForceN,[1 2 3]));
+visualGeometry=build_platform_visual_geometry(cfg);
+assert(visualGeometry.isCompleteIcosahedron && ...
+    size(visualGeometry.verticesLocalMm,1)==12 && ...
+    size(visualGeometry.faces,1)==20 && size(visualGeometry.edges,1)==30);
+assert(isfile(result.outputCsv) && isfile(result.outputMat) && ...
+    isfile(fullfile(result.outputFolder,'summary.json')) && ...
+    isfile(fullfile(result.outputFolder,'trajectory_overview.png')));
+fprintf('MATLAB replay pipeline smoke: PASS (%s)\n',result.outputFolder);
+clear cleanup;
+end

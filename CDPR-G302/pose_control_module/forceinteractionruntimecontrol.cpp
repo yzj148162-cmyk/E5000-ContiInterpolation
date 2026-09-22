@@ -15,6 +15,26 @@ bool finiteArray(const OnlineVelocityAxisArray& values)
     });
 }
 
+bool finiteWrench(const ForceInteractionVector6& values)
+{
+    return std::all_of(values.begin(), values.end(), [](double value){
+        return std::isfinite(value);
+    });
+}
+
+QString runtimeStageName(ForceInteractionWrenchSourceKind source)
+{
+    return source == ForceInteractionWrenchSourceKind::RealFtTrace ?
+                QStringLiteral("阶段C") : QStringLiteral("阶段B");
+}
+
+QString runtimeSourceName(ForceInteractionWrenchSourceKind source)
+{
+    return source == ForceInteractionWrenchSourceKind::RealFtTrace ?
+                QStringLiteral("真实F/T Trace（冻结软件零点）") :
+                QStringLiteral("模拟六维力");
+}
+
 double clampValue(double value, double limit)
 {
     return std::max(-limit, std::min(limit, value));
@@ -110,10 +130,16 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
         return false;
     };
     if(machineTemplateName.compare(QStringLiteral("G302"), Qt::CaseInsensitive) != 0){
-        return fail(QStringLiteral("阶段B仅允许G302模板"));
+        return fail(QStringLiteral("六维力交互实机运行仅允许G302模板"));
     }
     if(periodUs < 1000 || periodUs > 20000){
         return fail(QStringLiteral("控制周期必须位于1~20 ms"));
+    }
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        if(!traceDelayValid[axis] || !std::isfinite(traceDelayMs[axis]) ||
+                traceDelayMs[axis] < 0.0 || traceDelayMs[axis] > 20.0){
+            return fail(QStringLiteral("轴%1缺少与当前硬件模板匹配的有效Trace延迟标定").arg(axis));
+        }
     }
     if(!initialState.poseValid || rigidBody.massKg <= 0.0){
         return fail(QStringLiteral("初始位姿或刚体质量无效"));
@@ -151,6 +177,18 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
             brakingStopVelocityMmPerSec < 0.0){
         return fail(QStringLiteral("PID、运动限制或Trace参数无效"));
     }
+    if(wrenchSourceKind == ForceInteractionWrenchSourceKind::RealFtTrace){
+        if(!finiteWrench(ftSoftwareZero) || ftSampleTimeoutUs <= 0 ||
+                !sensorTransform.configured){
+            return fail(QStringLiteral("阶段C冻结零点、F/T超时或安装变换无效"));
+        }
+        QString conditioningError;
+        if(!realFtConditioning.validate(periodUs / 1000000.0,
+                                        &conditioningError)){
+            return fail(QStringLiteral("阶段C真实F/T输入调理参数无效：%1")
+                        .arg(conditioningError));
+        }
+    }
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         if(std::fabs(motorUnitPerRadian[axis]) <= 1.0e-12 ||
                 motorSafetyRelativeMinimum[axis] >=
@@ -167,15 +205,22 @@ bool ForceInteractionRuntimeControl::prepare(
 {
     if(isActive()){
         if(errorMessage){
-            *errorMessage = QStringLiteral("阶段B正在运行");
+            *errorMessage = QStringLiteral("六维力交互实机运行正在执行");
         }
         return false;
     }
     QString error;
     if(!config.validate(&error) ||
-            !wrenchSource_.configure(config.wrenchProfile,
-                                     config.periodUs / 1000000.0,
-                                     &error) ||
+            (config.wrenchSourceKind ==
+                 ForceInteractionWrenchSourceKind::Simulated &&
+             !wrenchSource_.configure(config.wrenchProfile,
+                                      config.periodUs / 1000000.0,
+                                      &error)) ||
+            (config.wrenchSourceKind ==
+                 ForceInteractionWrenchSourceKind::RealFtTrace &&
+             !wrenchConditioner_.configure(config.realFtConditioning,
+                                            config.periodUs / 1000000.0,
+                                            &error)) ||
             !dynamics_.configure(config.rigidBody, config.newmark, &error) ||
             !dynamics_.reset(config.initialState, &error) ||
             !physicalBoundary_.configure(config.physicalWorkspace, &error) ||
@@ -193,34 +238,86 @@ bool ForceInteractionRuntimeControl::prepare(
         return false;
     }
     config_ = config;
+    if(config.wrenchSourceKind != ForceInteractionWrenchSourceKind::RealFtTrace){
+        wrenchConditioner_.reset();
+    }
     wrenchTransformer_ = std::make_unique<WrenchTransformer>(config.sensorTransform);
     kinematicsState_ = kinematics_.initialState();
     status_ = ForceInteractionRuntimeStatus{};
+    status_.wrenchSourceKind = config.wrenchSourceKind;
+    status_.frozenFtSoftwareZero = config.ftSoftwareZero;
     status_.state = ForceInteractionRuntimeStatus::State::Prepared;
-    status_.message = QStringLiteral("阶段B已准备");
+    status_.message = QStringLiteral("%1已准备").arg(
+                runtimeStageName(config.wrenchSourceKind));
     status_.desiredState = config.initialState;
     actualStartCaptured_ = false;
     previousErrorValid_ = false;
     lastFrameSequenceValid_ = false;
+    lastFtSampleCounterValid_ = false;
+    lastFtCounterChangeUs_ = 0;
+    hostStartUs_ = 0;
+    realFtInteractionStartUs_ = 0;
+    lastCommandUs_ = 0;
+    modelStepCount_ = 0;
+    startTraceSequence_ = 0;
     brakingState_ = ForceInteractionPlatformState{};
     controlledStopReason_.clear();
     integral_.fill(0.0);
     previousError_.fill(0.0);
+    referenceHistory_.clear();
     return true;
+}
+
+bool ForceInteractionRuntimeControl::alignedReferenceAt(
+        int axis, quint64 feedbackSequence, int traceSamplePeriodUs,
+        double* reference) const
+{
+    if(!reference || axis < 0 || axis >= kOnlineVelocityAxisCount ||
+            traceSamplePeriodUs <= 0 || referenceHistory_.empty() ||
+            feedbackSequence < startTraceSequence_) return false;
+    // 与 cdpr_control 一致：指令和动力学使用主机运行时钟；这里只借助
+    // 启动锚点把 Trace 帧映射到同一运行时间，再扣除该轴标定延迟。
+    const double traceElapsedS = static_cast<double>(
+                feedbackSequence - startTraceSequence_) *
+            static_cast<double>(traceSamplePeriodUs) / 1000000.0;
+    const double target = traceElapsedS - config_.traceDelayMs[axis] / 1000.0;
+    if(target < referenceHistory_.front().elapsedS) return false;
+    for(size_t index = 1; index < referenceHistory_.size(); ++index){
+        const auto& left = referenceHistory_[index - 1];
+        const auto& right = referenceHistory_[index];
+        if(target > right.elapsedS) continue;
+        const double span = right.elapsedS - left.elapsedS;
+        if(span <= 0.0){
+            *reference = right.reference[axis];
+            return true;
+        }
+        const double ratio = std::clamp(
+                    (target - left.elapsedS) / span,
+                    0.0, 1.0);
+        *reference = left.reference[axis] +
+                ratio * (right.reference[axis] - left.reference[axis]);
+        return std::isfinite(*reference);
+    }
+    return false;
 }
 
 bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
 {
     if(status_.state != ForceInteractionRuntimeStatus::State::Prepared){
         if(errorMessage){
-            *errorMessage = QStringLiteral("请先准备阶段B");
+            *errorMessage = QStringLiteral("请先准备六维力交互实机运行");
         }
         return false;
     }
     recorder_ = std::make_unique<ForceInteractionRunRecorder>();
     ForceInteractionRunMetadata metadata;
-    metadata.stage = QStringLiteral("stage_b");
-    metadata.sourceName = wrenchSource_.summary();
+    metadata.stage = config_.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace ?
+                QStringLiteral("stage_c") : QStringLiteral("stage_b");
+    metadata.sourceName = config_.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace ?
+                runtimeSourceName(config_.wrenchSourceKind) :
+                wrenchSource_.summary();
     metadata.machineTemplateName = config_.machineTemplateName;
     metadata.controlPeriodS = config_.periodUs / 1000000.0;
     metadata.plannedDurationS = config_.maximumTestDurationS;
@@ -232,27 +329,145 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
             config_.motorSafetyRelativeMinimum;
     metadata.motorSafetyRelativeMaximum =
             config_.motorSafetyRelativeMaximum;
+    metadata.realFtConditioningEnabled = config_.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace;
+    metadata.realFtConditioning = config_.realFtConditioning;
     QString recordError;
     if(!recorder_->begin(config_.recordingDirectory, metadata,
                          &status_.recordFile, &recordError)){
         recorder_.reset();
         if(errorMessage){
-            *errorMessage = QStringLiteral("阶段B记录器启动失败：%1").arg(recordError);
+            *errorMessage = QStringLiteral("%1记录器启动失败：%2")
+                    .arg(runtimeStageName(config_.wrenchSourceKind), recordError);
         }
         return false;
     }
     waitStartUs_ = nowUs;
     lastGoodTraceUs_ = 0;
     nextDueUs_ = nowUs;
+    hostStartUs_ = 0;
+    realFtInteractionStartUs_ = 0;
+    lastCommandUs_ = 0;
+    modelStepCount_ = 0;
+    startTraceSequence_ = 0;
+    lastFtSampleCounterValid_ = false;
+    lastFtCounterChangeUs_ = 0;
     status_.state = ForceInteractionRuntimeStatus::State::WaitingForTrace;
-    status_.message = QStringLiteral("等待新鲜完整的八轴Trace帧");
+    status_.message = config_.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace ?
+                QStringLiteral("等待新鲜完整的八轴＋F/T同帧Trace") :
+                QStringLiteral("等待新鲜完整的八轴Trace帧");
+    return true;
+}
+
+bool ForceInteractionRuntimeControl::realFtSample(
+        const ForceInteractionRuntimeFeedback& feedback,
+        qint64 nowUs,
+        ForceInteractionWrenchSample& sample,
+        qint64& sampleAgeUs,
+        QString* errorMessage)
+{
+    const auto fail = [errorMessage](const QString& message){
+        if(errorMessage){
+            *errorMessage = message;
+        }
+        return false;
+    };
+    const FtSensorTraceSample& ft = feedback.ftSensor;
+    if(!feedback.ftRuntimeProfileActive){
+        return fail(QStringLiteral("当前不是八轴＋F/T合并Trace profile"));
+    }
+    if(!ft.wrenchComplete() || !ft.statusValid ||
+            !ft.sampleCounterValid || !ft.temperatureValid ||
+            !ft.traceFrameSequenceValid){
+        return fail(QStringLiteral(
+                        "F/T同帧对象不完整：六维力/状态/计数/温度/序号=%1/%2/%3/%4/%5")
+                    .arg(ft.wrenchComplete() ? 1 : 0)
+                    .arg(ft.statusValid ? 1 : 0)
+                    .arg(ft.sampleCounterValid ? 1 : 0)
+                    .arg(ft.temperatureValid ? 1 : 0)
+                    .arg(ft.traceFrameSequenceValid ? 1 : 0));
+    }
+    if(ft.traceFrameSequence != feedback.traceFrameSequence ||
+            ft.monotonicUs <= 0 || ft.monotonicUs != feedback.monotonicUs){
+        return fail(QStringLiteral(
+                        "F/T与八轴反馈不是同一Trace帧：F/T=%1/%2，八轴=%3/%4")
+                    .arg(ft.traceFrameSequence).arg(ft.monotonicUs)
+                    .arg(feedback.traceFrameSequence).arg(feedback.monotonicUs));
+    }
+    sampleAgeUs = nowUs >= ft.monotonicUs ? nowUs - ft.monotonicUs : 0;
+    if(sampleAgeUs > config_.ftSampleTimeoutUs){
+        return fail(QStringLiteral("F/T样本帧龄%1 us超过上限%2 us")
+                    .arg(sampleAgeUs).arg(config_.ftSampleTimeoutUs));
+    }
+    if((ft.statusCode & config_.ftStatusMask) !=
+            (config_.ftExpectedStatus & config_.ftStatusMask)){
+        return fail(QStringLiteral("F/T状态码0x%1不满足期望0x%2（掩码0x%3）")
+                    .arg(QString::number(ft.statusCode, 16).toUpper())
+                    .arg(QString::number(config_.ftExpectedStatus, 16).toUpper())
+                    .arg(QString::number(config_.ftStatusMask, 16).toUpper()));
+    }
+    if(lastFtSampleCounterValid_){
+        const quint32 advance = ft.sampleCounter - lastFtSampleCounter_;
+        if(advance == 0){
+            if(lastFtCounterChangeUs_ > 0 &&
+                    nowUs - lastFtCounterChangeUs_ > config_.ftSampleTimeoutUs){
+                return fail(QStringLiteral("F/T SampleCounter=%1已停滞%2 us")
+                            .arg(ft.sampleCounter)
+                            .arg(nowUs - lastFtCounterChangeUs_));
+            }
+        }
+        else{
+            // 无符号差值自然覆盖32位回绕；大于半量程只能解释为倒退。
+            if(advance > 0x7fffffffu){
+                return fail(QStringLiteral("F/T SampleCounter倒退：%1→%2")
+                            .arg(lastFtSampleCounter_).arg(ft.sampleCounter));
+            }
+            const qint64 elapsedSinceChangeUs = lastFtCounterChangeUs_ > 0 ?
+                        std::max<qint64>(0, nowUs - lastFtCounterChangeUs_) : 0;
+            const quint32 maximumPlausibleAdvance = static_cast<quint32>(
+                        std::max<qint64>(32,
+                            elapsedSinceChangeUs /
+                                std::max(1, feedback.traceSamplePeriodUs) + 32));
+            if(advance > maximumPlausibleAdvance){
+                return fail(QStringLiteral(
+                                "F/T SampleCounter异常跳变：%1→%2（步进%3，上限%4）")
+                            .arg(lastFtSampleCounter_).arg(ft.sampleCounter)
+                            .arg(advance).arg(maximumPlausibleAdvance));
+            }
+            lastFtCounterChangeUs_ = nowUs;
+        }
+    }
+    else{
+        lastFtCounterChangeUs_ = nowUs;
+        lastFtSampleCounterValid_ = true;
+    }
+    lastFtSampleCounter_ = ft.sampleCounter;
+
+    sample.stamp.traceSequence = feedback.logicalFrameSequence;
+    sample.stamp.traceTimeUs = static_cast<qint64>(
+                feedback.logicalFrameSequence) *
+            std::max(1, feedback.traceSamplePeriodUs);
+    sample.stamp.hostMonotonicTimeUs = ft.monotonicUs;
+    sample.stamp.traceValid = true;
+    sample.stamp.valid = true;
+    sample.coordinate = ForceInteractionWrenchCoordinate::Sensor;
+    sample.wrench = ft.value;
+    sample.valid = finiteWrench(sample.wrench);
+    if(!sample.valid){
+        return fail(QStringLiteral("F/T工程量包含非有限数"));
+    }
+    if(errorMessage){
+        errorMessage->clear();
+    }
     return true;
 }
 
 bool ForceInteractionRuntimeControl::feedbackReady(
         const ForceInteractionRuntimeFeedback& feedback) const
 {
-    return feedback.fromTrace && feedback.frameSequenceValid &&
+    const bool motorFeedbackReady = feedback.fromTrace &&
+            feedback.frameSequenceValid &&
             feedback.timingReliable && feedback.fifoCaughtUp &&
             !feedback.traceLost && feedback.frameCount > 0 &&
             feedback.newestFrameAgeUs >= 0 &&
@@ -266,6 +481,17 @@ bool ForceInteractionRuntimeControl::feedbackReady(
             std::all_of(feedback.motorStateMachine.cbegin(),
                         feedback.motorStateMachine.cend(),
                         [](int state){ return state >= 0; });
+    if(!motorFeedbackReady || config_.wrenchSourceKind !=
+            ForceInteractionWrenchSourceKind::RealFtTrace){
+        return motorFeedbackReady;
+    }
+
+    const FtSensorTraceSample& ft = feedback.ftSensor;
+    return feedback.ftRuntimeProfileActive && ft.wrenchComplete() &&
+            ft.statusValid && ft.sampleCounterValid && ft.temperatureValid &&
+            ft.traceFrameSequenceValid &&
+            ft.traceFrameSequence == feedback.traceFrameSequence &&
+            ft.monotonicUs > 0 && ft.monotonicUs == feedback.monotonicUs;
 }
 
 bool ForceInteractionRuntimeControl::requestControlledStop(
@@ -417,7 +643,8 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                 nowUs - freshnessAnchorUs > config_.traceTimeoutUs){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = QStringLiteral(
-                        "阶段B可靠Trace超时：fromTrace=%1，序号有效=%2，时序可靠=%3，FIFO已追平=%4，丢帧=%5，帧龄=%6 us，逻辑序号=%7，安全相对位置/状态字完整=%8/%9")
+                        "%1可靠Trace超时：fromTrace=%2，序号有效=%3，时序可靠=%4，FIFO已追平=%5，丢帧=%6，帧龄=%7 us，逻辑序号=%8，安全相对位置/状态字完整=%9/%10")
+                    .arg(runtimeStageName(config_.wrenchSourceKind))
                     .arg(feedback.fromTrace ? 1 : 0)
                     .arg(feedback.frameSequenceValid ? 1 : 0)
                     .arg(feedback.timingReliable ? 1 : 0)
@@ -433,6 +660,22 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                              feedback.motorStateMachine.cbegin(),
                              feedback.motorStateMachine.cend(),
                              [](int state){ return state >= 0; }) ? 1 : 0);
+            if(config_.wrenchSourceKind ==
+                    ForceInteractionWrenchSourceKind::RealFtTrace){
+                output.reason += QStringLiteral("，F/T profile/对象/同帧=%1/%2/%3")
+                        .arg(feedback.ftRuntimeProfileActive ? 1 : 0)
+                        .arg(feedback.ftSensor.wrenchComplete() &&
+                             feedback.ftSensor.statusValid &&
+                             feedback.ftSensor.sampleCounterValid &&
+                             feedback.ftSensor.temperatureValid &&
+                             feedback.ftSensor.traceFrameSequenceValid ? 1 : 0)
+                        .arg(feedback.ftSensor.traceFrameSequenceValid &&
+                             feedback.ftSensor.traceFrameSequence ==
+                                 feedback.traceFrameSequence &&
+                             feedback.ftSensor.monotonicUs > 0 &&
+                             feedback.ftSensor.monotonicUs ==
+                                 feedback.monotonicUs ? 1 : 0);
+            }
         }
         return output;
     }
@@ -440,7 +683,8 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             config_.periodUs % feedback.traceSamplePeriodUs != 0){
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
         output.reason = QStringLiteral(
-                    "阶段B控制周期%1 us不是Trace采样周期%2 us的整数倍")
+                    "%1控制周期%2 us不是Trace采样周期%3 us的整数倍")
+                .arg(runtimeStageName(config_.wrenchSourceKind))
                 .arg(config_.periodUs)
                 .arg(feedback.traceSamplePeriodUs);
         return output;
@@ -449,7 +693,8 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         if(feedback.motorStateMachine[axis] != 4){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = QStringLiteral(
-                        "阶段B轴%1同帧驱动状态异常：0x6041=0x%2，状态=%3，要求=4(Operation enabled)")
+                        "%1轴%2同帧驱动状态异常：0x6041=0x%3，状态=%4，要求=4(Operation enabled)")
+                    .arg(runtimeStageName(config_.wrenchSourceKind))
                     .arg(axis)
                     .arg(QString::number(feedback.motorStatusWord[axis], 16)
                          .rightJustified(4, QLatin1Char('0')).toUpper())
@@ -478,15 +723,50 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         actualStartPosition_ = feedback.actualPosition;
         actualStartSafetyRelativePosition_ = feedback.safetyRelativePosition;
         lastReferencePosition_ = actualStartPosition_;
+        referenceHistory_.clear();
+        referenceHistory_.push_back(
+                    ReferenceHistorySample{0.0,
+                                           actualStartPosition_});
+        hostStartUs_ = nowUs;
+        lastCommandUs_ = 0;
+        modelStepCount_ = 0;
+        startTraceSequence_ = feedback.logicalFrameSequence;
         status_.actualStartPosition = actualStartPosition_;
         status_.actualStartSafetyRelativePosition =
                 actualStartSafetyRelativePosition_;
         actualStartCaptured_ = true;
         status_.state = ForceInteractionRuntimeStatus::State::Running;
-        status_.message = QStringLiteral("阶段B运行中");
+        status_.message = config_.wrenchSourceKind ==
+                ForceInteractionWrenchSourceKind::RealFtTrace ?
+                    QStringLiteral("阶段C运行中，等待首次有效受力（试验计时尚未开始）") :
+                    QStringLiteral("%1运行中").arg(
+                        runtimeStageName(config_.wrenchSourceKind));
     }
 
-    const double elapsedS = (status_.stepCount + 1) * config_.periodUs / 1000000.0;
+    // 实机链统一使用主机单调时钟。Newmark 保持固定步长，并在调度迟到时
+    // 补齐数学子步；Trace 序号只用于反馈时刻映射和延迟对齐。
+    const qint64 hostElapsedUs = std::max<qint64>(0, nowUs - hostStartUs_);
+    const double elapsedS = hostElapsedUs / 1000000.0;
+    const quint64 requiredModelSteps = static_cast<quint64>(
+                hostElapsedUs / config_.periodUs);
+    const quint64 pendingModelSteps = requiredModelSteps >= modelStepCount_ ?
+                requiredModelSteps - modelStepCount_ : 0;
+    constexpr quint64 kMaximumCatchUpSteps = 20;
+    if(pendingModelSteps > kMaximumCatchUpSteps){
+        output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+        output.reason = QStringLiteral(
+                    "%1主机调度累计落后过大：需补算%2个Newmark子步（周期%3 us），超过上限%4")
+                .arg(runtimeStageName(config_.wrenchSourceKind))
+                .arg(pendingModelSteps).arg(config_.periodUs)
+                .arg(kMaximumCatchUpSteps);
+        return output;
+    }
+    const int integrationSteps = static_cast<int>(pendingModelSteps);
+    const double modelElapsedBeforeS = static_cast<double>(modelStepCount_) *
+            config_.periodUs / 1000000.0;
+    const double commandDt = lastCommandUs_ > 0 ?
+                std::max(1.0e-6, (nowUs - lastCommandUs_) / 1000000.0) :
+                config_.periodUs / 1000000.0;
     QElapsedTimer calculationTimer;
     calculationTimer.start();
     ForceInteractionFrameStamp stamp;
@@ -498,23 +778,69 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     stamp.valid = true;
     ForceInteractionWrenchSample sensorSample;
     ForceInteractionWrenchSample platformSample;
+    ForceWrenchConditioningResult conditioningResult;
     sensorSample.stamp = stamp;
     platformSample.stamp = stamp;
     CdprDynamicsStepResult dynamicsResult;
-    ForceInteractionPlatformState desired;
+    ForceInteractionPlatformState desired = status_.desiredState;
     bool braking = status_.state == ForceInteractionRuntimeStatus::State::Braking;
+    qint64 ftSampleAgeUs = -1;
+    const bool realFtRuntime = config_.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace;
+    status_.interactionTriggered = realFtInteractionStartUs_ > 0;
+    status_.interactionElapsedS = status_.interactionTriggered ?
+                std::max<qint64>(0, nowUs - realFtInteractionStartUs_) /
+                    1000000.0 : 0.0;
+    const double durationClockS = realFtRuntime ?
+                status_.interactionElapsedS : elapsedS;
     if(!braking && config_.maximumTestDurationS > 0.0 &&
-            elapsedS > config_.maximumTestDurationS + 1.0e-12){
+            (!realFtRuntime || status_.interactionTriggered) &&
+            durationClockS > config_.maximumTestDurationS + 1.0e-12){
         requestControlledStop(
-                    QStringLiteral("达到最长模拟调试时间"), false,
+                    realFtRuntime ?
+                        QStringLiteral("达到最长有效交互时间") :
+                        QStringLiteral("达到最长空载调试时间"),
+                    false,
                     ForceInteractionControlledStopCause::DurationReached);
         braking = true;
+    }
+
+    if(!braking){
+        QString inputError;
+        const bool inputValid = config_.wrenchSourceKind ==
+                ForceInteractionWrenchSourceKind::RealFtTrace ?
+                    realFtSample(feedback, nowUs, sensorSample,
+                                 ftSampleAgeUs, &inputError) :
+                    ((sensorSample = wrenchSource_.sample(stamp, elapsedS)).valid);
+        if(!inputValid){
+            if(inputError.isEmpty()){
+                inputError = QStringLiteral("六维力输入无效");
+            }
+            if(actualStartCaptured_ && requestControlledStop(
+                        QStringLiteral("%1六维力输入失效：%2")
+                            .arg(runtimeStageName(config_.wrenchSourceKind), inputError),
+                        true,
+                        ForceInteractionControlledStopCause::ForceSensorInput)){
+                braking = true;
+            }
+            else{
+                output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+                output.reason = QStringLiteral("%1力输入不可用：%2")
+                        .arg(runtimeStageName(config_.wrenchSourceKind), inputError);
+                return output;
+            }
+        }
     }
 
     if(braking){
         bool stopped = false;
         QString brakingError;
-        desired = advanceBrakingState(stopped, &brakingError);
+        for(int substep = 0; substep < integrationSteps && !stopped; ++substep){
+            desired = advanceBrakingState(stopped, &brakingError);
+            if(brakingError.isEmpty()){
+                ++modelStepCount_;
+            }
+        }
         if(!brakingError.isEmpty()){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = brakingError;
@@ -528,30 +854,69 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         }
     }
     else{
-        sensorSample = wrenchSource_.sample(stamp, elapsedS);
         const WrenchTransformResult transformed =
                 wrenchTransformer_->toPlatformCenterOfMass(sensorSample);
         if(!transformed.sample.valid){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = transformed.errorMessage.isEmpty() ?
-                        QStringLiteral("阶段B力旋量转换失败") : transformed.errorMessage;
+                        QStringLiteral("%1力旋量转换失败")
+                            .arg(runtimeStageName(config_.wrenchSourceKind)) :
+                        transformed.errorMessage;
             return output;
         }
         platformSample = transformed.sample;
+        conditioningResult.unfiltered = platformSample.wrench;
         if(config_.translationOnly){
             platformSample.wrench[3] = 0.0;
             platformSample.wrench[4] = 0.0;
             platformSample.wrench[5] = 0.0;
         }
-        dynamicsResult = dynamics_.step(platformSample,
-                                        config_.periodUs / 1000000.0);
+        if(config_.wrenchSourceKind ==
+                ForceInteractionWrenchSourceKind::RealFtTrace){
+            conditioningResult = wrenchConditioner_.process(platformSample.wrench);
+            if(!conditioningResult.valid){
+                output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+                output.reason = QStringLiteral("阶段C真实F/T输入调理失败");
+                return output;
+            }
+            platformSample.wrench = conditioningResult.output;
+            if(realFtInteractionStartUs_ <= 0 &&
+                    (conditioningResult.forceActive ||
+                     conditioningResult.torqueActive)){
+                // Stage C may wait indefinitely for the operator's first
+                // intentional contact. Start its duration budget only after
+                // the conditioned wrench has actually opened a gate.
+                realFtInteractionStartUs_ = nowUs;
+                status_.interactionTriggered = true;
+                status_.interactionElapsedS = 0.0;
+                status_.message = QStringLiteral(
+                            "阶段C已检测到首次有效受力，试验计时开始");
+            }
+        }
+        else{
+            conditioningResult.filtered = platformSample.wrench;
+            conditioningResult.output = platformSample.wrench;
+            conditioningResult.forceNormN = vectorNorm3(platformSample.wrench);
+            conditioningResult.torqueNormNm = vectorNorm3(platformSample.wrench, 3);
+            conditioningResult.forceActive = true;
+            conditioningResult.torqueActive = !config_.translationOnly;
+            conditioningResult.valid = true;
+        }
+        // 当前可用力样本在本次补算窗口内按 ZOH 保持；只补数学状态，
+        // 不补发已经过期的速度命令。
+        for(int substep = 0; substep < integrationSteps; ++substep){
+            dynamicsResult = dynamics_.step(platformSample,
+                                            config_.periodUs / 1000000.0);
         if(!dynamicsResult.valid){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-            output.reason = QStringLiteral("阶段B Newmark失败：%1")
-                    .arg(dynamicsResult.errorMessage);
+            output.reason = QStringLiteral("%1 Newmark失败：%2")
+                    .arg(runtimeStageName(config_.wrenchSourceKind),
+                         dynamicsResult.errorMessage);
             return output;
         }
-        desired = dynamicsResult.state;
+            desired = dynamicsResult.state;
+            ++modelStepCount_;
+        }
         const double accelerationMmPerSec2 =
                 vectorNorm3(desired.acceleration) * 1000.0;
         if(accelerationMmPerSec2 >
@@ -580,6 +945,12 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             }
         }
     }
+
+    const double modelElapsedS = static_cast<double>(modelStepCount_) *
+            config_.periodUs / 1000000.0;
+    const qint64 modelLagUs = std::max<qint64>(
+                0, hostElapsedUs - static_cast<qint64>(modelStepCount_) *
+                config_.periodUs);
 
     std::vector<double> poseMmRad(6, 0.0);
     for(int dim = 0; dim < 3; ++dim){
@@ -611,8 +982,9 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     if(workspaceResult.action == PhysicalWorkspaceAction::EmergencyStop ||
             workspaceResult.action == PhysicalWorkspaceAction::Invalid){
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-        output.reason = QStringLiteral("阶段B末端状态触发物理边界急停：%1")
-                .arg(workspaceResult.reason);
+        output.reason = QStringLiteral("%1末端状态触发物理边界急停：%2")
+                .arg(runtimeStageName(config_.wrenchSourceKind),
+                     workspaceResult.reason);
         return output;
     }
     if(!braking && workspaceResult.action == PhysicalWorkspaceAction::ControlledStop){
@@ -672,17 +1044,23 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     if(!evaluation.valid || evaluation.relativeMotorThetaRad.size() != kOnlineVelocityAxisCount ||
             evaluation.cableLengthMm.size() != kOnlineVelocityAxisCount){
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-        output.reason = QStringLiteral("阶段B逆运动学失败：%1").arg(evaluation.errorMessage);
+        output.reason = QStringLiteral("%1逆运动学失败：%2")
+                .arg(runtimeStageName(config_.wrenchSourceKind),
+                     evaluation.errorMessage);
         return output;
     }
 
-    const double dt = config_.periodUs / 1000000.0;
     OnlineVelocityAxisArray reference{};
     OnlineVelocityAxisArray referenceVelocity{};
     OnlineVelocityAxisArray correction{};
     OnlineVelocityAxisArray command{};
     OnlineVelocityAxisArray relativeCommandPosition{};
     OnlineVelocityAxisArray safetyRelativeReference{};
+    OnlineVelocityAxisArray alignedReferenceForRecord{};
+    OnlineVelocityAxisArray alignedErrorForRecord{};
+    std::array<int, kOnlineVelocityAxisCount> alignedValidForRecord{};
+    alignedReferenceForRecord.fill(std::numeric_limits<double>::quiet_NaN());
+    alignedErrorForRecord.fill(std::numeric_limits<double>::quiet_NaN());
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         relativeCommandPosition[axis] =
                 evaluation.relativeMotorThetaRad[axis] *
@@ -694,29 +1072,54 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             feedback.safetyRelativePosition, relativeCommandPosition,
             &safetyRelativeReference, &motorTravelError)){
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-        output.reason = QStringLiteral("阶段B绞盘行程保护：%1")
-                .arg(motorTravelError);
+        output.reason = QStringLiteral("%1绞盘行程保护：%2")
+                .arg(runtimeStageName(config_.wrenchSourceKind),
+                     motorTravelError);
         return output;
     }
+    const double modelAdvanceS = std::max(
+                0.0, modelElapsedS - modelElapsedBeforeS);
     double maximumError = 0.0;
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         reference[axis] = actualStartPosition_[axis] +
                 relativeCommandPosition[axis];
-        referenceVelocity[axis] = (reference[axis] - lastReferencePosition_[axis]) / dt;
-        const double error = reference[axis] - feedback.actualPosition[axis];
+        referenceVelocity[axis] = modelAdvanceS > 1.0e-12 ?
+                    (reference[axis] - lastReferencePosition_[axis]) /
+                    modelAdvanceS : 0.0;
+    }
+    referenceHistory_.push_back(
+                ReferenceHistorySample{modelElapsedS, reference});
+    while(referenceHistory_.size() > 2 &&
+          modelElapsedS - referenceHistory_[1].elapsedS > 5.0){
+        referenceHistory_.pop_front();
+    }
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        double alignedReference = 0.0;
+        const bool aligned = alignedReferenceAt(
+                    axis, feedback.logicalFrameSequence,
+                    feedback.traceSamplePeriodUs, &alignedReference);
+        const double error = aligned
+                ? alignedReference - feedback.actualPosition[axis] : 0.0;
+        if(aligned){
+            alignedReferenceForRecord[axis] = alignedReference;
+            alignedErrorForRecord[axis] = error;
+            alignedValidForRecord[axis] = 1;
+        }
         maximumError = std::max(maximumError, std::fabs(error));
-        if(std::fabs(error) > config_.followingErrorLimit){
+        if(aligned && std::fabs(error) > config_.followingErrorLimit){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-            output.reason = QStringLiteral("阶段B轴%1位置跟随误差%2超限%3")
-                    .arg(axis).arg(error, 0, 'f', 6)
-                    .arg(config_.followingErrorLimit, 0, 'f', 6);
+            output.reason = QStringLiteral("%1轴%2延迟对齐位置跟随误差%3超限%4（标定延迟=%5 ms）")
+                    .arg(runtimeStageName(config_.wrenchSourceKind)).arg(axis)
+                    .arg(error, 0, 'f', 6)
+                    .arg(config_.followingErrorLimit, 0, 'f', 6)
+                    .arg(config_.traceDelayMs[axis], 0, 'f', 4);
             return output;
         }
-        if(config_.pidEnabled){
-            integral_[axis] = clampValue(integral_[axis] + error * dt,
+        if(config_.pidEnabled && aligned){
+            integral_[axis] = clampValue(integral_[axis] + error * commandDt,
                                          config_.integralLimit);
             const double derivative = previousErrorValid_ ?
-                        (error - previousError_[axis]) / dt : 0.0;
+                        (error - previousError_[axis]) / commandDt : 0.0;
             correction[axis] = clampValue(config_.kp * error +
                                            config_.ki * integral_[axis] +
                                            config_.kd * derivative,
@@ -747,6 +1150,9 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     ForceInteractionRunRecord record;
     record.stepIndex = status_.stepCount + 1;
     record.elapsedS = elapsedS;
+    record.modelElapsedS = modelElapsedS;
+    record.modelLagUs = modelLagUs;
+    record.integrationSteps = integrationSteps;
     record.stamp = stamp;
     record.availabilityMask = ForceRecordDesiredState |
             ForceRecordCableKinematics | ForceRecordAxisReference |
@@ -756,7 +1162,48 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                 ForceRecordPlatformWrench;
     }
     record.sensorWrench = sensorSample.wrench;
+    record.platformWrenchUnfiltered = conditioningResult.unfiltered;
+    record.platformWrenchFiltered = conditioningResult.filtered;
     record.platformWrench = platformSample.wrench;
+    record.forceGateActive = conditioningResult.forceActive;
+    record.torqueGateActive = conditioningResult.torqueActive;
+    if(config_.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace){
+        record.ftEngineeringValue = feedback.ftSensor.value;
+        record.ftSoftwareZero = config_.ftSoftwareZero;
+        for(int channel = 0; channel < kForceInteractionDofCount; ++channel){
+            record.ftZeroCorrected[static_cast<size_t>(channel)] =
+                    feedback.ftSensor.value[static_cast<size_t>(channel)] -
+                    config_.ftSoftwareZero[static_cast<size_t>(channel)];
+        }
+        record.ftStatusCode = feedback.ftSensor.statusCode;
+        record.ftSampleCounter = feedback.ftSensor.sampleCounter;
+        record.ftTemperatureC = feedback.ftSensor.temperatureC;
+        if(ftSampleAgeUs < 0 && feedback.ftSensor.monotonicUs > 0){
+            ftSampleAgeUs = nowUs >= feedback.ftSensor.monotonicUs ?
+                        nowUs - feedback.ftSensor.monotonicUs : 0;
+        }
+        record.ftSampleAgeUs = ftSampleAgeUs;
+        if(feedback.ftSensor.wrenchComplete() &&
+                feedback.ftSensor.statusValid &&
+                feedback.ftSensor.sampleCounterValid &&
+                feedback.ftSensor.temperatureValid &&
+                feedback.ftSensor.traceFrameSequenceValid){
+            record.availabilityMask |= ForceRecordFtDiagnostics;
+        }
+        status_.latestFtStatusCode = feedback.ftSensor.statusCode;
+        status_.latestFtSampleCounter = feedback.ftSensor.sampleCounter;
+        status_.latestFtTemperatureC = feedback.ftSensor.temperatureC;
+        status_.latestFtSampleAgeUs = ftSampleAgeUs;
+        status_.latestUnfilteredPlatformWrench =
+                conditioningResult.unfiltered;
+        status_.latestFilteredPlatformWrench =
+                conditioningResult.filtered;
+        status_.latestAppliedPlatformWrench =
+                conditioningResult.output;
+        status_.latestForceGateActive = conditioningResult.forceActive;
+        status_.latestTorqueGateActive = conditioningResult.torqueActive;
+    }
     record.desiredState = desired;
     record.interactionSegment = braking ? 1 : 0;
     record.controlledStopCause = static_cast<int>(status_.controlledStopCause);
@@ -778,6 +1225,9 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         record.cableLengthMm[axis] = evaluation.cableLengthMm[axis];
         record.relativeMotorThetaRad[axis] = evaluation.relativeMotorThetaRad[axis];
         record.axisReferencePosition[axis] = reference[axis];
+        record.axisAlignedReferencePosition[axis] = alignedReferenceForRecord[axis];
+        record.axisAlignedFollowingError[axis] = alignedErrorForRecord[axis];
+        record.axisAlignedReferenceValid[axis] = alignedValidForRecord[axis];
         record.axisSafetyRelativeReferencePosition[axis] =
                 safetyRelativeReference[axis];
         record.axisReferenceVelocity[axis] = referenceVelocity[axis];
@@ -800,6 +1250,11 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     output.record = record;
     status_.stepCount = record.stepIndex;
     status_.elapsedS = elapsedS;
+    status_.modelElapsedS = modelElapsedS;
+    status_.modelLagUs = modelLagUs;
+    status_.latestIntegrationSteps = integrationSteps;
+    status_.maximumIntegrationSteps = std::max(
+                status_.maximumIntegrationSteps, integrationSteps);
     status_.latestTraceSequence = feedback.logicalFrameSequence;
     status_.maximumPositionError = std::max(status_.maximumPositionError, maximumError);
     status_.latestCalculationUs = record.calculationDurationUs;
@@ -821,6 +1276,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     status_.commandVelocity = command;
     status_.motorStatusWord = feedback.motorStatusWord;
     status_.motorStateMachine = feedback.motorStateMachine;
+    lastCommandUs_ = nowUs;
     return output;
 }
 
@@ -835,8 +1291,10 @@ void ForceInteractionRuntimeControl::noteCommandResult(
     if(!commandOk){
         setTerminal(ForceInteractionRuntimeStatus::State::Fault,
                     step.action == ForceInteractionRuntimeStep::Action::CommandVelocity ?
-                        QStringLiteral("阶段B八轴速度API调用失败") :
-                        QStringLiteral("阶段B停机API调用失败，已升级立即停止"));
+                        QStringLiteral("%1八轴速度API调用失败")
+                            .arg(runtimeStageName(config_.wrenchSourceKind)) :
+                        QStringLiteral("%1停机API调用失败，已升级立即停止")
+                            .arg(runtimeStageName(config_.wrenchSourceKind)));
         return;
     }
     if(step.action == ForceInteractionRuntimeStep::Action::CommandVelocity){
@@ -867,7 +1325,8 @@ void ForceInteractionRuntimeControl::setTerminal(
         status_.experimentValid = false;
         if(status_.safetyStopReason.isEmpty()){
             status_.safetyStopReason = message.isEmpty() ?
-                        QStringLiteral("阶段B发生未分类故障") : message;
+                        QStringLiteral("%1发生未分类故障")
+                            .arg(runtimeStageName(config_.wrenchSourceKind)) : message;
         }
     }
 }
@@ -910,6 +1369,41 @@ void ForceInteractionRuntimeControl::finishRecording()
     status_.droppedRecordCount = recorder_->droppedCount();
     status_.recordingError = recorder_->writerError();
     recorder_.reset();
+}
+
+void ForceInteractionRuntimeControl::resetSession()
+{
+    if(isActive() || isPrepared()){
+        return;
+    }
+    finishRecording();
+    status_ = ForceInteractionRuntimeStatus{};
+    config_ = ForceInteractionRuntimeConfig{};
+    wrenchTransformer_.reset();
+    recorder_.reset();
+    actualStartPosition_.fill(0.0);
+    actualStartSafetyRelativePosition_.fill(0.0);
+    lastReferencePosition_.fill(0.0);
+    integral_.fill(0.0);
+    previousError_.fill(0.0);
+    referenceHistory_.clear();
+    actualStartCaptured_ = false;
+    previousErrorValid_ = false;
+    waitStartUs_ = 0;
+    lastGoodTraceUs_ = 0;
+    nextDueUs_ = 0;
+    hostStartUs_ = 0;
+    realFtInteractionStartUs_ = 0;
+    lastCommandUs_ = 0;
+    modelStepCount_ = 0;
+    startTraceSequence_ = 0;
+    lastFrameSequence_ = 0;
+    lastFrameSequenceValid_ = false;
+    lastFtSampleCounter_ = 0;
+    lastFtCounterChangeUs_ = 0;
+    lastFtSampleCounterValid_ = false;
+    brakingState_ = ForceInteractionPlatformState{};
+    controlledStopReason_.clear();
 }
 
 bool ForceInteractionRuntimeControl::isActive() const
@@ -1083,6 +1577,67 @@ bool ForceInteractionRuntimeControl::runControlledStopSelfChecks(
             travelConfig, safetyStart, safetyActual, relativeCommand,
             &safetyReference, &travelError) || !travelError.contains("轴5")){
         return fail(QStringLiteral("绞盘实际安全相对位置越界未被拒绝"));
+    }
+
+    // 阶段C真实F/T入口必须与八轴反馈来自同一Trace帧，并在状态异常或
+    // SampleCounter停滞时拒绝继续产生动力学输入。此自检不访问任何硬件。
+    control.config_.wrenchSourceKind =
+            ForceInteractionWrenchSourceKind::RealFtTrace;
+    control.config_.ftSampleTimeoutUs = 50000;
+    control.config_.ftStatusMask = 0xffffffffu;
+    control.config_.ftExpectedStatus = 0u;
+    control.lastFtSampleCounterValid_ = false;
+    control.lastFtCounterChangeUs_ = 0;
+    ForceInteractionRuntimeFeedback ftFeedback;
+    ftFeedback.ftRuntimeProfileActive = true;
+    ftFeedback.traceFrameSequence = 123u;
+    ftFeedback.logicalFrameSequence = 1000u;
+    ftFeedback.traceSamplePeriodUs = 1000;
+    ftFeedback.monotonicUs = 1000000;
+    ftFeedback.ftSensor.traceFrameSequence = 123u;
+    ftFeedback.ftSensor.traceFrameSequenceValid = true;
+    ftFeedback.ftSensor.monotonicUs = ftFeedback.monotonicUs;
+    ftFeedback.ftSensor.statusCode = 0u;
+    ftFeedback.ftSensor.statusValid = true;
+    ftFeedback.ftSensor.sampleCounter = 55u;
+    ftFeedback.ftSensor.sampleCounterValid = true;
+    ftFeedback.ftSensor.temperatureC = 25.0;
+    ftFeedback.ftSensor.temperatureValid = true;
+    for(int channel = 0; channel < kForceInteractionDofCount; ++channel){
+        ftFeedback.ftSensor.value[static_cast<size_t>(channel)] =
+                static_cast<double>(channel + 1);
+        ftFeedback.ftSensor.channelValid[static_cast<size_t>(channel)] = true;
+    }
+    ForceInteractionWrenchSample ftSample;
+    qint64 ftAgeUs = -1;
+    QString ftError;
+    if(!control.realFtSample(ftFeedback, 1001000, ftSample, ftAgeUs, &ftError) ||
+            !ftSample.valid ||
+            ftSample.coordinate != ForceInteractionWrenchCoordinate::Sensor ||
+            ftAgeUs != 1000 || ftSample.wrench != ftFeedback.ftSensor.value){
+        return fail(QStringLiteral("阶段C有效同帧F/T样本未被接受：%1")
+                    .arg(ftError));
+    }
+    ftFeedback.ftSensor.statusCode = 1u;
+    if(control.realFtSample(ftFeedback, 1002000, ftSample, ftAgeUs, &ftError) ||
+            !ftError.contains(QStringLiteral("状态码"))){
+        return fail(QStringLiteral("阶段C非零F/T状态码未被拒绝"));
+    }
+    ftFeedback.ftSensor.statusCode = 0u;
+    ftFeedback.ftSensor.traceFrameSequence = 124u;
+    if(control.realFtSample(ftFeedback, 1002000, ftSample, ftAgeUs, &ftError) ||
+            !ftError.contains(QStringLiteral("同一Trace帧"))){
+        return fail(QStringLiteral("阶段C错帧F/T样本未被拒绝"));
+    }
+    ftFeedback.ftSensor.traceFrameSequence = ftFeedback.traceFrameSequence;
+    ftFeedback.traceFrameSequence = 124u;
+    ftFeedback.logicalFrameSequence = 1061u;
+    ftFeedback.monotonicUs = 1061000;
+    ftFeedback.ftSensor.traceFrameSequence = ftFeedback.traceFrameSequence;
+    ftFeedback.ftSensor.monotonicUs = ftFeedback.monotonicUs;
+    if(control.realFtSample(ftFeedback, 1062000, ftSample, ftAgeUs, &ftError) ||
+            !ftError.contains(QStringLiteral("SampleCounter"))){
+        return fail(QStringLiteral("阶段C停滞的F/T SampleCounter未触发超时"));
     }
 
     // A terminal fault from Trace/API/boundary paths must always invalidate

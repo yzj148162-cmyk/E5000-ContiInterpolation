@@ -78,6 +78,46 @@ quint16 readUnsignedLittleEndianTraceWord(const unsigned char* raw)
             (static_cast<quint16>(raw[1]) << 8);
 }
 
+quint32 readUnsignedLittleEndianTraceDword(const unsigned char* raw)
+{
+    return static_cast<quint32>(raw[0]) |
+            (static_cast<quint32>(raw[1]) << 8) |
+            (static_cast<quint32>(raw[2]) << 16) |
+            (static_cast<quint32>(raw[3]) << 24);
+}
+
+bool decodeFtSensorTraceComponent(FtSensorTraceSample& sample,
+                                  int component,
+                                  const unsigned char* raw,
+                                  int valueBytes)
+{
+    if(raw == nullptr || valueBytes != 4 || component < 0 || component > 8){
+        return false;
+    }
+    if(component < kFtSensorWrenchChannelCount){
+        const qint32 signedRaw = static_cast<qint32>(
+                    readUnsignedLittleEndianTraceDword(raw));
+        sample.raw[component] = signedRaw;
+        sample.value[component] = static_cast<double>(signedRaw) / 10000.0;
+        sample.channelValid[component] = true;
+    }
+    else if(component == 6){
+        sample.statusCode = readUnsignedLittleEndianTraceDword(raw);
+        sample.statusValid = true;
+    }
+    else if(component == 7){
+        sample.sampleCounter = readUnsignedLittleEndianTraceDword(raw);
+        sample.sampleCounterValid = true;
+    }
+    else{
+        sample.temperatureRaw = static_cast<qint32>(
+                    readUnsignedLittleEndianTraceDword(raw));
+        sample.temperatureC = static_cast<double>(sample.temperatureRaw) / 10.0;
+        sample.temperatureValid = true;
+    }
+    return true;
+}
+
 int decodeCia402StateMachine(quint16 statusWord)
 {
     if((statusWord & 0x004FU) == 0x0000U){
@@ -150,6 +190,7 @@ constexpr int kForceSensorTraceMinPeriodUs = 500;
 constexpr int kForceSensorTraceMaxPeriodUs = 1000;
 constexpr std::size_t kMaxMotorTracePositionSamplesPerAxis = 8192;
 constexpr std::size_t kMaxForceSensorTraceSamples = 8192;
+constexpr std::size_t kMaxFtSensorTraceSamples = 65536;
 constexpr qint64 kMotorTorqueTraceFreshTimeoutUs = 50 * 1000;
 constexpr qint64 kMotorPositionTraceFreshTimeoutUs = 50 * 1000;
 constexpr qint64 kForceSensorTraceDiagnosticsFreshTimeoutUs = 5 * 1000 * 1000;
@@ -1552,9 +1593,19 @@ bool HardwareInterface::setMotorHomesForAxes(const std::vector<int>& logicalIndi
                                              const std::vector<double>& homeValues,
                                              std::vector<bool>* usesFeedback,
                                              std::vector<qint64>* rawPulse,
-                                             std::vector<qint64>* commandRawPulse)
+                                             std::vector<qint64>* commandRawPulse,
+                                             QString* failureReason)
 {
     return runOnHardwareThread([&]() -> bool {
+    if(failureReason){
+        failureReason->clear();
+    }
+    const auto fail = [&](const QString& reason){
+        if(failureReason){
+            *failureReason = reason;
+        }
+        return false;
+    };
     if(usesFeedback){
         usesFeedback->clear();
     }
@@ -1565,7 +1616,7 @@ bool HardwareInterface::setMotorHomesForAxes(const std::vector<int>& logicalIndi
         commandRawPulse->clear();
     }
     if(logicalIndices.empty() || logicalIndices.size() != homeValues.size()){
-        return false;
+        return fail(QStringLiteral("轴列表为空或轴号与零位数量不一致"));
     }
 
     std::vector<bool> seenAxis(motorIdVec.size(), false);
@@ -1576,11 +1627,14 @@ bool HardwareInterface::setMotorHomesForAxes(const std::vector<int>& logicalIndi
                 motorComType[logicalIndex] != COM_EC_LS ||
                 seenAxis[logicalIndex] ||
                 !std::isfinite(homeValues[i])){
-            return false;
+            return fail(QStringLiteral("轴%1映射、通信类型、重复性或零位数值无效")
+                        .arg(logicalIndex));
         }
         const double axisEquiv = resolveLeadshineAxisEquiv(logicalIndex);
         if(!std::isfinite(axisEquiv) || axisEquiv <= 0.0){
-            return false;
+            return fail(QStringLiteral("轴%1脉冲当量无效：%2")
+                        .arg(logicalIndex)
+                        .arg(axisEquiv, 0, 'g', 12));
         }
         seenAxis[logicalIndex] = true;
     }
@@ -1604,7 +1658,15 @@ bool HardwareInterface::setMotorHomesForAxes(const std::vector<int>& logicalIndi
              nowUs - latestMotorTracePositionFrame.monotonicUs <=
                 kMotorPositionTraceFreshTimeoutUs);
     if(!freshFrame){
-        return false;
+        return fail(QStringLiteral(
+                    "Trace帧未满足新鲜度：configured/readback/timing/fifo/lost/frame=%1/%2/%3/%4/%5/%6，newest_age=%7 us")
+                    .arg(runtimeTraceConfigured ? 1 : 0)
+                    .arg(runtimeTraceConfigReadbackValid ? 1 : 0)
+                    .arg(runtimeTraceTimingReliable ? 1 : 0)
+                    .arg(runtimeTraceFifoCaughtUp ? 1 : 0)
+                    .arg(runtimeTraceLost ? 1 : 0)
+                    .arg(latestMotorTracePositionFrameValid ? 1 : 0)
+                    .arg(runtimeTraceNewestFrameAgeUs));
     }
 
     std::vector<bool> selectedUsesFeedback(logicalIndices.size(), false);
@@ -1621,14 +1683,17 @@ bool HardwareInterface::setMotorHomesForAxes(const std::vector<int>& logicalIndi
                 logicalIndex < static_cast<int>(latestMotorTracePositionFrame.commandValid.size()) &&
                 latestMotorTracePositionFrame.commandValid[logicalIndex];
         if(!feedbackValid && !commandValid){
-            return false;
+            return fail(QStringLiteral("同帧Trace缺少轴%1实际位置和指令位置；当前用途=%2")
+                        .arg(logicalIndex)
+                        .arg(static_cast<int>(activeRuntimeTraceUsageProfile)));
         }
         // 调用方请求 command 原始脉冲时，将它视作本次原子提交的必要字段。
         // G302 绞盘基准必须与 motorHome/安全基准来自同一帧，不能提交后再读另一帧补齐。
         if(commandRawPulse &&
                 (!commandValid ||
                  latestMotorTracePositionFrame.commandRawPulse[logicalIndex] == 0)){
-            return false;
+            return fail(QStringLiteral("同帧Trace缺少轴%1有效的非零指令位置原始值")
+                        .arg(logicalIndex));
         }
 
         // 优先锁存实际反馈；若当前只提供 command，则明确锁存 command。
@@ -1825,7 +1890,8 @@ HardwareInterface::RuntimeTraceConfigType HardwareInterface::runtimeTraceConfigT
 bool HardwareInterface::runtimeTraceUsageProfileIncludesVelocitySignals(
         RuntimeTraceUsageProfile profile) const
 {
-    return profile != RuntimeTraceUsageProfile::Base;
+    return profile != RuntimeTraceUsageProfile::Base &&
+            profile != RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning;
 }
 
 bool HardwareInterface::runtimeTraceUsageProfileIncludesForceSensors(
@@ -1834,7 +1900,17 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesForceSensors(
     if(profile == RuntimeTraceUsageProfile::Base){
         return baseRuntimeTraceForceSensorEnabled;
     }
+    if(runtimeTraceUsageProfileIncludesFtSensor(profile)){
+        return false;
+    }
     return RuntimeFeatureSwitches::kOnlineVelocityForceSensorTraceEnabled;
+}
+
+bool HardwareInterface::runtimeTraceUsageProfileIncludesFtSensor(
+        RuntimeTraceUsageProfile profile) const
+{
+    return profile == RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt;
 }
 
 void HardwareInterface::resetEndpointRemoteRuntimeTraceStatusFault()
@@ -1859,7 +1935,15 @@ bool HardwareInterface::setRuntimeTraceUsageProfile(
     }
     if(activeRuntimeTraceUsageProfile == profile &&
             runtimeTraceEndpointRemoteSessionToken == endpointRemoteSessionToken){
-        return true;
+        if(!isConnectLS || runtimeTraceConfigReadbackValid){
+            return true;
+        }
+        resetRuntimeTraceState();
+        if(configureRuntimeTraceRead()){
+            ++runtimeTraceUsageProfileGeneration;
+            return true;
+        }
+        return false;
     }
 
     const RuntimeTraceUsageProfile previousProfile =
@@ -1869,7 +1953,13 @@ bool HardwareInterface::setRuntimeTraceUsageProfile(
             runtimeTraceUsageProfileIncludesVelocitySignals(previousProfile) !=
                 runtimeTraceUsageProfileIncludesVelocitySignals(profile) ||
             runtimeTraceUsageProfileIncludesForceSensors(previousProfile) !=
-                runtimeTraceUsageProfileIncludesForceSensors(profile);
+                runtimeTraceUsageProfileIncludesForceSensors(profile) ||
+            runtimeTraceUsageProfileIncludesFtSensor(previousProfile) !=
+                runtimeTraceUsageProfileIncludesFtSensor(profile) ||
+            ((previousProfile == RuntimeTraceUsageProfile::ForceInteractionVelocity ||
+              previousProfile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt) !=
+             (profile == RuntimeTraceUsageProfile::ForceInteractionVelocity ||
+              profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt));
 
     activeRuntimeTraceUsageProfile = profile;
     runtimeTraceEndpointRemoteSessionToken = endpointRemoteSessionToken;
@@ -2022,6 +2112,50 @@ bool HardwareInterface::setOnlineVelocityRuntimeTraceProfileEnabled(bool enabled
                           RuntimeTraceUsageProfile::Base);
 }
 
+bool HardwareInterface::setForceInteractionRuntimeTraceProfileEnabled(bool enabled)
+{
+    return setRuntimeTraceUsageProfile(
+                enabled ? RuntimeTraceUsageProfile::ForceInteractionVelocity :
+                          RuntimeTraceUsageProfile::Base);
+}
+
+bool HardwareInterface::setForceTorqueSensorCommissioningTraceEnabled(bool enabled)
+{
+    return setRuntimeTraceUsageProfile(
+                enabled ? RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning :
+                          RuntimeTraceUsageProfile::Base);
+}
+
+bool HardwareInterface::setForceInteractionRuntimeTraceWithFtEnabled(bool enabled)
+{
+    return setRuntimeTraceUsageProfile(
+                enabled ? RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt :
+                          RuntimeTraceUsageProfile::Base);
+}
+
+void HardwareInterface::setForceInteractionEthercatBusCycleUs(int periodUs)
+{
+    if(isConnectLS){
+        return;
+    }
+    forceInteractionEthercatBusCycleUs = periodUs == 1000 ? 1000 : 500;
+    forceInteractionEthercatBusCycleOverrideEnabled = true;
+    forceInteractionEthercatBusCycleActualUs.store(0);
+}
+
+void HardwareInterface::clearForceInteractionEthercatBusCycleOverride()
+{
+    if(!isConnectLS){
+        forceInteractionEthercatBusCycleOverrideEnabled = false;
+        forceInteractionEthercatBusCycleActualUs.store(0);
+    }
+}
+
+int HardwareInterface::forceInteractionEthercatBusCycleReadbackUs() const
+{
+    return forceInteractionEthercatBusCycleActualUs.load();
+}
+
 // 完整整机启动入口：在控制卡连接成功后配置全部已建模雷赛轴、读取位置并建立整机运行零位。
 bool HardwareInterface::connectLS() {
     if(!connectLSControllerOnly()){
@@ -2034,6 +2168,29 @@ bool HardwareInterface::connectLS() {
         dmc_board_close();
         isConnectLS = false;
     };
+
+    const DWORD requestedCycleUs = static_cast<DWORD>(forceInteractionEthercatBusCycleUs);
+    short cycleRet = 0;
+    if(forceInteractionEthercatBusCycleOverrideEnabled){
+        cycleRet = nmc_set_cycletime(0, 2, requestedCycleUs);
+        recordCommunicationEvent(false, QStringLiteral("nmc_set_cycletime"));
+    }
+    DWORD actualCycleUs = 0;
+    if(cycleRet == 0){
+        cycleRet = nmc_get_cycletime(0, 2, &actualCycleUs);
+        recordCommunicationEvent(false, QStringLiteral("nmc_get_cycletime"));
+    }
+    if(cycleRet != 0 || (forceInteractionEthercatBusCycleOverrideEnabled &&
+                         actualCycleUs != requestedCycleUs)){
+        closeBoardOnConnectFailure();
+        forceInteractionEthercatBusCycleActualUs.store(0);
+        emit displayInfoSignal(
+                    QString("EtherCAT cycle configuration/readback failed: requested=%1 us, actual=%2 us, code=%3")
+                    .arg(requestedCycleUs).arg(actualCycleUs).arg(cycleRet).toStdString(),
+                    "error");
+        return false;
+    }
+    forceInteractionEthercatBusCycleActualUs.store(static_cast<int>(actualCycleUs));
 
     // 逐逻辑轴确认其硬件轴号和脉冲当量有效；任一轴失败都关闭板卡，避免半初始化状态继续运行。
     std::vector<double> tmpMotorVec(motorIdVec.size(), 0.0);
@@ -2394,6 +2551,7 @@ bool HardwareInterface::configureLeadshineAxisForCommissioning(int logicalIndex)
 bool HardwareInterface::disconnectLS() {
     return runOnHardwareThread([&]() -> bool {
     if (!isConnectLS) {
+        forceInteractionEthercatBusCycleActualUs.store(0);
         std::fill(motorSessionSafetyHomeTraceValid.begin(),
                   motorSessionSafetyHomeTraceValid.end(),
                   false);
@@ -2427,6 +2585,7 @@ bool HardwareInterface::disconnectLS() {
               false);
     dmc_board_close();
     isConnectLS = false;
+    forceInteractionEthercatBusCycleActualUs.store(0);
     return true;
     });
 }
@@ -5235,6 +5394,7 @@ void HardwareInterface::resetRuntimeTraceState()
     motorActualVelocityTraceObjects.clear();
     motorStatusWordTraceObjects.clear();
     motorTorqueTraceObjects.clear();
+    ftSensorTraceObjects.clear();
     motorTraceCommandVelocity.assign(motorIdVec.size(), 0.0);
     motorTraceActualVelocity.assign(motorIdVec.size(), 0.0);
     motorTraceCommandVelocityValid.assign(motorIdVec.size(), false);
@@ -5249,6 +5409,8 @@ void HardwareInterface::resetRuntimeTraceState()
     forceSensorTraceValueMonotonicUs.assign(sensorComType.size(), 0);
     resetMotorTracePositionOffsets();
     forceSensorTraceSampleQueue.clear();
+    latestFtSensorTraceSample = FtSensorTraceSample{};
+    ftSensorTraceSampleQueue.clear();
 }
 
 void HardwareInterface::resetForceSensorTraceState()
@@ -6012,6 +6174,7 @@ bool HardwareInterface::configureRuntimeTraceRead()
     motorActualVelocityTraceObjects.clear();
     motorStatusWordTraceObjects.clear();
     motorTorqueTraceObjects.clear();
+    ftSensorTraceObjects.clear();
     motorTraceCommandVelocity.assign(motorIdVec.size(), 0.0);
     motorTraceActualVelocity.assign(motorIdVec.size(), 0.0);
     motorTraceCommandVelocityValid.assign(motorIdVec.size(), false);
@@ -6141,23 +6304,38 @@ bool HardwareInterface::configureRuntimeTraceRead()
         return resolveLeadshineTraceSlaveId(axis.logicalAxis, axis.hardwareAxis);
     };
 
-    for(const RuntimeTraceAxis& axis : traceAxes){
-        MotorCommandPositionTraceObject object;
-        object.logicalAxis = axis.logicalAxis;
-        object.hardwareAxis = axis.hardwareAxis;
-        object.dataType = kLeadshineTraceDataTypeCommandPosition;
-        object.dataIndex = traceDataIndexForAxis(axis);
-        object.dataSubIndex = 0;
-        object.slaveId = 0;
-        object.apiDataBytes = kLeadshineTracePositionDataBytes;
-        object.valueBytes = kLeadshineTracePositionDataBytes;
-        motorCommandPositionTraceObjects.push_back(object);
+    const bool forceInteractionVelocityProfile =
+            activeRuntimeTraceUsageProfile ==
+                RuntimeTraceUsageProfile::ForceInteractionVelocity ||
+            activeRuntimeTraceUsageProfile ==
+                RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt;
+    const bool ftSensorOnlyProfile =
+            activeRuntimeTraceUsageProfile ==
+                RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning;
+    const bool ftSensorProfile = runtimeTraceUsageProfileIncludesFtSensor(
+                activeRuntimeTraceUsageProfile);
+    if(ftSensorOnlyProfile){
+        traceAxes.clear();
+    }
+    if(!forceInteractionVelocityProfile){
+        for(const RuntimeTraceAxis& axis : traceAxes){
+            MotorCommandPositionTraceObject object;
+            object.logicalAxis = axis.logicalAxis;
+            object.hardwareAxis = axis.hardwareAxis;
+            object.dataType = kLeadshineTraceDataTypeCommandPosition;
+            object.dataIndex = traceDataIndexForAxis(axis);
+            object.dataSubIndex = 0;
+            object.slaveId = 0;
+            object.apiDataBytes = kLeadshineTracePositionDataBytes;
+            object.valueBytes = kLeadshineTracePositionDataBytes;
+            motorCommandPositionTraceObjects.push_back(object);
 
-        RuntimeTraceObject runtimeObject;
-        runtimeObject.kind = RuntimeTraceObjectKind::MotorCommandPosition;
-        runtimeObject.objectIndex = static_cast<int>(motorCommandPositionTraceObjects.size()) - 1;
-        runtimeObject.valueBytes = object.valueBytes;
-        runtimeTraceObjects.push_back(runtimeObject);
+            RuntimeTraceObject runtimeObject;
+            runtimeObject.kind = RuntimeTraceObjectKind::MotorCommandPosition;
+            runtimeObject.objectIndex = static_cast<int>(motorCommandPositionTraceObjects.size()) - 1;
+            runtimeObject.valueBytes = object.valueBytes;
+            runtimeTraceObjects.push_back(runtimeObject);
+        }
     }
 
     for(const RuntimeTraceAxis& axis : traceAxes){
@@ -6234,8 +6412,8 @@ bool HardwareInterface::configureRuntimeTraceRead()
         }
 
         // Read CiA 402 statusword through the generic slave PDO channel.  The
-        // object is deliberately part of the same 500 us Trace frame as the
-        // position and velocity feedback used by online control.
+        // object is deliberately part of the same configured Trace frame as
+        // the position and velocity feedback used by online control.
         for(const RuntimeTraceAxis& axis : traceAxes){
             if(axis.logicalAxis < 0 ||
                     axis.logicalAxis >= traceProfile.feedbackAndTorqueLogicalAxisCount){
@@ -6263,27 +6441,29 @@ bool HardwareInterface::configureRuntimeTraceRead()
         }
     }
 
-    for(const RuntimeTraceAxis& axis : traceAxes){
-        if(axis.logicalAxis < 0 ||
-                axis.logicalAxis >= traceProfile.feedbackAndTorqueLogicalAxisCount){
-            continue;
-        }
-        MotorTorqueTraceObject object;
-        object.logicalAxis = axis.logicalAxis;
-        object.hardwareAxis = axis.hardwareAxis;
-        object.dataType = kLeadshineTraceDataTypeFeedbackTorque;
-        object.dataIndex = traceDataIndexForAxis(axis);
-        object.dataSubIndex = 0;
-        object.slaveId = torqueTraceSlaveIdForAxis(axis);
-        object.apiDataBytes = kLeadshineTraceTorqueDataBytes;
-        object.valueBytes = kLeadshineTraceTorqueDataBytes;
-        motorTorqueTraceObjects.push_back(object);
+    if(!forceInteractionVelocityProfile){
+        for(const RuntimeTraceAxis& axis : traceAxes){
+            if(axis.logicalAxis < 0 ||
+                    axis.logicalAxis >= traceProfile.feedbackAndTorqueLogicalAxisCount){
+                continue;
+            }
+            MotorTorqueTraceObject object;
+            object.logicalAxis = axis.logicalAxis;
+            object.hardwareAxis = axis.hardwareAxis;
+            object.dataType = kLeadshineTraceDataTypeFeedbackTorque;
+            object.dataIndex = traceDataIndexForAxis(axis);
+            object.dataSubIndex = 0;
+            object.slaveId = torqueTraceSlaveIdForAxis(axis);
+            object.apiDataBytes = kLeadshineTraceTorqueDataBytes;
+            object.valueBytes = kLeadshineTraceTorqueDataBytes;
+            motorTorqueTraceObjects.push_back(object);
 
-        RuntimeTraceObject runtimeObject;
-        runtimeObject.kind = RuntimeTraceObjectKind::MotorTorque;
-        runtimeObject.objectIndex = static_cast<int>(motorTorqueTraceObjects.size()) - 1;
-        runtimeObject.valueBytes = object.valueBytes;
-        runtimeTraceObjects.push_back(runtimeObject);
+            RuntimeTraceObject runtimeObject;
+            runtimeObject.kind = RuntimeTraceObjectKind::MotorTorque;
+            runtimeObject.objectIndex = static_cast<int>(motorTorqueTraceObjects.size()) - 1;
+            runtimeObject.valueBytes = object.valueBytes;
+            runtimeTraceObjects.push_back(runtimeObject);
+        }
     }
 
     forceSensorTraceObjects.clear();
@@ -6312,6 +6492,22 @@ bool HardwareInterface::configureRuntimeTraceRead()
             RuntimeTraceObject runtimeObject;
             runtimeObject.kind = RuntimeTraceObjectKind::ForceSensor;
             runtimeObject.objectIndex = static_cast<int>(forceSensorTraceObjects.size()) - 1;
+            runtimeObject.valueBytes = object.valueBytes;
+            runtimeTraceObjects.push_back(runtimeObject);
+        }
+    }
+
+    // 独立六维F/T映射。不要与上面的0x6000绳索张力通道混用。
+    if(ftSensorProfile){
+        for(int component = 0; component < 9; ++component){
+            FtSensorTraceObject object;
+            object.component = component;
+            object.dataIndex = 0x4000 + component;
+            ftSensorTraceObjects.push_back(object);
+
+            RuntimeTraceObject runtimeObject;
+            runtimeObject.kind = RuntimeTraceObjectKind::FtSensor;
+            runtimeObject.objectIndex = static_cast<int>(ftSensorTraceObjects.size()) - 1;
             runtimeObject.valueBytes = object.valueBytes;
             runtimeTraceObjects.push_back(runtimeObject);
         }
@@ -6530,9 +6726,57 @@ bool HardwareInterface::configureRuntimeTraceRead()
                                              object.apiDataBytes);
             }
         }
+        else if(runtimeObject.kind == RuntimeTraceObjectKind::FtSensor){
+            if(runtimeObject.objectIndex >= 0 &&
+                    runtimeObject.objectIndex < static_cast<int>(ftSensorTraceObjects.size())){
+                const FtSensorTraceObject& object =
+                        ftSensorTraceObjects[runtimeObject.objectIndex];
+                addOk = addTraceConfigObject(object.dataType,
+                                             object.dataIndex,
+                                             object.dataSubIndex,
+                                             object.slaveId,
+                                             object.apiDataBytes);
+            }
+        }
         if(!addOk){
             runtimeTraceUnavailable = true;
             return false;
+        }
+    }
+
+    // 新增F/T对象必须逐项读回；这样能在开始采样前发现从站、索引或字节数错误。
+    if(ftSensorProfile){
+        const int firstFtObject = static_cast<int>(runtimeTraceObjects.size()) -
+                static_cast<int>(ftSensorTraceObjects.size());
+        for(int i = 0; i < static_cast<int>(ftSensorTraceObjects.size()); ++i){
+            short dataType = 0;
+            int dataIndex = 0;
+            int dataSubIndex = 0;
+            short slaveId = 0;
+            short dataBytes = 0;
+            ret = dmc_trace_get_config_object(
+                        0, static_cast<short>(firstFtObject + i),
+                        &dataType, &dataIndex, &dataSubIndex,
+                        &slaveId, &dataBytes);
+            recordCommunicationEvent(false,
+                                     QStringLiteral("dmc_trace_get_config_object"));
+            const FtSensorTraceObject& expected = ftSensorTraceObjects[i];
+            if(ret != 0 || dataType != expected.dataType ||
+                    dataIndex != expected.dataIndex ||
+                    dataSubIndex != expected.dataSubIndex ||
+                    slaveId != expected.slaveId ||
+                    dataBytes != expected.apiDataBytes){
+                runtimeTraceUnavailable = true;
+                runtimeTraceConfigReadbackValid = false;
+                emit displayInfoSignal(
+                            QStringLiteral("六维F/T Trace对象%1读回不一致：期望从站%2、0x%3:%4、%5字节，返回码%6")
+                            .arg(i).arg(expected.slaveId)
+                            .arg(expected.dataIndex, 4, 16, QLatin1Char('0'))
+                            .arg(expected.dataSubIndex).arg(expected.apiDataBytes)
+                            .arg(ret).toStdString(),
+                            "error");
+                return false;
+            }
         }
     }
 
@@ -6567,6 +6811,19 @@ bool HardwareInterface::configureRuntimeTraceRead()
     runtimeTraceHostTimeAnchorWallClockUs = 0;
     runtimeTraceHostTimeAnchorMonotonicUs = 0;
     ++runtimeTraceConfigurationGeneration;
+    if(forceInteractionVelocityProfile || ftSensorProfile){
+        emit displayInfoSignal(
+                    QStringLiteral("六维力交互Runtime Trace已配置：位置/指令速度/实际速度=%1/%2/%3个，安全状态字=%4个，旧张力/F/T=%5/%6个，总对象=%7")
+                    .arg(motorPositionTraceObjects.size())
+                    .arg(motorCommandVelocityTraceObjects.size())
+                    .arg(motorActualVelocityTraceObjects.size())
+                    .arg(motorStatusWordTraceObjects.size())
+                    .arg(motorTorqueTraceObjects.size())
+                    .arg(ftSensorTraceObjects.size())
+                    .arg(runtimeTraceObjects.size())
+                    .toStdString(),
+                    "normal");
+    }
     return true;
 }
 
@@ -6761,6 +7018,12 @@ bool HardwareInterface::decodeRuntimeTraceFrame(
     std::vector<qint64> frameFeedbackRawPulse(motorIdVec.size(), 0);
     std::vector<bool> frameCommandRawPulseValid(motorIdVec.size(), false);
     std::vector<bool> frameFeedbackRawPulseValid(motorIdVec.size(), false);
+    FtSensorTraceSample frameFtSample;
+    frameFtSample.wallClockUs = frameWallClockUs;
+    frameFtSample.monotonicUs = frameMonotonicUs;
+    frameFtSample.traceFrameSequence = frameSequence;
+    frameFtSample.traceFrameSequenceValid = frameSequenceValid;
+    bool frameFtObserved = false;
 
     int objectOffset = objectValueStartOffset;
     for(const RuntimeTraceObject& object : runtimeTraceObjects){
@@ -6847,7 +7110,26 @@ bool HardwareInterface::decodeRuntimeTraceFrame(
                             frameMonotonicUs);
             }
         }
+        else if(object.kind == RuntimeTraceObjectKind::FtSensor){
+            if(object.objectIndex >= 0 &&
+                    object.objectIndex < static_cast<int>(ftSensorTraceObjects.size())){
+                frameFtObserved = decodeFtSensorTraceComponent(
+                            frameFtSample,
+                            ftSensorTraceObjects[object.objectIndex].component,
+                            raw,
+                            valueBytes) || frameFtObserved;
+            }
+        }
         objectOffset += valueBytes;
+    }
+
+    if(frameFtObserved){
+        latestFtSensorTraceSample = frameFtSample;
+        ftSensorTraceSampleQueue.push_back(frameFtSample);
+        while(ftSensorTraceSampleQueue.size() > kMaxFtSensorTraceSamples){
+            ftSensorTraceSampleQueue.pop_front();
+            ++ftSensorTraceQueueDroppedTotal;
+        }
     }
 
     if(frameSequenceValid){
@@ -6866,9 +7148,7 @@ bool HardwareInterface::decodeRuntimeTraceFrame(
                                           frameFeedbackRawPulseValid);
     }
 
-    if(appendHistorySamples &&
-            !motorCommandPositionTraceObjects.empty() &&
-            !motorPositionTraceObjects.empty()){
+    if(appendHistorySamples && !motorPositionTraceObjects.empty()){
         MotorTracePositionWindowFrame windowFrame;
         const double nan = std::numeric_limits<double>::quiet_NaN();
         windowFrame.wallClockUs = frameWallClockUs;
@@ -6881,6 +7161,9 @@ bool HardwareInterface::decodeRuntimeTraceFrame(
         windowFrame.feedbackRawPulse.assign(motorIdVec.size(), 0);
         windowFrame.commandValid.assign(motorIdVec.size(), false);
         windowFrame.feedbackValid.assign(motorIdVec.size(), false);
+        // 会话安全零点只依赖实际位置原始值。ForceInteractionVelocity
+        // 有意不配置指令位置对象，不能再以“指令+实际同时存在”作为发布
+        // 最新同帧位置的前提。
         bool hasWindowSample = false;
         for(int axis = 0; axis < static_cast<int>(motorIdVec.size()); ++axis){
             if(axis < static_cast<int>(frameCommandRawPulseValid.size()) &&
@@ -6896,6 +7179,7 @@ bool HardwareInterface::decodeRuntimeTraceFrame(
                 windowFrame.feedbackUnitPosition[axis] =
                         tracePulseToMotorUnit(axis, frameFeedbackRawPulse[axis]);
                 windowFrame.feedbackValid[axis] = true;
+                hasWindowSample = true;
             }
         }
 
@@ -6916,6 +7200,8 @@ bool HardwareInterface::decodeRuntimeTraceFrame(
             }
 
             MotorTracePositionSample sample;
+            sample.frameSequence = frameSequence;
+            sample.frameSequenceValid = frameSequenceValid;
             sample.commandRelativePosition =
                     traceAlignedRelativePosition(logicalAxis,
                                                  motorCommandPos[logicalAxis],
@@ -6928,6 +7214,14 @@ bool HardwareInterface::decodeRuntimeTraceFrame(
                                                  motorActualTraceOffsetValid);
             sample.wallClockUs = frameWallClockUs;
             sample.monotonicUs = frameMonotonicUs;
+            if(logicalAxis < static_cast<int>(motorTraceCommandVelocity.size())){
+                sample.commandVelocityUnitPerSec = motorTraceCommandVelocity[logicalAxis];
+                sample.commandVelocityValid = motorTraceCommandVelocityValid[logicalAxis];
+            }
+            if(logicalAxis < static_cast<int>(motorTraceActualVelocity.size())){
+                sample.actualVelocityUnitPerSec = motorTraceActualVelocity[logicalAxis];
+                sample.actualVelocityValid = motorTraceActualVelocityValid[logicalAxis];
+            }
             if(logicalAxis < static_cast<int>(frameCommandRawPulseValid.size()) &&
                     frameCommandRawPulseValid[logicalAxis]){
                 sample.commandRawPulse = frameCommandRawPulse[logicalAxis];
@@ -7450,6 +7744,12 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
             std::vector<qint64> frameFeedbackRawPulse(motorIdVec.size(), 0);
             std::vector<bool> frameCommandRawPulseValid(motorIdVec.size(), false);
             std::vector<bool> frameFeedbackRawPulseValid(motorIdVec.size(), false);
+            FtSensorTraceSample frameFtSample;
+            frameFtSample.wallClockUs = frameWallClockUs;
+            frameFtSample.monotonicUs = frameMonotonicUs;
+            frameFtSample.traceFrameSequence = frameSequence;
+            frameFtSample.traceFrameSequenceValid = frameSequenceValid;
+            bool frameFtObserved = false;
 
             int objectOffset = objectValueStartOffset;
             for(const RuntimeTraceObject& object : runtimeTraceObjects){
@@ -7539,7 +7839,26 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                                                  frameMonotonicUs);
                     }
                 }
+                else if(object.kind == RuntimeTraceObjectKind::FtSensor){
+                    if(object.objectIndex >= 0 &&
+                            object.objectIndex < static_cast<int>(ftSensorTraceObjects.size())){
+                        frameFtObserved = decodeFtSensorTraceComponent(
+                                    frameFtSample,
+                                    ftSensorTraceObjects[object.objectIndex].component,
+                                    raw,
+                                    valueBytes) || frameFtObserved;
+                    }
+                }
                 objectOffset += valueBytes;
+            }
+
+            if(frameFtObserved){
+                latestFtSensorTraceSample = frameFtSample;
+                ftSensorTraceSampleQueue.push_back(frameFtSample);
+                while(ftSensorTraceSampleQueue.size() > kMaxFtSensorTraceSamples){
+                    ftSensorTraceSampleQueue.pop_front();
+                    ++ftSensorTraceQueueDroppedTotal;
+                }
             }
 
             if(frameSequenceValid){
@@ -7556,7 +7875,7 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                                               frameFeedbackRawPulse,
                                               frameFeedbackRawPulseValid);
 
-            if(!latestOnly && !motorCommandPositionTraceObjects.empty() && !motorPositionTraceObjects.empty()){
+            if(!latestOnly && !motorPositionTraceObjects.empty()){
                 MotorTracePositionWindowFrame windowFrame;
                 const double nan = std::numeric_limits<double>::quiet_NaN();
                 windowFrame.wallClockUs = frameWallClockUs;
@@ -7569,6 +7888,8 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                 windowFrame.feedbackRawPulse.assign(motorIdVec.size(), 0);
                 windowFrame.commandValid.assign(motorIdVec.size(), false);
                 windowFrame.feedbackValid.assign(motorIdVec.size(), false);
+                // ForceInteractionVelocity没有指令位置对象；实际位置原始值
+                // 本身即可形成安全基准所需的同帧快照。
                 bool hasWindowSample = false;
                 for(int axis = 0; axis < static_cast<int>(motorIdVec.size()); ++axis){
                     if(axis < static_cast<int>(frameCommandRawPulseValid.size()) &&
@@ -7584,6 +7905,7 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                         windowFrame.feedbackUnitPosition[axis] =
                                 tracePulseToMotorUnit(axis, frameFeedbackRawPulse[axis]);
                         windowFrame.feedbackValid[axis] = true;
+                        hasWindowSample = true;
                     }
                 }
 
@@ -7604,6 +7926,8 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                     }
 
                     MotorTracePositionSample sample;
+                    sample.frameSequence = frameSequence;
+                    sample.frameSequenceValid = frameSequenceValid;
                     sample.commandRelativePosition =
                             traceAlignedRelativePosition(logicalAxis,
                                                          motorCommandPos[logicalAxis],
@@ -7616,6 +7940,14 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                                                          motorActualTraceOffsetValid);
                     sample.wallClockUs = frameWallClockUs;
                     sample.monotonicUs = frameMonotonicUs;
+                    if(logicalAxis < static_cast<int>(motorTraceCommandVelocity.size())){
+                        sample.commandVelocityUnitPerSec = motorTraceCommandVelocity[logicalAxis];
+                        sample.commandVelocityValid = motorTraceCommandVelocityValid[logicalAxis];
+                    }
+                    if(logicalAxis < static_cast<int>(motorTraceActualVelocity.size())){
+                        sample.actualVelocityUnitPerSec = motorTraceActualVelocity[logicalAxis];
+                        sample.actualVelocityValid = motorTraceActualVelocityValid[logicalAxis];
+                    }
                     if(logicalAxis < static_cast<int>(frameCommandRawPulseValid.size()) &&
                             frameCommandRawPulseValid[logicalAxis]){
                         sample.commandRawPulse = frameCommandRawPulse[logicalAxis];
@@ -8062,6 +8394,7 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
     }
     snapshot.forceSensorValue = currentForceSensorCachedValues();
     snapshot.forceSensorFrameMonotonicUs = forceSensorTraceValueMonotonicUs;
+    snapshot.ftSensor = latestFtSensorTraceSample;
     snapshot.wallClockUs = runtimeTraceLastFrameWallClockUs;
     snapshot.monotonicUs = runtimeTraceLastFrameMonotonicUs;
     snapshot.newestFrameAgeUs = runtimeTraceNewestFrameAgeUs;
@@ -8142,6 +8475,52 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
                     0, callCompleteUs - requestStartUs);
     }
     return result;
+}
+
+HardwareInterface::FtSensorTraceBatch HardwareInterface::takeFtSensorTraceSamples(
+        bool advanceTrace)
+{
+    return runOnHardwareThread([&]() -> FtSensorTraceBatch {
+        FtSensorTraceBatch batch;
+        batch.usageProfile = activeRuntimeTraceUsageProfile;
+        batch.traceSamplePeriodUs = runtimeTraceSamplePeriodUs;
+        batch.fifoValidNum = runtimeTraceLastFifoValidNum;
+        batch.queueDroppedTotal = ftSensorTraceQueueDroppedTotal;
+        batch.fromTrace = runtimeTraceEverRead;
+        batch.timingReliable = runtimeTraceTimingReliable &&
+                runtimeTraceConfigReadbackValid &&
+                runtimeTraceHostTimeAnchorValid;
+        batch.traceLost = runtimeTraceLost;
+        batch.latest = latestFtSensorTraceSample;
+
+        if(!isConnectLS || !runtimeTraceUsageProfileIncludesFtSensor(
+                    activeRuntimeTraceUsageProfile)){
+            return batch;
+        }
+
+        // 即使没有运动控制线程，后台F/T服务也必须能够独立推进Trace。
+        // 若控制线程刚刚读过，本调用通常只会取得0个新板卡帧，但仍会
+        // 消费此前已解析进专用队列的F/T样本。
+        if(advanceTrace){
+            readRuntimeTraceCached(false);
+        }
+        batch.usageProfile = activeRuntimeTraceUsageProfile;
+        batch.traceSamplePeriodUs = runtimeTraceSamplePeriodUs;
+        batch.fifoValidNum = runtimeTraceLastFifoValidNum;
+        batch.queueDroppedTotal = ftSensorTraceQueueDroppedTotal;
+        batch.fromTrace = runtimeTraceEverRead;
+        batch.timingReliable = runtimeTraceTimingReliable &&
+                runtimeTraceConfigReadbackValid &&
+                runtimeTraceHostTimeAnchorValid;
+        batch.traceLost = runtimeTraceLost;
+        batch.latest = latestFtSensorTraceSample;
+        batch.samples.reserve(ftSensorTraceSampleQueue.size());
+        while(!ftSensorTraceSampleQueue.empty()){
+            batch.samples.push_back(std::move(ftSensorTraceSampleQueue.front()));
+            ftSensorTraceSampleQueue.pop_front();
+        }
+        return batch;
+    });
 }
 
 void HardwareInterface::applyForceSensorRawValue(int sensorIndex, long rawValue, qint64 traceMonotonicUs)

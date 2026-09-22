@@ -22,6 +22,7 @@
 
 #include "macro.h"
 #include "LTDMC.h"
+#include "ftsensortypes.h"
 
 #pragma execution_character_set("utf-8")
 
@@ -263,6 +264,13 @@ public:
     enum class RuntimeTraceUsageProfile {
         Base = 0,
         PresetOnlineVelocity,
+        // 六维力实时速度链：位置/速度用于控制与记录，状态字用于同帧安全
+        // 判定；不采集指令位置、反馈转矩和尚未配置的六维力对象。
+        ForceInteractionVelocity,
+        // 六维F/T单独调试：仅采集从站1009的0x4000~0x4008。
+        ForceTorqueSensorCommissioning,
+        // 阶段C及以后：八轴速度闭环对象和六维F/T对象位于同一Trace帧。
+        ForceInteractionVelocityWithFt,
         EndpointRemoteTransition,
         EndpointRemoteRunning
     };
@@ -390,6 +398,7 @@ public:
         std::vector<double> forceSensorValue;
         std::vector<qint64> forceSensorFrameMonotonicUs;
         std::vector<ForceSensorTraceSample> forceSensorTraceSamples;
+        FtSensorTraceSample ftSensor;
         qint64 wallClockUs = 0;
         qint64 monotonicUs = 0;
         qint64 newestFrameAgeUs = -1;
@@ -420,14 +429,34 @@ public:
         EndpointRemoteVelocitySafetyContext endpointRemoteVelocitySafety;
     };
 
+    // 六维F/T后台消费者专用批次。普通控制快照只返回最新值，不再消费
+    // 逐帧队列；预热、判稳和原始记录通过本接口取得完整历史批次。
+    struct FtSensorTraceBatch {
+        std::vector<FtSensorTraceSample> samples;
+        FtSensorTraceSample latest;
+        RuntimeTraceUsageProfile usageProfile = RuntimeTraceUsageProfile::Base;
+        int traceSamplePeriodUs = 0;
+        int fifoValidNum = 0;
+        quint64 queueDroppedTotal = 0;
+        bool fromTrace = false;
+        bool timingReliable = false;
+        bool traceLost = false;
+    };
+
     struct EndpointRemoteTraceCommandResult {
         RuntimeTraceSnapshot traceSnapshot;
         EndpointRemoteVelocityCommandReport commandReport;
     };
 
     struct MotorTracePositionSample {
+        quint32 frameSequence = 0;
+        bool frameSequenceValid = false;
         double commandRelativePosition = 0.0;
         double feedbackRelativePosition = 0.0;
+        double commandVelocityUnitPerSec = 0.0;
+        double actualVelocityUnitPerSec = 0.0;
+        bool commandVelocityValid = false;
+        bool actualVelocityValid = false;
         qint64 wallClockUs = 0;
         qint64 monotonicUs = 0;
         qint64 commandRawPulse = 0;
@@ -576,7 +605,8 @@ public:
                               const std::vector<double>& homeValues,
                               std::vector<bool>* usesFeedback = nullptr,
                               std::vector<qint64>* rawPulse = nullptr,
-                              std::vector<qint64>* commandRawPulse = nullptr);
+                              std::vector<qint64>* commandRawPulse = nullptr,
+                              QString* failureReason = nullptr);
     // 查询指定轴运动是否完成。
     bool isMotorDone(int index) const;
     // 判断是否有已上传/活动的 PVT 轨迹。
@@ -776,6 +806,8 @@ public:
     std::vector<double> getAllMotorTorqueNmTraceCached();
     // 控制线程专用：只读取一次 Trace，并返回最新帧刷新后的缓存快照。
     RuntimeTraceSnapshot readRuntimeTraceLatestSnapshot();
+    // 六维F/T后台监测专用：推进Trace并一次取走尚未消费的完整F/T帧。
+    FtSensorTraceBatch takeFtSensorTraceSamples(bool advanceTrace = true);
     // 返回当前电机零位数组。
     std::vector<double> getAllMotorHome();
     // 返回软件安全零位 Trace command 原始脉冲。
@@ -811,6 +843,13 @@ public:
     // 原子切换在线速度专用 Trace：保留位置、速度和反馈力矩，并按性能开关
     // 排除力传感器对象；退出模式时一次重配恢复基础 Trace。
     bool setOnlineVelocityRuntimeTraceProfileEnabled(bool enabled);
+    bool setForceInteractionRuntimeTraceProfileEnabled(bool enabled);
+    bool setForceTorqueSensorCommissioningTraceEnabled(bool enabled);
+    bool setForceInteractionRuntimeTraceWithFtEnabled(bool enabled);
+    // 仅供完整整机连接前冻结六维力交互会话的EtherCAT周期；维护连接不使用。
+    void setForceInteractionEthercatBusCycleUs(int periodUs);
+    void clearForceInteractionEthercatBusCycleOverride();
+    int forceInteractionEthercatBusCycleReadbackUs() const;
     // 设置力传感器 Trace 采样周期。
     void setForceSensorTraceSamplePeriodUs(int periodUs);
     // 运行 PDO Trace 探针，用于检查力传感器对象字典和数据包。
@@ -1003,6 +1042,9 @@ private:
     // Base profile的力传感器对象偏好；在线/遥控profile由枚举语义决定。
     bool baseRuntimeTraceForceSensorEnabled = true;
     int forceSensorTraceSamplePeriodUs = 500;
+    int forceInteractionEthercatBusCycleUs = 500;
+    bool forceInteractionEthercatBusCycleOverrideEnabled = false;
+    std::atomic_int forceInteractionEthercatBusCycleActualUs{0};
     bool runtimeTraceConfigured = false;
     bool runtimeTraceUnavailable = false;
     bool runtimeTraceEverRead = false;
@@ -1109,6 +1151,17 @@ private:
     };
     std::vector<MotorStatusWordTraceObject> motorStatusWordTraceObjects;
 
+    struct FtSensorTraceObject {
+        int component = -1; // 0..5=wrench, 6=status, 7=counter, 8=temperature
+        short dataType = 19;
+        int dataIndex = 0x4000;
+        int dataSubIndex = 0;
+        short slaveId = 1009;
+        short apiDataBytes = 4;
+        int valueBytes = 4;
+    };
+    std::vector<FtSensorTraceObject> ftSensorTraceObjects;
+
     enum class RuntimeTraceObjectKind {
         MotorCommandPosition = 0,
         MotorPosition,
@@ -1116,7 +1169,8 @@ private:
         MotorActualVelocity,
         MotorStatusWord,
         MotorTorque,
-        ForceSensor
+        ForceSensor,
+        FtSensor
     };
 
     struct RuntimeTraceObject {
@@ -1149,6 +1203,9 @@ private:
     PvtTraceStartDelayState pvtTraceStartDelayState;
     std::vector<std::deque<MotorTracePositionSample>> motorTracePositionSampleQueues;
     std::deque<ForceSensorTraceSample> forceSensorTraceSampleQueue;
+    FtSensorTraceSample latestFtSensorTraceSample;
+    std::deque<FtSensorTraceSample> ftSensorTraceSampleQueue;
+    quint64 ftSensorTraceQueueDroppedTotal = 0;
     std::vector<double> motorCommandTraceOffsetUnit;
     std::vector<double> motorActualTraceOffsetUnit;
     std::vector<bool> motorCommandTraceOffsetValid;
@@ -1250,6 +1307,8 @@ private:
     bool runtimeTraceUsageProfileIncludesVelocitySignals(
             RuntimeTraceUsageProfile profile) const;
     bool runtimeTraceUsageProfileIncludesForceSensors(
+            RuntimeTraceUsageProfile profile) const;
+    bool runtimeTraceUsageProfileIncludesFtSensor(
             RuntimeTraceUsageProfile profile) const;
     void armPvtTraceStartDelayMeasurement(const std::vector<int>& motorIndex,
                                           int pointCount,

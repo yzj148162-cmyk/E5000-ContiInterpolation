@@ -245,7 +245,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v7\n"
+    stream << "# schema=force_interaction_run_v11\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -256,7 +256,7 @@ void ForceInteractionRunRecorder::run()
            << ",planned_duration_s=" << metadata_.plannedDurationS << '\n'
            << "# availability_mask:1=sensor_wrench,2=platform_wrench,4=desired_state,"
               "8=cable_kinematics,16=forward_kinematics,32=axis_reference,"
-              "64=axis_command,128=axis_trace,256=timing\n";
+              "64=axis_command,128=axis_trace,256=timing,512=ft_diagnostics\n";
     stream << "# workspace_replay_enabled="
            << (metadata_.workspaceReplayEnabled ? 1 : 0) << '\n';
     if(metadata_.workspaceReplayEnabled){
@@ -301,11 +301,32 @@ void ForceInteractionRunRecorder::run()
         writeArrayMetadata(stream, "motor_safety_relative_maximum",
                            metadata_.motorSafetyRelativeMaximum);
     }
+    stream << "# real_ft_conditioning_enabled="
+           << (metadata_.realFtConditioningEnabled ? 1 : 0)
+           << ",low_pass_enabled="
+           << (metadata_.realFtConditioning.lowPassEnabled ? 1 : 0)
+           << ",low_pass_cutoff_hz="
+           << metadata_.realFtConditioning.lowPassCutoffHz
+           << ",force_start_threshold_n="
+           << metadata_.realFtConditioning.forceStartThresholdN
+           << ",force_release_threshold_n="
+           << metadata_.realFtConditioning.forceReleaseThresholdN
+           << ",torque_start_threshold_nm="
+           << metadata_.realFtConditioning.torqueStartThresholdNm
+           << ",torque_release_threshold_nm="
+           << metadata_.realFtConditioning.torqueReleaseThresholdNm << '\n';
 
-    stream << "step_index,elapsed_s,availability_mask,host_monotonic_us,"
+    stream << "step_index,elapsed_s,model_elapsed_s,model_lag_us,integration_steps,availability_mask,host_monotonic_us,"
               "trace_sequence,trace_time_us,trace_valid";
+    writeGroupHeader(stream, "ft_engineering_value", kForceInteractionDofCount);
+    writeGroupHeader(stream, "ft_software_zero", kForceInteractionDofCount);
+    writeGroupHeader(stream, "ft_zero_corrected", kForceInteractionDofCount);
+    stream << ",ft_status_code,ft_sample_counter,ft_temperature_c,ft_sample_age_us";
     writeGroupHeader(stream, "sensor_wrench", kForceInteractionDofCount);
+    writeGroupHeader(stream, "platform_wrench_unfiltered", kForceInteractionDofCount);
+    writeGroupHeader(stream, "platform_wrench_filtered", kForceInteractionDofCount);
     writeGroupHeader(stream, "platform_wrench", kForceInteractionDofCount);
+    stream << ",force_gate_active,torque_gate_active";
     writeGroupHeader(stream, "desired_pose_si", kForceInteractionDofCount);
     writeGroupHeader(stream, "desired_twist_si", kForceInteractionDofCount);
     writeGroupHeader(stream, "desired_acceleration_si", kForceInteractionDofCount);
@@ -321,6 +342,9 @@ void ForceInteractionRunRecorder::run()
               "workspace_limiting_point,workspace_limiting_axis,workspace_limiting_upper_face";
     writeWorkspacePointHeader(stream);
     writeGroupHeader(stream, "axis_reference_position", kForceInteractionCableCount);
+    writeGroupHeader(stream, "axis_aligned_reference_position", kForceInteractionCableCount);
+    writeGroupHeader(stream, "axis_aligned_following_error", kForceInteractionCableCount);
+    writeGroupHeader(stream, "axis_aligned_reference_valid", kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_safety_relative_reference_position",
                      kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_reference_velocity", kForceInteractionCableCount);
@@ -354,13 +378,27 @@ void ForceInteractionRunRecorder::run()
 
         for(const ForceInteractionRunRecord& record : batch){
             stream << record.stepIndex << ',' << record.elapsedS << ','
+                   << record.modelElapsedS << ','
+                   << record.modelLagUs << ','
+                   << record.integrationSteps << ','
                    << record.availabilityMask << ','
                    << record.stamp.hostMonotonicTimeUs << ','
                    << record.stamp.traceSequence << ','
                    << record.stamp.traceTimeUs << ','
                    << (record.stamp.traceValid ? 1 : 0);
+            writeArray(stream, record.ftEngineeringValue);
+            writeArray(stream, record.ftSoftwareZero);
+            writeArray(stream, record.ftZeroCorrected);
+            stream << ',' << record.ftStatusCode
+                   << ',' << record.ftSampleCounter
+                   << ',' << record.ftTemperatureC
+                   << ',' << record.ftSampleAgeUs;
             writeArray(stream, record.sensorWrench);
+            writeArray(stream, record.platformWrenchUnfiltered);
+            writeArray(stream, record.platformWrenchFiltered);
             writeArray(stream, record.platformWrench);
+            stream << ',' << (record.forceGateActive ? 1 : 0)
+                   << ',' << (record.torqueGateActive ? 1 : 0);
             writeArray(stream, record.desiredState.pose);
             writeArray(stream, record.desiredState.twist);
             writeArray(stream, record.desiredState.acceleration);
@@ -388,6 +426,9 @@ void ForceInteractionRunRecorder::run()
                    << ',' << (record.workspaceLimitingUpperFace ? 1 : 0);
             writeWorkspacePoints(stream, record.workspacePointGlobalMm);
             writeArray(stream, record.axisReferencePosition);
+            writeArray(stream, record.axisAlignedReferencePosition);
+            writeArray(stream, record.axisAlignedFollowingError);
+            writeArray(stream, record.axisAlignedReferenceValid);
             writeArray(stream, record.axisSafetyRelativeReferencePosition);
             writeArray(stream, record.axisReferenceVelocity);
             writeArray(stream, record.axisPidCorrectionVelocity);

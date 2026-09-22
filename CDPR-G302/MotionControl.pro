@@ -47,9 +47,17 @@ SOURCES += \
     pose_control_module/compensatedcablekinematics.cpp \
     pose_control_module/endpointremotecontrol.cpp \
     pose_control_module/forceinteractionboundaryloganalyzer.cpp \
+    pose_control_module/forceinteractionkinematicloganalyzer.cpp \
+    pose_control_module/forceinteractionreplayexporter.cpp \
     pose_control_module/forceinteractionrunrecorder.cpp \
     pose_control_module/forceinteractionruntimecontrol.cpp \
     pose_control_module/forceinteractionsoftwarevalidator.cpp \
+    pose_control_module/forcewrenchconditioner.cpp \
+    pose_control_module/ftsensormonitoringservice.cpp \
+    pose_control_module/ftsensorpreheatmonitor.cpp \
+    pose_control_module/ftsensortracerecorder.cpp \
+    pose_control_module/tracedelaycalibration.cpp \
+    pose_control_module/tracedelaycalibrationrunner.cpp \
     pose_control_module/forcecontroller.cpp \
     pose_control_module/forwardkinematicssolver.cpp \
     pose_control_module/forcepid0525.cpp \
@@ -114,10 +122,19 @@ HEADERS += \
     pose_control_module/compensatedcablekinematics.h \
     pose_control_module/endpointremotecontrol.h \
     pose_control_module/forceinteractionboundaryloganalyzer.h \
+    pose_control_module/forceinteractionkinematicloganalyzer.h \
+    pose_control_module/forceinteractionreplayexporter.h \
     pose_control_module/forceinteractionrunrecorder.h \
     pose_control_module/forceinteractionruntimecontrol.h \
     pose_control_module/forceinteractionsoftwarevalidator.h \
     pose_control_module/forceinteractiontypes.h \
+    pose_control_module/forcewrenchconditioner.h \
+    pose_control_module/ftsensormonitoringservice.h \
+    pose_control_module/ftsensorpreheatmonitor.h \
+    pose_control_module/ftsensortracerecorder.h \
+    pose_control_module/ftsensortypes.h \
+    pose_control_module/tracedelaycalibration.h \
+    pose_control_module/tracedelaycalibrationrunner.h \
     pose_control_module/forcecontroller.h \
     pose_control_module/forwardkinematicssolver.h \
     pose_control_module/forcepid0525.h \

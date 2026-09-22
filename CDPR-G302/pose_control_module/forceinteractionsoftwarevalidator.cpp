@@ -3,6 +3,7 @@
 #include "forceinteractionrunrecorder.h"
 #include "forceinteractionruntimecontrol.h"
 #include "forwardkinematicssolver.h"
+#include "ftsensorpreheatmonitor.h"
 #include "wrenchtransformer.h"
 
 #include <QElapsedTimer>
@@ -52,6 +53,22 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
         if(errorMessage){
             *errorMessage = QStringLiteral("阶段B协同制动验收失败：%1")
                     .arg(boundaryError);
+        }
+        return false;
+    }
+    QString conditioningError;
+    if(!ForceWrenchConditioner::runSelfChecks(&conditioningError)){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("真实F/T滤波与迟滞门自检失败：%1")
+                    .arg(conditioningError);
+        }
+        return false;
+    }
+    QString traceEpochError;
+    if(!FtSensorPreheatMonitor::runTraceEpochSelfChecks(&traceEpochError)){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("F/T Trace新帧纪元自检失败：%1")
+                    .arg(traceEpochError);
         }
         return false;
     }

@@ -9,6 +9,8 @@
 #include "softwarefaultguard.h"
 #include "endpointremoteinputsupervisor.h"
 #include "forceinteractionboundaryloganalyzer.h"
+#include "forceinteractionkinematicloganalyzer.h"
+#include "forceinteractionreplayexporter.h"
 #include "forceinteractionsoftwarevalidator.h"
 #include "structuredfaultlogwriter.h"
 
@@ -56,6 +58,7 @@
 #include <QEventLoop>
 #include <QFile>
 #include <QFileInfo>
+#include <QTableWidgetItem>
 #include <QCoreApplication>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -96,6 +99,7 @@
 #include <QVector>
 #include <algorithm>
 #include <atomic>
+#include <chrono>
 #include <csignal>
 #include <cstdio>
 #include <cstddef>
@@ -127,6 +131,13 @@ using namespace MachineKinematicsProfileCatalog;
 using namespace SessionRecorder;
 using namespace RuntimeDiagnostics;
 using namespace DataVisualizationController;
+
+qint64 mainWindowMonotonicUs()
+{
+    const auto now = std::chrono::steady_clock::now().time_since_epoch();
+    return static_cast<qint64>(
+                std::chrono::duration_cast<std::chrono::microseconds>(now).count());
+}
 
 constexpr int kBarycenterCableCount = 8;
 constexpr double kBarycenterForceMinN = 20.0;
@@ -805,18 +816,19 @@ std::vector<double> globalInitialPlatformPose()
     };
 }
 
-constexpr double kKnownRuntimePosePxMm = -219.804295433058;
-constexpr double kKnownRuntimePosePyMm = -70.1330727013148;
-constexpr double kKnownRuntimePosePzMm = 4.78346781974938;
-constexpr double kKnownRuntimePoseRxDeg = -2.14064217219216;
-constexpr double kKnownRuntimePoseRyDeg = 0.407185429096050;
-constexpr double kKnownRuntimePoseRzDeg = 0.184322835729053;
+constexpr double kKnownRuntimePosePxMm = 0.0;
+constexpr double kKnownRuntimePosePyMm = 0.0;
+constexpr double kKnownRuntimePosePzMm = 100.0;
+constexpr double kKnownRuntimePoseRxDeg = 0.0;
+constexpr double kKnownRuntimePoseRyDeg = 0.0;
+constexpr double kKnownRuntimePoseRzDeg = 0.0;
 constexpr int kLongOperationHeartbeatStep = 50;
 constexpr int kMainThreadHeartbeatTimeoutMinMs = 4000;
 constexpr int kMainThreadHeartbeatGraceMinMs = 1000;
 constexpr int kLiteCommissioningHardwareCommandTimeoutMs = 10000;
 constexpr int kHardwareExclusiveSnapshotTimeoutMs = 3000;
 constexpr int kHardwareExclusiveSnapshotTimeoutMaxMs = 15000;
+constexpr int kTraceDelayCalibrationSnapshotTimeoutMs = 3000;
 constexpr int kPvtStartupSnapshotTimeoutMs = 1500;
 constexpr int kPvtStartupSnapshotGraceMs = 3000;
 constexpr int kProgramControlPreparationSnapshotTimeoutMs = 1500;
@@ -3902,6 +3914,21 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    if(forceInteractionFtMonitoring){
+        stopForceInteractionFtMonitoring();
+    }
+    if(forceInteractionFtServiceThread){
+        forceInteractionFtServiceThread->quit();
+        forceInteractionFtServiceThread->wait(2000);
+        delete forceInteractionFtServiceThread;
+        forceInteractionFtServiceThread = nullptr;
+        forceInteractionFtService = nullptr;
+    }
+    if(forceInteractionKinematicLogAnalysisWorker){
+        forceInteractionKinematicLogAnalysisWorker->wait();
+        delete forceInteractionKinematicLogAnalysisWorker;
+        forceInteractionKinematicLogAnalysisWorker = nullptr;
+    }
     if(forceInteractionBoundaryLogAnalysisWorker){
         forceInteractionBoundaryLogAnalysisWorker->wait();
         delete forceInteractionBoundaryLogAnalysisWorker;
@@ -5404,24 +5431,47 @@ bool MainWindow::latchLiteFullSystemSessionSafetyReference(
     }
 
     std::vector<bool> usesFeedback;
+    QString traceFailureReason;
     QElapsedTimer traceWaitTimer;
     traceWaitTimer.start();
     bool latched = false;
+    bool traceRestarted = false;
+    constexpr int kSessionSafetyReferenceTimeoutMs = 3500;
+    constexpr int kSessionSafetyReferenceRestartMs = 250;
     do{
         latched = hardwareInterface.setMotorHomesForAxes(logicalAxes,
-                                                          axisHomes,
-                                                          &usesFeedback);
+                                                         axisHomes,
+                                                         &usesFeedback,
+                                                         nullptr,
+                                                         nullptr,
+                                                         &traceFailureReason);
         if(latched){
             break;
         }
         refreshSafetyMonitorHeartbeat();
-        delay(20);
-    }while(traceWaitTimer.elapsed() < 1000);
+        if(!traceRestarted &&
+                traceWaitTimer.elapsed() >= kSessionSafetyReferenceRestartMs){
+            traceRestarted = true;
+            QString restartFailureReason;
+            if(!hardwareInterface.restartRuntimeTraceForFreshSnapshot(
+                        &restartFailureReason) &&
+                    !restartFailureReason.isEmpty()){
+                traceFailureReason = QStringLiteral("%1；Trace重启失败：%2")
+                        .arg(traceFailureReason, restartFailureReason);
+            }
+        }
+        // 启动基准建立期间不处理Qt事件，避免UI定时器插入额外板卡访问。
+        QThread::msleep(5);
+    }while(traceWaitTimer.elapsed() < kSessionSafetyReferenceTimeoutMs);
 
     if(!latched){
-        displayInfo(QStringLiteral("%1失败：未能从同一帧新鲜 Trace 取得全部 %2 轴的位置，未提交任何会话安全基准")
+        displayInfo(QStringLiteral("%1失败：等待%2 ms后仍未能从同一帧新鲜Trace取得全部%3轴实际位置，未提交任何会话安全基准；底层状态：%4")
                     .arg(operationName)
+                    .arg(traceWaitTimer.elapsed())
                     .arg(profile.modeledCableAxisCount)
+                    .arg(traceFailureReason.isEmpty() ?
+                             QStringLiteral("未返回详细原因") :
+                             traceFailureReason)
                     .toStdString(), "error");
         return false;
     }
@@ -5508,6 +5558,32 @@ bool MainWindow::eventFilter(QObject* watched, QEvent* event)
 
 bool MainWindow::applyStartupMotorHomeReference()
 {
+    if(runtimeState.forceInteractionGenericActuatorSessionActive){
+        const int axisCount = ui->devAxisNum->value();
+        std::vector<double> motorHome = hardwareInterface.getAllMotorPosUnit();
+        if(axisCount != kOnlineVelocityAxisCount ||
+                static_cast<int>(motorHome.size()) < axisCount ||
+                !hasFiniteValues(motorHome, axisCount)){
+            displayInfo("六维力交互临时执行器启动失败：无法完整读取8轴上电位置", "error");
+            return false;
+        }
+        motorHome.resize(axisCount);
+        if(!latchLiteFullSystemSessionSafetyReference(
+                    motorHome,
+                    QStringLiteral("六维力交互临时执行器安全基准"))){
+            return false;
+        }
+        hardwareInterface.useStaticMotorHome = false;
+        clearForwardKinematicsCableLengthCache();
+        applyMotorPositionSnapshot(motorHome);
+        motorPosDisplayZero.clear();
+        updateSingleMotorActualPos();
+        refreshMotorPosDisplay();
+        updateControlWorkerConfig();
+        updateSafetyMonitorConfig();
+        displayInfo("六维力交互临时执行器：已将同一新鲜Trace帧中的8轴实际位置作为本次空转安全相对零位");
+        return true;
+    }
     if(!isLiteTemplateActive()){
         syncMotorHomeAndDisplayZero(QStringLiteral("已将当前上电读取的电机位置作为本次临时 motorHomePos"),
                                     true);
@@ -17448,7 +17524,9 @@ ControlWorker::Config MainWindow::buildControlWorkerConfig() const{
     config.ctrlCycleMs = ui->devCtrlCycleMs->value();
     config.sensorSampleHz = configuredSensorSampleFrequencyHz();
     config.forceSensorTraceSamplePeriodUs =
-            forceSensorTraceSamplePeriodUsFromHz(static_cast<int>(config.sensorSampleHz));
+            runtimeState.forceInteractionGenericActuatorSessionActive ?
+                selectedForceInteractionBusCycleUs() :
+                forceSensorTraceSamplePeriodUsFromHz(static_cast<int>(config.sensorSampleHz));
     config.forceSensorLowPassCutoffHz = configuredForceSensorLowPassCutoffHz();
     config.systemRunning = runtimeState.systemRunning;
     config.commissioningModeActive =
@@ -17991,7 +18069,9 @@ ControlWorker::Config MainWindow::buildControlWorkerConfig() const{
     }
     const bool directForceControlBlockedByProtectedPvt =
             pvtMotionProtectedActive && !hybridForceControlActive;
-    config.forceThreadEnabled = !manualSingleAxisMotionActive &&
+    config.forceThreadEnabled =
+            !runtimeState.forceInteractionGenericActuatorSessionActive &&
+            !manualSingleAxisMotionActive &&
             !hybridSetupPending &&
             !directForceControlBlockedByProtectedPvt &&
             ui->mainFCThread->isChecked();
@@ -18045,6 +18125,14 @@ ControlWorker::Config MainWindow::buildControlWorkerConfig() const{
         axis.motorMin = axisMotorMinVec[axisIndex]->value();
         axis.motorMax = axisMotorMaxVec[axisIndex]->value();
         axis.motorVelMax = axisMotorVelMaxVec[axisIndex]->value();
+        if(runtimeState.forceInteractionGenericActuatorSessionActive &&
+                ui->devMotorFeedbackIsRd->isChecked()){
+            // 临时执行器会话始终以“度”为板卡 unit。原 G302 全局界面通常以
+            // “圈”为单位，内部换算后再交给控制与安全线程，避免污染原模板。
+            axis.motorMin *= kDegreesPerRevolution;
+            axis.motorMax *= kDegreesPerRevolution;
+            axis.motorVelMax *= kDegreesPerRevolution;
+        }
         if(config.commissioningModeActive &&
                 axisIndex == runtimeState.commissioningAxisIndex){
             if(liteCommissioningMaxForceSpin){
@@ -18119,7 +18207,9 @@ bool MainWindow::syncControlWorkerConfig(bool forceApply,
     syncMotorSoftwareLimitsToHardware();
     int forceSensorTraceSampleHz = configuredSensorSampleFrequencyHz();
     const int forceSensorTraceSamplePeriodUs =
-            forceSensorTraceSamplePeriodUsFromHz(forceSensorTraceSampleHz);
+            runtimeState.forceInteractionGenericActuatorSessionActive ?
+                selectedForceInteractionBusCycleUs() :
+                forceSensorTraceSamplePeriodUsFromHz(forceSensorTraceSampleHz);
     if(forceSensorTraceSamplePeriodUs != lastAppliedForceSensorTraceSamplePeriodUs){
         hardwareInterface.setForceSensorTraceSamplePeriodUs(forceSensorTraceSamplePeriodUs);
         lastAppliedForceSensorTraceSamplePeriodUs = forceSensorTraceSamplePeriodUs;
@@ -18899,12 +18989,128 @@ void MainWindow::setupForcePidTuningTab()
     syncForcePidTuningControlEnabled();
 }
 
+bool MainWindow::forceInteractionUsesGenericActuatorProfile() const
+{
+    return ui && ui->forceInteractionActuatorProfileComboBox &&
+            ui->forceInteractionActuatorProfileComboBox->currentIndex() == 1;
+}
+
+QString MainWindow::forceInteractionActuatorProfileKey() const
+{
+    return forceInteractionUsesGenericActuatorProfile()
+            ? QStringLiteral("generic_incremental_8_axis")
+            : QStringLiteral("g302_original");
+}
+
+double MainWindow::forceInteractionGenericAxisEquivalent() const
+{
+    if(!ui || !ui->forceInteractionGenericAxisEquivalentSpinBox){
+        return 0.0;
+    }
+    return ui->forceInteractionGenericAxisEquivalentSpinBox->value();
+}
+
+int MainWindow::selectedForceInteractionBusCycleUs() const
+{
+    return ui && ui->forceInteractionBusCycleComboBox &&
+            ui->forceInteractionBusCycleComboBox->currentIndex() == 1 ? 1000 : 500;
+}
+
+int MainWindow::selectedForceInteractionControlPeriodUs() const
+{
+    static const std::array<int, 5> periods{{1000, 2000, 5000, 10000, 20000}};
+    if(!ui || !ui->forceInteractionCommonControlPeriodComboBox){
+        return 5000;
+    }
+    const int index = ui->forceInteractionCommonControlPeriodComboBox->currentIndex();
+    return index >= 0 && index < static_cast<int>(periods.size()) ?
+                periods[static_cast<size_t>(index)] : 5000;
+}
+
+void MainWindow::refreshForceInteractionTimingUi()
+{
+    if(!ui || !ui->forceInteractionBusCycleComboBox ||
+            !ui->forceInteractionBusCycleReadbackLabel ||
+            !ui->forceInteractionTracePeriodValueLabel){
+        return;
+    }
+    const bool connected = hardwareInterface.isLSConnected() || runtimeState.systemRunning;
+    ui->forceInteractionBusCycleComboBox->setEnabled(!connected);
+    const ForceInteractionRuntimeStatus runtimeStatus = controlWorker ?
+                controlWorker->forceInteractionRuntimeStatus() :
+                ForceInteractionRuntimeStatus{};
+    const bool prepared = runtimeStatus.state ==
+            ForceInteractionRuntimeStatus::State::Prepared;
+    ui->forceInteractionCommonControlPeriodComboBox->setEnabled(
+                !prepared && !runtimeState.forceInteractionRuntimeActive);
+    const int actualBusUs = hardwareInterface.forceInteractionEthercatBusCycleReadbackUs();
+    ui->forceInteractionBusCycleReadbackLabel->setText(
+                actualBusUs > 0 ? QStringLiteral("%1 μs").arg(actualBusUs) :
+                                  QStringLiteral("待连接"));
+    const ControlWorker::Snapshot snapshot = controlWorker ?
+                controlWorker->latestSnapshot() : ControlWorker::Snapshot{};
+    ui->forceInteractionTracePeriodValueLabel->setText(
+                snapshot.runtimeTraceSamplePeriodUs > 0 ?
+                    QStringLiteral("%1 μs").arg(snapshot.runtimeTraceSamplePeriodUs) :
+                    QStringLiteral("待配置"));
+    const bool timingMatched = actualBusUs <= 0 ||
+            actualBusUs == selectedForceInteractionBusCycleUs();
+    ui->forceInteractionBusCycleReadbackLabel->setStyleSheet(
+                timingMatched ? QString() : QStringLiteral("color:red;"));
+}
+
+void MainWindow::refreshForceInteractionActuatorProfileUi()
+{
+    if(!ui || !ui->forceInteractionActuatorProfileComboBox ||
+            !ui->forceInteractionGenericAxisEquivalentSpinBox ||
+            !ui->forceInteractionActuatorProfileStatusLabel){
+        return;
+    }
+    const bool connected = hardwareInterface.isLSConnected() ||
+            runtimeState.systemRunning;
+    const bool genericSelected = forceInteractionUsesGenericActuatorProfile();
+    ui->forceInteractionActuatorProfileComboBox->setEnabled(!connected);
+    ui->forceInteractionGenericAxisEquivalentSpinBox->setEnabled(
+                !connected && genericSelected);
+    if(runtimeState.forceInteractionGenericActuatorSessionActive){
+        ui->forceInteractionActuatorProfileStatusLabel->setText(
+                    QStringLiteral("本次连接：临时8轴；仅允许六维力空转"));
+        ui->forceInteractionActuatorProfileStatusLabel->setStyleSheet(
+                    QStringLiteral("color:#b35a00;"));
+    }
+    else if(genericSelected){
+        ui->forceInteractionActuatorProfileStatusLabel->setText(
+                    QStringLiteral("待连接：临时8轴；不改写原G302模板"));
+        ui->forceInteractionActuatorProfileStatusLabel->setStyleSheet(
+                    QStringLiteral("color:#b35a00;"));
+    }
+    else{
+        ui->forceInteractionActuatorProfileStatusLabel->setText(
+                    QStringLiteral("默认：原G302参数链"));
+        ui->forceInteractionActuatorProfileStatusLabel->setStyleSheet(QString());
+    }
+    refreshForceInteractionTimingUi();
+}
+
 void MainWindow::setupForceInteractionValidationTab()
 {
     if(!ui){
         return;
     }
 
+    if(!forceInteractionFtServiceThread){
+        forceInteractionFtServiceThread = new QThread(this);
+        forceInteractionFtServiceThread->setObjectName(
+                    QStringLiteral("FtSensorMonitoringThread"));
+        forceInteractionFtService =
+                new FtSensorMonitoringService(&hardwareInterface);
+        forceInteractionFtService->moveToThread(forceInteractionFtServiceThread);
+        connect(forceInteractionFtServiceThread, &QThread::finished,
+                forceInteractionFtService, &QObject::deleteLater);
+        forceInteractionFtServiceThread->start();
+    }
+
+    refreshTraceDelayAxisOptions();
     connect(ui->forceInteractionModeComboBox,
             qOverload<int>(&QComboBox::currentIndexChanged),
             this,
@@ -18917,6 +19123,24 @@ void MainWindow::setupForceInteractionValidationTab()
             &QPushButton::clicked,
             this,
             &MainWindow::cancelForceInteractionSoftwareValidation);
+    connect(ui->forceInteractionTraceDelaySelectedStartButton,
+            &QPushButton::clicked, this,
+            [this](){ startTraceDelayCalibration(false); });
+    connect(ui->forceInteractionTraceDelayAllStartButton,
+            &QPushButton::clicked, this,
+            [this](){ startTraceDelayCalibration(true); });
+    connect(ui->forceInteractionTraceDelayStopButton,
+            &QPushButton::clicked, this,
+            &MainWindow::stopTraceDelayCalibration);
+    connect(ui->forceInteractionTraceDelayRecalculateButton,
+            &QPushButton::clicked, this,
+            &MainWindow::recalculateTraceDelayCalibration);
+    connect(ui->forceInteractionTraceDelayOpenFileButton,
+            &QPushButton::clicked, this,
+            &MainWindow::openTraceDelayCalibrationRawFile);
+    ui->forceInteractionTraceDelayResultTable->resizeColumnsToContents();
+    ui->forceInteractionTraceDelayResultTable->horizontalHeader()
+            ->setStretchLastSection(true);
     connect(ui->forceInteractionRuntimePrepareButton,
             &QPushButton::clicked,
             this,
@@ -18937,10 +19161,1110 @@ void MainWindow::setupForceInteractionValidationTab()
             [this](){
         stopForceInteractionRuntime(true, QStringLiteral("用户请求阶段B立即停止"));
     });
+    connect(ui->forceInteractionStageCPrepareButton,
+            &QPushButton::clicked, this,
+            &MainWindow::prepareForceInteractionStageCRuntimeFromUi);
+    connect(ui->forceInteractionStageCStartButton,
+            &QPushButton::clicked, this,
+            &MainWindow::startForceInteractionStageCRuntime);
+    connect(ui->forceInteractionStageCStopButton,
+            &QPushButton::clicked, this, [this](){
+        const bool prepared = controlWorker &&
+                controlWorker->forceInteractionRuntimeStatus().state ==
+                    ForceInteractionRuntimeStatus::State::Prepared;
+        stopForceInteractionRuntime(false,
+                    prepared ? QStringLiteral("用户取消阶段C准备") :
+                               QStringLiteral("用户请求阶段C协同减速停止"));
+    });
+    connect(ui->forceInteractionStageCEmergencyButton,
+            &QPushButton::clicked, this, [this](){
+        stopForceInteractionRuntime(true,
+                    QStringLiteral("用户请求阶段C立即停止"));
+    });
+    connect(ui->forceInteractionStageCLowPassCheckBox,
+            &QCheckBox::toggled, this, [this](bool enabled){
+        ui->forceInteractionStageCLowPassCutoffSpinBox->setEnabled(enabled);
+    });
+    ui->forceInteractionStageCLowPassCutoffSpinBox->setEnabled(
+                ui->forceInteractionStageCLowPassCheckBox->isChecked());
     connect(ui->devUseLite, &QRadioButton::toggled, this,
-            [this](bool){ refreshForceInteractionValidationInputState(); });
+            [this](bool){
+        refreshForceInteractionValidationInputState();
+        refreshTraceDelayAxisOptions();
+    });
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        if(axis < static_cast<int>(axisMotorHardwareAxisVec.size()) &&
+                axisMotorHardwareAxisVec[axis]){
+            connect(axisMotorHardwareAxisVec[axis],
+                    qOverload<int>(&QSpinBox::valueChanged), this,
+                    [this](int){ refreshTraceDelayAxisOptions(); });
+        }
+        if(axis < static_cast<int>(axisMotorSlaveIdVec.size()) &&
+                axisMotorSlaveIdVec[axis]){
+            connect(axisMotorSlaveIdVec[axis],
+                    qOverload<int>(&QSpinBox::valueChanged), this,
+                    [this](int){ refreshTraceDelayAxisOptions(); });
+        }
+    }
+    connect(ui->forceInteractionActuatorProfileComboBox,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this,
+            [this](int){
+        if(ui->forceInteractionBusCycleComboBox &&
+                ui->forceInteractionBusCycleComboBox->isEnabled()){
+            ui->forceInteractionBusCycleComboBox->setCurrentIndex(
+                        forceInteractionUsesGenericActuatorProfile() ? 1 : 0);
+        }
+        refreshForceInteractionActuatorProfileUi();
+        refreshForceInteractionTimingUi();
+        refreshForceInteractionRuntimeUi();
+        refreshTraceDelayCalibrationUi();
+    });
+    connect(ui->forceInteractionGenericAxisEquivalentSpinBox,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this,
+            [this](double){ refreshForceInteractionActuatorProfileUi(); });
+    connect(ui->forceInteractionBusCycleComboBox,
+            qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int){ refreshForceInteractionTimingUi(); refreshTraceDelayCalibrationUi(); });
+    connect(ui->forceInteractionCommonControlPeriodComboBox,
+            qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int){ refreshForceInteractionTimingUi(); });
+    connect(ui->forceInteractionKinematicAnalyzeButton,
+            &QPushButton::clicked, this,
+            &MainWindow::startForceInteractionKinematicLogAnalysis);
+    connect(ui->forceInteractionReplayExportButton,
+            &QPushButton::clicked, this,
+            &MainWindow::exportLatestForceInteractionReplayConfig);
+    connect(ui->forceInteractionReplayOpenDirectoryButton,
+            &QPushButton::clicked, this,
+            &MainWindow::openForceInteractionReplayDirectory);
+    connect(ui->forceInteractionFtStartButton, &QPushButton::clicked,
+            this, &MainWindow::startForceInteractionFtMonitoring);
+    connect(ui->forceInteractionFtStopButton, &QPushButton::clicked,
+            this, &MainWindow::stopForceInteractionFtMonitoring);
+    connect(ui->forceInteractionFtPreviouslyPoweredCheckBox,
+            &QCheckBox::toggled, this,
+            [this](bool){ refreshForceInteractionFtUi(); });
+    connect(ui->forceInteractionFtReuseLastZeroCheckBox,
+            &QCheckBox::toggled, this,
+            [this](bool checked){
+        if(checked && !forceInteractionFtLastConfirmedZeroValid){
+            const QSignalBlocker blocker(ui->forceInteractionFtReuseLastZeroCheckBox);
+            ui->forceInteractionFtReuseLastZeroCheckBox->setChecked(false);
+            displayInfo("无法采用上次零漂：当前程序内尚无人工确认过的零漂值。",
+                        "warning");
+            refreshForceInteractionFtUi();
+            return;
+        }
+
+        if(forceInteractionFtMonitoring && forceInteractionFtService){
+            if(checked){
+                bool restored = false;
+                QString error;
+                QMetaObject::invokeMethod(forceInteractionFtService, [&](){
+                    restored = forceInteractionFtService->restoreConfirmedZero(
+                                forceInteractionFtLastConfirmedZero, &error);
+                    forceInteractionFtServiceSnapshot =
+                            forceInteractionFtService->snapshot();
+                }, Qt::BlockingQueuedConnection);
+                if(!restored){
+                    const QSignalBlocker blocker(
+                                ui->forceInteractionFtReuseLastZeroCheckBox);
+                    ui->forceInteractionFtReuseLastZeroCheckBox->setChecked(false);
+                    forceInteractionFtUsingLastConfirmedZero = false;
+                    displayInfo(QStringLiteral("采用上次零漂失败：%1")
+                                .arg(error).toStdString(), "error");
+                }
+                else{
+                    forceInteractionFtUsingLastConfirmedZero = true;
+                    displayInfo("已采用当前程序内上次人工确认的F/T零漂；本轮不再等待预热判稳，但实时PDO/Trace与样本状态仍参与阶段C准入。",
+                                "normal");
+                }
+            }
+            else if(forceInteractionFtUsingLastConfirmedZero){
+                QMetaObject::invokeMethod(forceInteractionFtService, [this](){
+                    forceInteractionFtService->clearZero();
+                    forceInteractionFtServiceSnapshot =
+                            forceInteractionFtService->snapshot();
+                }, Qt::BlockingQueuedConnection);
+                forceInteractionFtUsingLastConfirmedZero = false;
+                displayInfo("已取消采用上次零漂；缓存仍保留，本轮恢复为预热判稳后人工取零流程。",
+                            "normal");
+            }
+        }
+        forceInteractionFtLastUiRefreshMs = -1;
+        refreshForceInteractionFtUi();
+    });
+    connect(ui->forceInteractionFtThresholdConfirmedCheckBox,
+            &QCheckBox::toggled, this,
+            [this](bool){
+        forceInteractionFtLastUiRefreshMs = -1;
+        refreshForceInteractionFtUi();
+    });
+    connect(ui->forceInteractionFtConfirmZeroButton, &QPushButton::clicked,
+            this, [this](){
+        QString error;
+        bool confirmed = false;
+        if(forceInteractionFtService){
+            QMetaObject::invokeMethod(forceInteractionFtService, [&](){
+                confirmed = forceInteractionFtService->confirmZero(&error);
+            }, Qt::BlockingQueuedConnection);
+        }
+        if(!confirmed){
+            displayInfo(QStringLiteral("六维F/T软件零点确认失败：%1")
+                        .arg(error.isEmpty() ? QStringLiteral("后台监测服务不可用") : error)
+                        .toStdString(), "error");
+        }
+        else{
+            FtSensorMonitoringService::Snapshot confirmedSnapshot;
+            if(forceInteractionFtService){
+                QMetaObject::invokeMethod(forceInteractionFtService, [&](){
+                    confirmedSnapshot = forceInteractionFtService->snapshot();
+                }, Qt::BlockingQueuedConnection);
+            }
+            const auto& zero = confirmedSnapshot.preheat.zero;
+            forceInteractionFtLastConfirmedZero = zero;
+            forceInteractionFtLastConfirmedZeroValid =
+                    confirmedSnapshot.preheat.zeroValid;
+            forceInteractionFtLastConfirmedZeroTime =
+                    QDateTime::currentDateTime().toString(
+                        QStringLiteral("yyyy-MM-dd HH:mm:ss"));
+            forceInteractionFtUsingLastConfirmedZero = false;
+            {
+                const QSignalBlocker blocker(
+                            ui->forceInteractionFtReuseLastZeroCheckBox);
+                ui->forceInteractionFtReuseLastZeroCheckBox->setChecked(false);
+            }
+            displayInfo(QStringLiteral("六维F/T软件零点已人工确认：b=[%1,%2,%3 N；%4,%5,%6 N·m]，使用完整统计窗均值，未调用传感器硬件清零。")
+                        .arg(zero[0], 0, 'f', 6).arg(zero[1], 0, 'f', 6)
+                        .arg(zero[2], 0, 'f', 6).arg(zero[3], 0, 'f', 6)
+                        .arg(zero[4], 0, 'f', 6).arg(zero[5], 0, 'f', 6)
+                        .toStdString(), "normal");
+        }
+        forceInteractionFtLastUiRefreshMs = -1;
+        refreshForceInteractionFtUi();
+    });
+    connect(ui->forceInteractionFtClearZeroButton, &QPushButton::clicked,
+            this, [this](){
+        if(forceInteractionFtService){
+            QMetaObject::invokeMethod(forceInteractionFtService, [this](){
+                forceInteractionFtService->clearZero();
+            }, Qt::BlockingQueuedConnection);
+            QMetaObject::invokeMethod(forceInteractionFtService, [this](){
+                forceInteractionFtServiceSnapshot =
+                        forceInteractionFtService->snapshot();
+            }, Qt::BlockingQueuedConnection);
+        }
+        forceInteractionFtAutomaticZeroReported = false;
+        forceInteractionFtLastConfirmedZero.fill(0.0);
+        forceInteractionFtLastConfirmedZeroValid = false;
+        forceInteractionFtLastConfirmedZeroTime.clear();
+        forceInteractionFtUsingLastConfirmedZero = false;
+        {
+            const QSignalBlocker blocker(
+                        ui->forceInteractionFtReuseLastZeroCheckBox);
+            ui->forceInteractionFtReuseLastZeroCheckBox->setChecked(false);
+        }
+        forceInteractionFtLastUiRefreshMs = -1;
+        displayInfo("六维F/T软件零点及当前程序内的上次零漂缓存已清除。", "normal");
+        refreshForceInteractionFtUi();
+    });
+    static const QStringList ftNames{
+        QStringLiteral("Fx"), QStringLiteral("Fy"), QStringLiteral("Fz"),
+        QStringLiteral("Mx"), QStringLiteral("My"), QStringLiteral("Mz")
+    };
+    for(int row = 0; row < ftNames.size(); ++row){
+        ui->forceInteractionFtValueTable->setItem(
+                    row, 0, new QTableWidgetItem(ftNames[row]));
+        for(int column = 1; column < 3; ++column){
+            ui->forceInteractionFtValueTable->setItem(
+                        row, column, new QTableWidgetItem(QStringLiteral("—")));
+        }
+    }
+    ui->forceInteractionFtValueTable->resizeColumnsToContents();
+    ui->forceInteractionFtValueTable->horizontalHeader()->setStretchLastSection(true);
+    refreshForceInteractionValidationInputState();
+    refreshForceInteractionActuatorProfileUi();
+    refreshForceInteractionTimingUi();
+    refreshForceInteractionRuntimeUi();
+    refreshTraceDelayCalibrationUi();
+    refreshForceInteractionFtUi();
+}
+
+FtSensorStabilityConfig MainWindow::forceInteractionFtStabilityConfigFromUi() const
+{
+    FtSensorStabilityConfig config;
+    if(!ui){
+        return config;
+    }
+    config.statisticsWindowS = ui->forceInteractionFtWindowSpinBox->value();
+    config.stableHoldS = ui->forceInteractionFtHoldSpinBox->value();
+    config.forceStdLimitN = ui->forceInteractionFtForceStdSpinBox->value();
+    config.momentStdLimitNm = ui->forceInteractionFtMomentStdSpinBox->value();
+    config.forceSlopeLimitNPerS = ui->forceInteractionFtForceSlopeSpinBox->value();
+    config.momentSlopeLimitNmPerS = ui->forceInteractionFtMomentSlopeSpinBox->value();
+    config.minimumEffectiveRate = ui->forceInteractionFtEffectiveRateSpinBox->value();
+    return config;
+}
+
+bool MainWindow::forceInteractionStageCAdmissionSnapshot(
+        FtSensorMonitoringService::Snapshot* snapshot,
+        QString* errorMessage)
+{
+    FtSensorMonitoringService::Snapshot current;
+    if(forceInteractionFtService){
+        QMetaObject::invokeMethod(forceInteractionFtService, [&](){
+            current = forceInteractionFtService->snapshot();
+        }, Qt::BlockingQueuedConnection);
+    }
+    QStringList missing;
+    if(!forceInteractionFtMonitoring || !current.monitoring){
+        missing << QStringLiteral("F/T后台监测未运行");
+    }
+    if(!current.traceConfigured){
+        missing << QStringLiteral("F/T PDO/Trace未取得完整读回");
+    }
+    if(!current.timingReliable){
+        missing << QStringLiteral("Trace时序未可信");
+    }
+    if(current.traceLost){
+        missing << QStringLiteral("Trace丢帧标志已锁存");
+    }
+    if(current.queueDroppedSamples > 0){
+        missing << QStringLiteral("F/T后台采集队列存在丢样");
+    }
+    if(!current.preheat.currentDataFresh){
+        missing << QStringLiteral("F/T有效样本超时");
+    }
+    if(!current.preheat.preheatQualified){
+        missing << QStringLiteral("预热连续判稳未完成");
+    }
+    if(!current.preheat.zeroValid){
+        missing << QStringLiteral("软件零点未确认");
+    }
+    if(!ui || !ui->forceInteractionFtThresholdConfirmedCheckBox ||
+            !ui->forceInteractionFtThresholdConfirmedCheckBox->isChecked()){
+        missing << QStringLiteral("实测判稳阈值未确认");
+    }
+    const FtSensorTraceSample& ft = current.latestSample;
+    if(!ft.wrenchComplete() || !ft.statusValid ||
+            !ft.sampleCounterValid || !ft.temperatureValid ||
+            !ft.traceFrameSequenceValid){
+        missing << QStringLiteral("最新F/T六维力/状态/计数/温度/Trace序号不完整");
+    }
+    // 厂家当前正常样例与实机连续采集均为0。状态位定义完善前，非零状态
+    // 一律拒绝进入真实力驱动，不能只在界面上提示后继续运动。
+    if(ft.statusValid && ft.statusCode != 0u){
+        missing << QStringLiteral("F/T状态码非零");
+    }
+    if(snapshot){
+        *snapshot = current;
+    }
+    if(errorMessage){
+        *errorMessage = missing.join(QStringLiteral("、"));
+    }
+    return missing.isEmpty();
+}
+
+void MainWindow::setForceInteractionFtTraceConsumptionMode(
+        HardwareInterface::RuntimeTraceUsageProfile expectedProfile,
+        bool externalTraceReaderActive)
+{
+    if(!forceInteractionFtService){
+        return;
+    }
+    QMetaObject::invokeMethod(forceInteractionFtService, [=](){
+        forceInteractionFtService->setTraceConsumptionMode(
+                    expectedProfile, externalTraceReaderActive);
+    }, Qt::BlockingQueuedConnection);
+    forceInteractionFtLastUiRefreshMs = -1;
+}
+
+void MainWindow::restoreForceInteractionFtMonitoringProfile()
+{
+    if(!forceInteractionFtMonitoring || !forceInteractionFtOwnsTraceProfile){
+        return;
+    }
+    hardwareInterface.setRuntimeTraceUsageProfile(
+                forceInteractionFtMonitoringTraceProfile);
+    setForceInteractionFtTraceConsumptionMode(
+                forceInteractionFtMonitoringTraceProfile, false);
+}
+
+void MainWindow::startForceInteractionFtMonitoring()
+{
+    if(!ui || forceInteractionFtMonitoring){
+        return;
+    }
+    if(!ui->devUseLS->isChecked() || !hardwareInterface.isLSConnected()){
+        displayInfo("六维F/T预热监测启动失败：请先连接控制卡并确认EtherCAT总线在线。",
+                    "error");
+        return;
+    }
+    if(currentRobotState(false).anyMotionRunning){
+        displayInfo("六维F/T预热监测启动失败：当前存在运动任务。传感器单独调试不会抢占运动Trace。",
+                    "error");
+        return;
+    }
+    const HardwareInterface::RuntimeTraceUsageProfile previousTraceProfile =
+            hardwareInterface.runtimeTraceUsageProfile();
+    HardwareInterface::RuntimeTraceUsageProfile monitoringTraceProfile =
+            HardwareInterface::RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning;
+    if(previousTraceProfile ==
+            HardwareInterface::RuntimeTraceUsageProfile::ForceInteractionVelocity ||
+            previousTraceProfile ==
+            HardwareInterface::RuntimeTraceUsageProfile::PresetOnlineVelocity){
+        // 使用六维力交互临时执行器模板启动整机后，8轴位置/速度/状态字
+        // Trace仍承担静止状态下的安全反馈。在线速度运行模式的Preset profile
+        // 同样只是无运动时的待机配置。预热监测必须在其上增加F/T对象，不能
+        // 将这两种空闲的8轴profile误判成外部测试占用，也不能切成纯F/T。
+        monitoringTraceProfile =
+                HardwareInterface::RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt;
+    }
+    else if(previousTraceProfile !=
+            HardwareInterface::RuntimeTraceUsageProfile::Base){
+        displayInfo(QStringLiteral("六维F/T预热监测启动失败：Runtime Trace正被其他测试占用（profile=%1）。")
+                    .arg(static_cast<int>(previousTraceProfile)).toStdString(), "error");
+        return;
+    }
+
+    hardwareInterface.setForceSensorTraceSamplePeriodUs(
+                selectedForceInteractionBusCycleUs());
+    if(!hardwareInterface.setRuntimeTraceUsageProfile(monitoringTraceProfile)){
+        displayInfo("六维F/T预热监测启动失败：0x4000~0x4008 Trace配置或读回不通过。",
+                    "error");
+        return;
+    }
+    forceInteractionFtPreviousTraceProfile = previousTraceProfile;
+    forceInteractionFtMonitoringTraceProfile = monitoringTraceProfile;
+    forceInteractionFtOwnsTraceProfile = true;
+    QString recordPath;
+    QString recordError;
+    const QString recordDirectory = QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("data/outputmsg/force_interaction_runs"));
+    bool serviceStarted = false;
+    if(forceInteractionFtService){
+        const FtSensorStabilityConfig stabilityConfig =
+                forceInteractionFtStabilityConfigFromUi();
+        const bool previouslyPowered =
+                ui->forceInteractionFtPreviouslyPoweredCheckBox->isChecked();
+        // 阈值确认只是阶段C的操作员准入声明，不兼任自动取零开关。
+        // 当前UI流程统一为：判稳完成后，由操作员点击“确认当前零漂”。
+        const bool automaticZeroEnabled = false;
+        QMetaObject::invokeMethod(forceInteractionFtService, [&](){
+            serviceStarted = forceInteractionFtService->startMonitoring(
+                        stabilityConfig,
+                        previouslyPowered,
+                        automaticZeroEnabled,
+                        monitoringTraceProfile,
+                        recordDirectory,
+                        &recordPath,
+                        &recordError);
+        }, Qt::BlockingQueuedConnection);
+    }
+    if(!serviceStarted){
+        hardwareInterface.setRuntimeTraceUsageProfile(previousTraceProfile);
+        forceInteractionFtOwnsTraceProfile = false;
+        displayInfo(QStringLiteral("六维F/T预热监测启动失败：原始数据记录器无法启动：%1")
+                    .arg(recordError.isEmpty() ?
+                             QStringLiteral("后台监测服务不可用") : recordError)
+                    .toStdString(), "error");
+        return;
+    }
+    forceInteractionFtMonitoring = true;
+    forceInteractionFtTraceConfigured = true;
+    forceInteractionLatestFtSample = FtSensorTraceSample{};
+    forceInteractionFtLastUiRefreshMs = -1;
+    forceInteractionFtAutomaticZeroReported = false;
+    forceInteractionFtLastJudgementStateKey.clear();
+    forceInteractionFtUsingLastConfirmedZero = false;
+    QString reuseError;
+    if(ui->forceInteractionFtReuseLastZeroCheckBox->isChecked()){
+        bool restored = false;
+        if(forceInteractionFtLastConfirmedZeroValid && forceInteractionFtService){
+            QMetaObject::invokeMethod(forceInteractionFtService, [&](){
+                restored = forceInteractionFtService->restoreConfirmedZero(
+                            forceInteractionFtLastConfirmedZero, &reuseError);
+                forceInteractionFtServiceSnapshot =
+                        forceInteractionFtService->snapshot();
+            }, Qt::BlockingQueuedConnection);
+        }
+        if(restored){
+            forceInteractionFtUsingLastConfirmedZero = true;
+        }
+        else{
+            const QSignalBlocker blocker(
+                        ui->forceInteractionFtReuseLastZeroCheckBox);
+            ui->forceInteractionFtReuseLastZeroCheckBox->setChecked(false);
+            displayInfo(QStringLiteral("上次零漂未能恢复，本轮继续按正常预热取零流程：%1")
+                        .arg(reuseError.isEmpty() ?
+                                 QStringLiteral("缓存不可用") : reuseError)
+                        .toStdString(), "warning");
+        }
+    }
+    displayInfo((forceInteractionFtUsingLastConfirmedZero ?
+                 QStringLiteral("六维F/T监测已启动：已采用上次人工确认零漂，跳过本轮预热等待；仍实时检查PDO/Trace、样本新鲜度和状态码。") :
+                 (ui->forceInteractionFtPreviouslyPoweredCheckBox->isChecked() ?
+                  QStringLiteral("六维F/T预热监测已启动：传感器已提前通电，仍强制观察至少3分钟。") :
+                  QStringLiteral("六维F/T预热监测已启动：常规预热观察至少15分钟。")))
+                .append(QStringLiteral(" 原始CSV=%1").arg(recordPath))
+                .toStdString(), "normal");
+    refreshForceInteractionFtUi();
+}
+
+void MainWindow::stopForceInteractionFtMonitoring()
+{
+    if(!forceInteractionFtMonitoring){
+        return;
+    }
+    FtSensorMonitoringService::StopReport stopReport;
+    if(forceInteractionFtService){
+        QMetaObject::invokeMethod(forceInteractionFtService, [&](){
+            stopReport = forceInteractionFtService->stopMonitoring();
+        }, Qt::BlockingQueuedConnection);
+    }
+    forceInteractionFtMonitoring = false;
+    forceInteractionFtTraceConfigured = false;
+    forceInteractionFtServiceSnapshot = FtSensorMonitoringService::Snapshot{};
+    forceInteractionFtServiceSnapshot.preheat = stopReport.finalStatus;
+    forceInteractionLatestFtSample = FtSensorTraceSample{};
+    forceInteractionFtAutomaticZeroReported = false;
+    forceInteractionFtLastJudgementStateKey.clear();
+    forceInteractionFtUsingLastConfirmedZero = false;
+    bool traceRestored = true;
+    if(forceInteractionFtOwnsTraceProfile){
+        if(hardwareInterface.runtimeTraceUsageProfile() ==
+                forceInteractionFtMonitoringTraceProfile){
+            traceRestored = hardwareInterface.setRuntimeTraceUsageProfile(
+                        forceInteractionFtPreviousTraceProfile);
+        }
+        else{
+            // profile已被别的流程合法切换时不再覆盖，避免预热退出误伤新任务。
+            traceRestored = false;
+        }
+    }
+    forceInteractionFtOwnsTraceProfile = false;
+    displayInfo(QStringLiteral("六维F/T预热监测已停止；%1，F/T Trace已退出%2。"
+                               "原始记录接受/写入/写盘丢弃=%3/%4/%5，后台队列丢弃=%6；"
+                               "Trace接收/完整/重复/无效/序号缺口=%7/%8/%9/%10/%11，"
+                               "有效帧率=%12%，预热资格=%13，停止时实时判稳=%14，CSV=%15")
+                .arg(stopReport.finalStatus.preheatQualified &&
+                     stopReport.finalStatus.zeroValid ?
+                         QStringLiteral("已确认的预热资格和软件零点已保留") :
+                         QStringLiteral("当前没有有效软件零点"))
+                .arg(traceRestored ? QStringLiteral("并恢复进入前配置") :
+                                     QStringLiteral("，但进入前Trace配置未恢复，请检查当前任务"))
+                .arg(stopReport.acceptedForRecording)
+                .arg(stopReport.written)
+                .arg(stopReport.recorderDropped)
+                .arg(stopReport.queueDropped)
+                .arg(stopReport.finalStatus.receivedTraceSamples)
+                .arg(stopReport.finalStatus.completeTraceSamples)
+                .arg(stopReport.finalStatus.duplicateSensorSamples)
+                .arg(stopReport.finalStatus.rejectedSamples)
+                .arg(stopReport.finalStatus.missingTraceFrames)
+                .arg(stopReport.finalStatus.effectiveRate * 100.0, 0, 'f', 4)
+                .arg(stopReport.finalStatus.preheatQualified ?
+                         QStringLiteral("已锁存") : QStringLiteral("未取得"))
+                .arg(stopReport.finalStatus.stable ? QStringLiteral("通过") :
+                                                    QStringLiteral("未通过"))
+                .arg(stopReport.recordPath).toStdString(),
+                "normal");
+    refreshForceInteractionFtUi();
+}
+
+void MainWindow::resetForceInteractionHardwareSessionForDisconnect(
+        const QString& reason)
+{
+    // Stage A and completed offline analyses are hardware-independent and are
+    // deliberately retained. Everything below belongs to the current board /
+    // Trace / F/T hardware session and must not leak into the next connection.
+    if(controlWorker && ccThread && ccThread->isRunning()){
+        const ForceInteractionRuntimeStatus runtimeStatus =
+                controlWorker->forceInteractionRuntimeStatus();
+        const bool runtimeLocked =
+                runtimeStatus.state == ForceInteractionRuntimeStatus::State::Prepared ||
+                runtimeStatus.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
+                runtimeStatus.state == ForceInteractionRuntimeStatus::State::Running ||
+                runtimeStatus.state == ForceInteractionRuntimeStatus::State::Braking;
+        if(runtimeLocked){
+            stopForceInteractionRuntime(
+                        runtimeStatus.state !=
+                            ForceInteractionRuntimeStatus::State::Prepared,
+                        reason);
+        }
+
+        if(controlWorker->traceDelayCalibrationStatus().active){
+            QMetaObject::invokeMethod(controlWorker, [this, reason](){
+                controlWorker->stopTraceDelayCalibration(true, reason);
+            }, Qt::BlockingQueuedConnection);
+        }
+    }
+    if(traceDelayCalibrationSnapshotGraceActive){
+        endHardwareExclusiveSnapshotTimeout();
+        traceDelayCalibrationSnapshotGraceActive = false;
+        traceDelayCalibrationAwaitingFreshSnapshot = false;
+        traceDelayCalibrationTerminalSnapshotSequence = 0;
+    }
+
+    // Stop the recorder/consumer while the controller and its current Trace
+    // profile are still available. The active-session zero is invalidated, but
+    // the last manually confirmed value is retained for an explicit operator
+    // choice when the sensor has not lost power.
+    if(forceInteractionFtMonitoring){
+        stopForceInteractionFtMonitoring();
+    }
+    if(forceInteractionFtService){
+        QMetaObject::invokeMethod(forceInteractionFtService, [this](){
+            forceInteractionFtService->clearZero();
+            forceInteractionFtServiceSnapshot =
+                    forceInteractionFtService->snapshot();
+        }, Qt::BlockingQueuedConnection);
+    }
+    forceInteractionFtMonitoring = false;
+    forceInteractionFtTraceConfigured = false;
+    forceInteractionFtOwnsTraceProfile = false;
+    forceInteractionFtPreviousTraceProfile =
+            HardwareInterface::RuntimeTraceUsageProfile::Base;
+    forceInteractionFtMonitoringTraceProfile =
+            HardwareInterface::RuntimeTraceUsageProfile::Base;
+    forceInteractionLatestFtSample = FtSensorTraceSample{};
+    forceInteractionFtServiceSnapshot = FtSensorMonitoringService::Snapshot{};
+    forceInteractionFtAutomaticZeroReported = false;
+    forceInteractionFtUsingLastConfirmedZero = false;
+    forceInteractionFtLastJudgementStateKey.clear();
+    forceInteractionFtLastUiRefreshMs = -1;
+    if(ui && ui->forceInteractionFtReuseLastZeroCheckBox){
+        const QSignalBlocker blocker(
+                    ui->forceInteractionFtReuseLastZeroCheckBox);
+        ui->forceInteractionFtReuseLastZeroCheckBox->setChecked(false);
+    }
+
+    runtimeState.forceInteractionRuntimeActive = false;
+    forceInteractionRuntimePhysicalWorkspaceValid = false;
+    forceInteractionRuntimeForwardKinematicsConfigValid = false;
+    forceInteractionRuntimeReplayContextValid = false;
+    forceInteractionRuntimeInitialPoseMmRad.clear();
+    forceInteractionRuntimeLastForwardPose.clear();
+    forceInteractionRuntimeLastForwardEquationCount = 0;
+    forceInteractionRuntimeLastForwardRmsResidualMm = 0.0;
+    forceInteractionRuntimeLastForwardMaximumResidualMm = 0.0;
+    forceInteractionRuntimeLastForwardTerminationType = 0;
+    forceInteractionRuntimeLastForwardIterationCount = 0;
+    forceInteractionRuntimeLastForwardTraceSequence = 0;
+    forceInteractionRuntimeLastForwardSolveMs = -1;
+    forceInteractionRuntimeFinalizing = false;
+
+    if(controlWorker && ccThread && ccThread->isRunning()){
+        QMetaObject::invokeMethod(controlWorker, [this](){
+            controlWorker->resetForceInteractionRuntimeSession();
+        }, Qt::BlockingQueuedConnection);
+    }
+    refreshForceInteractionFtUi();
+    refreshTraceDelayCalibrationUi();
     refreshForceInteractionValidationInputState();
     refreshForceInteractionRuntimeUi();
+    displayInfo(QStringLiteral(
+                    "六维力交互硬件会话已随断连复位：F/T监测、本轮预热资格、活动软件零点及阶段B/C准备/运行态均已清除；实测阈值确认与上次人工确认零漂缓存保留。若传感器未断电，可在重新监测时主动勾选复用。阶段A与离线日志保留。原因=%1")
+                .arg(reason).toStdString(), "normal");
+}
+
+void MainWindow::refreshForceInteractionFtUi()
+{
+    if(!ui || !ui->forceInteractionFtTraceStateLabel){
+        return;
+    }
+    const qint64 nowUs = mainWindowMonotonicUs();
+    const qint64 nowMs = nowUs / 1000;
+    if(forceInteractionFtMonitoring &&
+            (forceInteractionFtLastUiRefreshMs < 0 ||
+             nowMs - forceInteractionFtLastUiRefreshMs >= 200)){
+        forceInteractionFtLastUiRefreshMs = nowMs;
+        if(forceInteractionFtService){
+            QMetaObject::invokeMethod(forceInteractionFtService, [&](){
+                forceInteractionFtServiceSnapshot =
+                        forceInteractionFtService->snapshot();
+            }, Qt::BlockingQueuedConnection);
+        }
+        forceInteractionFtTraceConfigured =
+                forceInteractionFtServiceSnapshot.traceConfigured;
+        forceInteractionLatestFtSample =
+                forceInteractionFtServiceSnapshot.latestSample;
+        if(forceInteractionFtServiceSnapshot.automaticZeroConfirmed &&
+                !forceInteractionFtAutomaticZeroReported){
+            forceInteractionFtAutomaticZeroReported = true;
+            const auto& zero = forceInteractionFtServiceSnapshot.preheat.zero;
+            displayInfo(QStringLiteral("六维F/T自动零点确认完成：b=[%1,%2,%3 N；%4,%5,%6 N·m]；后台预热时长、滑窗判稳、持续保持和实测阈值均已满足。")
+                        .arg(zero[0], 0, 'f', 6).arg(zero[1], 0, 'f', 6)
+                        .arg(zero[2], 0, 'f', 6).arg(zero[3], 0, 'f', 6)
+                        .arg(zero[4], 0, 'f', 6).arg(zero[5], 0, 'f', 6)
+                        .toStdString(), "normal");
+        }
+        ui->forceInteractionFtTraceStateLabel->setText(
+                    QStringLiteral("%1；Trace周期=%2 us，数据链=%3")
+                    .arg(forceInteractionFtTraceConfigured ?
+                             QStringLiteral("F/T后台采集正常") :
+                             QStringLiteral("等待完整F/T帧"))
+                    .arg(forceInteractionFtServiceSnapshot.traceSamplePeriodUs)
+                    .arg(!forceInteractionFtServiceSnapshot.timingReliable ||
+                         forceInteractionFtServiceSnapshot.traceLost ||
+                         forceInteractionFtServiceSnapshot.queueDroppedSamples > 0 ?
+                             QStringLiteral("异常，详见日志") :
+                             QStringLiteral("正常")));
+    }
+
+    const FtSensorPreheatStatus status =
+            forceInteractionFtServiceSnapshot.preheat;
+    if(forceInteractionFtLastConfirmedZeroValid){
+        const auto& zero = forceInteractionFtLastConfirmedZero;
+        ui->forceInteractionFtLastZeroLabel->setText(
+                    QStringLiteral("上次零漂（%1）：[%2, %3, %4 N；%5, %6, %7 N·m]")
+                    .arg(forceInteractionFtLastConfirmedZeroTime.isEmpty() ?
+                             QStringLiteral("本次程序") :
+                             forceInteractionFtLastConfirmedZeroTime)
+                    .arg(zero[0], 0, 'f', 4).arg(zero[1], 0, 'f', 4)
+                    .arg(zero[2], 0, 'f', 4).arg(zero[3], 0, 'f', 5)
+                    .arg(zero[4], 0, 'f', 5).arg(zero[5], 0, 'f', 5));
+    }
+    else{
+        ui->forceInteractionFtLastZeroLabel->setText(
+                    QStringLiteral("上次零漂：暂无可复用值"));
+    }
+    if(forceInteractionFtMonitoring){
+        QString judgementStateKey;
+        if(!status.currentDataFresh && status.statisticsAvailable){
+            judgementStateKey = QStringLiteral("data_stale");
+        }
+        else if(status.preheatQualified && status.zeroValid){
+            judgementStateKey = QStringLiteral("qualified");
+        }
+        else if(status.stable){
+            judgementStateKey = QStringLiteral("ready");
+        }
+        else if(status.candidatePaused){
+            judgementStateKey = QStringLiteral("paused");
+        }
+        else if(status.candidateActive && status.stabilityConditionsSatisfied){
+            judgementStateKey = QStringLiteral("confirming");
+        }
+        else if(status.statisticsAvailable &&
+                !status.stabilityConditionsSatisfied){
+            judgementStateKey = QStringLiteral("reset");
+        }
+        else{
+            judgementStateKey = QStringLiteral("collecting");
+        }
+        if(judgementStateKey != forceInteractionFtLastJudgementStateKey){
+            forceInteractionFtLastJudgementStateKey = judgementStateKey;
+            const bool warningState = judgementStateKey == QStringLiteral("paused") ||
+                    judgementStateKey == QStringLiteral("data_stale") ||
+                    judgementStateKey == QStringLiteral("reset");
+            displayInfo(QStringLiteral("六维F/T判稳状态切换：%1")
+                        .arg(status.message).toStdString(),
+                        warningState ? "warning" : "normal");
+        }
+    }
+    for(int row = 0; row < kFtSensorWrenchChannelCount; ++row){
+        const bool force = row < 3;
+        const QString unit = force ? QStringLiteral(" N") : QStringLiteral(" N·m");
+        const auto setText = [&](int column, const QString& text){
+            QTableWidgetItem* item = ui->forceInteractionFtValueTable->item(row, column);
+            if(item){
+                item->setText(text);
+            }
+        };
+        if(forceInteractionLatestFtSample.channelValid[row]){
+            const double corrected = forceInteractionLatestFtSample.value[row] -
+                    (status.zeroValid ? status.zero[row] : 0.0);
+            setText(1, QString::number(
+                        forceInteractionLatestFtSample.value[row], 'f', 5) + unit);
+            setText(2, status.zeroValid ?
+                        QString::number(corrected, 'f', 5) + unit :
+                        QStringLiteral("未确认零点"));
+        }
+    }
+    if(forceInteractionLatestFtSample.wrenchComplete()){
+        ui->forceInteractionFtFrameStateLabel->setText(
+                    QStringLiteral("当前数据有效；状态码=0x%1，温度=%2 °C，软件零点=%3")
+                    .arg(forceInteractionLatestFtSample.statusCode, 8, 16,
+                         QLatin1Char('0')).toUpper()
+                    .arg(forceInteractionLatestFtSample.temperatureC, 0, 'f', 1)
+                    .arg(status.zeroValid ? QStringLiteral("有效") :
+                                            QStringLiteral("未确认")));
+    }
+    if(forceInteractionFtMonitoring){
+        const QString preheatState = forceInteractionFtUsingLastConfirmedZero &&
+                status.preheatQualified && status.zeroValid ?
+                    QStringLiteral("已采用上次人工确认零漂，本轮预热等待已跳过（当前滑窗=%1）")
+                        .arg(!status.currentDataFresh ?
+                                 QStringLiteral("数据超时") :
+                                 (status.stabilityConditionsSatisfied ?
+                                      QStringLiteral("稳定") : QStringLiteral("波动"))) :
+                (status.preheatQualified && status.zeroValid ?
+                    QStringLiteral("预热资格已锁存、软件零点有效（当前滑窗=%1）")
+                        .arg(!status.currentDataFresh ?
+                                 QStringLiteral("数据超时") :
+                                 (status.stabilityConditionsSatisfied ?
+                                      QStringLiteral("稳定") : QStringLiteral("波动"))) :
+                    status.message);
+        ui->forceInteractionFtPreheatStateLabel->setText(
+                    QStringLiteral("%1；观察=%2/%3 s，稳定窗口=%4 s，数据质量=%5")
+                    .arg(preheatState)
+                    .arg(status.elapsedS, 0, 'f', 1)
+                    .arg(status.requiredObservationS, 0, 'f', 0)
+                    .arg(status.windowSpanS, 0, 'f', 1)
+                    .arg(status.effectiveRate >=
+                         forceInteractionFtStabilityConfigFromUi().minimumEffectiveRate &&
+                         forceInteractionFtServiceSnapshot.timingReliable &&
+                         !forceInteractionFtServiceSnapshot.traceLost &&
+                         forceInteractionFtServiceSnapshot.queueDroppedSamples == 0 ?
+                             QStringLiteral("正常") :
+                             QStringLiteral("异常，详见日志")));
+    }
+    else{
+        const FtSensorStabilityConfig pendingConfig =
+                forceInteractionFtStabilityConfigFromUi();
+        const bool previouslyPowered =
+                ui->forceInteractionFtPreviouslyPoweredCheckBox->isChecked();
+        const double requiredObservationS = previouslyPowered ?
+                    pendingConfig.previouslyPoweredMinimumObservationS :
+                    pendingConfig.normalMinimumObservationS;
+        if(ui->forceInteractionFtReuseLastZeroCheckBox->isChecked() &&
+                forceInteractionFtLastConfirmedZeroValid){
+            ui->forceInteractionFtPreheatStateLabel->setText(
+                        QStringLiteral("未开始F/T监测；启动后将采用上次人工确认零漂并跳过本轮预热等待，实时数据链仍须通过检查"));
+        }
+        else{
+            ui->forceInteractionFtPreheatStateLabel->setText(
+                    QStringLiteral("未开始预热监测；下一轮=%1，观察=0/%2 s，统计窗=%3 s")
+                    .arg(previouslyPowered ?
+                             QStringLiteral("提前预热模式") :
+                             QStringLiteral("常规预热模式"))
+                    .arg(requiredObservationS, 0, 'f', 0)
+                    .arg(pendingConfig.statisticsWindowS, 0, 'f', 1));
+        }
+        ui->forceInteractionFtTraceStateLabel->setText(
+                    QStringLiteral("F/T Trace未启动"));
+        ui->forceInteractionFtFrameStateLabel->setText(
+                    QStringLiteral("尚无有效F/T数据"));
+        for(int row = 0; row < kFtSensorWrenchChannelCount; ++row){
+            for(int column = 1; column < 3; ++column){
+                if(QTableWidgetItem* item =
+                        ui->forceInteractionFtValueTable->item(row, column)){
+                    item->setText(QStringLiteral("—"));
+                }
+            }
+        }
+    }
+    const ForceInteractionRuntimeStatus runtimeStatus = controlWorker ?
+                controlWorker->forceInteractionRuntimeStatus() :
+                ForceInteractionRuntimeStatus{};
+    const bool stageCLocked = runtimeStatus.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace &&
+            (runtimeStatus.state == ForceInteractionRuntimeStatus::State::Prepared ||
+             runtimeStatus.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
+             runtimeStatus.state == ForceInteractionRuntimeStatus::State::Running ||
+             runtimeStatus.state == ForceInteractionRuntimeStatus::State::Braking);
+    const bool hardwareSessionReady = hardwareInterface.isLSConnected() &&
+            runtimeState.systemRunning;
+    ui->forceInteractionFtStartButton->setEnabled(hardwareSessionReady &&
+                                                   !forceInteractionFtMonitoring &&
+                                                   !stageCLocked);
+    // 阶段C从准备起就冻结零点并依赖连续F/T数据，禁止中途停止后台服务。
+    ui->forceInteractionFtStopButton->setEnabled(forceInteractionFtMonitoring &&
+                                                 !stageCLocked);
+    ui->forceInteractionFtPreviouslyPoweredCheckBox->setEnabled(!forceInteractionFtMonitoring);
+    ui->forceInteractionFtReuseLastZeroCheckBox->setEnabled(
+                forceInteractionFtLastConfirmedZeroValid && !stageCLocked);
+    ui->forceInteractionFtWindowSpinBox->setEnabled(!forceInteractionFtMonitoring);
+    ui->forceInteractionFtHoldSpinBox->setEnabled(!forceInteractionFtMonitoring);
+    ui->forceInteractionFtForceStdSpinBox->setEnabled(!forceInteractionFtMonitoring);
+    ui->forceInteractionFtMomentStdSpinBox->setEnabled(!forceInteractionFtMonitoring);
+    ui->forceInteractionFtForceSlopeSpinBox->setEnabled(!forceInteractionFtMonitoring);
+    ui->forceInteractionFtMomentSlopeSpinBox->setEnabled(!forceInteractionFtMonitoring);
+    ui->forceInteractionFtEffectiveRateSpinBox->setEnabled(!forceInteractionFtMonitoring);
+    // 阈值确认是操作员的准入确认，不会改变当前统计窗。
+    // 监测期间仍允许勾选，避免停止采集、丢失状态后重跑整个预热流程。
+    ui->forceInteractionFtThresholdConfirmedCheckBox->setEnabled(!stageCLocked);
+    ui->forceInteractionFtConfirmZeroButton->setEnabled(
+                forceInteractionFtMonitoring &&
+                status.stable && !stageCLocked);
+    ui->forceInteractionFtClearZeroButton->setEnabled(!stageCLocked);
+
+    QStringList missingAdmissionItems;
+    if(!forceInteractionFtTraceConfigured){
+        missingAdmissionItems << QStringLiteral("F/T PDO/Trace未运行");
+    }
+    else{
+        if(!forceInteractionFtServiceSnapshot.timingReliable){
+            missingAdmissionItems << QStringLiteral("Trace时序未可信");
+        }
+        if(forceInteractionFtServiceSnapshot.traceLost){
+            missingAdmissionItems << QStringLiteral("Trace丢帧标志已锁存");
+        }
+        if(forceInteractionFtServiceSnapshot.queueDroppedSamples > 0){
+            missingAdmissionItems << QStringLiteral("后台采集队列存在丢样");
+        }
+        if(!status.currentDataFresh){
+            missingAdmissionItems << QStringLiteral("F/T有效样本超时");
+        }
+    }
+    if(!status.preheatQualified){
+        missingAdmissionItems << QStringLiteral("预热连续判稳未完成");
+    }
+    if(!status.zeroValid){
+        missingAdmissionItems << QStringLiteral("软件零点未确认");
+    }
+    if(!ui->forceInteractionFtThresholdConfirmedCheckBox->isChecked()){
+        missingAdmissionItems << QStringLiteral("实测判稳阈值未确认");
+    }
+    const FtSensorTraceSample& latestAdmissionSample =
+            forceInteractionFtServiceSnapshot.latestSample;
+    if(!latestAdmissionSample.wrenchComplete() ||
+            !latestAdmissionSample.statusValid ||
+            !latestAdmissionSample.sampleCounterValid ||
+            !latestAdmissionSample.temperatureValid ||
+            !latestAdmissionSample.traceFrameSequenceValid){
+        missingAdmissionItems << QStringLiteral("最新F/T完整对象不足");
+    }
+    else if(latestAdmissionSample.statusCode != 0u){
+        missingAdmissionItems << QStringLiteral("F/T状态码非零");
+    }
+    ui->forceInteractionFtStageCAdmissionLabel->setText(
+                missingAdmissionItems.isEmpty() ?
+                    QStringLiteral("阶段C传感器准入通过：PDO、连续采样、%1、软件零点和实测阈值均有效；真实力驱动仍需单独启动流程。")
+                        .arg(forceInteractionFtUsingLastConfirmedZero ?
+                                 QStringLiteral("上次零漂复用资格") :
+                                 QStringLiteral("本轮预热判稳")) :
+                    QStringLiteral("阶段C准入未通过：%1；真实力驱动电机保持关闭。")
+                        .arg(missingAdmissionItems.join(QStringLiteral("、"))));
+    if(ui->forceInteractionStageCAdmissionSummaryLabel){
+        ui->forceInteractionStageCAdmissionSummaryLabel->setText(
+                    missingAdmissionItems.isEmpty() ?
+                        QStringLiteral("传感器准入通过：可准备阶段C；准备时将冻结当前软件零点。") :
+                        QStringLiteral("传感器准入未通过：%1")
+                            .arg(missingAdmissionItems.join(QStringLiteral("、"))));
+    }
+    if(ui->forceInteractionStageCLiveFtLabel){
+        if(forceInteractionLatestFtSample.wrenchComplete()){
+            ForceInteractionVector6 corrected = forceInteractionLatestFtSample.value;
+            if(status.zeroValid){
+                for(int channel = 0; channel < kForceInteractionDofCount; ++channel){
+                    corrected[static_cast<size_t>(channel)] -=
+                            status.zero[static_cast<size_t>(channel)];
+                }
+            }
+            ui->forceInteractionStageCLiveFtLabel->setText(
+                        QStringLiteral("当前去零F/T：[%1, %2, %3 N；%4, %5, %6 N·m]，状态=0x%7，计数=%8，温度=%9 °C")
+                        .arg(corrected[0], 0, 'f', 3)
+                        .arg(corrected[1], 0, 'f', 3)
+                        .arg(corrected[2], 0, 'f', 3)
+                        .arg(corrected[3], 0, 'f', 4)
+                        .arg(corrected[4], 0, 'f', 4)
+                        .arg(corrected[5], 0, 'f', 4)
+                        .arg(forceInteractionLatestFtSample.statusCode, 8, 16,
+                             QLatin1Char('0'))
+                        .arg(forceInteractionLatestFtSample.sampleCounter)
+                        .arg(forceInteractionLatestFtSample.temperatureC, 0, 'f', 1));
+        }
+        else{
+            ui->forceInteractionStageCLiveFtLabel->setText(
+                        QStringLiteral("实时F/T：等待完整六维样本"));
+        }
+    }
+}
+
+void MainWindow::startTraceDelayCalibration(bool allAxes)
+{
+    if(!controlWorker || !ui) return;
+    if(traceDelayCalibrationSnapshotGraceActive){
+        displayInfo("Trace延迟标定尚在等待Trace恢复后的新控制快照，请稍候。", "warning");
+        return;
+    }
+    TraceDelayCalibrationConfig config;
+    config.axis = selectedTraceDelayLogicalAxis();
+    config.allAxes = allAxes;
+    config.actuatorProfileKey = forceInteractionActuatorProfileKey();
+    config.axisEquivalentPulsePerUnit = configuredLeadshineAxisEquivForAxis(config.axis);
+    config.speeds = {{ui->forceInteractionTraceDelayV1SpinBox->value(),
+                      ui->forceInteractionTraceDelayV2SpinBox->value(),
+                      ui->forceInteractionTraceDelayV3SpinBox->value()}};
+    config.holdMs = ui->forceInteractionTraceDelayHoldSpinBox->value();
+    config.sampleWindowMs = ui->forceInteractionTraceDelayWindowSpinBox->value();
+    config.restMs = ui->forceInteractionTraceDelayRestSpinBox->value();
+    config.maximumSegmentTravelUnit = ui->forceInteractionTraceDelayTravelSpinBox->value();
+    config.onlineChangeTimeS = 0.001;
+    config.recordingDirectory = QDir(QCoreApplication::applicationDirPath())
+            .filePath(QStringLiteral("data/outputmsg/trace_delay_calibration"));
+    bool started = false;
+    QString error;
+    beginHardwareExclusiveSnapshotTimeout(kTraceDelayCalibrationSnapshotTimeoutMs);
+    traceDelayCalibrationSnapshotGraceActive = true;
+    traceDelayCalibrationAwaitingFreshSnapshot = false;
+    traceDelayCalibrationTerminalSnapshotSequence = 0;
+    QMetaObject::invokeMethod(controlWorker, [&](){
+        started = controlWorker->startTraceDelayCalibration(config, &error);
+    }, Qt::BlockingQueuedConnection);
+    if(!started){
+        endHardwareExclusiveSnapshotTimeout();
+        traceDelayCalibrationSnapshotGraceActive = false;
+    }
+    displayInfo((started
+                ? QStringLiteral("Trace 延迟标定已启动：%1，速度序列=±%2/±%3/±%4 °/s；不会自动使能电机")
+                    .arg(allAxes ? QStringLiteral("依次标定8根绳索电机")
+                                 : ui->forceInteractionTraceDelayAxisComboBox->currentText())
+                    .arg(config.speeds[0], 0, 'f', 3)
+                    .arg(config.speeds[1], 0, 'f', 3)
+                    .arg(config.speeds[2], 0, 'f', 3)
+                : QStringLiteral("错误：Trace 延迟标定启动失败：%1").arg(error)).toStdString(),
+                started ? "info" : "error");
+    refreshTraceDelayCalibrationUi();
+}
+
+void MainWindow::stopTraceDelayCalibration()
+{
+    if(!controlWorker) return;
+    QMetaObject::invokeMethod(controlWorker, [this](){
+        controlWorker->stopTraceDelayCalibration(false, QStringLiteral("用户停止标定"));
+    }, Qt::BlockingQueuedConnection);
+    refreshTraceDelayCalibrationUi();
+}
+
+void MainWindow::recalculateTraceDelayCalibration()
+{
+    if(!controlWorker) return;
+    bool valid = false;
+    QString error;
+    QMetaObject::invokeMethod(controlWorker, [&](){
+        valid = controlWorker->recalculateLastTraceDelayCalibration(&error);
+    }, Qt::BlockingQueuedConnection);
+    displayInfo((valid ? QStringLiteral("最近一次 Trace 原始数据重算通过")
+                      : QStringLiteral("Trace 原始数据重算未通过：%1").arg(error)).toStdString(),
+                valid ? "info" : "error");
+    refreshTraceDelayCalibrationUi();
+}
+
+void MainWindow::openTraceDelayCalibrationRawFile()
+{
+    if(!controlWorker) return;
+    const QString path = controlWorker->traceDelayCalibrationStatus().rawDataFile;
+    if(path.isEmpty() || !QFileInfo::exists(path)){
+        displayInfo("当前没有可打开的 Trace 标定原始 CSV", "warning");
+        return;
+    }
+    if(!QDesktopServices::openUrl(QUrl::fromLocalFile(path))){
+        displayInfo("无法打开 Trace 标定原始 CSV", "error");
+    }
+}
+
+int MainWindow::selectedTraceDelayLogicalAxis() const
+{
+    if(!ui || !ui->forceInteractionTraceDelayAxisComboBox){
+        return 0;
+    }
+    const QVariant data = ui->forceInteractionTraceDelayAxisComboBox->currentData();
+    return data.isValid() ? data.toInt() :
+                            std::max(0, ui->forceInteractionTraceDelayAxisComboBox->currentIndex());
+}
+
+void MainWindow::refreshTraceDelayAxisOptions()
+{
+    if(!ui || !ui->forceInteractionTraceDelayAxisComboBox){
+        return;
+    }
+    QComboBox* combo = ui->forceInteractionTraceDelayAxisComboBox;
+    const int previousAxis = selectedTraceDelayLogicalAxis();
+    QSignalBlocker blocker(combo);
+    combo->clear();
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        const int hardwareAxis = axis < static_cast<int>(axisMotorHardwareAxisVec.size()) &&
+                axisMotorHardwareAxisVec[axis] ? axisMotorHardwareAxisVec[axis]->value() : -1;
+        const int slaveId = axis < static_cast<int>(axisMotorSlaveIdVec.size()) &&
+                axisMotorSlaveIdVec[axis] ? axisMotorSlaveIdVec[axis]->value() : 0;
+        combo->addItem(QStringLiteral("绳索%1｜控制卡轴%2｜从站%3")
+                       .arg(axis + 1).arg(hardwareAxis).arg(slaveId), axis);
+    }
+    const int restoredIndex = combo->findData(previousAxis);
+    combo->setCurrentIndex(restoredIndex >= 0 ? restoredIndex : 0);
+}
+
+void MainWindow::refreshTraceDelayCalibrationUi()
+{
+    if(!ui || !controlWorker || !ui->forceInteractionTraceDelayResultTable) return;
+    const ControlWorker::Snapshot snapshot = controlWorker->latestSnapshot();
+    // 标定有效性只能使用板卡实际Trace读回值；尚未建立Runtime Trace时不猜测。
+    const int tracePeriodUs = snapshot.runtimeTraceSamplePeriodUs;
+    const double equivalent = configuredLeadshineAxisEquivForAxis(
+                selectedTraceDelayLogicalAxis());
+    const auto results = controlWorker->traceDelayCalibrationResults(
+                forceInteractionActuatorProfileKey(), equivalent, tracePeriodUs);
+    const TraceDelayCalibrationStatus status = controlWorker->traceDelayCalibrationStatus();
+    if(traceDelayCalibrationSnapshotGraceActive && !status.active){
+        if(!traceDelayCalibrationAwaitingFreshSnapshot){
+            traceDelayCalibrationAwaitingFreshSnapshot = true;
+            traceDelayCalibrationTerminalSnapshotSequence = snapshot.sequence;
+            displayInfo(QStringLiteral("Trace延迟标定收尾完成，等待ControlWorker发布一帧新的控制快照后退出标定专属安全宽限。")
+                        .toStdString(), "info");
+        }
+        else if(snapshot.sequence > traceDelayCalibrationTerminalSnapshotSequence){
+            endHardwareExclusiveSnapshotTimeout();
+            traceDelayCalibrationSnapshotGraceActive = false;
+            traceDelayCalibrationAwaitingFreshSnapshot = false;
+            traceDelayCalibrationTerminalSnapshotSequence = 0;
+            displayInfo(QStringLiteral("Trace延迟标定已取得恢复后的新控制快照，全局300 ms快照保护继续按正常规则运行。")
+                        .toStdString(), "info");
+        }
+    }
+    ui->forceInteractionTraceDelayProgressBar->setValue(status.progressPercent);
+    const bool finalizing = status.state == TraceDelayCalibrationStatus::State::Finalizing;
+    ui->forceInteractionTraceDelayStatusLabel->setText(status.active
+        ? (finalizing
+           ? QStringLiteral("%1：绳索%2，六段采集完成；%3")
+               .arg(status.phaseText).arg(status.axis + 1).arg(status.message)
+           : QStringLiteral("%1：绳索%2，第 %3/6 段，目标=%4 °/s；%5")
+               .arg(status.phaseText).arg(status.axis + 1).arg(status.currentSegment + 1)
+               .arg(status.targetVelocityUnitPerSec, 0, 'f', 3).arg(status.message))
+        : (status.message.isEmpty() ? QStringLiteral("未运行；标定结果按六维力交互硬件模板分别保存。")
+                                    : status.message));
+    const bool hardwareSessionReady = hardwareInterface.isLSConnected() &&
+            runtimeState.systemRunning;
+    ui->forceInteractionTraceDelaySelectedStartButton->setEnabled(
+                hardwareSessionReady && !status.active &&
+                !traceDelayCalibrationSnapshotGraceActive);
+    ui->forceInteractionTraceDelayAllStartButton->setEnabled(
+                hardwareSessionReady && !status.active &&
+                !traceDelayCalibrationSnapshotGraceActive);
+    ui->forceInteractionTraceDelayStopButton->setEnabled(status.active);
+    ui->forceInteractionTraceDelayRecalculateButton->setEnabled(!status.active);
+    for(int axis = 0; axis < 8; ++axis){
+        const auto& result = results[axis];
+        const int hardwareAxis = axis < static_cast<int>(axisMotorHardwareAxisVec.size()) &&
+                axisMotorHardwareAxisVec[axis] ? axisMotorHardwareAxisVec[axis]->value() : -1;
+        const int slaveId = axis < static_cast<int>(axisMotorSlaveIdVec.size()) &&
+                axisMotorSlaveIdVec[axis] ? axisMotorSlaveIdVec[axis]->value() : 0;
+        const QStringList values{
+            QString::number(axis + 1),
+            QString::number(hardwareAxis),
+            QString::number(slaveId),
+            result.calibrated ? QString::number(result.measuredDelayMs, 'f', 4) : QStringLiteral("--"),
+            result.calibrated ? QString::number(result.staticOffsetUnit, 'f', 6) : QStringLiteral("--"),
+            result.calibrated ? QString::number(result.rSquared, 'f', 5) : QStringLiteral("--"),
+            result.calibrated ? QString::number(result.rmseUnit, 'f', 6) : QStringLiteral("--"),
+            result.calibrated ? QString::number(result.pairSpreadMs, 'f', 4) : QStringLiteral("--"),
+            result.calibrated ? QString::number(result.lostFrameCount) : QStringLiteral("--"),
+            result.stale ? QStringLiteral("配置已变更") :
+            (result.valid ? QStringLiteral("通过") : result.detail)
+        };
+        for(int column = 0; column < values.size(); ++column){
+            QTableWidgetItem* item = ui->forceInteractionTraceDelayResultTable->item(axis, column);
+            if(!item){
+                item = new QTableWidgetItem;
+                ui->forceInteractionTraceDelayResultTable->setItem(axis, column, item);
+            }
+            item->setText(values[column]);
+        }
+    }
 }
 
 void MainWindow::refreshForceInteractionValidationInputState()
@@ -19011,7 +20335,7 @@ void MainWindow::startForceInteractionSoftwareValidation()
     config.sensorTransform.sensorOriginInPlatformM =
             kMeasuredForceSensorOriginInPlatformM;
     config.translationOnly = ui->forceInteractionTranslationOnlyCheckBox->isChecked();
-    config.controlPeriodS = ui->forceInteractionPeriodMsSpinBox->value() / 1000.0;
+    config.controlPeriodS = selectedForceInteractionControlPeriodUs() / 1000000.0;
     config.durationS = ui->forceInteractionDurationSpinBox->value();
     config.recordingDirectory = QDir(uiEventLogDirPath()).filePath(
                 QStringLiteral("force_interaction_runs"));
@@ -19179,6 +20503,8 @@ void MainWindow::cancelForceInteractionSoftwareValidation()
 }
 
 ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
+        ForceInteractionWrenchSourceKind sourceKind,
+        const FtSensorMonitoringService::Snapshot* ftSnapshot,
         QString* errorMessage)
 {
     ForceInteractionRuntimeConfig config;
@@ -19194,17 +20520,43 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
 
     const MachineKinematicsProfile& profile = currentMachineKinematicsProfile(ui);
     config.machineTemplateName = QString::fromLatin1(profile.name);
-    static const std::array<int, 5> periodUs{{1000, 2000, 5000, 10000, 20000}};
-    const int periodIndex = ui->forceInteractionRuntimePeriodComboBox->currentIndex();
-    config.periodUs = periodIndex >= 0 && periodIndex < static_cast<int>(periodUs.size()) ?
-                periodUs[static_cast<size_t>(periodIndex)] : 5000;
-    config.maximumTestDurationS = ui->forceInteractionRuntimeDurationSpinBox->value();
+    config.wrenchSourceKind = sourceKind;
+    config.periodUs = selectedForceInteractionControlPeriodUs();
+    config.maximumTestDurationS =
+            sourceKind == ForceInteractionWrenchSourceKind::RealFtTrace ?
+                ui->forceInteractionStageCDurationSpinBox->value() :
+                ui->forceInteractionRuntimeDurationSpinBox->value();
     config.translationOnly = ui->forceInteractionTranslationOnlyCheckBox->isChecked();
     config.sensorTransform.configured = true;
     config.sensorTransform.rotationSensorToPlatform =
             kMeasuredForceSensorToPlatformRotation;
     config.sensorTransform.sensorOriginInPlatformM =
             kMeasuredForceSensorOriginInPlatformM;
+    if(sourceKind == ForceInteractionWrenchSourceKind::RealFtTrace){
+        if(!ftSnapshot || !ftSnapshot->preheat.zeroValid){
+            fail(QStringLiteral("阶段C没有可冻结的有效F/T软件零点"));
+            return config;
+        }
+        config.ftSoftwareZero = ftSnapshot->preheat.zero;
+        config.sensorTransform.channelBias = config.ftSoftwareZero;
+        config.ftSampleTimeoutUs = static_cast<qint64>(
+                    ui->forceInteractionStageCFtTimeoutSpinBox->value()) * 1000;
+        config.realFtConditioning.lowPassEnabled =
+                ui->forceInteractionStageCLowPassCheckBox->isChecked();
+        config.realFtConditioning.lowPassCutoffHz =
+                ui->forceInteractionStageCLowPassCutoffSpinBox->value();
+        config.realFtConditioning.forceStartThresholdN =
+                ui->forceInteractionStageCForceStartSpinBox->value();
+        config.realFtConditioning.forceReleaseThresholdN =
+                ui->forceInteractionStageCForceReleaseSpinBox->value();
+        config.realFtConditioning.torqueStartThresholdNm =
+                ui->forceInteractionStageCTorqueStartSpinBox->value();
+        config.realFtConditioning.torqueReleaseThresholdNm =
+                ui->forceInteractionStageCTorqueReleaseSpinBox->value();
+        // 状态位详细定义尚未取得；按照已验收实机数据，只允许完整状态码为0。
+        config.ftStatusMask = 0xffffffffu;
+        config.ftExpectedStatus = 0u;
+    }
 
     config.wrenchProfile.mode = static_cast<SimulatedWrenchMode>(
                 ui->forceInteractionModeComboBox->currentIndex());
@@ -19287,7 +20639,10 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
     }
 
     double motorUnitPerRadian = 0.0;
-    if(ui->devMotorFeedbackIsRd->isChecked()){
+    if(runtimeState.forceInteractionGenericActuatorSessionActive){
+        motorUnitPerRadian = 180.0 / M_PI;
+    }
+    else if(ui->devMotorFeedbackIsRd->isChecked()){
         motorUnitPerRadian = 1.0 / (2.0 * M_PI);
     }
     else if(ui->devMotorFeedbackIsTheta->isChecked()){
@@ -19309,13 +20664,21 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
             fail(QStringLiteral("轴%1软件位置边界无效").arg(axis));
             return config;
         }
-        config.motorSafetyRelativeMinimum[axis] = axisMotorMinVec[axis]->value();
-        config.motorSafetyRelativeMaximum[axis] = axisMotorMaxVec[axis]->value();
+        const double globalUnitToTemporaryDegree =
+                runtimeState.forceInteractionGenericActuatorSessionActive &&
+                ui->devMotorFeedbackIsRd->isChecked() ?
+                    kDegreesPerRevolution : 1.0;
+        config.motorSafetyRelativeMinimum[axis] =
+                axisMotorMinVec[axis]->value() * globalUnitToTemporaryDegree;
+        config.motorSafetyRelativeMaximum[axis] =
+                axisMotorMaxVec[axis]->value() * globalUnitToTemporaryDegree;
     }
 
     config.feedForwardEnabled = ui->forceInteractionRuntimeFeedForwardCheckBox->isChecked();
     config.feedForwardGain = ui->forceInteractionRuntimeFeedForwardGainSpinBox->value();
-    config.pidEnabled = ui->forceInteractionRuntimePidCheckBox->isChecked();
+    // PID为后续扩展占位。当前阶段固定开环速度前馈，避免临时执行器调试
+    // 与尚未验收的位置反馈修正耦合。
+    config.pidEnabled = false;
     config.kp = ui->forceInteractionRuntimeKpSpinBox->value();
     config.ki = ui->forceInteractionRuntimeKiSpinBox->value();
     config.kd = ui->forceInteractionRuntimeKdSpinBox->value();
@@ -19325,6 +20688,33 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
     config.velocityLimit = ui->forceInteractionRuntimeVelocityLimitSpinBox->value();
     config.followingErrorLimit =
             ui->forceInteractionRuntimeFollowingErrorSpinBox->value();
+    const int actualBusCycleUs =
+            hardwareInterface.forceInteractionEthercatBusCycleReadbackUs();
+    if(actualBusCycleUs <= 0 ||
+            actualBusCycleUs != selectedForceInteractionBusCycleUs()){
+        fail(QStringLiteral("EtherCAT总线周期未读回或与六维力交互设置不一致：设置=%1 μs，读回=%2 μs")
+             .arg(selectedForceInteractionBusCycleUs()).arg(actualBusCycleUs));
+        return config;
+    }
+    const HardwareInterface::RuntimeTraceSnapshot traceSnapshot =
+            hardwareInterface.readRuntimeTraceLatestSnapshot();
+    // 跟随误差对齐只接受板卡实际Trace周期，禁止由传感器采样频率推断。
+    const int traceSamplePeriodUs = traceSnapshot.traceSamplePeriodUs;
+    if(traceSamplePeriodUs <= 0){
+        fail(QStringLiteral("Runtime Trace尚未配置或未取得实际周期读回"));
+        return config;
+    }
+    const double activeEquivalent = configuredLeadshineAxisEquivForAxis(0);
+    const auto delayResults = controlWorker
+            ? controlWorker->traceDelayCalibrationResults(
+                  forceInteractionActuatorProfileKey(), activeEquivalent,
+                  traceSamplePeriodUs)
+            : std::array<TraceDelayAxisResult, 8>{};
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        config.traceDelayMs[axis] = delayResults[axis].measuredDelayMs;
+        config.traceDelayValid[axis] = delayResults[axis].valid &&
+                !delayResults[axis].stale;
+    }
     config.onlineChangeTimeS = ui->forceInteractionRuntimeChangeTimeSpinBox->value();
     config.traceTimeoutUs =
             static_cast<qint64>(ui->forceInteractionRuntimeTraceTimeoutSpinBox->value()) * 1000;
@@ -19349,35 +20739,144 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
 
 void MainWindow::prepareForceInteractionRuntimeFromUi()
 {
+    prepareForceInteractionRuntimeForSource(
+                ForceInteractionWrenchSourceKind::Simulated);
+}
+
+void MainWindow::prepareForceInteractionStageCRuntimeFromUi()
+{
+    prepareForceInteractionRuntimeForSource(
+                ForceInteractionWrenchSourceKind::RealFtTrace);
+}
+
+ForceInteractionReplayExportContext MainWindow::buildForceInteractionReplayContext(
+        const ForceInteractionRuntimeConfig& config)
+{
+    ForceInteractionReplayExportContext context;
+    const bool realFt = config.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace;
+    context.stageName = realFt ? QStringLiteral("stage_c") :
+                                 QStringLiteral("stage_b");
+    context.wrenchSourceName = realFt ? QStringLiteral("real_ft_trace") :
+                                       QStringLiteral("simulated");
+    context.machineTemplateName = config.machineTemplateName;
+    context.actuatorTemplateName =
+            runtimeState.forceInteractionGenericActuatorSessionActive ?
+                QStringLiteral("generic_incremental_encoder_8axis_temporary") :
+                QStringLiteral("g302_original");
+    context.controlPeriodUs = config.periodUs;
+    context.tracePeriodUs =
+            hardwareInterface.readRuntimeTraceLatestSnapshot().traceSamplePeriodUs;
+    context.translationOnly = config.translationOnly;
+    context.kinematics = config.kinematics;
+    context.physicalWorkspace = config.physicalWorkspace;
+    context.workspaceSafety = config.workspaceSafety;
+    context.initialPoseMmRad = forceInteractionRuntimeInitialPoseMmRad;
+    context.referenceCableLengthMm =
+            forceInteractionRuntimeReferenceCableLengthMm;
+    context.motorUnitPerRadian = config.motorUnitPerRadian;
+    context.motorSafetyRelativeMinimum = config.motorSafetyRelativeMinimum;
+    context.motorSafetyRelativeMaximum = config.motorSafetyRelativeMaximum;
+    context.traceDelayMs = config.traceDelayMs;
+    context.traceDelayValid = config.traceDelayValid;
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        context.hardwareAxis[axis] =
+                axis < static_cast<int>(axisMotorHardwareAxisVec.size()) &&
+                axisMotorHardwareAxisVec[axis] ?
+                    axisMotorHardwareAxisVec[axis]->value() : -1;
+        context.slaveId[axis] =
+                axis < static_cast<int>(axisMotorSlaveIdVec.size()) &&
+                axisMotorSlaveIdVec[axis] ?
+                    axisMotorSlaveIdVec[axis]->value() : 0;
+        context.pulsePerUnit[axis] =
+                configuredLeadshineAxisEquivForAxis(axis);
+        context.hardwareDirectionSign[axis] =
+                motorHardwareDirectionSign(axis);
+    }
+    return context;
+}
+
+void MainWindow::prepareForceInteractionRuntimeForSource(
+        ForceInteractionWrenchSourceKind sourceKind)
+{
+    const bool realFt = sourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace;
+    const QString stage = realFt ? QStringLiteral("阶段C") :
+                                   QStringLiteral("阶段B");
     if(!controlWorker || !ccThread || !ccThread->isRunning()){
-        displayInfo("阶段B准备失败：控制线程尚未运行", "error");
+        displayInfo(QStringLiteral("%1准备失败：控制线程尚未运行")
+                    .arg(stage).toStdString(), "error");
         return;
     }
     if(forceInteractionValidationWorker){
-        displayInfo("阶段B准备失败：阶段A软件验证正在运行", "error");
+        displayInfo(QStringLiteral("%1准备失败：阶段A软件验证正在运行")
+                    .arg(stage).toStdString(), "error");
         return;
     }
     if(!isLiteTemplateActive()){
-        displayInfo("阶段B准备失败：当前仅允许G302模板", "error");
+        displayInfo(QStringLiteral("%1准备失败：当前仅允许G302模板")
+                    .arg(stage).toStdString(), "error");
         return;
     }
     if(currentRobotState(false).anyMotionRunning){
-        displayInfo("阶段B准备失败：当前存在其他运动任务", "error");
+        displayInfo(QStringLiteral("%1准备失败：当前存在其他运动任务")
+                    .arg(stage).toStdString(), "error");
+        return;
+    }
+    FtSensorMonitoringService::Snapshot ftSnapshot;
+    QString errorMessage;
+    if(realFt && !forceInteractionStageCAdmissionSnapshot(
+                    &ftSnapshot, &errorMessage)){
+        displayInfo(QStringLiteral("阶段C准备失败：%1")
+                    .arg(errorMessage).toStdString(), "error");
+        refreshForceInteractionFtUi();
+        refreshForceInteractionRuntimeUi();
         return;
     }
     if(runtimeState.runMode != RunMode::OnlineVelocityControl){
         setRunMode(RunMode::OnlineVelocityControl);
     }
     if(runtimeState.runMode != RunMode::OnlineVelocityControl){
-        displayInfo("阶段B准备失败：无法切换到在线速度控制模式", "error");
+        displayInfo(QStringLiteral("%1准备失败：无法切换到在线速度控制模式")
+                    .arg(stage).toStdString(), "error");
         return;
     }
 
-    QString errorMessage;
+    // 准备阶段先建立并读回专用Runtime Trace；随后配置构建直接读取硬件快照，
+    // 不再依赖ControlWorker下一次周期才发布的缓存。
+    const bool tracePrepared = realFt ?
+                hardwareInterface.setForceInteractionRuntimeTraceWithFtEnabled(true) :
+                hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(true);
+    if(!tracePrepared){
+        if(realFt){
+            restoreForceInteractionFtMonitoringProfile();
+        }
+        displayInfo(QStringLiteral("%1准备失败：专用Runtime Trace配置或读回失败")
+                    .arg(stage).toStdString(), "error");
+        return;
+    }
+    if(realFt){
+        // 准备态仍由F/T后台服务推进Trace，以保持判稳和零点状态连续；真正
+        // 启动后再切成ControlWorker唯一推进、后台服务只消费解析队列。
+        setForceInteractionFtTraceConsumptionMode(
+                    HardwareInterface::RuntimeTraceUsageProfile::
+                        ForceInteractionVelocityWithFt,
+                    false);
+    }
+
     const ForceInteractionRuntimeConfig config =
-            forceInteractionRuntimeConfigFromUi(&errorMessage);
+            forceInteractionRuntimeConfigFromUi(
+                sourceKind, realFt ? &ftSnapshot : nullptr, &errorMessage);
     if(!errorMessage.isEmpty()){
-        displayInfo(QStringLiteral("阶段B准备失败：%1").arg(errorMessage).toStdString(),
+        if(realFt){
+            restoreForceInteractionFtMonitoringProfile();
+        }
+        else{
+            hardwareInterface.setRuntimeTraceUsageProfile(
+                        HardwareInterface::RuntimeTraceUsageProfile::Base);
+        }
+        displayInfo(QStringLiteral("%1准备失败：%2")
+                    .arg(stage, errorMessage).toStdString(),
                     "error");
         return;
     }
@@ -19389,7 +20888,15 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
     if(!prepared){
         forceInteractionRuntimePhysicalWorkspaceValid = false;
         forceInteractionRuntimeForwardKinematicsConfigValid = false;
-        displayInfo(QStringLiteral("阶段B准备失败：%1").arg(errorMessage).toStdString(),
+        if(realFt){
+            restoreForceInteractionFtMonitoringProfile();
+        }
+        else{
+            hardwareInterface.setRuntimeTraceUsageProfile(
+                        HardwareInterface::RuntimeTraceUsageProfile::Base);
+        }
+        displayInfo(QStringLiteral("%1准备失败：%2")
+                    .arg(stage, errorMessage).toStdString(),
                     "error");
         refreshForceInteractionRuntimeUi();
         return;
@@ -19422,9 +20929,15 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
     if(!forceInteractionRuntimeForwardKinematicsConfigValid){
         forceInteractionRuntimeReferenceCableLengthMm.clear();
         displayInfo(QStringLiteral(
-                        "阶段B准备警告：5 Hz虚拟实际正运动学冻结失败（%1）；不影响高频控制，但本次不显示虚拟实际位姿")
-                    .arg(frozenForwardError).toStdString(), "warning");
+                        "%1准备警告：5 Hz虚拟实际正运动学冻结失败（%2）；不影响高频控制，但本次不显示虚拟实际位姿")
+                    .arg(stage, frozenForwardError).toStdString(), "warning");
     }
+    forceInteractionRuntimeReplayContext =
+            buildForceInteractionReplayContext(config);
+    forceInteractionRuntimeReplayContextValid =
+            forceInteractionRuntimeForwardKinematicsConfigValid &&
+            forceInteractionRuntimePhysicalWorkspaceValid &&
+            forceInteractionRuntimeReplayContext.tracePeriodUs > 0;
     forceInteractionBoundaryAnalysisSummary.clear();
     forceInteractionRuntimeForwardSolver.setInitialPose(
                 forceInteractionRuntimeInitialPoseMmRad);
@@ -19436,15 +20949,37 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
     forceInteractionRuntimeLastForwardIterationCount = 0;
     forceInteractionRuntimeLastForwardTraceSequence = 0;
     forceInteractionRuntimeLastForwardSolveMs = -1;
+    const QString inputDescription = realFt ?
+                QStringLiteral("真实F/T Trace，软件零点已冻结") :
+                QStringLiteral("模拟力=%1")
+                    .arg(ui->forceInteractionModeComboBox->currentText());
+    const QString conditioningDescription = realFt ?
+                QStringLiteral("，F/T低通=%1%2，合力启动/释放=%3/%4 N，合力矩启动/释放=%5/%6 N·m")
+                    .arg(config.realFtConditioning.lowPassEnabled ?
+                             QStringLiteral("开") : QStringLiteral("关"))
+                    .arg(config.realFtConditioning.lowPassEnabled ?
+                             QStringLiteral("（%1 Hz）")
+                                 .arg(config.realFtConditioning.lowPassCutoffHz,
+                                      0, 'f', 2) : QString{})
+                    .arg(config.realFtConditioning.forceStartThresholdN, 0, 'f', 3)
+                    .arg(config.realFtConditioning.forceReleaseThresholdN, 0, 'f', 3)
+                    .arg(config.realFtConditioning.torqueStartThresholdNm, 0, 'f', 4)
+                    .arg(config.realFtConditioning.torqueReleaseThresholdNm, 0, 'f', 4) :
+                QString{};
     displayInfo(QStringLiteral(
-                    "阶段B已准备：模拟力=%1，周期=%2 ms，最长运行=%3 s，PID=%4，末端加速度/制动a=%5 mm/s²，附加余量/急停线=%6/%7 mm，八轴公共加速度缩放=关闭；配置与初始位姿已冻结，尚未下发速度命令")
-                .arg(ui->forceInteractionModeComboBox->currentText())
+                    "%1已准备：执行器=%2，输入=%3，周期=%4 ms，最长运行=%5 s，PID=%6（当前固定关闭），末端加速度/制动a=%7 mm/s²，附加余量/急停线=%8/%9 mm，八轴公共加速度缩放=关闭%10；配置、初始位姿和输入参数已冻结，尚未下发速度命令")
+                .arg(stage)
+                .arg(runtimeState.forceInteractionGenericActuatorSessionActive ?
+                         QStringLiteral("通用增量编码器8轴（临时）") :
+                         QStringLiteral("G302原执行器"))
+                .arg(inputDescription)
                 .arg(config.periodUs / 1000)
                 .arg(config.maximumTestDurationS, 0, 'f', 3)
                 .arg(config.pidEnabled ? QStringLiteral("开") : QStringLiteral("关"))
                 .arg(config.workspaceSafety.stoppingDecelerationMmPerSec2, 0, 'f', 3)
                 .arg(config.workspaceSafety.additionalSafetyMarginMm, 0, 'f', 3)
                 .arg(config.workspaceSafety.emergencyLineMarginMm, 0, 'f', 3)
+                .arg(conditioningDescription)
                 .toStdString(), "normal");
     refreshForceInteractionValidationInputState();
     refreshForceInteractionRuntimeUi();
@@ -19452,21 +20987,69 @@ void MainWindow::prepareForceInteractionRuntimeFromUi()
 
 void MainWindow::startForceInteractionRuntime()
 {
+    startPreparedForceInteractionRuntime(
+                ForceInteractionWrenchSourceKind::Simulated);
+}
+
+void MainWindow::startForceInteractionStageCRuntime()
+{
+    startPreparedForceInteractionRuntime(
+                ForceInteractionWrenchSourceKind::RealFtTrace);
+}
+
+void MainWindow::startPreparedForceInteractionRuntime(
+        ForceInteractionWrenchSourceKind expectedSource)
+{
+    const bool realFt = expectedSource ==
+            ForceInteractionWrenchSourceKind::RealFtTrace;
+    const QString stage = realFt ? QStringLiteral("阶段C") :
+                                   QStringLiteral("阶段B");
     if(!controlWorker || !ccThread || !ccThread->isRunning()){
-        displayInfo("阶段B启动失败：控制线程尚未运行", "error");
+        displayInfo(QStringLiteral("%1启动失败：控制线程尚未运行")
+                    .arg(stage).toStdString(), "error");
         return;
     }
-    if(controlWorker->forceInteractionRuntimeStatus().state !=
-            ForceInteractionRuntimeStatus::State::Prepared){
-        displayInfo("阶段B启动失败：请先准备并冻结本次配置", "error");
+    const ForceInteractionRuntimeStatus preparedStatus =
+            controlWorker->forceInteractionRuntimeStatus();
+    if(preparedStatus.state != ForceInteractionRuntimeStatus::State::Prepared ||
+            preparedStatus.wrenchSourceKind != expectedSource){
+        displayInfo(QStringLiteral("%1启动失败：请先在对应子页准备并冻结本次配置")
+                    .arg(stage).toStdString(), "error");
+        return;
+    }
+    FtSensorMonitoringService::Snapshot ftSnapshot;
+    QString admissionError;
+    if(realFt && !forceInteractionStageCAdmissionSnapshot(
+                    &ftSnapshot, &admissionError)){
+        displayInfo(QStringLiteral("阶段C启动失败：传感器准入在准备后失效：%1")
+                    .arg(admissionError).toStdString(), "error");
+        return;
+    }
+    const QString motionName = realFt ?
+                QStringLiteral("真实六维力八轴空转") :
+                QStringLiteral("模拟六维力八轴空转");
+    if(!ensureSafetyReadyForMotion(
+            motionName,
+            MotionAuthorizationScope::ForceInteractionEmptyRun)){
         return;
     }
     if(!confirmMotorCommandFromUi(
-            QStringLiteral("模拟六维力驱动八轴空转"),
-            QStringLiteral("将使用当前模拟六维力、纯惯性Newmark和虚拟绞盘模型周期下发八轴速度。电机未连接真实绳索时只能验证软件链和轴运动；请从零力、短时、低速开始，并保持急停可用。"))){
+            realFt ? QStringLiteral("真实六维力驱动八轴空转") :
+                     QStringLiteral("模拟六维力驱动八轴空转"),
+            realFt ?
+                QStringLiteral("将使用同一Runtime Trace帧内的真实F/T与八轴反馈，经冻结零点、安装变换、纯惯性Newmark和虚拟绞盘模型周期下发八轴速度。当前电机未连接绳索；请轻触传感器、短时低速运行并保持急停可用。") :
+                QStringLiteral("将使用当前模拟六维力、纯惯性Newmark和虚拟绞盘模型周期下发八轴速度。电机未连接真实绳索时只能验证软件链和轴运动；请从零力、短时、低速开始，并保持急停可用。"))){
         return;
     }
 
+    if(realFt){
+        // 在ControlWorker开始读同一Trace前先撤销后台服务的读权限，消除两个
+        // 线程同时推进板卡FIFO的竞争；服务仍继续判稳和写F/T原始记录。
+        setForceInteractionFtTraceConsumptionMode(
+                    HardwareInterface::RuntimeTraceUsageProfile::
+                        ForceInteractionVelocityWithFt,
+                    true);
+    }
     runtimeState.onlineVelocityControlActive = true;
     runtimeState.forceInteractionRuntimeActive = true;
     markControlWorkerConfigDirty();
@@ -19480,8 +21063,12 @@ void MainWindow::startForceInteractionRuntime()
     if(!started){
         QMetaObject::invokeMethod(controlWorker, [&](){
             controlWorker->stopForceInteractionRuntime(
-                        false, QStringLiteral("阶段B启动失败，撤销准备状态"));
+                        false, QStringLiteral("%1启动失败，撤销准备状态")
+                            .arg(stage));
         }, Qt::BlockingQueuedConnection);
+        if(realFt){
+            restoreForceInteractionFtMonitoringProfile();
+        }
         runtimeState.forceInteractionRuntimeActive = false;
         runtimeState.onlineVelocityControlActive = false;
         forceInteractionRuntimePhysicalWorkspaceValid = false;
@@ -19489,15 +21076,18 @@ void MainWindow::startForceInteractionRuntime()
         markControlWorkerConfigDirty();
         syncControlWorkerConfig(true);
         syncSafetyMonitorConfig(true);
-        displayInfo(QStringLiteral("阶段B启动失败：%1").arg(errorMessage).toStdString(),
+        displayInfo(QStringLiteral("%1启动失败：%2")
+                    .arg(stage, errorMessage).toStdString(),
                     "error");
         refreshForceInteractionRuntimeUi();
         return;
     }
     setForceControlSelectionEnabled(false);
     updateCableHomeConfirmEnabled();
-    displayInfo("阶段B已启动：等待可靠同帧八轴Trace后开始模拟力—Newmark—八轴速度闭环",
-                "normal");
+    displayInfo((realFt ?
+                 QStringLiteral("阶段C已启动：ControlWorker已接管唯一Trace读取，等待可靠同帧八轴＋F/T数据后开始真实力—Newmark—八轴速度闭环") :
+                 QStringLiteral("阶段B已启动：等待可靠同帧八轴Trace后开始模拟力—Newmark—八轴速度闭环"))
+                .toStdString(), "normal");
     refreshForceInteractionRuntimeUi();
     refreshRunModeUiState();
 }
@@ -19506,6 +21096,13 @@ void MainWindow::stopForceInteractionRuntime(bool emergency,
                                              const QString& reason)
 {
     if(!controlWorker || !ccThread || !ccThread->isRunning()){
+        const ForceInteractionRuntimeStatus status = controlWorker ?
+                    controlWorker->forceInteractionRuntimeStatus() :
+                    ForceInteractionRuntimeStatus{};
+        if(status.wrenchSourceKind ==
+                ForceInteractionWrenchSourceKind::RealFtTrace){
+            restoreForceInteractionFtMonitoringProfile();
+        }
         runtimeState.forceInteractionRuntimeActive = false;
         runtimeState.onlineVelocityControlActive = false;
         forceInteractionRuntimePhysicalWorkspaceValid = false;
@@ -19513,18 +21110,29 @@ void MainWindow::stopForceInteractionRuntime(bool emergency,
         refreshForceInteractionRuntimeUi();
         return;
     }
+    const ForceInteractionRuntimeStatus beforeStop =
+            controlWorker->forceInteractionRuntimeStatus();
+    const bool cancellingPrepared = beforeStop.state ==
+            ForceInteractionRuntimeStatus::State::Prepared;
     QMetaObject::invokeMethod(controlWorker, [=](){
         controlWorker->stopForceInteractionRuntime(emergency, reason);
     }, Qt::BlockingQueuedConnection);
     const ForceInteractionRuntimeStatus status =
             controlWorker->forceInteractionRuntimeStatus();
+    const QString stage = status.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace ?
+                QStringLiteral("阶段C") : QStringLiteral("阶段B");
     if(status.state == ForceInteractionRuntimeStatus::State::Braking){
-        displayInfo(QStringLiteral("阶段B已进入协同减速：%1")
-                    .arg(status.message).toStdString(), "warning");
+        displayInfo(QStringLiteral("%1已进入协同减速：%2")
+                    .arg(stage, status.message).toStdString(), "warning");
         refreshForceInteractionRuntimeUi();
     }
     else{
         finalizeForceInteractionRuntimeSession(status);
+        if(cancellingPrepared){
+            displayInfo(QStringLiteral("%1准备已取消：未启动运动、未下发速度命令；传感器后台监测继续运行。")
+                        .arg(stage).toStdString(), "normal");
+        }
     }
 }
 
@@ -19535,7 +21143,71 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
         return;
     }
     forceInteractionRuntimeFinalizing = true;
+    const bool realFt = status.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace;
+    const QString stage = realFt ? QStringLiteral("阶段C") :
+                                   QStringLiteral("阶段B");
     const bool wasActive = runtimeState.forceInteractionRuntimeActive;
+    if(!status.recordFile.trimmed().isEmpty() && status.writtenRecordCount > 0){
+        // A newer run must never inherit an older run's sidecar context.
+        forceInteractionLastRunReplayContextValid = false;
+        forceInteractionLastReplayConfigFile.clear();
+        forceInteractionLastRunRecordFile = status.recordFile;
+        forceInteractionLastRunKinematicsConfig =
+                forceInteractionRuntimeForwardKinematicsConfig;
+        forceInteractionLastRunMotorUnitPerRadian =
+                forceInteractionRuntimeMotorUnitPerRadian;
+        forceInteractionLastRunReferenceCableLengthMm =
+                forceInteractionRuntimeReferenceCableLengthMm;
+        forceInteractionLastRunInitialPoseMmRad =
+                forceInteractionRuntimeInitialPoseMmRad;
+        forceInteractionLastRunPhysicalWorkspace =
+                forceInteractionRuntimePhysicalWorkspace;
+        forceInteractionLastRunKinematicContextValid =
+                forceInteractionRuntimeForwardKinematicsConfigValid &&
+                forceInteractionRuntimePhysicalWorkspaceValid;
+        if(forceInteractionRuntimeReplayContextValid){
+            forceInteractionLastRunReplayContext =
+                    forceInteractionRuntimeReplayContext;
+            forceInteractionLastRunReplayContext.csvPath = status.recordFile;
+            forceInteractionLastRunReplayContext.actualStartPosition =
+                    status.actualStartPosition;
+            forceInteractionLastRunReplayContext.actualStartSafetyRelativePosition =
+                    status.actualStartSafetyRelativePosition;
+            forceInteractionLastRunReplayContext.terminalState =
+                    static_cast<int>(status.state);
+            forceInteractionLastRunReplayContext.terminalMessage = status.message;
+            forceInteractionLastRunReplayContext.safetyStopReason =
+                    status.safetyStopReason;
+            forceInteractionLastRunReplayContext.experimentValid =
+                    status.experimentValid;
+            forceInteractionLastRunReplayContext.commandCount =
+                    status.commandCount;
+            forceInteractionLastRunReplayContext.writtenRecordCount =
+                    status.writtenRecordCount;
+            forceInteractionLastRunReplayContext.droppedRecordCount =
+                    status.droppedRecordCount;
+            QString replayError;
+            const bool replayExported =
+                    ForceInteractionReplayExporter::writeJson(
+                        forceInteractionLastRunReplayContext,
+                        &forceInteractionLastReplayConfigFile,
+                        &replayError);
+            forceInteractionLastRunReplayContextValid = true;
+            if(!replayExported){
+                displayInfo(QStringLiteral("MATLAB回放配置自动导出失败：%1")
+                            .arg(replayError).toStdString(), "warning");
+            }
+            else if(ui && ui->forceInteractionReplayExportStatusLabel){
+                ui->forceInteractionReplayExportStatusLabel->setText(
+                            QStringLiteral("MATLAB回放：CSV与冻结参数JSON已就绪"));
+            }
+        }
+        if(ui && ui->forceInteractionKinematicAnalyzeStatusLabel){
+            ui->forceInteractionKinematicAnalyzeStatusLabel->setText(
+                        QStringLiteral("运行后验算：已有记录，等待手动验算"));
+        }
+    }
     runtimeState.forceInteractionRuntimeActive = false;
     runtimeState.onlineVelocityControlActive = false;
     if(status.commandCount > 0){
@@ -19549,13 +21221,19 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
     syncSafetyMonitorConfig(true);
     forceInteractionRuntimePhysicalWorkspaceValid = false;
     forceInteractionRuntimeForwardKinematicsConfigValid = false;
+    if(realFt){
+        // ControlWorker结束时先退出运动Trace；恢复预热监测原本使用的profile，
+        // 继续采集、判稳和记录，但绝不重新使用本次运行冻结的零点配置。
+        restoreForceInteractionFtMonitoringProfile();
+    }
     updateCableHomeConfirmEnabled();
     setForceControlSelectionEnabled(true);
     if(wasActive){
         const char* level = status.state == ForceInteractionRuntimeStatus::State::Fault ||
                 !status.experimentValid ? "error" : "warning";
         displayInfo(QStringLiteral(
-                        "阶段B会话结束：%1；试验有效=%2%3；步数=%4，命令=%5，漏周期=%6，最大轴误差=%7 unit，末端最小余量=%8 mm，最大计算/API=%9/%10 us，记录接受/写入/丢弃=%11/%12/%13%14，文件=%15")
+                        "%1会话结束：%2；试验有效=%3%4；步数=%5，命令=%6，漏周期=%7，主机/模型时间=%8/%9 s，模型余量=%10 us，单周期最大补算=%11步，最大轴误差=%12 unit，末端最小余量=%13 mm，最大计算/API=%14/%15 us，记录接受/写入/丢弃=%16/%17/%18%19，文件=%20")
+                    .arg(stage)
                     .arg(status.message)
                     .arg(status.experimentValid ? QStringLiteral("是") : QStringLiteral("否"))
                     .arg(status.safetyStopReason.isEmpty() ? QString{} :
@@ -19563,6 +21241,10 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
                     .arg(status.stepCount)
                     .arg(status.commandCount)
                     .arg(status.missedCycleCount)
+                    .arg(status.elapsedS, 0, 'f', 6)
+                    .arg(status.modelElapsedS, 0, 'f', 6)
+                    .arg(status.modelLagUs)
+                    .arg(status.maximumIntegrationSteps)
                     .arg(status.maximumPositionError, 0, 'f', 6)
                     .arg(status.minimumWorkspaceClearanceMm, 0, 'f', 3)
                     .arg(status.maximumCalculationUs)
@@ -19584,6 +21266,56 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
     refreshForceInteractionValidationInputState();
     refreshForceInteractionRuntimeUi();
     refreshRunModeUiState();
+}
+
+void MainWindow::exportLatestForceInteractionReplayConfig()
+{
+    if(!ui){
+        return;
+    }
+    if(!forceInteractionLastRunReplayContextValid ||
+            forceInteractionLastRunReplayContext.csvPath.trimmed().isEmpty()){
+        displayInfo("回放配置导出失败：本次程序会话中没有带冻结参数的六维力交互记录",
+                    "warning");
+        return;
+    }
+    QString outputPath;
+    QString errorMessage;
+    if(!ForceInteractionReplayExporter::writeJson(
+            forceInteractionLastRunReplayContext,
+            &outputPath, &errorMessage)){
+        ui->forceInteractionReplayExportStatusLabel->setText(
+                    QStringLiteral("MATLAB回放：导出失败"));
+        displayInfo(QStringLiteral("回放配置导出失败：%1")
+                    .arg(errorMessage).toStdString(), "error");
+        return;
+    }
+    forceInteractionLastReplayConfigFile = outputPath;
+    ui->forceInteractionReplayExportStatusLabel->setText(
+                QStringLiteral("MATLAB回放：配置已导出"));
+    displayInfo(QStringLiteral("MATLAB离线回放配置已导出：%1；Qt不会启动或调用MATLAB。")
+                .arg(QDir::toNativeSeparators(outputPath)).toStdString(),
+                "normal");
+}
+
+void MainWindow::openForceInteractionReplayDirectory()
+{
+    QString path = forceInteractionLastReplayConfigFile;
+    if(path.trimmed().isEmpty()){
+        path = forceInteractionLastRunRecordFile;
+    }
+    if(path.trimmed().isEmpty()){
+        displayInfo("尚无六维力交互运行记录目录可打开", "warning");
+        return;
+    }
+    const QFileInfo info(path);
+    const QString directory = info.isDir() ? info.absoluteFilePath() :
+                                             info.absolutePath();
+    if(!QDesktopServices::openUrl(QUrl::fromLocalFile(directory))){
+        displayInfo(QStringLiteral("无法打开记录目录：%1")
+                    .arg(QDir::toNativeSeparators(directory)).toStdString(),
+                    "error");
+    }
 }
 
 void MainWindow::startForceInteractionBoundaryLogAnalysis(
@@ -19611,6 +21343,60 @@ void MainWindow::startForceInteractionBoundaryLogAnalysis(
         }
         worker->deleteLater();
         refreshForceInteractionRuntimeUi();
+    });
+    worker->start(QThread::LowPriority);
+}
+
+void MainWindow::startForceInteractionKinematicLogAnalysis()
+{
+    if(!ui) return;
+    if(forceInteractionKinematicLogAnalysisWorker){
+        displayInfo("六维力交互运行后验算未启动：上一份记录仍在计算", "warning");
+        return;
+    }
+    if(runtimeState.forceInteractionRuntimeActive){
+        displayInfo("六维力交互运行后验算未启动：请先结束当前实机运行", "warning");
+        return;
+    }
+    if(forceInteractionLastRunRecordFile.trimmed().isEmpty() ||
+            !QFileInfo::exists(forceInteractionLastRunRecordFile)){
+        displayInfo("六维力交互运行后验算未启动：本次程序会话中尚无可用运行记录", "warning");
+        return;
+    }
+    if(!forceInteractionLastRunKinematicContextValid){
+        displayInfo("六维力交互运行后验算未启动：最近运行缺少冻结的运动学参数", "warning");
+        return;
+    }
+
+    ForceInteractionKinematicLogAnalysisRequest request;
+    request.csvPath = forceInteractionLastRunRecordFile;
+    request.kinematics = forceInteractionLastRunKinematicsConfig;
+    request.motorUnitPerRadian = forceInteractionLastRunMotorUnitPerRadian;
+    request.referenceCableLengthMm = forceInteractionLastRunReferenceCableLengthMm;
+    request.initialPoseMmRad = forceInteractionLastRunInitialPoseMmRad;
+    request.physicalWorkspace = forceInteractionLastRunPhysicalWorkspace;
+    ui->forceInteractionKinematicAnalyzeButton->setEnabled(false);
+    ui->forceInteractionKinematicAnalyzeStatusLabel->setText(
+                QStringLiteral("运行后验算：后台计算中……"));
+    auto* worker = new ForceInteractionKinematicLogAnalysisWorker(request, this);
+    forceInteractionKinematicLogAnalysisWorker = worker;
+    connect(worker, &QThread::finished, this, [this, worker](){
+        const ForceInteractionKinematicLogAnalysisResult analysis = worker->result();
+        if(ui){
+            ui->forceInteractionKinematicAnalyzeButton->setEnabled(true);
+            ui->forceInteractionKinematicAnalyzeStatusLabel->setText(
+                        analysis.completed ?
+                            QStringLiteral("运行后验算：已完成，平移RMS %1 mm，姿态RMS %2°")
+                            .arg(analysis.translationRmsMm, 0, 'f', 3)
+                            .arg(analysis.orientationRmsDeg, 0, 'f', 4) :
+                            QStringLiteral("运行后验算：失败，请查看运行日志"));
+        }
+        displayInfo(analysis.summary.toStdString(),
+                    analysis.completed ? "normal" : "error");
+        if(forceInteractionKinematicLogAnalysisWorker == worker){
+            forceInteractionKinematicLogAnalysisWorker = nullptr;
+        }
+        worker->deleteLater();
     });
     worker->start(QThread::LowPriority);
 }
@@ -19755,25 +21541,84 @@ void MainWindow::refreshForceInteractionRuntimeUi()
             status.state == ForceInteractionRuntimeStatus::State::Running ||
             status.state == ForceInteractionRuntimeStatus::State::Braking;
     const bool locked = prepared || active;
+    const bool realFt = status.wrenchSourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace;
+    const bool hardwareSessionReady = hardwareInterface.isLSConnected() &&
+            runtimeState.systemRunning;
+    const bool commonPrepareReady = hardwareSessionReady &&
+            !locked && !forceInteractionValidationWorker &&
+            !forceInteractionBoundaryLogAnalysisWorker &&
+            isLiteTemplateActive() && !currentRobotState(false).anyMotionRunning;
+    ui->forceInteractionReplayExportButton->setEnabled(
+                !active && forceInteractionLastRunReplayContextValid &&
+                !forceInteractionLastRunRecordFile.trimmed().isEmpty());
+    ui->forceInteractionReplayOpenDirectoryButton->setEnabled(
+                !forceInteractionLastRunRecordFile.trimmed().isEmpty());
+    const FtSensorTraceSample& admissionFt =
+            forceInteractionFtServiceSnapshot.latestSample;
+    const bool stageCAdmissionReady = forceInteractionFtMonitoring &&
+            forceInteractionFtServiceSnapshot.monitoring &&
+            forceInteractionFtServiceSnapshot.traceConfigured &&
+            forceInteractionFtServiceSnapshot.timingReliable &&
+            !forceInteractionFtServiceSnapshot.traceLost &&
+            forceInteractionFtServiceSnapshot.queueDroppedSamples == 0 &&
+            forceInteractionFtServiceSnapshot.preheat.currentDataFresh &&
+            forceInteractionFtServiceSnapshot.preheat.preheatQualified &&
+            forceInteractionFtServiceSnapshot.preheat.zeroValid &&
+            ui->forceInteractionFtThresholdConfirmedCheckBox->isChecked() &&
+            admissionFt.wrenchComplete() && admissionFt.statusValid &&
+            admissionFt.sampleCounterValid && admissionFt.temperatureValid &&
+            admissionFt.traceFrameSequenceValid && admissionFt.statusCode == 0u;
     ui->forceInteractionRuntimePrepareButton->setEnabled(
-                !locked && !forceInteractionValidationWorker &&
-                !forceInteractionBoundaryLogAnalysisWorker &&
-                isLiteTemplateActive() && !currentRobotState(false).anyMotionRunning);
-    ui->forceInteractionRuntimeStartButton->setEnabled(prepared);
+                commonPrepareReady);
+    ui->forceInteractionRuntimeStartButton->setEnabled(prepared && !realFt);
     // “减速停止”在已准备但尚未启动时兼作“取消准备”，防止冻结配置后无处退出。
-    ui->forceInteractionRuntimeStopButton->setEnabled(locked);
-    ui->forceInteractionRuntimeEmergencyButton->setEnabled(active);
+    ui->forceInteractionRuntimeStopButton->setEnabled(locked && !realFt);
+    ui->forceInteractionRuntimeEmergencyButton->setEnabled(active && !realFt);
+    ui->forceInteractionStageCPrepareButton->setEnabled(
+                commonPrepareReady && stageCAdmissionReady);
+    ui->forceInteractionStageCStartButton->setEnabled(prepared && realFt &&
+                                                       stageCAdmissionReady);
+    ui->forceInteractionStageCStopButton->setEnabled(locked && realFt);
+    ui->forceInteractionStageCEmergencyButton->setEnabled(active && realFt);
+    ui->forceInteractionStageCStopButton->setText(
+                prepared && realFt ? QStringLiteral("取消准备") :
+                                     QStringLiteral("协同减速停止"));
+    ui->forceInteractionStageCParameterGroupBox->setEnabled(!locked);
     ui->forceInteractionRuntimeControlGroupBox->setEnabled(!locked);
     ui->forceInteractionRuntimeLimitGroupBox->setEnabled(!locked);
-    ui->forceInteractionRuntimeStatusLabel->setText(
-                QStringLiteral("%1：%2；t=%3 s，步数/命令/漏周期=%4/%5/%6，最大轴误差=%7 unit")
+    // 当前只验收速度前馈链；PID控件暂留但不可启用。
+    ui->forceInteractionRuntimePidCheckBox->setChecked(false);
+    ui->forceInteractionRuntimePidCheckBox->setEnabled(false);
+    refreshForceInteractionActuatorProfileUi();
+    const QString interactionClockText = realFt ?
+                (status.interactionTriggered ?
+                     QStringLiteral("%1 s").arg(status.interactionElapsedS, 0, 'f', 3) :
+                     QStringLiteral("等待首次有效受力")) :
+                QStringLiteral("不适用");
+    const QString statusSummary =
+                QStringLiteral("%1：%2；主机/模型=%3/%4 s，阶段C交互计时=%5，余量=%6 us，本次补算=%7步，步数/命令/漏周期=%8/%9/%10，最大轴误差=%11 unit")
                 .arg(stateText(status.state))
                 .arg(status.message.isEmpty() ? QStringLiteral("无") : status.message)
                 .arg(status.elapsedS, 0, 'f', 3)
+                .arg(status.modelElapsedS, 0, 'f', 3)
+                .arg(interactionClockText)
+                .arg(status.modelLagUs)
+                .arg(status.latestIntegrationSteps)
                 .arg(status.stepCount)
                 .arg(status.commandCount)
                 .arg(status.missedCycleCount)
-                .arg(status.maximumPositionError, 0, 'f', 6));
+                .arg(status.maximumPositionError, 0, 'f', 6);
+    ui->forceInteractionRuntimeStatusLabel->setText(
+                realFt && locked ?
+                    QStringLiteral("阶段C正在占用共享运行内核；请在阶段C子页查看状态。") :
+                    statusSummary);
+    ui->forceInteractionStageCStatusLabel->setText(
+                realFt ? (prepared ?
+                    QStringLiteral("已准备但尚未运动：组合Trace正在连续采样；请确认传感器准入仍有效后点击“启动真实力空转”。") :
+                    statusSummary) :
+                    (locked ? QStringLiteral("阶段B正在占用共享运行内核。") :
+                              QStringLiteral("尚未准备阶段C。")));
 
     std::vector<double> virtualPose;
     int equationCount = 0;
@@ -19869,11 +21714,46 @@ void MainWindow::refreshForceInteractionRuntimeUi()
             .arg(status.maximumApiUs)
             .arg(status.droppedRecordCount)
             .arg(QDir::toNativeSeparators(status.recordFile));
+    if(realFt){
+        detail += QStringLiteral(
+                    "\nF/T状态=0x%1，SampleCounter=%2，温度=%3 °C，最新样本帧龄=%4 us；冻结软件零点=[%5,%6,%7 N；%8,%9,%10 N·m]。")
+                .arg(status.latestFtStatusCode, 8, 16, QLatin1Char('0'))
+                .arg(status.latestFtSampleCounter)
+                .arg(status.latestFtTemperatureC, 0, 'f', 1)
+                .arg(status.latestFtSampleAgeUs)
+                .arg(status.frozenFtSoftwareZero[0], 0, 'f', 5)
+                .arg(status.frozenFtSoftwareZero[1], 0, 'f', 5)
+                .arg(status.frozenFtSoftwareZero[2], 0, 'f', 5)
+                .arg(status.frozenFtSoftwareZero[3], 0, 'f', 6)
+                .arg(status.frozenFtSoftwareZero[4], 0, 'f', 6)
+                .arg(status.frozenFtSoftwareZero[5], 0, 'f', 6);
+        detail += QStringLiteral(
+                    "\n质心力旋量（滤波后）=[%1,%2,%3 N；%4,%5,%6 N·m]；送入Newmark=[%7,%8,%9 N；%10,%11,%12 N·m]；力/力矩门=%13/%14。")
+                .arg(status.latestFilteredPlatformWrench[0], 0, 'f', 4)
+                .arg(status.latestFilteredPlatformWrench[1], 0, 'f', 4)
+                .arg(status.latestFilteredPlatformWrench[2], 0, 'f', 4)
+                .arg(status.latestFilteredPlatformWrench[3], 0, 'f', 5)
+                .arg(status.latestFilteredPlatformWrench[4], 0, 'f', 5)
+                .arg(status.latestFilteredPlatformWrench[5], 0, 'f', 5)
+                .arg(status.latestAppliedPlatformWrench[0], 0, 'f', 4)
+                .arg(status.latestAppliedPlatformWrench[1], 0, 'f', 4)
+                .arg(status.latestAppliedPlatformWrench[2], 0, 'f', 4)
+                .arg(status.latestAppliedPlatformWrench[3], 0, 'f', 5)
+                .arg(status.latestAppliedPlatformWrench[4], 0, 'f', 5)
+                .arg(status.latestAppliedPlatformWrench[5], 0, 'f', 5)
+                .arg(status.latestForceGateActive ? QStringLiteral("开") :
+                                                    QStringLiteral("关"))
+                .arg(status.latestTorqueGateActive ? QStringLiteral("开") :
+                                                     QStringLiteral("关"));
+    }
     if(!forceInteractionBoundaryAnalysisSummary.isEmpty()){
         detail += QLatin1Char('\n') + forceInteractionBoundaryAnalysisSummary;
     }
-    if(ui->forceInteractionRuntimeResultPlainTextEdit->toPlainText() != detail){
-        ui->forceInteractionRuntimeResultPlainTextEdit->setPlainText(detail);
+    QPlainTextEdit* resultView = realFt ?
+                ui->forceInteractionStageCResultPlainTextEdit :
+                ui->forceInteractionRuntimeResultPlainTextEdit;
+    if(resultView->toPlainText() != detail){
+        resultView->setPlainText(detail);
     }
 
     if(runtimeState.forceInteractionRuntimeActive && !active){
@@ -23101,6 +24981,8 @@ void MainWindow::toggleLiteControllerConnection()
                 enabledAxes.push_back(axisIndex);
             }
         }
+        resetForceInteractionHardwareSessionForDisconnect(
+                    QStringLiteral("G302单轴维护断连"));
         stopControlThread();
         runLiteCommissioningHardwareCommand([&](){
             for(const int axisIndex : enabledAxes){
@@ -32595,6 +34477,8 @@ bool MainWindow::initPara(){
         endpointRemoteLastPeriodicUiRefreshMs = nowMs;
         refreshOnlineVelocityTestUi();
         refreshForceInteractionRuntimeUi();
+        refreshTraceDelayCalibrationUi();
+        refreshForceInteractionFtUi();
     });
     connect(controlSnapshotTimer, &QTimer::timeout, this, [this](){
         // GUI_PERF_DIAG
@@ -37796,6 +39680,7 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
                     commissioningMotionTimeoutSeconds * 1000.0))) :
                 0;
     config.forceSensorMonitoringEnabled =
+            !runtimeState.forceInteractionGenericActuatorSessionActive &&
             runtimeState.runMode != RunMode::OnlineVelocityControl;
     config.forceThreadRunning = config.forceSensorMonitoringEnabled &&
             isForceControlThreadActuallyRunning();
@@ -38084,8 +39969,18 @@ void MainWindow::handleSafetyWarningCleared(int code)
     clearSafetyWarningState(true);
 }
 
-bool MainWindow::ensureSafetyReadyForMotion(const QString& actionName)
+bool MainWindow::ensureSafetyReadyForMotion(
+        const QString& actionName,
+        MotionAuthorizationScope authorizationScope)
 {
+    if(runtimeState.forceInteractionGenericActuatorSessionActive &&
+            authorizationScope !=
+                MotionAuthorizationScope::ForceInteractionEmptyRun){
+        displayInfo(QStringLiteral(
+                        "错误：%1失败，本次连接使用六维力交互临时执行器模板；该模板只授权阶段B/阶段C六维力八轴空转。请断连并切回G302原执行器后再使用其他运动功能。")
+                    .arg(actionName).toStdString(), "error");
+        return false;
+    }
     if(!ensureStartupSelfCheckReadyForMotion(actionName)){
         return false;
     }
@@ -44745,6 +46640,8 @@ void MainWindow::runFullSystemSwitch(){
     }
 
     auto disconnectRunningSystem = [this](){
+        resetForceInteractionHardwareSessionForDisconnect(
+                    QStringLiteral("整机断连"));
         if(runtimeState.onlineVelocityControlActive){
             stopOnlineVelocityTest(false, QStringLiteral("整机断连请求停止在线速度控制"));
         }
@@ -44763,6 +46660,7 @@ void MainWindow::runFullSystemSwitch(){
         positionSimulationModel = nullptr;
         stopControlThread();
         runtimeState.systemRunning = false;
+        runtimeState.forceInteractionGenericActuatorSessionActive = false;
         runtimeState.hardwareRunState = HardwareRunState::Disconnected;
         runtimeState.safetyArmed = false;
         runtimeState.commissioningMotionStartMs = -1;
@@ -44773,6 +46671,8 @@ void MainWindow::runFullSystemSwitch(){
         updateSafetyMonitorConfig();
         setMotorControllerEnable(false);
         hardwareInterface.disconnectLS();
+        hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(false);
+        hardwareInterface.setForceSensorTraceReadEnabled(true);
         motorTraceRecoveryStateValid = false;
         motorTraceRecoveryState = HardwareInterface::MotorTraceRecoveryState();
         linearModuleTraceRecoveryStateValid = false;
@@ -44794,6 +46694,10 @@ void MainWindow::runFullSystemSwitch(){
         controlBoxCableSpeedLastEncoderSampleMs = -1;
         clearSafetyFaultLatch(false);
         resetControlUiState();
+        refreshForceInteractionActuatorProfileUi();
+        refreshForceInteractionFtUi();
+        refreshTraceDelayCalibrationUi();
+        refreshForceInteractionRuntimeUi();
         ui->mainSwitch->setText(isLiteTemplateActive() ?
                                     QStringLiteral("启动整机") :
                                     QStringLiteral("启动"));
@@ -44803,9 +46707,14 @@ void MainWindow::runFullSystemSwitch(){
     auto abortStartupAfterEnable = [this](const QString& feedback){
         invalidateOnlineVelocityPreparedPlan(QStringLiteral("整机启动失败"), false);
         showPrimaryOperationFeedback(feedback, QStringLiteral("error"));
+        resetForceInteractionHardwareSessionForDisconnect(
+                    QStringLiteral("整机启动失败并断连"));
         setMotorControllerEnable(false);
         hardwareInterface.disconnectLS();
+        hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(false);
+        hardwareInterface.setForceSensorTraceReadEnabled(true);
         runtimeState.systemRunning = false;
+        runtimeState.forceInteractionGenericActuatorSessionActive = false;
         runtimeState.hardwareRunState = HardwareRunState::Disconnected;
         runtimeState.safetyArmed = false;
         runtimeState.cableHomeState = CableHomeState::Unconfirmed;
@@ -44815,10 +46724,21 @@ void MainWindow::runFullSystemSwitch(){
                                     QStringLiteral("启动"));
         updateControlWorkerConfig();
         updateSafetyMonitorConfig();
+        refreshForceInteractionActuatorProfileUi();
+        refreshForceInteractionFtUi();
+        refreshTraceDelayCalibrationUi();
+        refreshForceInteractionRuntimeUi();
     };
 
     auto announceLitePretensionWorkflowReady = [this](){
         if(!isLiteTemplateActive()){
+            return;
+        }
+        if(runtimeState.forceInteractionGenericActuatorSessionActive){
+            displayInfo(QStringLiteral(
+                            "G302整机已使用六维力交互临时执行器模板连接：8轴脉冲当量=%1 pulse/unit（1 unit=1°），已跳过原驱动器220Bh转矩模式速度限制；本次连接仅授权阶段B/阶段C六维力八轴空转，PID默认关闭。")
+                        .arg(forceInteractionGenericAxisEquivalent(), 0, 'f', 6)
+                        .toStdString(), "warning");
             return;
         }
         const QString safetyReferenceText = liteWinchReferenceConfirmed ?
@@ -44951,7 +46871,10 @@ void MainWindow::runFullSystemSwitch(){
                 return;
             }
             refreshMotorPositionLimitRecoveryStateFromHardware(true);
-            if(hasRestoredRuntimePretensionSnapshot()){
+            if(runtimeState.forceInteractionGenericActuatorSessionActive){
+                enterZeroPosePretensionState();
+            }
+            else if(hasRestoredRuntimePretensionSnapshot()){
                 enterRestoredRuntimePretensionState();
                 displayInfo("已进入非零位预紧状态：使用手动读取的保存位姿和上次期望绳索力");
             }
@@ -44992,7 +46915,25 @@ void MainWindow::runFullSystemSwitch(){
     }
     else{
         clearSafetyFaultLatch(false);
+        runtimeState.forceInteractionGenericActuatorSessionActive =
+                forceInteractionUsesGenericActuatorProfile();
+        if(runtimeState.forceInteractionGenericActuatorSessionActive){
+            hardwareInterface.setForceInteractionEthercatBusCycleUs(
+                        selectedForceInteractionBusCycleUs());
+            hardwareInterface.setForceSensorTraceSamplePeriodUs(
+                        selectedForceInteractionBusCycleUs());
+        }
+        else{
+            // 原G302完整整机连接保持既有总线配置；六维力实机准备时只校验读回值。
+            hardwareInterface.clearForceInteractionEthercatBusCycleOverride();
+        }
+        hardwareInterface.setForceSensorTraceReadEnabled(
+                    !runtimeState.forceInteractionGenericActuatorSessionActive);
+        refreshForceInteractionActuatorProfileUi();
         if(!applyLeadshineHardwareConfigFromUi()){
+            runtimeState.forceInteractionGenericActuatorSessionActive = false;
+            hardwareInterface.setForceSensorTraceReadEnabled(true);
+            refreshForceInteractionActuatorProfileUi();
             showPrimaryOperationFeedback(QStringLiteral("主控反馈：启动失败，雷赛电机参数未正确配置"),
                                          QStringLiteral("error"));
             return;
@@ -45012,24 +46953,51 @@ void MainWindow::runFullSystemSwitch(){
         forceSensorCurHome = sensorHome;
         hardwareInterface.setForceSensorHome(sensorHome);
         if(!hardwareInterface.connectLS()){
+            runtimeState.forceInteractionGenericActuatorSessionActive = false;
+            hardwareInterface.setForceSensorTraceReadEnabled(true);
+            refreshForceInteractionActuatorProfileUi();
             showPrimaryOperationFeedback(QStringLiteral("主控反馈：启动失败，未连接雷赛控制卡或驱动未上电"),
                                          QStringLiteral("error"));
             return;
         }
+        refreshForceInteractionTimingUi();
         if(!hardwareInterface.clearLeadshineBusErrorCode(true) ||
                 !hardwareInterface.clearAllLeadshineAxisErrorCodes()){
             showPrimaryOperationFeedback(QStringLiteral("主控反馈：启动失败，雷赛总线或电机清错失败"),
                                          QStringLiteral("error"));
             hardwareInterface.disconnectLS();
+            hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(false);
+            runtimeState.forceInteractionGenericActuatorSessionActive = false;
+            hardwareInterface.setForceSensorTraceReadEnabled(true);
+            refreshForceInteractionActuatorProfileUi();
+            return;
+        }
+        if(runtimeState.forceInteractionGenericActuatorSessionActive &&
+                !hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(true)){
+            showPrimaryOperationFeedback(
+                        QStringLiteral("主控反馈：启动失败，临时执行器位置/速度/状态字Trace配置失败"),
+                        QStringLiteral("error"));
+            hardwareInterface.disconnectLS();
+            hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(false);
+            hardwareInterface.setForceSensorTraceReadEnabled(true);
+            runtimeState.forceInteractionGenericActuatorSessionActive = false;
+            refreshForceInteractionActuatorProfileUi();
             return;
         }
         if(motorTorqueServoSetupStatusLabel){
-            motorTorqueServoSetupStatusLabel->setText(QStringLiteral("已随连接写入"));
+            motorTorqueServoSetupStatusLabel->setText(
+                        runtimeState.forceInteractionGenericActuatorSessionActive ?
+                            QStringLiteral("临时模板已跳过") :
+                            QStringLiteral("已随连接写入"));
         }
         if(!setMotorControllerEnable(true)){
             showPrimaryOperationFeedback(QStringLiteral("主控反馈：启动失败，电机使能失败"),
                                          QStringLiteral("error"));
             hardwareInterface.disconnectLS();
+            hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(false);
+            runtimeState.forceInteractionGenericActuatorSessionActive = false;
+            hardwareInterface.setForceSensorTraceReadEnabled(true);
+            refreshForceInteractionActuatorProfileUi();
             return;
         }
         runtimeState.autoExecutePoseAfterSimulation = false;
@@ -45044,7 +47012,10 @@ void MainWindow::runFullSystemSwitch(){
             return;
         }
         refreshMotorPositionLimitRecoveryStateFromHardware(true);
-        if(hasRestoredRuntimePretensionSnapshot()){
+        if(runtimeState.forceInteractionGenericActuatorSessionActive){
+            enterZeroPosePretensionState();
+        }
+        else if(hasRestoredRuntimePretensionSnapshot()){
             enterRestoredRuntimePretensionState();
             displayInfo("已进入非零位预紧状态：使用手动读取的保存位姿和上次期望绳索力");
         }
@@ -45080,6 +47051,7 @@ void MainWindow::runFullSystemSwitch(){
         runStartupSelfCheck(true, true);
         scheduleMotorTraceRecoveryStateRefreshAfterStartup(true);
         announceLitePretensionWorkflowReady();
+        refreshForceInteractionActuatorProfileUi();
     }
 }
 
@@ -46552,6 +48524,14 @@ bool MainWindow::refreshMotorPositionLimitRecoveryState(const std::vector<double
     axisCount = std::max(axisCount, static_cast<int>(previousAxes.size()));
 
     std::vector<bool> nextAxes(std::max(axisCount, 0), false);
+    // The generic temporary actuator reports degrees, whereas the legacy
+    // software-limit spin boxes are expressed in motor revolutions. Convert
+    // both sides to degrees before deciding whether recovery is required.
+    const double motorLimitToFeedbackScale =
+            runtimeState.forceInteractionGenericActuatorSessionActive &&
+            ui && ui->devMotorFeedbackIsRd &&
+            ui->devMotorFeedbackIsRd->isChecked() ?
+                kDegreesPerRevolution : 1.0;
     for(int axisIndex = 0; axisIndex < axisCount; ++axisIndex){
         const bool previouslyRecovering =
                 wasActive &&
@@ -46569,8 +48549,10 @@ bool MainWindow::refreshMotorPositionLimitRecoveryState(const std::vector<double
             continue;
         }
 
-        const double minPos = axisMotorMinVec[axisIndex]->value();
-        const double maxPos = axisMotorMaxVec[axisIndex]->value();
+        const double minPos = axisMotorMinVec[axisIndex]->value() *
+                motorLimitToFeedbackScale;
+        const double maxPos = axisMotorMaxVec[axisIndex]->value() *
+                motorLimitToFeedbackScale;
         if(!std::isfinite(minPos) || !std::isfinite(maxPos) || maxPos <= minPos){
             nextAxes[axisIndex] = previouslyRecovering;
             continue;
@@ -50955,7 +52937,9 @@ bool MainWindow::applyLeadshineHardwareConfigFromUi(QStringList* appliedItems,
         usedHardwareAxis.insert(hardwareAxisIndex);
         motorIDVec[i] = static_cast<unsigned int>(hardwareAxisIndex);
         motorSlaveIdVec[i] = configuredSlaveId;
-        motorTorqueVelocityLimitEnabled[i] = !isLinearMotorAxis(i);
+        motorTorqueVelocityLimitEnabled[i] =
+                !runtimeState.forceInteractionGenericActuatorSessionActive &&
+                !isLinearMotorAxis(i);
         comType[i] = COM_EC_LS;
     }
 
@@ -50983,14 +52967,29 @@ bool MainWindow::applyLeadshineHardwareConfigFromUi(QStringList* appliedItems,
                QStringLiteral("下发雷赛电机映射：逻辑轴数=%1，有效雷赛电机轴数=%2")
                .arg(ui->devAxisNum->value())
                .arg(usedHardwareAxis.size()));
-    appendItem(appliedItems,
-               QStringLiteral("下发雷赛转矩换算额定值：%1 N·m")
-               .arg(QString::number(ratedMotorTorqueNm, 'f', 3)));
+    if(runtimeState.forceInteractionGenericActuatorSessionActive){
+        appendItem(appliedItems,
+                   QStringLiteral("六维力交互临时执行器：8轴当量=%1 pulse/unit（1 unit=1°）")
+                   .arg(QString::number(forceInteractionGenericAxisEquivalent(), 'f', 6)));
+        appendItem(skippedItems,
+                   QStringLiteral("原G302额定转矩换算（临时速度空转不使用）"));
+    }
+    else{
+        appendItem(appliedItems,
+                   QStringLiteral("下发雷赛转矩换算额定值：%1 N·m")
+                   .arg(QString::number(ratedMotorTorqueNm, 'f', 3)));
+    }
     const double torqueVelocityLimitRpm = motorTorqueServoVelocityLimitRpm();
     hardwareInterface.setLeadshineTorqueVelocityLimitRpm(torqueVelocityLimitRpm);
-    appendItem(appliedItems,
-               QStringLiteral("下发转矩模式速度限制：%1 rpm")
-               .arg(QString::number(torqueVelocityLimitRpm, 'f', 3)));
+    if(runtimeState.forceInteractionGenericActuatorSessionActive){
+        appendItem(skippedItems,
+                   QStringLiteral("220Bh转矩模式速度限制（临时执行器不使用转矩模式）"));
+    }
+    else{
+        appendItem(appliedItems,
+                   QStringLiteral("下发转矩模式速度限制：%1 rpm")
+                   .arg(QString::number(torqueVelocityLimitRpm, 'f', 3)));
+    }
     syncMotorSoftwareLimitsToHardware(appliedItems, skippedItems);
     if(writeConnectedAxisEquiv){
         if(!applyLeadshineAxisEquivFromUi()){
@@ -51040,6 +53039,14 @@ bool MainWindow::syncMotorSoftwareLimitsToHardware(QStringList* appliedItems,
         if(i < static_cast<int>(axisMotorVelMaxVec.size()) && axisMotorVelMaxVec[i]){
             maxVel[i] = axisMotorVelMaxVec[i]->value();
         }
+        if(runtimeState.forceInteractionGenericActuatorSessionActive &&
+                ui->devMotorFeedbackIsRd->isChecked()){
+            // 原模板的界面值为圈/圈每秒；临时模板板卡 unit 为度，保持相同的
+            // 物理限位含义并只在本次六维力交互硬件会话内转换。
+            minPos[i] *= kDegreesPerRevolution;
+            maxPos[i] *= kDegreesPerRevolution;
+            maxVel[i] *= kDegreesPerRevolution;
+        }
     }
 
     if(minPos == lastSyncedMotorSoftwareMinPos &&
@@ -51054,8 +53061,11 @@ bool MainWindow::syncMotorSoftwareLimitsToHardware(QStringList* appliedItems,
     lastSyncedMotorSoftwareMaxPos = maxPos;
     lastSyncedMotorSoftwareMaxVel = maxVel;
     appendItem(appliedItems,
-               QStringLiteral("下发电机软件限位：轴数=%1，包含最小位置、最大位置、最大速度")
-               .arg(axisCount));
+               runtimeState.forceInteractionGenericActuatorSessionActive ?
+                   QStringLiteral("下发临时执行器软件限位：轴数=%1，原界面圈单位已换算为度单位")
+                       .arg(axisCount) :
+                   QStringLiteral("下发电机软件限位：轴数=%1，包含最小位置、最大位置、最大速度")
+                       .arg(axisCount));
     return true;
 }
 
@@ -51067,6 +53077,10 @@ double MainWindow::configuredLeadshineAxisEquivForAxis(int axisIndex) const
 
     if(isLinearMotorAxis(axisIndex)){
         return kLinearModuleAxisEquivPulsePerRevolution;
+    }
+
+    if(runtimeState.forceInteractionGenericActuatorSessionActive){
+        return forceInteractionGenericAxisEquivalent();
     }
 
     double baseEquiv = 1000.0;

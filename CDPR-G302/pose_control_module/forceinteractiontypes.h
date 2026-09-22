@@ -46,6 +46,13 @@ enum class ForceInteractionWrenchCoordinate : quint8
     PlatformBodyAtCenterOfMass
 };
 
+// 阶段B/C共用同一运行内核，只在动力学入口选择力旋量来源。
+enum class ForceInteractionWrenchSourceKind : quint8
+{
+    Simulated = 0,
+    RealFtTrace
+};
+
 // wrench = [Fx,Fy,Fz,Mx,My,Mz]，单位依次为 N 和 N·m。
 struct ForceInteractionWrenchSample
 {

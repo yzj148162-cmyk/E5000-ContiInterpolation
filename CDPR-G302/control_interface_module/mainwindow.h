@@ -45,9 +45,11 @@
 #include "motivelocalhandlerthread.h"
 #include "controlworker.h"
 #include "forwardkinematicssolver.h"
+#include "forceinteractionreplayexporter.h"
 #include "pvtexecutionworker.h"
 #include "simulationworker.h"
 #include "hardwareinterface.h"
+#include "ftsensormonitoringservice.h"
 #include "datavisualizationcontroller.h"
 #include "guitimingdiagnostics.h"
 #include "runtimediagnostics.h"
@@ -85,6 +87,7 @@ class QTextStream;
 class QTimer;
 class EndpointRemoteInputSupervisor;
 class ForceInteractionBoundaryLogAnalysisWorker;
+class ForceInteractionKinematicLogAnalysisWorker;
 class ForceInteractionValidationWorker;
 class MotorTorqueTestWorker;
 class MonitorThread;
@@ -230,9 +233,12 @@ private:
         bool singleMotorPointMoveActive = false;
         bool jogFollowTestActive = false;
         bool onlineVelocityControlActive = false;
-        // 六维力交互阶段B复用在线速度硬件链，但保留独立会话标志，
+        // 六维力交互阶段B/C复用在线速度硬件链，但保留独立会话标志，
         // 防止预设轨迹/遥控的停止与收尾逻辑误处理该会话。
         bool forceInteractionRuntimeActive = false;
+        // 六维力交互页选择的临时执行器模板只在一次整机连接会话内冻结。
+        // 原G302模板始终是默认生产路径；断连或启动失败时立即清除此标志。
+        bool forceInteractionGenericActuatorSessionActive = false;
         bool endpointRemoteControlActive = false;
         int singleMotorPointMoveAxis = -1;
         qint64 singleMotorPointMoveStartMs = 0;
@@ -566,19 +572,59 @@ private:
             const QStringList& displayNames,
             const QStringList& instanceIds);
     void setupForceInteractionValidationTab();
+    QString forceInteractionActuatorProfileKey() const;
+    void startTraceDelayCalibration(bool allAxes);
+    void stopTraceDelayCalibration();
+    void recalculateTraceDelayCalibration();
+    void openTraceDelayCalibrationRawFile();
+    void refreshTraceDelayAxisOptions();
+    int selectedTraceDelayLogicalAxis() const;
+    void refreshTraceDelayCalibrationUi();
+    void startForceInteractionFtMonitoring();
+    void stopForceInteractionFtMonitoring();
+    void resetForceInteractionHardwareSessionForDisconnect(
+            const QString& reason);
+    void refreshForceInteractionFtUi();
+    FtSensorStabilityConfig forceInteractionFtStabilityConfigFromUi() const;
+    bool forceInteractionStageCAdmissionSnapshot(
+            FtSensorMonitoringService::Snapshot* snapshot,
+            QString* errorMessage = nullptr);
+    void setForceInteractionFtTraceConsumptionMode(
+            HardwareInterface::RuntimeTraceUsageProfile expectedProfile,
+            bool externalTraceReaderActive);
+    void restoreForceInteractionFtMonitoringProfile();
+    bool forceInteractionUsesGenericActuatorProfile() const;
+    double forceInteractionGenericAxisEquivalent() const;
+    void refreshForceInteractionActuatorProfileUi();
+    int selectedForceInteractionBusCycleUs() const;
+    int selectedForceInteractionControlPeriodUs() const;
+    void refreshForceInteractionTimingUi();
     void refreshForceInteractionValidationInputState();
     void startForceInteractionSoftwareValidation();
     void cancelForceInteractionSoftwareValidation();
     ForceInteractionRuntimeConfig forceInteractionRuntimeConfigFromUi(
+            ForceInteractionWrenchSourceKind sourceKind,
+            const FtSensorMonitoringService::Snapshot* ftSnapshot,
             QString* errorMessage = nullptr);
     void prepareForceInteractionRuntimeFromUi();
+    void prepareForceInteractionStageCRuntimeFromUi();
+    void prepareForceInteractionRuntimeForSource(
+            ForceInteractionWrenchSourceKind sourceKind);
     void startForceInteractionRuntime();
+    void startForceInteractionStageCRuntime();
+    void startPreparedForceInteractionRuntime(
+            ForceInteractionWrenchSourceKind expectedSource);
     void stopForceInteractionRuntime(bool emergency = false,
-                                     const QString& reason = QStringLiteral("用户停止阶段B"));
+                                     const QString& reason = QStringLiteral("用户停止六维力交互运行"));
     void refreshForceInteractionRuntimeUi();
     void finalizeForceInteractionRuntimeSession(
             const ForceInteractionRuntimeStatus& status);
     void startForceInteractionBoundaryLogAnalysis(const QString& csvPath);
+    void startForceInteractionKinematicLogAnalysis();
+    void exportLatestForceInteractionReplayConfig();
+    void openForceInteractionReplayDirectory();
+    ForceInteractionReplayExportContext buildForceInteractionReplayContext(
+            const ForceInteractionRuntimeConfig& config);
     bool computeForceInteractionRuntimeForwardPose(
             const ForceInteractionRuntimeStatus& status,
             std::vector<double>& pose,
@@ -610,6 +656,21 @@ private:
     ForceInteractionValidationWorker* forceInteractionValidationWorker = nullptr;
     ForceInteractionBoundaryLogAnalysisWorker*
             forceInteractionBoundaryLogAnalysisWorker = nullptr;
+    ForceInteractionKinematicLogAnalysisWorker*
+            forceInteractionKinematicLogAnalysisWorker = nullptr;
+    QString forceInteractionLastRunRecordFile;
+    CompensatedCableKinematics::Configuration
+            forceInteractionLastRunKinematicsConfig;
+    OnlineVelocityAxisArray forceInteractionLastRunMotorUnitPerRadian{};
+    std::vector<double> forceInteractionLastRunReferenceCableLengthMm;
+    std::vector<double> forceInteractionLastRunInitialPoseMmRad;
+    PhysicalWorkspaceBoundaryConfig forceInteractionLastRunPhysicalWorkspace;
+    bool forceInteractionLastRunKinematicContextValid = false;
+    ForceInteractionReplayExportContext forceInteractionRuntimeReplayContext;
+    ForceInteractionReplayExportContext forceInteractionLastRunReplayContext;
+    bool forceInteractionRuntimeReplayContextValid = false;
+    bool forceInteractionLastRunReplayContextValid = false;
+    QString forceInteractionLastReplayConfigFile;
     QString forceInteractionBoundaryAnalysisSummary;
     PhysicalWorkspaceBoundaryConfig forceInteractionRuntimePhysicalWorkspace;
     bool forceInteractionRuntimePhysicalWorkspaceValid = false;
@@ -629,6 +690,28 @@ private:
     quint64 forceInteractionRuntimeLastForwardTraceSequence = 0;
     qint64 forceInteractionRuntimeLastForwardSolveMs = -1;
     bool forceInteractionRuntimeFinalizing = false;
+    QThread* forceInteractionFtServiceThread = nullptr;
+    FtSensorMonitoringService* forceInteractionFtService = nullptr;
+    FtSensorMonitoringService::Snapshot forceInteractionFtServiceSnapshot;
+    FtSensorTraceSample forceInteractionLatestFtSample;
+    bool forceInteractionFtMonitoring = false;
+    bool forceInteractionFtTraceConfigured = false;
+    HardwareInterface::RuntimeTraceUsageProfile forceInteractionFtPreviousTraceProfile =
+            HardwareInterface::RuntimeTraceUsageProfile::Base;
+    HardwareInterface::RuntimeTraceUsageProfile forceInteractionFtMonitoringTraceProfile =
+            HardwareInterface::RuntimeTraceUsageProfile::Base;
+    bool forceInteractionFtOwnsTraceProfile = false;
+    qint64 forceInteractionFtLastUiRefreshMs = -1;
+    bool forceInteractionFtAutomaticZeroReported = false;
+    QString forceInteractionFtLastJudgementStateKey;
+    std::array<double, kFtSensorWrenchChannelCount>
+            forceInteractionFtLastConfirmedZero{};
+    bool forceInteractionFtLastConfirmedZeroValid = false;
+    bool forceInteractionFtUsingLastConfirmedZero = false;
+    QString forceInteractionFtLastConfirmedZeroTime;
+    bool traceDelayCalibrationSnapshotGraceActive = false;
+    bool traceDelayCalibrationAwaitingFreshSnapshot = false;
+    quint64 traceDelayCalibrationTerminalSnapshotSequence = 0;
     quint64 endpointRemoteInputSessionToken = 0;
     quint64 endpointRemoteInputSessionCounter = 0;
     GuiRefreshProfile guiRefreshProfile = GuiRefreshProfile::Normal;
@@ -2696,8 +2779,17 @@ private:
     // 清除安全故障锁存。
     void clearSafetyFaultLatch(bool announce = false,
                                bool allowControlBoxButtonLatchClear = false);
-    // 运动前检查安全联锁是否允许动作。
-    bool ensureSafetyReadyForMotion(const QString& actionName);
+    enum class MotionAuthorizationScope
+    {
+        General,
+        ForceInteractionEmptyRun
+    };
+    // 运动前检查安全联锁是否允许动作。临时执行器会话只放行阶段B/C空转链，
+    // 不使用界面文案字符串作为权限依据。
+    bool ensureSafetyReadyForMotion(
+            const QString& actionName,
+            MotionAuthorizationScope authorizationScope =
+                MotionAuthorizationScope::General);
     // 处理 SafetyMonitor 上报的故障。
     void handleSafetyFault(int level, int code, const QString& summary, const QString& detail);
     // 处理工作空间边缘条件解除，清除非锁存预警显示。

@@ -715,6 +715,10 @@ void SafetyMonitor::evaluateSafety()
             std::min(cfg.axisCount, static_cast<int>(cfg.axes.size()));
     const ControlWorker::EndpointRemoteTracePhase endpointRemoteTracePhase =
             snapshot.endpointRemoteTracePhase;
+    const ForceInteractionRuntimeStatus forceInteractionStatus =
+            cfg.forceInteractionWorkspacePoseSource && controlWorker ?
+                controlWorker->forceInteractionRuntimeStatus() :
+                ForceInteractionRuntimeStatus{};
     bool endpointRemoteUsesTraceState = false;
     switch(endpointRemoteTracePhase){
     case ControlWorker::EndpointRemoteTracePhase::TransitionAcquiring:
@@ -730,6 +734,19 @@ void SafetyMonitor::evaluateSafety()
     const bool endpointRemoteTraceRunning =
             endpointRemoteTracePhase ==
                 ControlWorker::EndpointRemoteTracePhase::Running;
+    const bool forceInteractionUsesTraceState =
+            cfg.forceInteractionWorkspacePoseSource &&
+            (forceInteractionStatus.state ==
+                 ForceInteractionRuntimeStatus::State::WaitingForTrace ||
+             forceInteractionStatus.state ==
+                 ForceInteractionRuntimeStatus::State::Running ||
+             forceInteractionStatus.state ==
+                 ForceInteractionRuntimeStatus::State::Braking);
+    const bool forceInteractionTraceRunning =
+            forceInteractionStatus.state ==
+                ForceInteractionRuntimeStatus::State::Running ||
+            forceInteractionStatus.state ==
+                ForceInteractionRuntimeStatus::State::Braking;
     // 只在ControlWorker发布新快照时接纳并验证采集时帧龄。同一个已经接纳
     // 的缓存快照在SafetyMonitor异步读取期间自然老化，不应被重新解释为
     // “采集时超过5 ms”；若ControlWorker停止发布，前面的快照超时和遥控
@@ -823,6 +840,48 @@ void SafetyMonitor::evaluateSafety()
                                  .arg(statusWord)
                                  .arg(statusWordHex)
                                  .arg(stateMachine)
+                                 .arg(snapshot.runtimeTraceLogicalFrameSequence));
+                return;
+            }
+            continue;
+        }
+        if(forceInteractionUsesTraceState){
+            // 阶段B启动前已主动复核八轴使能；进入运行后，控制器和独立安全
+            // 监控都复用同一Trace帧的0x6041。不要再由安全线程每周期插入
+            // 8次nmc_get_axis_state_machine，否则会与Trace和速度命令争用
+            // HardwareThread。等待首个可靠Trace帧期间由阶段B自身超时关闭。
+            if(!forceInteractionTraceRunning || !snapshotAdvanced){
+                continue;
+            }
+            const bool traceStateFrameReliable =
+                snapshot.runtimeTraceUsageProfile ==
+                    HardwareInterface::RuntimeTraceUsageProfile::
+                            ForceInteractionVelocity &&
+                    snapshot.runtimeTraceFromHardware &&
+                    snapshot.runtimeTraceFrameSequenceValid &&
+                    snapshot.runtimeTraceTimingReliable &&
+                    snapshot.runtimeTraceFifoCaughtUp &&
+                    !snapshot.runtimeTraceLost;
+            const bool stateAvailable =
+                    axisIndex < static_cast<int>(snapshot.motorTraceStatusWord.size()) &&
+                    axisIndex < static_cast<int>(snapshot.motorTraceStateMachine.size());
+            if(!traceStateFrameReliable || !stateAvailable){
+                // Trace可靠性和超时由阶段B高频控制器按用户冻结的Trace超时
+                // 处理；这里不使用更严格的异步时刻重复判定，以免瞬时无新帧
+                // 被误报。控制快照停更仍由本线程独立急停。
+                continue;
+            }
+            if(snapshot.motorTraceStateMachine[axisIndex] != 4){
+                const quint16 statusWord = snapshot.motorTraceStatusWord[axisIndex];
+                triggerFault(StopLevel::EmergencyStop,
+                             FaultCode::MotorFault,
+                             QStringLiteral("六维力运动参与电机驱动状态异常"),
+                             QStringLiteral(
+                                 "阶段B轴%1同帧0x6041=0x%2，状态=%3，要求=4(Operation enabled)，逻辑序号=%4；已执行安全急停。")
+                                 .arg(axisIndex + 1)
+                                 .arg(QString::number(statusWord, 16)
+                                      .rightJustified(4, QLatin1Char('0')).toUpper())
+                                 .arg(snapshot.motorTraceStateMachine[axisIndex])
                                  .arg(snapshot.runtimeTraceLogicalFrameSequence));
                 return;
             }
@@ -955,8 +1014,8 @@ void SafetyMonitor::evaluateSafety()
             hasWorkspacePose = false;
             workspacePose.clear();
             if(controlWorker){
-                const ForceInteractionRuntimeStatus status =
-                        controlWorker->forceInteractionRuntimeStatus();
+                const ForceInteractionRuntimeStatus& status =
+                        forceInteractionStatus;
                 const bool active =
                         status.state == ForceInteractionRuntimeStatus::State::Running ||
                         status.state == ForceInteractionRuntimeStatus::State::Braking;

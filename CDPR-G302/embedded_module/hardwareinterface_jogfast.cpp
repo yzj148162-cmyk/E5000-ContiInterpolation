@@ -671,6 +671,9 @@ bool HardwareInterface::motorVelBatchFastDirect(
                     }
                 }
             }
+            if(!ok){
+                break;
+            }
             continue;
         }
 
@@ -678,6 +681,11 @@ bool HardwareInterface::motorVelBatchFastDirect(
             const bool started = startVelocityMove(command);
             motorJogVelocityFastActive[logicalAxis] = started;
             ok = ok && started;
+            if(!started){
+                // 八轴协同命令一旦有轴启动失败，就不再更新本批后续轴；
+                // 调用方会在本函数返回false后立即执行统一急停。
+                break;
+            }
             continue;
         }
 
@@ -692,6 +700,9 @@ bool HardwareInterface::motorVelBatchFastDirect(
                 const bool restarted = startVelocityMove(command);
                 motorJogVelocityFastActive[logicalAxis] = restarted;
                 ok = ok && restarted;
+                if(!restarted){
+                    break;
+                }
             }
             else{
                 failCommand(
@@ -700,6 +711,7 @@ bool HardwareInterface::motorVelBatchFastDirect(
                                 .arg(speedErr),
                             EndpointRemoteVelocityCommandOutcome::SdkFailure);
                 ok = false;
+                break;
             }
         }
     }

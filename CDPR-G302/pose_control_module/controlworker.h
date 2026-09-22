@@ -21,6 +21,7 @@
 #include "onlinevelocitycontrol.h"
 #include "endpointremotecontrol.h"
 #include "forceinteractionruntimecontrol.h"
+#include "tracedelaycalibrationrunner.h"
 
 class ControlWorker : public QObject
 {
@@ -416,14 +417,25 @@ public:
     void stopEndpointRemoteControl(bool emergency,
                                    const QString& reason = QStringLiteral("用户退出末端遥控"));
     EndpointRemoteStatus endpointRemoteStatus() const;
-    // 阶段B模拟六维力空载联调：实时产点并复用八轴在线速度硬件链。
+    // 阶段B模拟力/阶段C真实F/T空载联调：仅替换力源，复用同一八轴在线速度链。
     bool prepareForceInteractionRuntime(
             const ForceInteractionRuntimeConfig& config,
             QString* errorMessage = nullptr);
     bool startForceInteractionRuntime(QString* errorMessage = nullptr);
     void stopForceInteractionRuntime(bool emergency,
-                                     const QString& reason = QStringLiteral("用户停止阶段B"));
+                                     const QString& reason = QStringLiteral("用户停止六维力交互实机运行"));
+    void resetForceInteractionRuntimeSession();
     ForceInteractionRuntimeStatus forceInteractionRuntimeStatus() const;
+    bool startTraceDelayCalibration(const TraceDelayCalibrationConfig& config,
+                                    QString* errorMessage = nullptr);
+    void stopTraceDelayCalibration(bool emergency = false,
+                                   const QString& reason = QStringLiteral("用户停止标定"));
+    TraceDelayCalibrationStatus traceDelayCalibrationStatus() const;
+    std::array<TraceDelayAxisResult, 8> traceDelayCalibrationResults(
+            const QString& profileKey,
+            double axisEquivalentPulsePerUnit,
+            int traceSamplePeriodUs) const;
+    bool recalculateLastTraceDelayCalibration(QString* errorMessage = nullptr);
 
 public slots:
     // 启动定时控制循环。
@@ -546,6 +558,7 @@ private:
             QString* errorMessage = nullptr);
 
     HardwareInterface* hardwareInterface = nullptr;
+    TraceDelayCalibrationRunner traceDelayCalibrationRunner;
     QTimer* timer = nullptr;
     mutable QMutex configMutex;
     mutable QMutex snapshotMutex;

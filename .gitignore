@@ -26,5 +26,4 @@ ipch/
 *.user
 ui_*.h
 .qmake.stash
-/conti_ctrl/Makefile*
 /cdpr_control/Makefile*
