@@ -430,6 +430,7 @@ public:
                                     QString* errorMessage = nullptr);
     void stopTraceDelayCalibration(bool emergency = false,
                                    const QString& reason = QStringLiteral("用户停止标定"));
+    void resetTraceDelayCalibrationSession();
     TraceDelayCalibrationStatus traceDelayCalibrationStatus() const;
     std::array<TraceDelayAxisResult, 8> traceDelayCalibrationResults(
             const QString& profileKey,

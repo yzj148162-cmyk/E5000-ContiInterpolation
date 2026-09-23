@@ -15,6 +15,20 @@
 #include <QTextStream>
 
 namespace {
+
+QString formatAxisDiagnostics(
+        const HardwareInterface::ConnectionItemDiagnostics& diagnostics)
+{
+    return QStringLiteral("控制卡轴%1：状态机=%2，状态字=0x%3，轴错误码=%4，停止原因=%5"
+                          "（诊断返回=%6，停止原因返回=%7）")
+            .arg(diagnostics.hardwareAxis)
+            .arg(diagnostics.stateMachine)
+            .arg(static_cast<qulonglong>(diagnostics.statusWord), 0, 16)
+            .arg(diagnostics.errorCode)
+            .arg(diagnostics.stopReason)
+            .arg(diagnostics.apiResult)
+            .arg(diagnostics.stopReasonApiResult);
+}
 int profileSlot(const QString& key)
 {
     return key == QStringLiteral("generic_incremental_8_axis") ? 1 : 0;
@@ -230,11 +244,17 @@ bool TraceDelayCalibrationRunner::beginCurrentSegment(QString* errorMessage)
 {
     const int axis = status_.axis;
     const double target = targets_[status_.currentSegment];
+    const auto beforeCommand = hardware_->motorAxisDiagnostics(axis);
     const std::vector<int> axes{axis};
     const std::vector<double> velocity{target};
     if(!hardware_->motorVelBatch(axes, velocity, config_.onlineChangeTimeS)){
-        if(errorMessage) *errorMessage = QStringLiteral("轴 %1 下发标定速度 %2 失败")
-                .arg(axis).arg(target, 0, 'f', 4);
+        const auto rejected = hardware_->motorAxisDiagnostics(axis);
+        if(errorMessage){
+            *errorMessage = QStringLiteral("轴 %1 下发标定速度 %2 失败；下发前%3；拒绝后%4")
+                    .arg(axis).arg(target, 0, 'f', 4)
+                    .arg(formatAxisDiagnostics(beforeCommand))
+                    .arg(formatAxisDiagnostics(rejected));
+        }
         return false;
     }
     TraceDelayCalibrationSegment segment;
@@ -243,6 +263,8 @@ bool TraceDelayCalibrationRunner::beginCurrentSegment(QString* errorMessage)
     status_.targetVelocityUnitPerSec = target;
     status_.state = TraceDelayCalibrationStatus::State::Moving;
     status_.phaseText = QStringLiteral("采集第 %1/6 段").arg(status_.currentSegment + 1);
+    status_.message = QStringLiteral("下发前%1")
+            .arg(formatAxisDiagnostics(beforeCommand));
     return true;
 }
 
@@ -304,13 +326,22 @@ void TraceDelayCalibrationRunner::tick(qint64 nowUs, int traceSamplePeriodUs)
     } else if(status_.state == TraceDelayCalibrationStatus::State::Moving){
         if(elapsedUs < static_cast<qint64>(config_.holdMs) * 1000) return;
         drainSamples();
+        const auto beforeStop = hardware_->motorAxisDiagnostics(status_.axis);
         if(!hardware_->motorStop(status_.axis)){
-            finish(true, QStringLiteral("轴 %1 停止失败").arg(status_.axis));
+            const auto failedStop = hardware_->motorAxisDiagnostics(status_.axis);
+            finish(true, QStringLiteral("轴 %1 停止失败；停止前%2；失败后%3")
+                   .arg(status_.axis)
+                   .arg(formatAxisDiagnostics(beforeStop))
+                   .arg(formatAxisDiagnostics(failedStop)));
             return;
         }
+        const auto afterStop = hardware_->motorAxisDiagnostics(status_.axis);
         status_.state = TraceDelayCalibrationStatus::State::Stopping;
         status_.phaseText = QStringLiteral("等待静止");
         status_.targetVelocityUnitPerSec = 0.0;
+        status_.message = QStringLiteral("停止前%1；停止后%2")
+                .arg(formatAxisDiagnostics(beforeStop))
+                .arg(formatAxisDiagnostics(afterStop));
         phaseStartUs_ = nowUs;
     } else if(status_.state == TraceDelayCalibrationStatus::State::Stopping){
         if(elapsedUs < static_cast<qint64>(config_.restMs) * 1000) return;
@@ -478,6 +509,22 @@ void TraceDelayCalibrationRunner::stop(bool emergency, const QString& reason)
     if(emergency && hardware_) hardware_->emergencyStopAxes({status_.axis});
     writeRawCsv(nullptr);
     finish(emergency, reason.isEmpty() ? QStringLiteral("用户停止标定") : reason);
+}
+
+void TraceDelayCalibrationRunner::resetSession()
+{
+    QMutexLocker locker(&mutex_);
+    if(status_.active){
+        return;
+    }
+    status_ = TraceDelayCalibrationStatus{};
+    config_ = TraceDelayCalibrationConfig{};
+    axes_.clear();
+    segments_.clear();
+    phaseStartUs_ = 0;
+    axisStartUs_ = 0;
+    traceSamplePeriodUs_ = 0;
+    finalizationWarnings_.clear();
 }
 
 bool TraceDelayCalibrationRunner::isActive() const

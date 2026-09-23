@@ -17,6 +17,7 @@ public:
                QString* errorMessage = nullptr);
     void tick(qint64 nowUs, int traceSamplePeriodUs);
     void stop(bool emergency, const QString& reason);
+    void resetSession();
     bool isActive() const;
     TraceDelayCalibrationStatus status() const;
     std::array<TraceDelayAxisResult, 8> resultsForProfile(

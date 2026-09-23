@@ -19695,11 +19695,12 @@ void MainWindow::resetForceInteractionHardwareSessionForDisconnect(
                         reason);
         }
 
-        if(controlWorker->traceDelayCalibrationStatus().active){
-            QMetaObject::invokeMethod(controlWorker, [this, reason](){
+        QMetaObject::invokeMethod(controlWorker, [this, reason](){
+            if(controlWorker->traceDelayCalibrationStatus().active){
                 controlWorker->stopTraceDelayCalibration(true, reason);
-            }, Qt::BlockingQueuedConnection);
-        }
+            }
+            controlWorker->resetTraceDelayCalibrationSession();
+        }, Qt::BlockingQueuedConnection);
     }
     if(traceDelayCalibrationSnapshotGraceActive){
         endHardwareExclusiveSnapshotTimeout();
@@ -19766,7 +19767,7 @@ void MainWindow::resetForceInteractionHardwareSessionForDisconnect(
     refreshForceInteractionValidationInputState();
     refreshForceInteractionRuntimeUi();
     displayInfo(QStringLiteral(
-                    "六维力交互硬件会话已随断连复位：F/T监测、本轮预热资格、活动软件零点及阶段B/C准备/运行态均已清除；实测阈值确认与上次人工确认零漂缓存保留。若传感器未断电，可在重新监测时主动勾选复用。阶段A与离线日志保留。原因=%1")
+                    "六维力交互硬件会话已随断连复位：Trace延迟标定临时状态、F/T监测、本轮预热资格、活动软件零点及阶段B/C准备/运行态均已清除；实测阈值确认、已保存的Trace标定结果与上次人工确认零漂缓存保留。若传感器未断电，可在重新监测时主动勾选复用。阶段A与离线日志保留。原因=%1")
                 .arg(reason).toStdString(), "normal");
 }
 

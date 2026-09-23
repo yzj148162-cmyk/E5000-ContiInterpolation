@@ -2100,6 +2100,11 @@ void ControlWorker::stopTraceDelayCalibration(bool emergency, const QString& rea
     traceDelayCalibrationRunner.stop(emergency, reason);
 }
 
+void ControlWorker::resetTraceDelayCalibrationSession()
+{
+    traceDelayCalibrationRunner.resetSession();
+}
+
 TraceDelayCalibrationStatus ControlWorker::traceDelayCalibrationStatus() const
 {
     return traceDelayCalibrationRunner.status();
@@ -4489,10 +4494,11 @@ void ControlWorker::controlLoop()
             calibrationAfter.currentSegment != calibrationBefore.currentSegment ||
             calibrationAfter.state != calibrationBefore.state)){
             emit displayInfoSignal(
-                        QStringLiteral("Trace延迟标定：轴%1，%2，目标=%3°/s")
+                        QStringLiteral("Trace延迟标定：轴%1，%2，目标=%3°/s；%4")
                         .arg(calibrationAfter.axis)
                         .arg(calibrationAfter.phaseText)
                         .arg(calibrationAfter.targetVelocityUnitPerSec, 0, 'f', 3)
+                        .arg(calibrationAfter.message)
                         .toStdString(), "info");
         }
         if(calibrationBefore.active && !calibrationAfter.active){
