@@ -16769,6 +16769,22 @@ border-radius: 6px;</string>
          </widget>
         </item>
         <item>
+         <widget class="QLabel" name="forceInteractionUnitAdmissionLabel">
+          <property name="visible">
+           <bool>false</bool>
+          </property>
+          <property name="styleSheet">
+           <string notr="true">QLabel { color: #b00020; background-color: #fff2f2; border: 1px solid #d88; padding: 6px; }</string>
+          </property>
+          <property name="text">
+           <string>六维力交互统一使用角度单位。请先断连，再到【嵌入式模块】将“电机数据反馈单位”选择为【角度】。</string>
+          </property>
+          <property name="wordWrap">
+           <bool>true</bool>
+          </property>
+         </widget>
+        </item>
+        <item>
          <widget class="QTabWidget" name="forceInteractionSubTabWidget">
           <property name="currentIndex">
            <number>1</number>

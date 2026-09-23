@@ -572,6 +572,9 @@ private:
             const QStringList& displayNames,
             const QStringList& instanceIds);
     void setupForceInteractionValidationTab();
+    bool forceInteractionDegreeUnitAdmitted() const;
+    bool requireForceInteractionDegreeUnit(const QString& actionName);
+    void refreshForceInteractionUnitAdmissionUi();
     QString forceInteractionActuatorProfileKey() const;
     void startTraceDelayCalibration(bool allAxes);
     void stopTraceDelayCalibration();

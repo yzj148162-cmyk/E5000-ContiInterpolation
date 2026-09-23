@@ -19090,6 +19090,48 @@ void MainWindow::refreshForceInteractionActuatorProfileUi()
         ui->forceInteractionActuatorProfileStatusLabel->setStyleSheet(QString());
     }
     refreshForceInteractionTimingUi();
+    refreshForceInteractionUnitAdmissionUi();
+}
+
+bool MainWindow::forceInteractionDegreeUnitAdmitted() const
+{
+    return ui && ui->devMotorFeedbackIsTheta &&
+            ui->devMotorFeedbackIsTheta->isChecked();
+}
+
+bool MainWindow::requireForceInteractionDegreeUnit(const QString& actionName)
+{
+    if(forceInteractionDegreeUnitAdmitted()){
+        return true;
+    }
+    refreshForceInteractionUnitAdmissionUi();
+    displayInfo(QStringLiteral("%1未执行：六维力交互统一使用角度单位。请先断连，"
+                               "再到【嵌入式模块】将“电机数据反馈单位”选择为【角度】。")
+                .arg(actionName).toStdString(), "error");
+    return false;
+}
+
+void MainWindow::refreshForceInteractionUnitAdmissionUi()
+{
+    if(!ui || !ui->forceInteractionActuatorProfileGroupBox ||
+            !ui->forceInteractionSubTabWidget ||
+            !ui->forceInteractionUnitAdmissionLabel){
+        return;
+    }
+    const bool admitted = forceInteractionDegreeUnitAdmitted();
+    // 只控制页面的两个现有根区域，Qt会递归禁用其全部子控件；提示标签
+    // 保持在禁用区域之外，避免为每个按钮维护重复的启用/禁用代码。
+    ui->forceInteractionActuatorProfileGroupBox->setEnabled(admitted);
+    ui->forceInteractionSubTabWidget->setEnabled(admitted);
+    ui->forceInteractionUnitAdmissionLabel->setVisible(!admitted);
+    if(!admitted){
+        const bool connected = hardwareInterface.isLSConnected() ||
+                runtimeState.systemRunning;
+        ui->forceInteractionUnitAdmissionLabel->setText(
+                    connected ?
+                        QStringLiteral("六维力交互统一使用角度单位；当前为圈数且控制卡已连接。请先断连，再到【嵌入式模块】选择【角度】。") :
+                        QStringLiteral("六维力交互统一使用角度单位。请到【嵌入式模块】将“电机数据反馈单位”选择为【角度】。"));
+    }
 }
 
 void MainWindow::setupForceInteractionValidationTab()
@@ -19230,6 +19272,8 @@ void MainWindow::setupForceInteractionValidationTab()
     connect(ui->forceInteractionCommonControlPeriodComboBox,
             qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int){ refreshForceInteractionTimingUi(); });
+    connect(ui->tabWidget, &QTabWidget::currentChanged, this,
+            [this](int){ refreshForceInteractionUnitAdmissionUi(); });
     connect(ui->forceInteractionKinematicAnalyzeButton,
             &QPushButton::clicked, this,
             &MainWindow::startForceInteractionKinematicLogAnalysis);
@@ -19390,6 +19434,7 @@ void MainWindow::setupForceInteractionValidationTab()
     refreshForceInteractionRuntimeUi();
     refreshTraceDelayCalibrationUi();
     refreshForceInteractionFtUi();
+    refreshForceInteractionUnitAdmissionUi();
 }
 
 FtSensorStabilityConfig MainWindow::forceInteractionFtStabilityConfigFromUi() const
@@ -19495,6 +19540,9 @@ void MainWindow::restoreForceInteractionFtMonitoringProfile()
 void MainWindow::startForceInteractionFtMonitoring()
 {
     if(!ui || forceInteractionFtMonitoring){
+        return;
+    }
+    if(!requireForceInteractionDegreeUnit(QStringLiteral("六维F/T预热监测启动"))){
         return;
     }
     if(!ui->devUseLS->isChecked() || !hardwareInterface.isLSConnected()){
@@ -20083,16 +20131,7 @@ void MainWindow::startTraceDelayCalibration(bool allAxes)
         displayInfo("Trace延迟标定尚在等待Trace恢复后的新控制快照，请稍候。", "warning");
         return;
     }
-    // 标定参数的公开单位固定为 deg/s。原 G302 执行器直接沿用全局电机
-    // 工程单位，因此若仍选择“圈数”，30 会被板卡解释为 30 rev/s，
-    // 而不是 30 deg/s。这里必须在任何 Trace 重配和运动命令之前拒绝启动。
-    // 临时增量编码器模板自身固定使用 degree unit，不受该全局单选项影响。
-    if(!forceInteractionUsesGenericActuatorProfile() &&
-            currentMotorFeedbackDisplayUnit() != MotorFeedbackDisplayUnit::Degree){
-        displayInfo("错误：G302原执行器的Trace延迟标定固定使用角度单位（°/s）；"
-                    "当前电机数据反馈单位为圈数。请先停止并断连，在【嵌入式模块】"
-                    "中选择【角度】，重新启动整机后再标定。未下发任何运动指令。",
-                    "error");
+    if(!requireForceInteractionDegreeUnit(QStringLiteral("Trace延迟标定"))){
         return;
     }
     TraceDelayCalibrationConfig config;
@@ -20320,6 +20359,9 @@ void MainWindow::refreshForceInteractionValidationInputState()
 
 void MainWindow::startForceInteractionSoftwareValidation()
 {
+    if(!requireForceInteractionDegreeUnit(QStringLiteral("阶段A软件验证"))){
+        return;
+    }
     if(forceInteractionValidationWorker){
         displayInfo("阶段A软件验证已经在运行", "warning");
         return;
@@ -20816,6 +20858,10 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
             ForceInteractionWrenchSourceKind::RealFtTrace;
     const QString stage = realFt ? QStringLiteral("阶段C") :
                                    QStringLiteral("阶段B");
+    if(!requireForceInteractionDegreeUnit(
+            QStringLiteral("%1准备").arg(stage))){
+        return;
+    }
     if(!controlWorker || !ccThread || !ccThread->isRunning()){
         displayInfo(QStringLiteral("%1准备失败：控制线程尚未运行")
                     .arg(stage).toStdString(), "error");
@@ -34303,24 +34349,28 @@ bool MainWindow::initPara(){
         if(checked){
             if(suppressMotorLimitUnitConversion){
                 lastMotorFeedbackDisplayUnit = currentMotorFeedbackDisplayUnit();
+                refreshForceInteractionUnitAdmissionUi();
                 return;
             }
             refreshMotorLimitUnitUi(true);
             if(applyLeadshineAxisEquivFromUi()){
                 updateControlWorkerConfig();
             }
+            refreshForceInteractionUnitAdmissionUi();
         }
     });
     connect(ui->devMotorFeedbackIsRd,&QRadioButton::toggled,this,[this](bool checked){
         if(checked){
             if(suppressMotorLimitUnitConversion){
                 lastMotorFeedbackDisplayUnit = currentMotorFeedbackDisplayUnit();
+                refreshForceInteractionUnitAdmissionUi();
                 return;
             }
             refreshMotorLimitUnitUi(true);
             if(applyLeadshineAxisEquivFromUi()){
                 updateControlWorkerConfig();
             }
+            refreshForceInteractionUnitAdmissionUi();
         }
     });
     refreshMotorLimitUnitUi(false);
