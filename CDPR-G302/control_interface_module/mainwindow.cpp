@@ -20083,6 +20083,18 @@ void MainWindow::startTraceDelayCalibration(bool allAxes)
         displayInfo("Trace延迟标定尚在等待Trace恢复后的新控制快照，请稍候。", "warning");
         return;
     }
+    // 标定参数的公开单位固定为 deg/s。原 G302 执行器直接沿用全局电机
+    // 工程单位，因此若仍选择“圈数”，30 会被板卡解释为 30 rev/s，
+    // 而不是 30 deg/s。这里必须在任何 Trace 重配和运动命令之前拒绝启动。
+    // 临时增量编码器模板自身固定使用 degree unit，不受该全局单选项影响。
+    if(!forceInteractionUsesGenericActuatorProfile() &&
+            currentMotorFeedbackDisplayUnit() != MotorFeedbackDisplayUnit::Degree){
+        displayInfo("错误：G302原执行器的Trace延迟标定固定使用角度单位（°/s）；"
+                    "当前电机数据反馈单位为圈数。请先停止并断连，在【嵌入式模块】"
+                    "中选择【角度】，重新启动整机后再标定。未下发任何运动指令。",
+                    "error");
+        return;
+    }
     TraceDelayCalibrationConfig config;
     config.axis = selectedTraceDelayLogicalAxis();
     config.allAxes = allAxes;
