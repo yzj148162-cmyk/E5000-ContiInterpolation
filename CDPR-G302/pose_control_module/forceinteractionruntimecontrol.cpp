@@ -1130,18 +1130,12 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                              config_.feedForwardGain * referenceVelocity[axis] : 0.0) +
                 correction[axis];
     }
-    // 轴速上限仍按共同倍率执行，避免逐轴截断破坏八绳协同关系。
-    // 不再限制每周期速度命令增量：六维力交互必须保留 Newmark 给出的
-    // 纯惯性时间响应，不能用公共加速度倍率暗中改变等效质量。
-    double velocityScale = 1.0;
-    for(double value : command){
-        if(std::fabs(value) > config_.velocityLimit){
-            velocityScale = std::min(velocityScale,
-                                     config_.velocityLimit / std::fabs(value));
-        }
-    }
+    // 每轴只截断自身超限速度，不改变其余轴的动力学响应。理想参考轨迹保持不变，
+    // 限幅造成的执行偏差由延迟对齐跟随误差保护负责检出并停止试验。
     for(double& value : command){
-        value *= velocityScale;
+        value = std::clamp(value,
+                           -config_.velocityLimit,
+                           config_.velocityLimit);
     }
     previousErrorValid_ = true;
     kinematicsState_ = evaluation.nextState;
