@@ -18293,7 +18293,7 @@ border-radius: 6px;</string>
                   <double>100000.000000000000000</double>
                  </property>
                  <property name="value">
-                  <double>360.000000000000000</double>
+                  <double>540.000000000000000</double>
                  </property>
                 </widget>
                </item>

@@ -49,7 +49,7 @@ struct ForceInteractionRuntimeConfig
     double kd = 0.0;
     double integralLimit = 10.0;
     double correctionVelocityLimit = 20.0;
-    double velocityLimit = 360.0;
+    double velocityLimit = 540.0;
     double followingErrorLimit = 5.0;
     std::array<double, kOnlineVelocityAxisCount> traceDelayMs{};
     std::array<bool, kOnlineVelocityAxisCount> traceDelayValid{};
