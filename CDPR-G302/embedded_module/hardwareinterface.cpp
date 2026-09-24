@@ -1897,13 +1897,8 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesVelocitySignals(
 bool HardwareInterface::runtimeTraceUsageProfileIncludesCommandVelocity(
         RuntimeTraceUsageProfile profile) const
 {
-    // Type03 has already been validated against the host command in the
-    // historical eight-axis tests. It remains available to the other velocity
-    // profiles, while force interaction keeps only control/safety inputs.
-    return runtimeTraceUsageProfileIncludesVelocitySignals(profile) &&
-            profile != RuntimeTraceUsageProfile::ForceInteractionVelocity &&
-            profile != RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt &&
-            profile != RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime;
+    // 六维力交互也保留板卡指令速度，便于完整记录并核对实际下发链路。
+    return runtimeTraceUsageProfileIncludesVelocitySignals(profile);
 }
 
 bool HardwareInterface::runtimeTraceUsageProfileIncludesForceSensors(
@@ -1924,6 +1919,19 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesFtSensor(
     return profile == RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning ||
             profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
             profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime;
+}
+
+bool HardwareInterface::runtimeTraceUsesForceInteractionTiming(
+        RuntimeTraceUsageProfile profile) const
+{
+    // 这里是六维力交互Trace时间域的唯一登记点。未来新增接绞盘/绳索的
+    // profile时也必须登记到这里，不能各阶段分别维护采样周期。
+    return profile == RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionVelocity ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ||
+            (profile == RuntimeTraceUsageProfile::PresetOnlineVelocity &&
+             runtimeTraceCommissioningAxis >= 0);
 }
 
 void HardwareInterface::resetEndpointRemoteRuntimeTraceStatusFault()
@@ -2117,6 +2125,20 @@ bool HardwareInterface::connectLSControllerOnly()
     emit displayInfoSignal("Leadshine controller communication opened; no axis configuration or enable command was issued.",
                            "normal");
     return true;
+    });
+}
+
+void HardwareInterface::setForceInteractionTraceSamplePeriodUs(int periodUs)
+{
+    return runOnHardwareThread([&]() {
+    const int boundedPeriodUs = periodUs >= 1000 ? 1000 : 500;
+    if(forceInteractionTraceSamplePeriodUs == boundedPeriodUs){
+        return;
+    }
+    forceInteractionTraceSamplePeriodUs = boundedPeriodUs;
+    // 页面仅允许在未连接时修改。这里仍清理缓存，确保下一次进入任一
+    // 六维力交互profile时一定按新目标周期重新配置并读回。
+    resetRuntimeTraceState();
     });
 }
 
@@ -6634,12 +6656,8 @@ bool HardwareInterface::configureRuntimeTraceRead()
 
     // 独立六维F/T映射。不要与上面的0x6000绳索张力通道混用。
     if(ftSensorProfile){
-        // Preheat/commissioning retains temperature (0x4008) for drift
-        // observation. Stage C only needs wrench, status and sample counter in
-        // the real-time frame, so omit temperature there.
-        const int componentCount = activeRuntimeTraceUsageProfile ==
-                RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ? 8 : 9;
-        for(int component = 0; component < componentCount; ++component){
+        // 所有F/T profile使用同一完整对象契约：六维力、状态、采样计数、温度。
+        for(int component = 0; component < 9; ++component){
             FtSensorTraceObject object;
             object.component = component;
             object.dataIndex = 0x4000 + component;
@@ -6685,11 +6703,16 @@ bool HardwareInterface::configureRuntimeTraceRead()
     runtimeTraceLastFrameMonotonicUs = 0;
     runtimeTraceNewestFrameAgeUs = -1;
 
-    int tracePeriodUs = motorPositionTraceObjects.empty() ?
-                forceSensorTraceSamplePeriodUs :
-                motorPositionTraceSamplePeriodUs;
-    if(!motorPositionTraceObjects.empty() && !forceSensorTraceObjects.empty()){
-        tracePeriodUs = std::min(motorPositionTraceSamplePeriodUs, forceSensorTraceSamplePeriodUs);
+    int tracePeriodUs = runtimeTraceUsesForceInteractionTiming(
+                activeRuntimeTraceUsageProfile) ?
+                forceInteractionTraceSamplePeriodUs :
+                (motorPositionTraceObjects.empty() ?
+                     forceSensorTraceSamplePeriodUs :
+                     motorPositionTraceSamplePeriodUs);
+    if(!runtimeTraceUsesForceInteractionTiming(activeRuntimeTraceUsageProfile) &&
+            !motorPositionTraceObjects.empty() && !forceSensorTraceObjects.empty()){
+        tracePeriodUs = std::min(motorPositionTraceSamplePeriodUs,
+                                 forceSensorTraceSamplePeriodUs);
     }
     DWORD ethercatBusCycleUs = 0;
     short ret = nmc_get_cycletime(0,
@@ -6703,10 +6726,19 @@ bool HardwareInterface::configureRuntimeTraceRead()
         return false;
     }
     runtimeTraceEthercatBusCycleUs = static_cast<int>(ethercatBusCycleUs);
-    const int traceCycle = std::max(
-                1,
-                (tracePeriodUs + runtimeTraceEthercatBusCycleUs - 1) /
-                    runtimeTraceEthercatBusCycleUs);
+    if(tracePeriodUs < runtimeTraceEthercatBusCycleUs ||
+            tracePeriodUs % runtimeTraceEthercatBusCycleUs != 0){
+        runtimeTraceUnavailable = true;
+        runtimeTraceConfigReadbackValid = false;
+        emit displayInfoSignal(
+                    QStringLiteral("Runtime Trace目标周期%1 us不是总线周期%2 us的整数倍")
+                    .arg(tracePeriodUs)
+                    .arg(runtimeTraceEthercatBusCycleUs)
+                    .toStdString(),
+                    "error");
+        return false;
+    }
+    const int traceCycle = tracePeriodUs / runtimeTraceEthercatBusCycleUs;
     if(traceCycle > std::numeric_limits<short>::max()){
         runtimeTraceUnavailable = true;
         runtimeTraceConfigReadbackValid = false;
@@ -6954,7 +6986,11 @@ bool HardwareInterface::configureRuntimeTraceRead()
     ++runtimeTraceConfigurationGeneration;
     if(forceInteractionVelocityProfile || ftSensorProfile){
         emit displayInfoSignal(
-                    QStringLiteral("六维力交互Runtime Trace已配置：位置/指令速度/实际速度=%1/%2/%3个，安全状态字=%4个，旧张力/F/T=%5/%6个，总对象=%7")
+                    QStringLiteral("六维力交互Runtime Trace已配置：总线=%1 us，目标/实际=%2/%3 us，trace_cycle=%4；位置/指令速度/实际速度=%5/%6/%7个，安全状态字=%8个，旧张力/F/T=%9/%10个，总对象=%11")
+                    .arg(runtimeTraceEthercatBusCycleUs)
+                    .arg(tracePeriodUs)
+                    .arg(runtimeTraceSamplePeriodUs)
+                    .arg(runtimeTraceConfiguredCycle)
                     .arg(motorPositionTraceObjects.size())
                     .arg(motorCommandVelocityTraceObjects.size())
                     .arg(motorActualVelocityTraceObjects.size())

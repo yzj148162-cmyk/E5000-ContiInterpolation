@@ -273,7 +273,8 @@ public:
         ForceInteractionVelocityWithFt,
         EndpointRemoteTransition,
         EndpointRemoteRunning,
-        // 阶段C实时运行专用：省略Type03和只用于预热诊断的温度对象。
+        // 阶段C实时运行专用：与准备态保持相同的完整八轴及F/T对象契约，
+        // 区别只在于Trace由ControlWorker唯一推进。
         ForceInteractionVelocityWithFtRuntime
     };
 
@@ -855,10 +856,13 @@ public:
                                        bool requireTensionTransmitter);
     int forceInteractionFtSensorSlaveId() const;
     bool validateForceInteractionFtTopology(QString* errorMessage = nullptr);
-    // 仅供完整整机连接前冻结六维力交互会话的EtherCAT周期；维护连接不使用。
+    // 旧兼容入口：六维力交互不再通过页面改写总线周期。
     void setForceInteractionEthercatBusCycleUs(int periodUs);
     void clearForceInteractionEthercatBusCycleOverride();
     int forceInteractionEthercatBusCycleReadbackUs() const;
+    // 六维力交互功能域统一的Trace目标周期。预热/取零、延迟标定、阶段B/C
+    // 以及后续接绞盘和绳索的实机profile均使用此值；不改变EtherCAT总线周期。
+    void setForceInteractionTraceSamplePeriodUs(int periodUs);
     // 设置力传感器 Trace 采样周期。
     void setForceSensorTraceSamplePeriodUs(int periodUs);
     // 运行 PDO Trace 探针，用于检查力传感器对象字典和数据包。
@@ -1051,6 +1055,7 @@ private:
     // Base profile的力传感器对象偏好；在线/遥控profile由枚举语义决定。
     bool baseRuntimeTraceForceSensorEnabled = true;
     int forceSensorTraceSamplePeriodUs = 500;
+    int forceInteractionTraceSamplePeriodUs = 1000;
     short forceInteractionFtSlaveId = 1010;
     int forceInteractionExpectedTotalSlaves = 10;
     bool forceInteractionRequireTensionTransmitter = true;
@@ -1323,6 +1328,8 @@ private:
     bool runtimeTraceUsageProfileIncludesForceSensors(
             RuntimeTraceUsageProfile profile) const;
     bool runtimeTraceUsageProfileIncludesFtSensor(
+            RuntimeTraceUsageProfile profile) const;
+    bool runtimeTraceUsesForceInteractionTiming(
             RuntimeTraceUsageProfile profile) const;
     void armPvtTraceStartDelayMeasurement(const std::vector<int>& motorIndex,
                                           int pointCount,

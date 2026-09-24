@@ -17525,7 +17525,7 @@ ControlWorker::Config MainWindow::buildControlWorkerConfig() const{
     config.sensorSampleHz = configuredSensorSampleFrequencyHz();
     config.forceSensorTraceSamplePeriodUs =
             runtimeState.forceInteractionGenericActuatorSessionActive ?
-                selectedForceInteractionBusCycleUs() :
+                selectedForceInteractionTraceSamplePeriodUs() :
                 forceSensorTraceSamplePeriodUsFromHz(static_cast<int>(config.sensorSampleHz));
     config.forceSensorLowPassCutoffHz = configuredForceSensorLowPassCutoffHz();
     config.systemRunning = runtimeState.systemRunning;
@@ -18208,7 +18208,7 @@ bool MainWindow::syncControlWorkerConfig(bool forceApply,
     int forceSensorTraceSampleHz = configuredSensorSampleFrequencyHz();
     const int forceSensorTraceSamplePeriodUs =
             runtimeState.forceInteractionGenericActuatorSessionActive ?
-                selectedForceInteractionBusCycleUs() :
+                selectedForceInteractionTraceSamplePeriodUs() :
                 forceSensorTraceSamplePeriodUsFromHz(forceSensorTraceSampleHz);
     if(forceSensorTraceSamplePeriodUs != lastAppliedForceSensorTraceSamplePeriodUs){
         hardwareInterface.setForceSensorTraceSamplePeriodUs(forceSensorTraceSamplePeriodUs);
@@ -19053,7 +19053,7 @@ double MainWindow::forceInteractionGenericAxisEquivalent() const
     return ui->forceInteractionGenericAxisEquivalentSpinBox->value();
 }
 
-int MainWindow::selectedForceInteractionBusCycleUs() const
+int MainWindow::selectedForceInteractionTraceSamplePeriodUs() const
 {
     return ui && ui->forceInteractionBusCycleComboBox &&
             ui->forceInteractionBusCycleComboBox->currentIndex() == 1 ? 1000 : 500;
@@ -19096,10 +19096,19 @@ void MainWindow::refreshForceInteractionTimingUi()
                 snapshot.runtimeTraceSamplePeriodUs > 0 ?
                     QStringLiteral("%1 μs").arg(snapshot.runtimeTraceSamplePeriodUs) :
                     QStringLiteral("待配置"));
+    const int targetTraceUs = selectedForceInteractionTraceSamplePeriodUs();
     const bool timingMatched = actualBusUs <= 0 ||
-            actualBusUs == selectedForceInteractionBusCycleUs();
+            (targetTraceUs >= actualBusUs && targetTraceUs % actualBusUs == 0);
     ui->forceInteractionBusCycleReadbackLabel->setStyleSheet(
                 timingMatched ? QString() : QStringLiteral("color:red;"));
+    if(ui->forceInteractionTimingHintLabel){
+        ui->forceInteractionTimingHintLabel->setText(
+                    actualBusUs > 0 && timingMatched ?
+                        QStringLiteral("Trace分频=%1（不改总线）")
+                            .arg(targetTraceUs / actualBusUs) :
+                    actualBusUs > 0 ? QStringLiteral("目标周期不能由当前总线整数分频") :
+                                      QStringLiteral("Trace按总线整数分频"));
+    }
 }
 
 void MainWindow::refreshForceInteractionActuatorProfileUi()
@@ -19306,11 +19315,6 @@ void MainWindow::setupForceInteractionValidationTab()
             qOverload<int>(&QComboBox::currentIndexChanged),
             this,
             [this](int){
-        if(ui->forceInteractionBusCycleComboBox &&
-                ui->forceInteractionBusCycleComboBox->isEnabled()){
-            ui->forceInteractionBusCycleComboBox->setCurrentIndex(
-                        forceInteractionUsesGenericActuatorProfile() ? 1 : 0);
-        }
         refreshForceInteractionActuatorProfileUi();
         refreshForceInteractionTimingUi();
         refreshForceInteractionRuntimeUi();
@@ -19635,8 +19639,6 @@ void MainWindow::startForceInteractionFtMonitoring()
         return;
     }
 
-    hardwareInterface.setForceSensorTraceSamplePeriodUs(
-                selectedForceInteractionBusCycleUs());
     if(!hardwareInterface.setRuntimeTraceUsageProfile(monitoringTraceProfile)){
         displayInfo("六维F/T预热监测启动失败：0x4000~0x4008 Trace配置或读回不通过。",
                     "error");
@@ -20303,8 +20305,9 @@ void MainWindow::refreshTraceDelayCalibrationUi()
 {
     if(!ui || !controlWorker || !ui->forceInteractionTraceDelayResultTable) return;
     const ControlWorker::Snapshot snapshot = controlWorker->latestSnapshot();
-    // 标定有效性只能使用板卡实际Trace读回值；尚未建立Runtime Trace时不猜测。
-    const int tracePeriodUs = snapshot.runtimeTraceSamplePeriodUs;
+    // 结果按六维力交互目标Trace周期归档；标定运行本身仍必须由板卡实际
+    // 配置读回来证明目标周期已生效。
+    const int tracePeriodUs = selectedForceInteractionTraceSamplePeriodUs();
     const double equivalent = configuredLeadshineAxisEquivForAxis(
                 selectedTraceDelayLogicalAxis());
     const auto results = controlWorker->traceDelayCalibrationResults(
@@ -20803,10 +20806,12 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
             ui->forceInteractionRuntimeFollowingErrorSpinBox->value();
     const int actualBusCycleUs =
             hardwareInterface.forceInteractionEthercatBusCycleReadbackUs();
-    if(actualBusCycleUs <= 0 ||
-            actualBusCycleUs != selectedForceInteractionBusCycleUs()){
-        fail(QStringLiteral("EtherCAT总线周期未读回或与六维力交互设置不一致：设置=%1 μs，读回=%2 μs")
-             .arg(selectedForceInteractionBusCycleUs()).arg(actualBusCycleUs));
+    const int targetTracePeriodUs =
+            selectedForceInteractionTraceSamplePeriodUs();
+    if(actualBusCycleUs <= 0 || targetTracePeriodUs < actualBusCycleUs ||
+            targetTracePeriodUs % actualBusCycleUs != 0){
+        fail(QStringLiteral("六维力Trace目标周期不能由当前EtherCAT总线周期整数分频：目标=%1 μs，总线读回=%2 μs")
+             .arg(targetTracePeriodUs).arg(actualBusCycleUs));
         return config;
     }
     const HardwareInterface::RuntimeTraceSnapshot traceSnapshot =
@@ -20815,6 +20820,11 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
     const int traceSamplePeriodUs = traceSnapshot.traceSamplePeriodUs;
     if(traceSamplePeriodUs <= 0){
         fail(QStringLiteral("Runtime Trace尚未配置或未取得实际周期读回"));
+        return config;
+    }
+    if(traceSamplePeriodUs != targetTracePeriodUs){
+        fail(QStringLiteral("六维力Trace实际周期与目标不一致：目标=%1 μs，实际=%2 μs")
+             .arg(targetTracePeriodUs).arg(traceSamplePeriodUs));
         return config;
     }
     const double activeEquivalent = configuredLeadshineAxisEquivForAxis(0);
@@ -47044,16 +47054,11 @@ void MainWindow::runFullSystemSwitch(){
         clearSafetyFaultLatch(false);
         runtimeState.forceInteractionGenericActuatorSessionActive =
                 forceInteractionUsesGenericActuatorProfile();
-        if(runtimeState.forceInteractionGenericActuatorSessionActive){
-            hardwareInterface.setForceInteractionEthercatBusCycleUs(
-                        selectedForceInteractionBusCycleUs());
-            hardwareInterface.setForceSensorTraceSamplePeriodUs(
-                        selectedForceInteractionBusCycleUs());
-        }
-        else{
-            // 原G302完整整机连接保持既有总线配置；六维力实机准备时只校验读回值。
-            hardwareInterface.clearForceInteractionEthercatBusCycleOverride();
-        }
+        // 六维力交互页面只管理Trace分频，不改写EtherCAT总线周期。原G302
+        // 和临时执行器都读取板卡现有周期，再由底层计算trace_cycle。
+        hardwareInterface.clearForceInteractionEthercatBusCycleOverride();
+        hardwareInterface.setForceInteractionTraceSamplePeriodUs(
+                    selectedForceInteractionTraceSamplePeriodUs());
         hardwareInterface.setForceSensorTraceReadEnabled(
                     !runtimeState.forceInteractionGenericActuatorSessionActive);
         refreshForceInteractionActuatorProfileUi();

@@ -603,7 +603,7 @@ private:
     bool validateForceInteractionFtTopology(const QString& actionName);
     double forceInteractionGenericAxisEquivalent() const;
     void refreshForceInteractionActuatorProfileUi();
-    int selectedForceInteractionBusCycleUs() const;
+    int selectedForceInteractionTraceSamplePeriodUs() const;
     int selectedForceInteractionControlPeriodUs() const;
     void refreshForceInteractionTimingUi();
     void refreshForceInteractionValidationInputState();

@@ -16608,14 +16608,17 @@ border-radius: 6px;</string>
            <item row="1" column="0">
             <widget class="QLabel" name="forceInteractionBusCycleTitleLabel">
              <property name="text">
-              <string>总线周期</string>
+              <string>六维力Trace周期</string>
              </property>
             </widget>
            </item>
            <item row="1" column="1">
             <widget class="QComboBox" name="forceInteractionBusCycleComboBox">
              <property name="toolTip">
-              <string>六维力交互使用的EtherCAT总线周期。临时执行器连接时写入并读回；G302原执行器为保护原功能只读取和校验现有板卡周期。连接后不可修改。</string>
+              <string>六维力交互功能域统一的Trace目标采样周期。不会改写EtherCAT总线；底层按总线读回值计算整数trace_cycle。预热/取零、延迟标定、阶段B/C及后续实机六维力流程共用。</string>
+             </property>
+             <property name="currentIndex">
+              <number>1</number>
              </property>
              <item>
               <property name="text">
@@ -16660,10 +16663,10 @@ border-radius: 6px;</string>
            <item row="1" column="6">
             <widget class="QLabel" name="forceInteractionTimingHintLabel">
              <property name="toolTip">
-              <string>延迟标定和实机阶段只采用板卡读回的实际Trace周期，不再用传感器采样频率猜测。</string>
+              <string>延迟标定和实机阶段只采用板卡读回的实际Trace周期；目标周期必须是当前总线周期的整数倍。</string>
              </property>
              <property name="text">
-              <string>Trace跟随总线周期</string>
+              <string>Trace按总线整数分频</string>
              </property>
             </widget>
            </item>
