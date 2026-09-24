@@ -8405,26 +8405,9 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
         if(axis < 0 || axis >= static_cast<int>(snapshot.motorPosition.size())){
             continue;
         }
-        if(!ensureMotorTracePositionOffsets(axis)){
-            continue;
-        }
-
-        const std::vector<double> tracePositions =
-                currentMotorPositionCachedValues(std::vector<int>{axis});
-        if(tracePositions.size() != 1){
-            continue;
-        }
-
-        const double position = tracePositions.front();
-        bool acceptPosition = std::isfinite(position);
-        bool rejectedByDirectCheck = false;
         double relativePosition = nan;
         bool relativePositionOk = false;
-        double directPosition = nan;
-        double directRelativePosition = nan;
-        double minPosition = nan;
-        double maxPosition = nan;
-
+        double position = nan;
         MotorSafetyRelativePositionSource traceSafetySource =
                 MotorSafetyRelativePositionSource::Invalid;
         const bool exactLatestPositionFrame =
@@ -8447,6 +8430,34 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
         }
         const bool sessionTraceHome =
                 hasValidMotorSessionSafetyTraceHome(axis);
+        // A session Trace home already defines an exact mapping from the
+        // latched raw position to engineering units.  Use that mapping for
+        // the runtime absolute position as well.  Requiring a synchronous
+        // direct-position read here would put eight one-time hardware calls
+        // into the first real-time snapshot after a profile switch; on G302
+        // that can exceed the reliable-Trace startup timeout before a single
+        // control step is allowed to run.
+        if(sessionTraceHome && relativePositionOk &&
+                axis < static_cast<int>(motorHomePos.size()) &&
+                std::isfinite(motorHomePos[axis])){
+            position = motorHomePos[axis] + relativePosition;
+        }
+        if(!std::isfinite(position)){
+            if(!ensureMotorTracePositionOffsets(axis)){
+                continue;
+            }
+            const std::vector<double> tracePositions =
+                    currentMotorPositionCachedValues(std::vector<int>{axis});
+            if(tracePositions.size() != 1){
+                continue;
+            }
+            position = tracePositions.front();
+        }
+
+        // The normal force-interaction path above is entirely Trace based.
+        // These fallbacks are retained only for profiles that do not have a
+        // session Trace home; they must run after an engineering-unit
+        // position has been formed.
         if(!relativePositionOk && !sessionTraceHome &&
                 hasValidMotorSafetyEncoderHome(axis)){
             double encoderPosition = 0.0;
@@ -8473,6 +8484,13 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
             snapshot.motorSafetyRelativePositionSource[axis] =
                     traceSafetySource;
         }
+
+        bool acceptPosition = std::isfinite(position);
+        bool rejectedByDirectCheck = false;
+        double directPosition = nan;
+        double directRelativePosition = nan;
+        double minPosition = nan;
+        double maxPosition = nan;
 
         if(acceptPosition && hasValidMotorSoftwareLimit(axis)){
             minPosition = motorSoftwareMinPos[axis];

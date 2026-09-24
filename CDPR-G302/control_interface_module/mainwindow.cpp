@@ -20989,8 +20989,115 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         return;
     }
     if(realFt){
-        // 准备态仍由F/T后台服务推进Trace，以保持判稳和零点状态连续；真正
-        // 启动后再切成ControlWorker唯一推进、后台服务只消费解析队列。
+        // 先暂时把Trace读取权从F/T后台服务交给本线程，用于构造首个完整
+        // 八轴安全快照，避免两个线程同时推进同一个板卡FIFO。预检结束后
+        // 会立即归还，等待用户点击启动期间F/T监测仍保持连续。
+        setForceInteractionFtTraceConsumptionMode(
+                    HardwareInterface::RuntimeTraceUsageProfile::
+                        ForceInteractionVelocityWithFtRuntime,
+                    true);
+    }
+
+    // Profile切换后的首次八轴工程单位对齐和同帧安全位置检查属于准备工作，
+    // 不能推迟到点击启动后的实时控制窗口。否则一次性的板卡访问尖峰可能在
+    // 第一个控制步之前耗尽Trace等待超时，造成“安全相对位置不完整”误停。
+    HardwareInterface::RuntimeTraceSnapshot preparedTraceSnapshot;
+    QElapsedTimer preparedTraceTimer;
+    preparedTraceTimer.start();
+    int preparedPositionCount = 0;
+    int preparedSafetyCount = 0;
+    int preparedVelocityCount = 0;
+    int preparedStateCount = 0;
+    bool preparedTraceReady = false;
+    do{
+        preparedTraceSnapshot =
+                hardwareInterface.readRuntimeTraceLatestSnapshot();
+        preparedPositionCount = 0;
+        preparedSafetyCount = 0;
+        preparedVelocityCount = 0;
+        preparedStateCount = 0;
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            if(axis < static_cast<int>(preparedTraceSnapshot.motorPosition.size()) &&
+                    std::isfinite(preparedTraceSnapshot.motorPosition[axis])){
+                ++preparedPositionCount;
+            }
+            if(axis < static_cast<int>(
+                    preparedTraceSnapshot.motorSafetyRelativePosition.size()) &&
+                    axis < static_cast<int>(
+                    preparedTraceSnapshot.motorSafetyRelativePositionSource.size()) &&
+                    std::isfinite(
+                        preparedTraceSnapshot.motorSafetyRelativePosition[axis])){
+                const HardwareInterface::MotorSafetyRelativePositionSource source =
+                        preparedTraceSnapshot.motorSafetyRelativePositionSource[axis];
+                if(source == HardwareInterface::MotorSafetyRelativePositionSource::
+                        TraceCommandPersistentHome ||
+                        source == HardwareInterface::MotorSafetyRelativePositionSource::
+                        TraceCommandSessionHome ||
+                        source == HardwareInterface::MotorSafetyRelativePositionSource::
+                        TraceFeedbackSessionHome){
+                    ++preparedSafetyCount;
+                }
+            }
+            if(axis < static_cast<int>(
+                    preparedTraceSnapshot.motorActualVelocity.size()) &&
+                    std::isfinite(
+                        preparedTraceSnapshot.motorActualVelocity[axis])){
+                ++preparedVelocityCount;
+            }
+            if(axis < static_cast<int>(
+                    preparedTraceSnapshot.motorStateMachine.size()) &&
+                    preparedTraceSnapshot.motorStateMachine[axis] == 4){
+                ++preparedStateCount;
+            }
+        }
+        const bool expectedProfile = preparedTraceSnapshot.usageProfile ==
+                (realFt ? HardwareInterface::RuntimeTraceUsageProfile::
+                              ForceInteractionVelocityWithFtRuntime :
+                          HardwareInterface::RuntimeTraceUsageProfile::
+                              ForceInteractionVelocity);
+        preparedTraceReady = expectedProfile &&
+                preparedTraceSnapshot.fromTrace &&
+                preparedTraceSnapshot.frameSequenceValid &&
+                preparedTraceSnapshot.timingReliable &&
+                preparedTraceSnapshot.fifoCaughtUp &&
+                !preparedTraceSnapshot.traceLost &&
+                preparedPositionCount == kOnlineVelocityAxisCount &&
+                preparedSafetyCount == kOnlineVelocityAxisCount &&
+                preparedVelocityCount == kOnlineVelocityAxisCount &&
+                preparedStateCount == kOnlineVelocityAxisCount;
+        if(!preparedTraceReady && preparedTraceTimer.elapsed() < 1000){
+            QThread::msleep(2);
+        }
+    }while(!preparedTraceReady && preparedTraceTimer.elapsed() < 1000);
+    if(!preparedTraceReady){
+        if(realFt){
+            restoreForceInteractionFtMonitoringProfile();
+        }
+        else{
+            hardwareInterface.setRuntimeTraceUsageProfile(
+                        HardwareInterface::RuntimeTraceUsageProfile::Base);
+        }
+        displayInfo(QStringLiteral(
+                        "%1准备失败：专用Runtime Trace未形成完整八轴安全快照；"
+                        "位置/安全相对位置/速度/使能状态=%2/%3/%4/%5（要求8/8/8/8），"
+                        "来源/序号/时序/追平/丢帧=%6/%7/%8/%9/%10，帧龄=%11 us，耗时=%12 ms")
+                    .arg(stage)
+                    .arg(preparedPositionCount)
+                    .arg(preparedSafetyCount)
+                    .arg(preparedVelocityCount)
+                    .arg(preparedStateCount)
+                    .arg(preparedTraceSnapshot.fromTrace ? 1 : 0)
+                    .arg(preparedTraceSnapshot.frameSequenceValid ? 1 : 0)
+                    .arg(preparedTraceSnapshot.timingReliable ? 1 : 0)
+                    .arg(preparedTraceSnapshot.fifoCaughtUp ? 1 : 0)
+                    .arg(preparedTraceSnapshot.traceLost ? 1 : 0)
+                    .arg(preparedTraceSnapshot.newestFrameAgeUs)
+                    .arg(preparedTraceTimer.elapsed())
+                    .toStdString(), "error");
+        refreshForceInteractionRuntimeUi();
+        return;
+    }
+    if(realFt){
         setForceInteractionFtTraceConsumptionMode(
                     HardwareInterface::RuntimeTraceUsageProfile::
                         ForceInteractionVelocityWithFtRuntime,
