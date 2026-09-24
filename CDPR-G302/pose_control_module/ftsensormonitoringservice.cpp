@@ -131,10 +131,13 @@ void FtSensorMonitoringService::consumeAvailableSamples()
     queueDroppedLatest_ = batch.queueDroppedTotal;
     timingReliable_ = batch.timingReliable;
     traceLost_ = batch.traceLost;
+    const bool runtimeProfile = expectedProfile_ ==
+            HardwareInterface::RuntimeTraceUsageProfile::
+                ForceInteractionVelocityWithFtRuntime;
     traceConfigured_ = batch.usageProfile == expectedProfile_ &&
             batch.fromTrace && batch.latest.wrenchComplete() &&
             batch.latest.statusValid && batch.latest.sampleCounterValid &&
-            batch.latest.temperatureValid;
+            (runtimeProfile || batch.latest.temperatureValid);
 
     if(batch.latest.wrenchComplete()){
         latestSample_ = batch.latest;
@@ -142,7 +145,11 @@ void FtSensorMonitoringService::consumeAvailableSamples()
     if(!batch.samples.empty()){
         // 原始完整批次先进入有界异步记录器；判稳只做内存计算，不阻塞磁盘。
         recorder_->tryAppend(batch.samples);
-        monitor_.ingest(batch.samples);
+        // 阶段C实时帧有意不含温度。预热资格和软件零点已在准备前冻结，
+        // 运行期间只继续记录样本，不用缺少温度的精简帧重跑判稳状态机。
+        if(!runtimeProfile){
+            monitor_.ingest(batch.samples);
+        }
     }
 
     const qint64 nowUs = serviceMonotonicUs();

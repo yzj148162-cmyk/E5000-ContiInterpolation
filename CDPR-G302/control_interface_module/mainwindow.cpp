@@ -20983,7 +20983,7 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         // 启动后再切成ControlWorker唯一推进、后台服务只消费解析队列。
         setForceInteractionFtTraceConsumptionMode(
                     HardwareInterface::RuntimeTraceUsageProfile::
-                        ForceInteractionVelocityWithFt,
+                        ForceInteractionVelocityWithFtRuntime,
                     false);
     }
 
@@ -21170,7 +21170,7 @@ void MainWindow::startPreparedForceInteractionRuntime(
         // 线程同时推进板卡FIFO的竞争；服务仍继续判稳和写F/T原始记录。
         setForceInteractionFtTraceConsumptionMode(
                     HardwareInterface::RuntimeTraceUsageProfile::
-                        ForceInteractionVelocityWithFt,
+                        ForceInteractionVelocityWithFtRuntime,
                     true);
     }
     runtimeState.onlineVelocityControlActive = true;

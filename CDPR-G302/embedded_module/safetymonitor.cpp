@@ -854,9 +854,12 @@ void SafetyMonitor::evaluateSafety()
                 continue;
             }
             const bool traceStateFrameReliable =
-                snapshot.runtimeTraceUsageProfile ==
-                    HardwareInterface::RuntimeTraceUsageProfile::
-                            ForceInteractionVelocity &&
+                (snapshot.runtimeTraceUsageProfile ==
+                     HardwareInterface::RuntimeTraceUsageProfile::
+                         ForceInteractionVelocity ||
+                 snapshot.runtimeTraceUsageProfile ==
+                     HardwareInterface::RuntimeTraceUsageProfile::
+                         ForceInteractionVelocityWithFtRuntime) &&
                     snapshot.runtimeTraceFromHardware &&
                     snapshot.runtimeTraceFrameSequenceValid &&
                     snapshot.runtimeTraceTimingReliable &&

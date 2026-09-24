@@ -1894,6 +1894,18 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesVelocitySignals(
             profile != RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning;
 }
 
+bool HardwareInterface::runtimeTraceUsageProfileIncludesCommandVelocity(
+        RuntimeTraceUsageProfile profile) const
+{
+    // Type03 has already been validated against the host command in the
+    // historical eight-axis tests. It remains available to the other velocity
+    // profiles, while force interaction keeps only control/safety inputs.
+    return runtimeTraceUsageProfileIncludesVelocitySignals(profile) &&
+            profile != RuntimeTraceUsageProfile::ForceInteractionVelocity &&
+            profile != RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt &&
+            profile != RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime;
+}
+
 bool HardwareInterface::runtimeTraceUsageProfileIncludesForceSensors(
         RuntimeTraceUsageProfile profile) const
 {
@@ -1910,7 +1922,8 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesFtSensor(
         RuntimeTraceUsageProfile profile) const
 {
     return profile == RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning ||
-            profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt;
+            profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime;
 }
 
 void HardwareInterface::resetEndpointRemoteRuntimeTraceStatusFault()
@@ -1956,10 +1969,17 @@ bool HardwareInterface::setRuntimeTraceUsageProfile(
                 runtimeTraceUsageProfileIncludesForceSensors(profile) ||
             runtimeTraceUsageProfileIncludesFtSensor(previousProfile) !=
                 runtimeTraceUsageProfileIncludesFtSensor(profile) ||
+            (previousProfile != profile &&
+             (previousProfile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
+              previousProfile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ||
+              profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
+              profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime)) ||
             ((previousProfile == RuntimeTraceUsageProfile::ForceInteractionVelocity ||
-              previousProfile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt) !=
+              previousProfile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
+              previousProfile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime) !=
              (profile == RuntimeTraceUsageProfile::ForceInteractionVelocity ||
-              profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt));
+              profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
+              profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime));
 
     activeRuntimeTraceUsageProfile = profile;
     runtimeTraceEndpointRemoteSessionToken = endpointRemoteSessionToken;
@@ -2129,7 +2149,7 @@ bool HardwareInterface::setForceTorqueSensorCommissioningTraceEnabled(bool enabl
 bool HardwareInterface::setForceInteractionRuntimeTraceWithFtEnabled(bool enabled)
 {
     return setRuntimeTraceUsageProfile(
-                enabled ? RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt :
+                enabled ? RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime :
                           RuntimeTraceUsageProfile::Base);
 }
 
@@ -6418,7 +6438,9 @@ bool HardwareInterface::configureRuntimeTraceRead()
             activeRuntimeTraceUsageProfile ==
                 RuntimeTraceUsageProfile::ForceInteractionVelocity ||
             activeRuntimeTraceUsageProfile ==
-                RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt;
+                RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
+            activeRuntimeTraceUsageProfile ==
+                RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime;
     const bool ftSensorOnlyProfile =
             activeRuntimeTraceUsageProfile ==
                 RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning;
@@ -6471,7 +6493,7 @@ bool HardwareInterface::configureRuntimeTraceRead()
         runtimeTraceObjects.push_back(runtimeObject);
     }
 
-    if(runtimeTraceUsageProfileIncludesVelocitySignals(
+    if(runtimeTraceUsageProfileIncludesCommandVelocity(
                 activeRuntimeTraceUsageProfile)){
         for(const RuntimeTraceAxis& axis : traceAxes){
             if(axis.logicalAxis < 0 ||
@@ -6496,7 +6518,10 @@ bool HardwareInterface::configureRuntimeTraceRead()
             runtimeObject.valueBytes = object.valueBytes;
             runtimeTraceObjects.push_back(runtimeObject);
         }
+    }
 
+    if(runtimeTraceUsageProfileIncludesVelocitySignals(
+                activeRuntimeTraceUsageProfile)){
         for(const RuntimeTraceAxis& axis : traceAxes){
             if(axis.logicalAxis < 0 ||
                     axis.logicalAxis >= traceProfile.feedbackAndTorqueLogicalAxisCount){
@@ -6609,7 +6634,12 @@ bool HardwareInterface::configureRuntimeTraceRead()
 
     // 独立六维F/T映射。不要与上面的0x6000绳索张力通道混用。
     if(ftSensorProfile){
-        for(int component = 0; component < 9; ++component){
+        // Preheat/commissioning retains temperature (0x4008) for drift
+        // observation. Stage C only needs wrench, status and sample counter in
+        // the real-time frame, so omit temperature there.
+        const int componentCount = activeRuntimeTraceUsageProfile ==
+                RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ? 8 : 9;
+        for(int component = 0; component < componentCount; ++component){
             FtSensorTraceObject object;
             object.component = component;
             object.dataIndex = 0x4000 + component;

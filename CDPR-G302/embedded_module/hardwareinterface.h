@@ -272,7 +272,9 @@ public:
         // 阶段C及以后：八轴速度闭环对象和六维F/T对象位于同一Trace帧。
         ForceInteractionVelocityWithFt,
         EndpointRemoteTransition,
-        EndpointRemoteRunning
+        EndpointRemoteRunning,
+        // 阶段C实时运行专用：省略Type03和只用于预热诊断的温度对象。
+        ForceInteractionVelocityWithFtRuntime
     };
 
     enum class MotorSafetyRelativePositionSource {
@@ -1315,6 +1317,8 @@ private:
             quint64 logicalFrameSequence);
     void resetEndpointRemoteRuntimeTraceStatusFault();
     bool runtimeTraceUsageProfileIncludesVelocitySignals(
+            RuntimeTraceUsageProfile profile) const;
+    bool runtimeTraceUsageProfileIncludesCommandVelocity(
             RuntimeTraceUsageProfile profile) const;
     bool runtimeTraceUsageProfileIncludesForceSensors(
             RuntimeTraceUsageProfile profile) const;

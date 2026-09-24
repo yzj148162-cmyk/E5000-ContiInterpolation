@@ -342,7 +342,7 @@ v_cmd,i = Kff · v_ref,i
 ### 6.1 独立使用语义
 
 阶段 B 已新增独立的 `ForceInteractionVelocity` Runtime Trace用途配置，读取八轴
-实际位置、指令速度、实际速度及同帧状态字，并通过既有八轴批量速度入口下发命令，
+实际位置、实际速度及同帧状态字，并通过既有八轴批量速度入口下发命令，
 不新增第二套板卡 API 链。阶段 C 接入真实F/T时，在该用途上增加六维力对象和
 必要的过渡/运行会话语义。
 
@@ -385,24 +385,22 @@ G302 模板已有的 force-sensor map 主要服务绳索张力通道，并非动
 力交互运行帧只保留控制、记录和安全必需对象，当前首版为：
 
 - 8 个实际位置；
-- 8 个板卡指令速度；
 - 8 个实际速度；
 - 8 个状态字；
-- 真实传感器阶段至少增加6个 F/T 通道和1个 SampleCounter；StatusCode和
-  Temperature用于状态/预热诊断，能满足板卡对象数与帧宽时也放入同帧，否则先在
-  预热专用profile采集；StatusCode位定义未知时只记录、不参与保护判定。
+- 真实传感器运行阶段增加6个 F/T 通道、1个StatusCode和1个SampleCounter；
+  Temperature只在预热/判稳profile采集，不进入阶段C实时运行帧。StatusCode位定义
+  未知时只记录、不参与保护判定。
 
-阶段B当前合计32个对象，阶段C运行profile预计至少39个，同时包含StatusCode和
-Temperature时为41个。
-板卡指令位置和反馈转矩不进入该profile；
-板卡指令速度保留，用于核对主机下发值是否真正进入控制卡速度链。状态字属于同帧
-安全对象，不作为控制量。
+阶段B合计24个对象，阶段C运行profile合计32个对象。板卡指令位置、Type03板卡
+指令速度、反馈转矩和温度不进入实时运行profile；八轴Type03已由历史逐轴标定和
+动态运行日志验证与主机下发值一致，仅在速度测试、遥控和Trace延迟标定profile中
+保留。状态字属于同帧安全对象，不作为控制量。
 
 六个 F/T 值和八轴反馈必须来自同一个完整 Trace 帧，并共享逻辑帧序号。Sample
 Counter用于识别传感器自身是否产生了新样本；计数不变的完整Trace帧保留在原始
 记录中，但不重复进入判稳统计。真实采集丢帧依据Trace序号断裂、队列溢出和字段
 完整性判断，不能再用单次Sample Counter是否严格`+1`替代。若板卡对象上限或帧宽
-不允许39～41个对象，应先停止开发并重新选择信号集合，不能拆成两次
+不允许32个对象，应先停止开发并重新选择信号集合，不能拆成两次
 独立读取后伪装成同帧。
 
 ### 6.4 复合硬件任务
@@ -762,8 +760,8 @@ A～D，使用固定字段和可用性掩码：阶段 A 尚不存在的八轴指
   Trace 帧内的绝对位置和安全相对位置，同时检查期望/实际行程，并通过快照式八轴
   速度入口下发，不在硬件线程重复逐轴读取位置；同帧八轴 0x6041 必须全部解码为
   Operation enabled，状态异常立即整组急停并写入终态原因；
-- 阶段B使用独立`ForceInteractionVelocity` Trace：24个位置/速度对象加8个同帧
-  状态字，不采集指令位置、反馈转矩和未配置的六维F/T；每周期数据进入六维力交互
+- 阶段B使用独立`ForceInteractionVelocity` Trace：16个实际位置/实际速度对象加
+  8个同帧状态字，不采集板卡指令速度、指令位置、反馈转矩和六维F/T；每周期数据进入六维力交互
   专用有界异步 CSV，UI 以 5 Hz 计算并显示虚拟实际位姿；阶段 B 结束后自动在
   后台逐行复算边界并生成 JSON 报告；
 - 已完成低幅模拟力下的八电机空载基本链路实测，并形成逐周期 CSV、在线 5 Hz
@@ -781,8 +779,9 @@ A～D，使用固定字段和可用性掩码：阶段 A 尚不存在的八轴指
 
 - 已按 `0x4000:00～0x4008:00` 建立 F/T 单独调试及八轴合并 profile，并逐项
   校验 `dmc_trace_get_config_object` 读回；
-- `ForceInteractionVelocityWithFt` 能在一个 Trace 帧中提供八轴位置、速度、
-  状态字以及 F/T 六维力、状态码、SampleCounter 和温度；
+- `ForceInteractionVelocityWithFt` 用于预热诊断，保留F/T温度；
+  `ForceInteractionVelocityWithFtRuntime`用于阶段C实时运行，在一个Trace帧中提供
+  八轴实际位置、实际速度、状态字以及F/T六维力、状态码和SampleCounter，共32对象；
 - 已实现 15/3 分钟预热、滑窗判稳、人工软件取零和原始 CSV；
 - 运行内核已经具备阶段 B 的主机单调时钟调度、固定步长 Newmark 补算、八轴
   批量变速、延迟对齐跟随误差、绞盘行程和末端边界保护。
@@ -797,8 +796,9 @@ A～D，使用固定字段和可用性掩码：阶段 A 尚不存在的八轴指
 `ForceInteractionRuntimeControl` 仍是唯一运行状态机。阶段 C 不复制 Newmark、
 运动学、PID/前馈或安全代码，只在每次进入动力学前完成真实样本适配：
 
-1. 样本必须来自 `ForceInteractionVelocityWithFt` 对应的最新完整 Trace 帧；
-2. 六个通道、状态码、SampleCounter、温度及 Trace 序号均有效；
+1. 样本必须来自 `ForceInteractionVelocityWithFtRuntime` 对应的最新完整 Trace 帧；
+2. 六个通道、状态码、SampleCounter及 Trace 序号均有效；温度已在预热阶段确认，
+   不作为实时运行帧完整性条件；
 3. 样本帧龄未超过冻结的 F/T 超时阈值；
 4. 从工程量中减去准备阶段冻结的软件零漂；
 5. 以传感器坐标系 S、传感器测量点为参考构造 `ForceInteractionWrenchSample`；
@@ -914,7 +914,7 @@ F/T 新鲜度阈值仍没有新样本才判定输入失效。计数器倒退、�
 - 公共配置已增加 `Simulated/RealFtTrace` 输入源，阶段 B 的默认路径保持为模拟力；
 - 阶段 C 准备会复核后台监测、完整 PDO、Trace 时序、预热资格、软件零点、
   操作员阈值确认、最新状态码和完整样本，并冻结零点与 F/T 超时；
-- `ForceInteractionVelocityWithFt` 的同一快照同时提供八轴位置/速度/状态和 F/T，
+- `ForceInteractionVelocityWithFtRuntime` 的同一快照同时提供八轴位置/速度/状态和 F/T，
   真实样本适配器会检查帧号、主机单调时间、帧龄、状态码及 SampleCounter；
 - 运行时 `ControlWorker` 是唯一 Trace 推进者，F/T 后台服务只消费已解析队列；
   准备取消、启动失败、正常结束和故障结束都会恢复后台监测 profile；

@@ -39,7 +39,7 @@ HardwareInterface::RuntimeTraceUsageProfile forceInteractionTraceProfile(
 {
     return source == ForceInteractionWrenchSourceKind::RealFtTrace ?
                 HardwareInterface::RuntimeTraceUsageProfile::
-                    ForceInteractionVelocityWithFt :
+                    ForceInteractionVelocityWithFtRuntime :
                 HardwareInterface::RuntimeTraceUsageProfile::
                     ForceInteractionVelocity;
 }
@@ -3014,7 +3014,7 @@ void ControlWorker::processForceInteractionRuntime(
     feedback.traceFrameSequence = traceSnapshot.frameSequence;
     feedback.ftRuntimeProfileActive = traceSnapshot.usageProfile ==
             HardwareInterface::RuntimeTraceUsageProfile::
-                ForceInteractionVelocityWithFt;
+                ForceInteractionVelocityWithFtRuntime;
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         if(axis < static_cast<int>(traceSnapshot.motorPosition.size())){
             feedback.actualPosition[axis] = traceSnapshot.motorPosition[axis];

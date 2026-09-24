@@ -378,14 +378,12 @@ bool ForceInteractionRuntimeControl::realFtSample(
         return fail(QStringLiteral("当前不是八轴＋F/T合并Trace profile"));
     }
     if(!ft.wrenchComplete() || !ft.statusValid ||
-            !ft.sampleCounterValid || !ft.temperatureValid ||
-            !ft.traceFrameSequenceValid){
+            !ft.sampleCounterValid || !ft.traceFrameSequenceValid){
         return fail(QStringLiteral(
-                        "F/T同帧对象不完整：六维力/状态/计数/温度/序号=%1/%2/%3/%4/%5")
+                        "F/T同帧对象不完整：六维力/状态/计数/序号=%1/%2/%3/%4")
                     .arg(ft.wrenchComplete() ? 1 : 0)
                     .arg(ft.statusValid ? 1 : 0)
                     .arg(ft.sampleCounterValid ? 1 : 0)
-                    .arg(ft.temperatureValid ? 1 : 0)
                     .arg(ft.traceFrameSequenceValid ? 1 : 0));
     }
     if(ft.traceFrameSequence != feedback.traceFrameSequence ||
@@ -488,7 +486,7 @@ bool ForceInteractionRuntimeControl::feedbackReady(
 
     const FtSensorTraceSample& ft = feedback.ftSensor;
     return feedback.ftRuntimeProfileActive && ft.wrenchComplete() &&
-            ft.statusValid && ft.sampleCounterValid && ft.temperatureValid &&
+            ft.statusValid && ft.sampleCounterValid &&
             ft.traceFrameSequenceValid &&
             ft.traceFrameSequence == feedback.traceFrameSequence &&
             ft.monotonicUs > 0 && ft.monotonicUs == feedback.monotonicUs;
@@ -667,7 +665,6 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                         .arg(feedback.ftSensor.wrenchComplete() &&
                              feedback.ftSensor.statusValid &&
                              feedback.ftSensor.sampleCounterValid &&
-                             feedback.ftSensor.temperatureValid &&
                              feedback.ftSensor.traceFrameSequenceValid ? 1 : 0)
                         .arg(feedback.ftSensor.traceFrameSequenceValid &&
                              feedback.ftSensor.traceFrameSequence ==
@@ -1172,7 +1169,9 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         }
         record.ftStatusCode = feedback.ftSensor.statusCode;
         record.ftSampleCounter = feedback.ftSensor.sampleCounter;
-        record.ftTemperatureC = feedback.ftSensor.temperatureC;
+        record.ftTemperatureC = feedback.ftSensor.temperatureValid ?
+                    feedback.ftSensor.temperatureC :
+                    std::numeric_limits<double>::quiet_NaN();
         if(ftSampleAgeUs < 0 && feedback.ftSensor.monotonicUs > 0){
             ftSampleAgeUs = nowUs >= feedback.ftSensor.monotonicUs ?
                         nowUs - feedback.ftSensor.monotonicUs : 0;
@@ -1181,13 +1180,14 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         if(feedback.ftSensor.wrenchComplete() &&
                 feedback.ftSensor.statusValid &&
                 feedback.ftSensor.sampleCounterValid &&
-                feedback.ftSensor.temperatureValid &&
                 feedback.ftSensor.traceFrameSequenceValid){
             record.availabilityMask |= ForceRecordFtDiagnostics;
         }
         status_.latestFtStatusCode = feedback.ftSensor.statusCode;
         status_.latestFtSampleCounter = feedback.ftSensor.sampleCounter;
-        status_.latestFtTemperatureC = feedback.ftSensor.temperatureC;
+        status_.latestFtTemperatureC = feedback.ftSensor.temperatureValid ?
+                    feedback.ftSensor.temperatureC :
+                    std::numeric_limits<double>::quiet_NaN();
         status_.latestFtSampleAgeUs = ftSampleAgeUs;
         status_.latestUnfilteredPlatformWrench =
                 conditioningResult.unfiltered;
