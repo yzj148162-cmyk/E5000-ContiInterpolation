@@ -1086,6 +1086,8 @@ private:
     quint32 runtimeTraceLastFrameSequence = 0;
     bool runtimeTraceSequenceInitialized = false;
     quint32 runtimeTraceLastRawSequence = 0;
+    // Monotonic ordinal of emitted Trace records (not EtherCAT bus cycles).
+    // Convert its delta to time with runtimeTraceSamplePeriodUs.
     quint64 runtimeTraceLastLogicalSequence = 0;
     bool runtimeTraceHostTimeAnchorValid = false;
     quint64 runtimeTraceHostTimeAnchorSequence = 0;

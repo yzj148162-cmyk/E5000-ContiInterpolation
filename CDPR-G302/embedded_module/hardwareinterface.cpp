@@ -233,6 +233,10 @@ constexpr int kRuntimeTraceTimestampFutureToleranceFrames = 4;
 constexpr int kRuntimeTraceMaxDrainReads = 8;
 constexpr int kRuntimeTraceMinimumBacklogDrainReads = 2;
 constexpr qint64 kRuntimeTraceDrainBudgetUs = 4 * 1000;
+// The four-byte sequence in each dmc_trace_get_data frame counts emitted
+// Trace records, not EtherCAT bus cycles. trace_cycle changes the duration of
+// one record, but adjacent records still increment this sequence by one.
+constexpr quint32 kRuntimeTraceExpectedFrameSequenceIncrement = 1U;
 constexpr quint32 kRuntimeTraceMaximumSequenceIncrement = 1000000U;
 constexpr double kLeadshineTorqueVelocityLimitPulsesPerRev = 360000.0;
 constexpr double kDefaultLeadshineRatedMotorTorqueNm = 45.0;
@@ -7767,8 +7771,6 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                 else{
                     const quint32 sequenceIncrement =
                             frameSequence - runtimeTraceLastRawSequence;
-                    const quint32 expectedIncrement = static_cast<quint32>(
-                                std::max(1, runtimeTraceConfiguredCycle));
                     if(sequenceIncrement == 0 ||
                             sequenceIncrement > kRuntimeTraceMaximumSequenceIncrement){
                         fetchFrameSequenceContinuous = false;
@@ -7776,7 +7778,8 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                     }
                     else{
                         runtimeTraceLastLogicalSequence += sequenceIncrement;
-                        if(sequenceIncrement != expectedIncrement){
+                        if(sequenceIncrement !=
+                                kRuntimeTraceExpectedFrameSequenceIncrement){
                             fetchFrameSequenceContinuous = false;
                         }
                     }
@@ -7898,10 +7901,13 @@ int HardwareInterface::readRuntimeTraceCached(bool latestOnly)
                                                 runtimeTraceHostTimeAnchorSequence) :
                             -static_cast<qint64>(runtimeTraceHostTimeAnchorSequence -
                                                  logicalSequence);
+                // logicalSequence is an emitted-Trace-record ordinal. Its
+                // interval is the read-back Trace sample period, which may be
+                // trace_cycle times the EtherCAT bus period.
                 frameWallClockUs = runtimeTraceHostTimeAnchorWallClockUs +
-                        anchorDelta * runtimeTraceEthercatBusCycleUs;
+                        anchorDelta * runtimeTraceSamplePeriodUs;
                 frameMonotonicUs = runtimeTraceHostTimeAnchorMonotonicUs +
-                        anchorDelta * runtimeTraceEthercatBusCycleUs;
+                        anchorDelta * runtimeTraceSamplePeriodUs;
             }
             if(decodeOnlyNewestFrameForEndpointRemote){
                 const unsigned char* frameData = buffer.data() + frameOffset;
