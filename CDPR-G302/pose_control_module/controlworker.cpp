@@ -1892,7 +1892,7 @@ bool ControlWorker::prepareForceInteractionRuntime(
             HardwareInterface::LiteRuntimeTraceTopology::
                 StandardEightAxisSensorSlave1009){
         return fail(QStringLiteral(
-                        "%1需要G302标准八轴Runtime Trace拓扑，请选择8电机/传感器从站1009配置")
+                        "%1需要G302标准八轴Runtime Trace拓扑，请选择8电机/张力变送器从站1009配置")
                     .arg(forceInteractionStageName(runtimeConfig.wrenchSourceKind)));
     }
     const HardwareInterface::RuntimeTraceUsageProfile expectedProfile =
@@ -1962,7 +1962,7 @@ bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
                 StandardEightAxisSensorSlave1009){
         if(errorMessage){
             *errorMessage = QStringLiteral(
-                        "%1需要G302标准八轴Runtime Trace拓扑，请选择8电机/传感器从站1009配置")
+                        "%1需要G302标准八轴Runtime Trace拓扑，请选择8电机/张力变送器从站1009配置")
                     .arg(stage);
         }
         return false;

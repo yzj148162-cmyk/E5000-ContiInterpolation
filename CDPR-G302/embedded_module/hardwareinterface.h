@@ -267,7 +267,7 @@ public:
         // 六维力实时速度链：位置/速度用于控制与记录，状态字用于同帧安全
         // 判定；不采集指令位置、反馈转矩和尚未配置的六维力对象。
         ForceInteractionVelocity,
-        // 六维F/T单独调试：仅采集从站1009的0x4000~0x4008。
+        // 六维F/T单独调试：仅采集当前执行器模板指定从站的0x4000~0x4008。
         ForceTorqueSensorCommissioning,
         // 阶段C及以后：八轴速度闭环对象和六维F/T对象位于同一Trace帧。
         ForceInteractionVelocityWithFt,
@@ -846,6 +846,13 @@ public:
     bool setForceInteractionRuntimeTraceProfileEnabled(bool enabled);
     bool setForceTorqueSensorCommissioningTraceEnabled(bool enabled);
     bool setForceInteractionRuntimeTraceWithFtEnabled(bool enabled);
+    // 六维力交互使用独立的F/T拓扑参数：原G302为8电机+1009张力变送器+
+    // 1010六维F/T；临时8轴模板没有张力变送器，六维F/T位于1009。
+    void setForceInteractionFtTopology(int ftSlaveId,
+                                       int expectedTotalSlaves,
+                                       bool requireTensionTransmitter);
+    int forceInteractionFtSensorSlaveId() const;
+    bool validateForceInteractionFtTopology(QString* errorMessage = nullptr);
     // 仅供完整整机连接前冻结六维力交互会话的EtherCAT周期；维护连接不使用。
     void setForceInteractionEthercatBusCycleUs(int periodUs);
     void clearForceInteractionEthercatBusCycleOverride();
@@ -1042,6 +1049,9 @@ private:
     // Base profile的力传感器对象偏好；在线/遥控profile由枚举语义决定。
     bool baseRuntimeTraceForceSensorEnabled = true;
     int forceSensorTraceSamplePeriodUs = 500;
+    short forceInteractionFtSlaveId = 1010;
+    int forceInteractionExpectedTotalSlaves = 10;
+    bool forceInteractionRequireTensionTransmitter = true;
     int forceInteractionEthercatBusCycleUs = 500;
     bool forceInteractionEthercatBusCycleOverrideEnabled = false;
     std::atomic_int forceInteractionEthercatBusCycleActualUs{0};
@@ -1156,7 +1166,7 @@ private:
         short dataType = 19;
         int dataIndex = 0x4000;
         int dataSubIndex = 0;
-        short slaveId = 1009;
+        short slaveId = 1010;
         short apiDataBytes = 4;
         int valueBytes = 4;
     };

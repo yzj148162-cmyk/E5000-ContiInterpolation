@@ -597,6 +597,10 @@ private:
             bool externalTraceReaderActive);
     void restoreForceInteractionFtMonitoringProfile();
     bool forceInteractionUsesGenericActuatorProfile() const;
+    int selectedForceInteractionFtSlaveId() const;
+    int selectedForceInteractionExpectedSlaveCount() const;
+    void applyForceInteractionFtTopologySelection();
+    bool validateForceInteractionFtTopology(const QString& actionName);
     double forceInteractionGenericAxisEquivalent() const;
     void refreshForceInteractionActuatorProfileUi();
     int selectedForceInteractionBusCycleUs() const;

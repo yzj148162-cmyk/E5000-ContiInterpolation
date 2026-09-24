@@ -17123,7 +17123,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QLabel" name="forceInteractionFtHintLabel">
               <property name="text">
-               <string>从站1009的TxPDO1：0x4000~0x4005为Fx/Fy/Fz/Mx/My/Mz，0x4006为状态码，0x4007为传感器采样计数，0x4008为温度。此页只完成采集、预热、判稳与软件取零，不会使能或驱动电机。</string>
+               <string>从站1010的TxPDO1：0x4000~0x4005为Fx/Fy/Fz/Mx/My/Mz，0x4006为状态码，0x4007为传感器采样计数，0x4008为温度。临时8轴模板会自动改用从站1009。此页只完成采集、预热、判稳与软件取零，不会使能或驱动电机。</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>
@@ -17146,7 +17146,7 @@ border-radius: 6px;</string>
                <item row="0" column="1">
                 <widget class="QLabel" name="forceInteractionFtSlaveValueLabel">
                  <property name="text">
-                  <string>1009</string>
+                  <string>1010</string>
                  </property>
                 </widget>
                </item>

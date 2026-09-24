@@ -19002,6 +19002,49 @@ QString MainWindow::forceInteractionActuatorProfileKey() const
             : QStringLiteral("g302_original");
 }
 
+int MainWindow::selectedForceInteractionFtSlaveId() const
+{
+    const bool genericSession = hardwareInterface.isLSConnected() ?
+                runtimeState.forceInteractionGenericActuatorSessionActive :
+                forceInteractionUsesGenericActuatorProfile();
+    return genericSession ? 1009 : 1010;
+}
+
+int MainWindow::selectedForceInteractionExpectedSlaveCount() const
+{
+    const bool genericSession = hardwareInterface.isLSConnected() ?
+                runtimeState.forceInteractionGenericActuatorSessionActive :
+                forceInteractionUsesGenericActuatorProfile();
+    return genericSession ? 9 : 10;
+}
+
+void MainWindow::applyForceInteractionFtTopologySelection()
+{
+    const int ftSlaveId = selectedForceInteractionFtSlaveId();
+    hardwareInterface.setForceInteractionFtTopology(
+                ftSlaveId,
+                selectedForceInteractionExpectedSlaveCount(),
+                ftSlaveId == 1010);
+}
+
+bool MainWindow::validateForceInteractionFtTopology(const QString& actionName)
+{
+    applyForceInteractionFtTopologySelection();
+    QString topologyError;
+    if(!hardwareInterface.validateForceInteractionFtTopology(&topologyError)){
+        displayInfo(QStringLiteral("%1失败：EtherCAT从站拓扑不满足当前六维力执行器模板：%2")
+                    .arg(actionName, topologyError).toStdString(), "error");
+        return false;
+    }
+    displayInfo(QStringLiteral("六维力交互EtherCAT拓扑校验通过：从站总数=%1，"
+                               "8电机=1001~1008，%2F/T=%3。")
+                .arg(selectedForceInteractionExpectedSlaveCount())
+                .arg(selectedForceInteractionFtSlaveId() == 1010 ?
+                         QStringLiteral("张力变送器=1009，") : QString())
+                .arg(selectedForceInteractionFtSlaveId()).toStdString(), "normal");
+    return true;
+}
+
 double MainWindow::forceInteractionGenericAxisEquivalent() const
 {
     if(!ui || !ui->forceInteractionGenericAxisEquivalentSpinBox){
@@ -19088,6 +19131,17 @@ void MainWindow::refreshForceInteractionActuatorProfileUi()
         ui->forceInteractionActuatorProfileStatusLabel->setText(
                     QStringLiteral("默认：原G302参数链"));
         ui->forceInteractionActuatorProfileStatusLabel->setStyleSheet(QString());
+    }
+    const int ftSlaveId = selectedForceInteractionFtSlaveId();
+    if(ui->forceInteractionFtSlaveValueLabel){
+        ui->forceInteractionFtSlaveValueLabel->setText(QString::number(ftSlaveId));
+    }
+    if(ui->forceInteractionFtHintLabel){
+        ui->forceInteractionFtHintLabel->setText(
+                    QStringLiteral("从站%1的TxPDO1：0x4000~0x4005为Fx/Fy/Fz/Mx/My/Mz，"
+                                   "0x4006为状态码，0x4007为传感器采样计数，0x4008为温度。"
+                                   "此页只完成采集、预热、判稳与软件取零，不会使能或驱动电机。")
+                    .arg(ftSlaveId));
     }
     refreshForceInteractionTimingUi();
     refreshForceInteractionUnitAdmissionUi();
@@ -19553,6 +19607,10 @@ void MainWindow::startForceInteractionFtMonitoring()
     if(currentRobotState(false).anyMotionRunning){
         displayInfo("六维F/T预热监测启动失败：当前存在运动任务。传感器单独调试不会抢占运动Trace。",
                     "error");
+        return;
+    }
+    if(!validateForceInteractionFtTopology(
+            QStringLiteral("六维F/T预热监测启动"))){
         return;
     }
     const HardwareInterface::RuntimeTraceUsageProfile previousTraceProfile =
@@ -20880,6 +20938,12 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
     if(currentRobotState(false).anyMotionRunning){
         displayInfo(QStringLiteral("%1准备失败：当前存在其他运动任务")
                     .arg(stage).toStdString(), "error");
+        return;
+    }
+    if(realFt && !validateForceInteractionFtTopology(
+            QStringLiteral("阶段C准备"))){
+        refreshForceInteractionFtUi();
+        refreshForceInteractionRuntimeUi();
         return;
     }
     FtSensorMonitoringService::Snapshot ftSnapshot;
@@ -24377,7 +24441,7 @@ void MainWindow::setupLiteCommissioningTab()
     selectionLayout->addWidget(new QLabel(QStringLiteral("Trace 拓扑"), selectionGroup), 0, 0);
     liteCommissioningTraceTopologyCombo = new QComboBox(selectionGroup);
     liteCommissioningTraceTopologyCombo->addItem(
-                QStringLiteral("标准完整 8 轴：力传感器从站1009"),
+                QStringLiteral("标准完整8轴：张力变送器从站1009"),
                 static_cast<int>(HardwareInterface::LiteRuntimeTraceTopology::StandardEightAxisSensorSlave1009));
     liteCommissioningTraceTopologyCombo->addItem(
                 QStringLiteral("维护临时 7 轴：硬件轴7缺席，力传感器从站1008"),
@@ -24473,7 +24537,7 @@ void MainWindow::setupLiteCommissioningTab()
                     selectedLiteRuntimeTraceTopology() ==
                         HardwareInterface::LiteRuntimeTraceTopology::TemporarySevenAxisSensorSlave1008 ?
                         QStringLiteral("临时7轴，硬件轴7排除，力传感器从站1008") :
-                        QStringLiteral("标准8轴，力传感器从站1009"));
+                        QStringLiteral("标准8轴，张力变送器从站1009"));
     });
     connect(liteCommissioningAxisCombo,
             QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -53021,7 +53085,7 @@ bool MainWindow::applyLeadshineHardwareConfigFromUi(QStringList* appliedItems,
                    selectedLiteRuntimeTraceTopology() ==
                        HardwareInterface::LiteRuntimeTraceTopology::TemporarySevenAxisSensorSlave1008 ?
                        QStringLiteral("下发G302 Trace拓扑：临时7轴，硬件轴7排除，力传感器从站1008") :
-                       QStringLiteral("下发G302 Trace拓扑：标准8轴，力传感器从站1009"));
+                       QStringLiteral("下发G302 Trace拓扑：标准8轴，张力变送器从站1009"));
     }
     hardwareInterface.setLeadshineRatedMotorTorqueNm(ratedMotorTorqueNm);
     hardwareInterface.setMotorPara(motorIDVec, comType, {}, {}, {}, motorSlaveIdVec,

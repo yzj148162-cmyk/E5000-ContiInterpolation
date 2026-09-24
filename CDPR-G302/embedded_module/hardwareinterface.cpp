@@ -2133,6 +2133,116 @@ bool HardwareInterface::setForceInteractionRuntimeTraceWithFtEnabled(bool enable
                           RuntimeTraceUsageProfile::Base);
 }
 
+void HardwareInterface::setForceInteractionFtTopology(
+        int ftSlaveId,
+        int expectedTotalSlaves,
+        bool requireTensionTransmitter)
+{
+    runOnHardwareThread([&]() {
+        forceInteractionFtSlaveId = static_cast<short>(
+                    std::clamp(ftSlaveId, 1, 32767));
+        forceInteractionExpectedTotalSlaves = std::max(1, expectedTotalSlaves);
+        forceInteractionRequireTensionTransmitter = requireTensionTransmitter;
+    });
+}
+
+int HardwareInterface::forceInteractionFtSensorSlaveId() const
+{
+    return runOnHardwareThread([&]() {
+        return static_cast<int>(forceInteractionFtSlaveId);
+    });
+}
+
+bool HardwareInterface::validateForceInteractionFtTopology(QString* errorMessage)
+{
+    return runOnHardwareThread([&]() {
+        auto fail = [&](const QString& message) {
+            if(errorMessage){
+                *errorMessage = message;
+            }
+            return false;
+        };
+        if(!isConnectLS){
+            return fail(QStringLiteral("控制卡尚未连接"));
+        }
+
+        WORD totalSlaves = 0;
+        const short totalRet = nmc_get_total_slaves(
+                    0, kLeadshineEtherCatPort, &totalSlaves);
+        recordCommunicationEvent(false, QStringLiteral("nmc_get_total_slaves"));
+        if(totalRet != 0){
+            return fail(QStringLiteral("读取EtherCAT从站总数失败，返回码=%1")
+                        .arg(totalRet));
+        }
+        if(static_cast<int>(totalSlaves) != forceInteractionExpectedTotalSlaves){
+            return fail(QStringLiteral("从站总数不匹配：实测=%1，当前六维力执行器模板要求=%2")
+                        .arg(totalSlaves)
+                        .arg(forceInteractionExpectedTotalSlaves));
+        }
+
+        for(int hardwareAxis = 0; hardwareAxis < 8; ++hardwareAxis){
+            WORD slaveAddress = 0;
+            WORD subSlaveAddress = 0;
+            const short addressRet = nmc_get_axis_node_address(
+                        0,
+                        static_cast<WORD>(hardwareAxis),
+                        &slaveAddress,
+                        &subSlaveAddress);
+            recordCommunicationEvent(false,
+                                     QStringLiteral("nmc_get_axis_node_address"));
+            const int expectedAddress = 1001 + hardwareAxis;
+            if(addressRet != 0){
+                return fail(QStringLiteral("读取物理轴%1的从站地址失败，返回码=%2")
+                            .arg(hardwareAxis)
+                            .arg(addressRet));
+            }
+            if(static_cast<int>(slaveAddress) != expectedAddress){
+                return fail(QStringLiteral("物理轴%1的从站地址不匹配：实测=%2，期望=%3")
+                            .arg(hardwareAxis)
+                            .arg(slaveAddress)
+                            .arg(expectedAddress));
+            }
+            WORD slaveState = 0;
+            const short stateRet = nmc_get_slave_state(
+                        0, slaveAddress, &slaveState);
+            recordCommunicationEvent(false, QStringLiteral("nmc_get_slave_state"));
+            if(stateRet != 0 || slaveState != 8U){
+                return fail(QStringLiteral("电机从站%1未处于OP：状态=%2，返回码=%3")
+                            .arg(slaveAddress)
+                            .arg(slaveState)
+                            .arg(stateRet));
+            }
+        }
+
+        auto requireSlaveOp = [&](int slaveId, const QString& role) {
+            WORD slaveState = 0;
+            const short stateRet = nmc_get_slave_state(
+                        0, static_cast<WORD>(slaveId), &slaveState);
+            recordCommunicationEvent(false, QStringLiteral("nmc_get_slave_state"));
+            if(stateRet != 0 || slaveState != 8U){
+                return fail(QStringLiteral("%1从站%2未处于OP：状态=%3，返回码=%4")
+                            .arg(role)
+                            .arg(slaveId)
+                            .arg(slaveState)
+                            .arg(stateRet));
+            }
+            return true;
+        };
+        if(forceInteractionRequireTensionTransmitter &&
+                !requireSlaveOp(1009, QStringLiteral("张力变送器"))){
+            return false;
+        }
+        if(!requireSlaveOp(forceInteractionFtSlaveId,
+                           QStringLiteral("六维F/T传感器"))){
+            return false;
+        }
+        if(errorMessage){
+            errorMessage->clear();
+        }
+        return true;
+    });
+}
+
 void HardwareInterface::setForceInteractionEthercatBusCycleUs(int periodUs)
 {
     if(isConnectLS){
@@ -6503,6 +6613,7 @@ bool HardwareInterface::configureRuntimeTraceRead()
             FtSensorTraceObject object;
             object.component = component;
             object.dataIndex = 0x4000 + component;
+            object.slaveId = forceInteractionFtSlaveId;
             ftSensorTraceObjects.push_back(object);
 
             RuntimeTraceObject runtimeObject;
