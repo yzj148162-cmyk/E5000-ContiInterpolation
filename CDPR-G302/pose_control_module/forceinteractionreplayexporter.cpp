@@ -122,13 +122,21 @@ bool ForceInteractionReplayExporter::writeJson(
     root.insert(QStringLiteral("run_id"), csvInfo.completeBaseName());
     root.insert(QStringLiteral("csv_file"), csvInfo.fileName());
     root.insert(QStringLiteral("csv_schema"),
-                QStringLiteral("force_interaction_run_v11"));
+                QStringLiteral("force_interaction_run_v12"));
     root.insert(QStringLiteral("stage"), context.stageName);
     root.insert(QStringLiteral("wrench_source"), context.wrenchSourceName);
     root.insert(QStringLiteral("kinematic_template"),
                 context.machineTemplateName);
     root.insert(QStringLiteral("actuator_template"),
                 context.actuatorTemplateName);
+    root.insert(QStringLiteral("mechanical_mode"), context.mechanicalModeName);
+    root.insert(QStringLiteral("mocap_mode"), context.mocapModeName);
+    root.insert(QStringLiteral("tension_protection_enabled"),
+                context.tensionProtectionEnabled);
+    root.insert(QStringLiteral("minimum_cable_tension_n"),
+                context.minimumCableTensionN);
+    root.insert(QStringLiteral("maximum_cable_tension_n"),
+                context.maximumCableTensionN);
     root.insert(QStringLiteral("control_period_us"), context.controlPeriodUs);
     root.insert(QStringLiteral("trace_period_us"), context.tracePeriodUs);
     root.insert(QStringLiteral("translation_only"), context.translationOnly);

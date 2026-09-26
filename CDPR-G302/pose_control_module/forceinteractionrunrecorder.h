@@ -26,7 +26,8 @@ enum ForceInteractionRecordAvailability : quint32
     ForceRecordAxisCommand = 1u << 6,
     ForceRecordAxisTrace = 1u << 7,
     ForceRecordTiming = 1u << 8,
-    ForceRecordFtDiagnostics = 1u << 9
+    ForceRecordFtDiagnostics = 1u << 9,
+    ForceRecordCableTension = 1u << 10
 };
 
 struct ForceInteractionRunMetadata
@@ -34,6 +35,7 @@ struct ForceInteractionRunMetadata
     QString stage;
     QString sourceName;
     QString machineTemplateName;
+    QString mechanicalMode;
     double controlPeriodS = 0.0;
     double plannedDurationS = 0.0;
     bool workspaceReplayEnabled = false;
@@ -135,6 +137,8 @@ struct ForceInteractionRunRecord
     std::array<double, kForceInteractionCableCount> axisTraceVelocity{};
     std::array<quint16, kForceInteractionCableCount> axisStatusWord{};
     std::array<int, kForceInteractionCableCount> axisStateMachine{};
+    std::array<double, kForceInteractionCableCount> cableTensionN{};
+    std::array<int, kForceInteractionCableCount> cableTensionValid{};
 
     qint64 calculationDurationUs = 0;
     qint64 hardwareApiDurationUs = 0;

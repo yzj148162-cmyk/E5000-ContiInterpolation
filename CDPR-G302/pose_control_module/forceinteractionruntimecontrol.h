@@ -16,9 +16,26 @@
 #include <limits>
 #include <memory>
 
+enum class ForceInteractionRuntimeStage
+{
+    StageB = 0,
+    StageC,
+    StageD
+};
+
+enum class ForceInteractionMechanicalMode
+{
+    NotApplicable = 0,
+    D0MotorDryRun,
+    D1PhysicalCabled
+};
+
 struct ForceInteractionRuntimeConfig
 {
     QString machineTemplateName;
+    ForceInteractionRuntimeStage stage = ForceInteractionRuntimeStage::StageB;
+    ForceInteractionMechanicalMode mechanicalMode =
+            ForceInteractionMechanicalMode::NotApplicable;
     ForceInteractionWrenchSourceKind wrenchSourceKind =
             ForceInteractionWrenchSourceKind::Simulated;
     int periodUs = 5000;
@@ -55,6 +72,10 @@ struct ForceInteractionRuntimeConfig
     std::array<bool, kOnlineVelocityAxisCount> traceDelayValid{};
     double onlineChangeTimeS = 0.001;
     qint64 traceTimeoutUs = 100000;
+    bool tensionTraceRequired = false;
+    bool tensionProtectionEnabled = false;
+    double minimumCableTensionN = 10.0;
+    double maximumCableTensionN = 0.0;
     DynamicWorkspaceSafetyConfig workspaceSafety;
     double brakingStopVelocityMmPerSec = 0.1;
     QString recordingDirectory;
@@ -72,6 +93,8 @@ struct ForceInteractionRuntimeFeedback
     std::array<quint16, kOnlineVelocityAxisCount> motorStatusWord{};
     std::array<int, kOnlineVelocityAxisCount> motorStateMachine{};
     FtSensorTraceSample ftSensor;
+    OnlineVelocityAxisArray cableTensionN{};
+    std::array<bool, kOnlineVelocityAxisCount> cableTensionValid{};
     quint32 traceFrameSequence = 0;
     bool ftRuntimeProfileActive = false;
     qint64 wallClockUs = 0;
@@ -114,6 +137,9 @@ struct ForceInteractionRuntimeStatus
     State state = State::Idle;
     ForceInteractionWrenchSourceKind wrenchSourceKind =
             ForceInteractionWrenchSourceKind::Simulated;
+    ForceInteractionRuntimeStage stage = ForceInteractionRuntimeStage::StageB;
+    ForceInteractionMechanicalMode mechanicalMode =
+            ForceInteractionMechanicalMode::NotApplicable;
     QString message;
     QString recordFile;
     quint64 stepCount = 0;
@@ -167,6 +193,8 @@ struct ForceInteractionRuntimeStatus
     OnlineVelocityAxisArray safetyRelativeActualPosition{};
     OnlineVelocityAxisArray actualPosition{};
     OnlineVelocityAxisArray commandVelocity{};
+    OnlineVelocityAxisArray cableTensionN{};
+    std::array<bool, kOnlineVelocityAxisCount> cableTensionValid{};
     std::array<quint16, kOnlineVelocityAxisCount> motorStatusWord{};
     std::array<int, kOnlineVelocityAxisCount> motorStateMachine{};
 };

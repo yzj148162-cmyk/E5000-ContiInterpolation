@@ -22,10 +22,14 @@ bool finiteWrench(const ForceInteractionVector6& values)
     });
 }
 
-QString runtimeStageName(ForceInteractionWrenchSourceKind source)
+QString runtimeStageName(ForceInteractionRuntimeStage stage)
 {
-    return source == ForceInteractionWrenchSourceKind::RealFtTrace ?
-                QStringLiteral("阶段C") : QStringLiteral("阶段B");
+    switch(stage){
+    case ForceInteractionRuntimeStage::StageB: return QStringLiteral("阶段B");
+    case ForceInteractionRuntimeStage::StageC: return QStringLiteral("阶段C");
+    case ForceInteractionRuntimeStage::StageD: return QStringLiteral("阶段D");
+    }
+    return QStringLiteral("六维力交互");
 }
 
 QString runtimeSourceName(ForceInteractionWrenchSourceKind source)
@@ -132,6 +136,18 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
     if(machineTemplateName.compare(QStringLiteral("G302"), Qt::CaseInsensitive) != 0){
         return fail(QStringLiteral("六维力交互实机运行仅允许G302模板"));
     }
+    if(stage == ForceInteractionRuntimeStage::StageD){
+        if(wrenchSourceKind != ForceInteractionWrenchSourceKind::RealFtTrace ||
+                mechanicalMode == ForceInteractionMechanicalMode::NotApplicable ||
+                !tensionTraceRequired){
+            return fail(QStringLiteral("阶段D必须使用真实F/T、明确D0/D1机械状态并启用八路张力Trace"));
+        }
+        if(mechanicalMode == ForceInteractionMechanicalMode::D1PhysicalCabled &&
+                (!tensionProtectionEnabled || minimumCableTensionN < 0.0 ||
+                 maximumCableTensionN <= minimumCableTensionN)){
+            return fail(QStringLiteral("阶段D D1必须确认有效的张力上下限"));
+        }
+    }
     if(periodUs < 1000 || periodUs > 20000){
         return fail(QStringLiteral("控制周期必须位于1~20 ms"));
     }
@@ -180,12 +196,12 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
     if(wrenchSourceKind == ForceInteractionWrenchSourceKind::RealFtTrace){
         if(!finiteWrench(ftSoftwareZero) || ftSampleTimeoutUs <= 0 ||
                 !sensorTransform.configured){
-            return fail(QStringLiteral("阶段C冻结零点、F/T超时或安装变换无效"));
+            return fail(QStringLiteral("真实F/T冻结零点、超时或安装变换无效"));
         }
         QString conditioningError;
         if(!realFtConditioning.validate(periodUs / 1000000.0,
                                         &conditioningError)){
-            return fail(QStringLiteral("阶段C真实F/T输入调理参数无效：%1")
+            return fail(QStringLiteral("真实F/T输入调理参数无效：%1")
                         .arg(conditioningError));
         }
     }
@@ -245,10 +261,12 @@ bool ForceInteractionRuntimeControl::prepare(
     kinematicsState_ = kinematics_.initialState();
     status_ = ForceInteractionRuntimeStatus{};
     status_.wrenchSourceKind = config.wrenchSourceKind;
+    status_.stage = config.stage;
+    status_.mechanicalMode = config.mechanicalMode;
     status_.frozenFtSoftwareZero = config.ftSoftwareZero;
     status_.state = ForceInteractionRuntimeStatus::State::Prepared;
     status_.message = QStringLiteral("%1已准备").arg(
-                runtimeStageName(config.wrenchSourceKind));
+                runtimeStageName(config.stage));
     status_.desiredState = config.initialState;
     actualStartCaptured_ = false;
     previousErrorValid_ = false;
@@ -311,9 +329,17 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
     }
     recorder_ = std::make_unique<ForceInteractionRunRecorder>();
     ForceInteractionRunMetadata metadata;
-    metadata.stage = config_.wrenchSourceKind ==
-            ForceInteractionWrenchSourceKind::RealFtTrace ?
-                QStringLiteral("stage_c") : QStringLiteral("stage_b");
+    metadata.stage = config_.stage == ForceInteractionRuntimeStage::StageD ?
+                QStringLiteral("stage_d") :
+                (config_.stage == ForceInteractionRuntimeStage::StageC ?
+                     QStringLiteral("stage_c") : QStringLiteral("stage_b"));
+    metadata.mechanicalMode = config_.mechanicalMode ==
+            ForceInteractionMechanicalMode::D0MotorDryRun ?
+                QStringLiteral("d0_motor_dry_run") :
+            (config_.mechanicalMode ==
+             ForceInteractionMechanicalMode::D1PhysicalCabled ?
+                 QStringLiteral("d1_physical_cabled") :
+                 QStringLiteral("not_applicable"));
     metadata.sourceName = config_.wrenchSourceKind ==
             ForceInteractionWrenchSourceKind::RealFtTrace ?
                 runtimeSourceName(config_.wrenchSourceKind) :
@@ -338,7 +364,7 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
         recorder_.reset();
         if(errorMessage){
             *errorMessage = QStringLiteral("%1记录器启动失败：%2")
-                    .arg(runtimeStageName(config_.wrenchSourceKind), recordError);
+                    .arg(runtimeStageName(config_.stage), recordError);
         }
         return false;
     }
@@ -485,11 +511,18 @@ bool ForceInteractionRuntimeControl::feedbackReady(
     }
 
     const FtSensorTraceSample& ft = feedback.ftSensor;
-    return feedback.ftRuntimeProfileActive && ft.wrenchComplete() &&
+    const bool ftReady = feedback.ftRuntimeProfileActive && ft.wrenchComplete() &&
             ft.statusValid && ft.sampleCounterValid &&
             ft.traceFrameSequenceValid &&
             ft.traceFrameSequence == feedback.traceFrameSequence &&
             ft.monotonicUs > 0 && ft.monotonicUs == feedback.monotonicUs;
+    if(!ftReady || !config_.tensionTraceRequired){
+        return ftReady;
+    }
+    return finiteArray(feedback.cableTensionN) &&
+            std::all_of(feedback.cableTensionValid.cbegin(),
+                        feedback.cableTensionValid.cend(),
+                        [](bool valid){ return valid; });
 }
 
 bool ForceInteractionRuntimeControl::requestControlledStop(
@@ -642,7 +675,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = QStringLiteral(
                         "%1可靠Trace超时：fromTrace=%2，序号有效=%3，时序可靠=%4，FIFO已追平=%5，丢帧=%6，帧龄=%7 us，逻辑序号=%8，安全相对位置/状态字完整=%9/%10")
-                    .arg(runtimeStageName(config_.wrenchSourceKind))
+                    .arg(runtimeStageName(config_.stage))
                     .arg(feedback.fromTrace ? 1 : 0)
                     .arg(feedback.frameSequenceValid ? 1 : 0)
                     .arg(feedback.timingReliable ? 1 : 0)
@@ -673,6 +706,12 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                              feedback.ftSensor.monotonicUs ==
                                  feedback.monotonicUs ? 1 : 0);
             }
+            if(config_.tensionTraceRequired){
+                output.reason += QStringLiteral("，张力完整=%1")
+                        .arg(std::all_of(feedback.cableTensionValid.cbegin(),
+                                         feedback.cableTensionValid.cend(),
+                                         [](bool valid){ return valid; }) ? 1 : 0);
+            }
         }
         return output;
     }
@@ -681,7 +720,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
         output.reason = QStringLiteral(
                     "%1控制周期%2 us不是Trace采样周期%3 us的整数倍")
-                .arg(runtimeStageName(config_.wrenchSourceKind))
+                .arg(runtimeStageName(config_.stage))
                 .arg(config_.periodUs)
                 .arg(feedback.traceSamplePeriodUs);
         return output;
@@ -691,12 +730,29 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = QStringLiteral(
                         "%1轴%2同帧驱动状态异常：0x6041=0x%3，状态=%4，要求=4(Operation enabled)")
-                    .arg(runtimeStageName(config_.wrenchSourceKind))
+                    .arg(runtimeStageName(config_.stage))
                     .arg(axis)
                     .arg(QString::number(feedback.motorStatusWord[axis], 16)
                          .rightJustified(4, QLatin1Char('0')).toUpper())
                     .arg(feedback.motorStateMachine[axis]);
             return output;
+        }
+    }
+    if(config_.tensionProtectionEnabled){
+        for(int cable = 0; cable < kOnlineVelocityAxisCount; ++cable){
+            const double tension = feedback.cableTensionN[cable];
+            if(tension < config_.minimumCableTensionN ||
+                    tension > config_.maximumCableTensionN){
+                output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+                output.reason = QStringLiteral(
+                            "%1绳索%2张力%3 N越过[%4, %5] N")
+                        .arg(runtimeStageName(config_.stage))
+                        .arg(cable + 1)
+                        .arg(tension, 0, 'f', 3)
+                        .arg(config_.minimumCableTensionN, 0, 'f', 3)
+                        .arg(config_.maximumCableTensionN, 0, 'f', 3);
+                return output;
+            }
         }
     }
     if(!actualStartCaptured_){
@@ -735,9 +791,10 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         status_.state = ForceInteractionRuntimeStatus::State::Running;
         status_.message = config_.wrenchSourceKind ==
                 ForceInteractionWrenchSourceKind::RealFtTrace ?
-                    QStringLiteral("阶段C运行中，等待首次有效受力（试验计时尚未开始）") :
+                    QStringLiteral("%1运行中，等待首次有效受力（试验计时尚未开始）")
+                        .arg(runtimeStageName(config_.stage)) :
                     QStringLiteral("%1运行中").arg(
-                        runtimeStageName(config_.wrenchSourceKind));
+                        runtimeStageName(config_.stage));
     }
 
     // 实机链统一使用主机单调时钟。Newmark 保持固定步长，并在调度迟到时
@@ -753,7 +810,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
         output.reason = QStringLiteral(
                     "%1主机调度累计落后过大：需补算%2个Newmark子步（周期%3 us），超过上限%4")
-                .arg(runtimeStageName(config_.wrenchSourceKind))
+                .arg(runtimeStageName(config_.stage))
                 .arg(pendingModelSteps).arg(config_.periodUs)
                 .arg(kMaximumCatchUpSteps);
         return output;
@@ -815,7 +872,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             }
             if(actualStartCaptured_ && requestControlledStop(
                         QStringLiteral("%1六维力输入失效：%2")
-                            .arg(runtimeStageName(config_.wrenchSourceKind), inputError),
+                            .arg(runtimeStageName(config_.stage), inputError),
                         true,
                         ForceInteractionControlledStopCause::ForceSensorInput)){
                 braking = true;
@@ -823,7 +880,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             else{
                 output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
                 output.reason = QStringLiteral("%1力输入不可用：%2")
-                        .arg(runtimeStageName(config_.wrenchSourceKind), inputError);
+                        .arg(runtimeStageName(config_.stage), inputError);
                 return output;
             }
         }
@@ -857,7 +914,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = transformed.errorMessage.isEmpty() ?
                         QStringLiteral("%1力旋量转换失败")
-                            .arg(runtimeStageName(config_.wrenchSourceKind)) :
+                            .arg(runtimeStageName(config_.stage)) :
                         transformed.errorMessage;
             return output;
         }
@@ -873,7 +930,8 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             conditioningResult = wrenchConditioner_.process(platformSample.wrench);
             if(!conditioningResult.valid){
                 output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-                output.reason = QStringLiteral("阶段C真实F/T输入调理失败");
+                output.reason = QStringLiteral("%1真实F/T输入调理失败")
+                        .arg(runtimeStageName(config_.stage));
                 return output;
             }
             platformSample.wrench = conditioningResult.output;
@@ -887,7 +945,8 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
                 status_.interactionTriggered = true;
                 status_.interactionElapsedS = 0.0;
                 status_.message = QStringLiteral(
-                            "阶段C已检测到首次有效受力，试验计时开始");
+                            "%1已检测到首次有效受力，试验计时开始")
+                        .arg(runtimeStageName(config_.stage));
             }
         }
         else{
@@ -907,7 +966,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         if(!dynamicsResult.valid){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = QStringLiteral("%1 Newmark失败：%2")
-                    .arg(runtimeStageName(config_.wrenchSourceKind),
+                    .arg(runtimeStageName(config_.stage),
                          dynamicsResult.errorMessage);
             return output;
         }
@@ -980,7 +1039,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             workspaceResult.action == PhysicalWorkspaceAction::Invalid){
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
         output.reason = QStringLiteral("%1末端状态触发物理边界急停：%2")
-                .arg(runtimeStageName(config_.wrenchSourceKind),
+                .arg(runtimeStageName(config_.stage),
                      workspaceResult.reason);
         return output;
     }
@@ -1042,7 +1101,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             evaluation.cableLengthMm.size() != kOnlineVelocityAxisCount){
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
         output.reason = QStringLiteral("%1逆运动学失败：%2")
-                .arg(runtimeStageName(config_.wrenchSourceKind),
+                    .arg(runtimeStageName(config_.stage),
                      evaluation.errorMessage);
         return output;
     }
@@ -1070,7 +1129,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             &safetyRelativeReference, &motorTravelError)){
         output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
         output.reason = QStringLiteral("%1绞盘行程保护：%2")
-                .arg(runtimeStageName(config_.wrenchSourceKind),
+                .arg(runtimeStageName(config_.stage),
                      motorTravelError);
         return output;
     }
@@ -1106,7 +1165,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         if(aligned && std::fabs(error) > config_.followingErrorLimit){
             output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
             output.reason = QStringLiteral("%1轴%2延迟对齐位置跟随误差%3超限%4（标定延迟=%5 ms）")
-                    .arg(runtimeStageName(config_.wrenchSourceKind)).arg(axis)
+                    .arg(runtimeStageName(config_.stage)).arg(axis)
                     .arg(error, 0, 'f', 6)
                     .arg(config_.followingErrorLimit, 0, 'f', 6)
                     .arg(config_.traceDelayMs[axis], 0, 'f', 4);
@@ -1198,6 +1257,16 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         status_.latestForceGateActive = conditioningResult.forceActive;
         status_.latestTorqueGateActive = conditioningResult.torqueActive;
     }
+    if(config_.tensionTraceRequired){
+        record.availabilityMask |= ForceRecordCableTension;
+        record.cableTensionN = feedback.cableTensionN;
+        for(int cable = 0; cable < kOnlineVelocityAxisCount; ++cable){
+            record.cableTensionValid[cable] =
+                    feedback.cableTensionValid[cable] ? 1 : 0;
+        }
+        status_.cableTensionN = feedback.cableTensionN;
+        status_.cableTensionValid = feedback.cableTensionValid;
+    }
     record.desiredState = desired;
     record.interactionSegment = braking ? 1 : 0;
     record.controlledStopCause = static_cast<int>(status_.controlledStopCause);
@@ -1286,9 +1355,9 @@ void ForceInteractionRuntimeControl::noteCommandResult(
         setTerminal(ForceInteractionRuntimeStatus::State::Fault,
                     step.action == ForceInteractionRuntimeStep::Action::CommandVelocity ?
                         QStringLiteral("%1八轴速度API调用失败")
-                            .arg(runtimeStageName(config_.wrenchSourceKind)) :
+                            .arg(runtimeStageName(config_.stage)) :
                         QStringLiteral("%1停机API调用失败，已升级立即停止")
-                            .arg(runtimeStageName(config_.wrenchSourceKind)));
+                            .arg(runtimeStageName(config_.stage)));
         return;
     }
     if(step.action == ForceInteractionRuntimeStep::Action::CommandVelocity){
@@ -1320,7 +1389,7 @@ void ForceInteractionRuntimeControl::setTerminal(
         if(status_.safetyStopReason.isEmpty()){
             status_.safetyStopReason = message.isEmpty() ?
                         QStringLiteral("%1发生未分类故障")
-                            .arg(runtimeStageName(config_.wrenchSourceKind)) : message;
+                            .arg(runtimeStageName(config_.stage)) : message;
         }
     }
 }

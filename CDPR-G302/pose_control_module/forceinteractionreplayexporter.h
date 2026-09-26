@@ -20,6 +20,11 @@ struct ForceInteractionReplayExportContext
     QString wrenchSourceName;
     QString machineTemplateName;
     QString actuatorTemplateName;
+    QString mechanicalModeName;
+    QString mocapModeName;
+    bool tensionProtectionEnabled = false;
+    double minimumCableTensionN = 0.0;
+    double maximumCableTensionN = 0.0;
     int controlPeriodUs = 0;
     int tracePeriodUs = 0;
     bool translationOnly = false;

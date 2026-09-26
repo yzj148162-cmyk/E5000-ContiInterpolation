@@ -610,16 +610,23 @@ private:
     void startForceInteractionSoftwareValidation();
     void cancelForceInteractionSoftwareValidation();
     ForceInteractionRuntimeConfig forceInteractionRuntimeConfigFromUi(
+            ForceInteractionRuntimeStage stage,
+            ForceInteractionMechanicalMode mechanicalMode,
             ForceInteractionWrenchSourceKind sourceKind,
             const FtSensorMonitoringService::Snapshot* ftSnapshot,
             QString* errorMessage = nullptr);
     void prepareForceInteractionRuntimeFromUi();
     void prepareForceInteractionStageCRuntimeFromUi();
+    void prepareForceInteractionStageDRuntimeFromUi();
     void prepareForceInteractionRuntimeForSource(
+            ForceInteractionRuntimeStage stage,
+            ForceInteractionMechanicalMode mechanicalMode,
             ForceInteractionWrenchSourceKind sourceKind);
     void startForceInteractionRuntime();
     void startForceInteractionStageCRuntime();
+    void startForceInteractionStageDRuntime();
     void startPreparedForceInteractionRuntime(
+            ForceInteractionRuntimeStage expectedStage,
             ForceInteractionWrenchSourceKind expectedSource);
     void stopForceInteractionRuntime(bool emergency = false,
                                      const QString& reason = QStringLiteral("用户停止六维力交互运行"));

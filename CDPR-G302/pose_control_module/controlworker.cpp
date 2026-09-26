@@ -28,16 +28,24 @@ qint64 monotonicNowUs()
                 std::chrono::duration_cast<std::chrono::microseconds>(now).count());
 }
 
-QString forceInteractionStageName(ForceInteractionWrenchSourceKind source)
+QString forceInteractionStageName(ForceInteractionRuntimeStage stage)
 {
-    return source == ForceInteractionWrenchSourceKind::RealFtTrace ?
-                QStringLiteral("阶段C") : QStringLiteral("阶段B");
+    switch(stage){
+    case ForceInteractionRuntimeStage::StageB: return QStringLiteral("阶段B");
+    case ForceInteractionRuntimeStage::StageC: return QStringLiteral("阶段C");
+    case ForceInteractionRuntimeStage::StageD: return QStringLiteral("阶段D");
+    }
+    return QStringLiteral("六维力交互");
 }
 
 HardwareInterface::RuntimeTraceUsageProfile forceInteractionTraceProfile(
-        ForceInteractionWrenchSourceKind source)
+        ForceInteractionRuntimeStage stage)
 {
-    return source == ForceInteractionWrenchSourceKind::RealFtTrace ?
+    if(stage == ForceInteractionRuntimeStage::StageD){
+        return HardwareInterface::RuntimeTraceUsageProfile::
+                ForceInteractionPhysicalRuntime;
+    }
+    return stage == ForceInteractionRuntimeStage::StageC ?
                 HardwareInterface::RuntimeTraceUsageProfile::
                     ForceInteractionVelocityWithFtRuntime :
                 HardwareInterface::RuntimeTraceUsageProfile::
@@ -1884,7 +1892,7 @@ bool ControlWorker::prepareForceInteractionRuntime(
     if(cfg.axisCount < kOnlineVelocityAxisCount ||
             static_cast<int>(cfg.axes.size()) < kOnlineVelocityAxisCount){
         return fail(QStringLiteral("%1需要八个已配置电机轴")
-                    .arg(forceInteractionStageName(runtimeConfig.wrenchSourceKind)));
+                    .arg(forceInteractionStageName(runtimeConfig.stage)));
     }
     if(hardwareInterface->runtimeTraceConfigType() !=
             HardwareInterface::RuntimeTraceConfigType::G302 ||
@@ -1893,22 +1901,22 @@ bool ControlWorker::prepareForceInteractionRuntime(
                 StandardEightAxisSensorSlave1009){
         return fail(QStringLiteral(
                         "%1需要G302标准八轴Runtime Trace拓扑，请选择8电机/张力变送器从站1009配置")
-                    .arg(forceInteractionStageName(runtimeConfig.wrenchSourceKind)));
+                    .arg(forceInteractionStageName(runtimeConfig.stage)));
     }
     const HardwareInterface::RuntimeTraceUsageProfile expectedProfile =
-            forceInteractionTraceProfile(runtimeConfig.wrenchSourceKind);
+            forceInteractionTraceProfile(runtimeConfig.stage);
     if(hardwareInterface->runtimeTraceUsageProfile() != expectedProfile){
         return fail(QStringLiteral("%1 Runtime Trace profile尚未准备")
-                    .arg(forceInteractionStageName(runtimeConfig.wrenchSourceKind)));
+                    .arg(forceInteractionStageName(runtimeConfig.stage)));
     }
     if(cfg.forceThreadEnabled || cfg.pvtActiveOrPaused || cfg.commissioningModeActive){
         return fail(QStringLiteral("%1不能与既有力控、PVT或单轴调试同时运行")
-                    .arg(forceInteractionStageName(runtimeConfig.wrenchSourceKind)));
+                    .arg(forceInteractionStageName(runtimeConfig.stage)));
     }
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         if(!cfg.axes[axis].isMotorAxis || !hardwareInterface->isMotorEnabled(axis)){
             return fail(QStringLiteral("%1电机轴%2未配置或未使能")
-                        .arg(forceInteractionStageName(runtimeConfig.wrenchSourceKind))
+                        .arg(forceInteractionStageName(runtimeConfig.stage))
                         .arg(axis));
         }
         const double configuredVelocityLimit = cfg.axes[axis].motorVelMax;
@@ -1916,7 +1924,7 @@ bool ControlWorker::prepareForceInteractionRuntime(
                 configuredVelocityLimit <= 0.0 ||
                 runtimeConfig.velocityLimit > configuredVelocityLimit + 1.0e-12){
             return fail(QStringLiteral("%1速度上限超过轴%2既有安全上限")
-                        .arg(forceInteractionStageName(runtimeConfig.wrenchSourceKind))
+                        .arg(forceInteractionStageName(runtimeConfig.stage))
                         .arg(axis));
         }
     }
@@ -1931,14 +1939,15 @@ bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
 {
     if(!forceInteractionRuntimeControl.isPrepared()){
         if(errorMessage){
-            *errorMessage = QStringLiteral("请先准备阶段B或阶段C");
+            *errorMessage = QStringLiteral("请先准备对应的六维力交互阶段");
         }
         return false;
     }
     const Config cfg = currentConfig();
-    const ForceInteractionWrenchSourceKind source =
-            forceInteractionRuntimeControl.currentConfig().wrenchSourceKind;
-    const QString stage = forceInteractionStageName(source);
+    const ForceInteractionRuntimeConfig runtimeConfig =
+            forceInteractionRuntimeControl.currentConfig();
+    const ForceInteractionWrenchSourceKind source = runtimeConfig.wrenchSourceKind;
+    const QString stage = forceInteractionStageName(runtimeConfig.stage);
     if(!hardwareInterface || !cfg.systemRunning || !cfg.useLeadshine ||
             !hardwareInterface->isLSConnected() ||
             cfg.forceThreadEnabled || cfg.pvtActiveOrPaused ||
@@ -1994,16 +2003,18 @@ bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
         return false;
     }
     if(!hardwareInterface->setRuntimeTraceUsageProfile(
-                forceInteractionTraceProfile(source))){
+                forceInteractionTraceProfile(runtimeConfig.stage))){
         forceInteractionRuntimeControl.stop(true,
                                              QStringLiteral("%1 Runtime Trace配置失败")
                                              .arg(stage));
         forceInteractionRuntimeControl.finishRecording();
         publishForceInteractionRuntimeStatus();
         if(errorMessage){
-            *errorMessage = source == ForceInteractionWrenchSourceKind::RealFtTrace ?
+            *errorMessage = runtimeConfig.stage == ForceInteractionRuntimeStage::StageD ?
+                        QStringLiteral("无法配置阶段D所需八轴位置/速度/状态、F/T与张力同帧Trace") :
+                    (source == ForceInteractionWrenchSourceKind::RealFtTrace ?
                         QStringLiteral("无法配置阶段C所需八轴位置/速度/F/T合并Trace") :
-                        QStringLiteral("无法配置阶段B所需八轴位置/速度Trace");
+                        QStringLiteral("无法配置阶段B所需八轴位置/速度Trace"));
         }
         return false;
     }
@@ -2986,8 +2997,7 @@ void ControlWorker::processForceInteractionRuntime(
         stopForceInteractionRuntime(true,
                     QStringLiteral("%1运行互锁条件变化")
                     .arg(forceInteractionStageName(
-                        forceInteractionRuntimeControl.currentConfig()
-                            .wrenchSourceKind)));
+                        forceInteractionRuntimeControl.currentConfig().stage)));
         return;
     }
 
@@ -3008,13 +3018,17 @@ void ControlWorker::processForceInteractionRuntime(
     feedback.safetyRelativePosition.fill(nan);
     feedback.safetyRelativePositionFromTrace.fill(false);
     feedback.actualVelocity.fill(nan);
+    feedback.cableTensionN.fill(nan);
+    feedback.cableTensionValid.fill(false);
     feedback.motorStatusWord.fill(0);
     feedback.motorStateMachine.fill(-1);
     feedback.ftSensor = traceSnapshot.ftSensor;
     feedback.traceFrameSequence = traceSnapshot.frameSequence;
-    feedback.ftRuntimeProfileActive = traceSnapshot.usageProfile ==
-            HardwareInterface::RuntimeTraceUsageProfile::
-                ForceInteractionVelocityWithFtRuntime;
+    feedback.ftRuntimeProfileActive =
+            traceSnapshot.usageProfile == HardwareInterface::
+                RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ||
+            traceSnapshot.usageProfile == HardwareInterface::
+                RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime;
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         if(axis < static_cast<int>(traceSnapshot.motorPosition.size())){
             feedback.actualPosition[axis] = traceSnapshot.motorPosition[axis];
@@ -3047,6 +3061,15 @@ void ControlWorker::processForceInteractionRuntime(
             feedback.motorStateMachine[axis] =
                     traceSnapshot.motorStateMachine[axis];
         }
+        if(axis < static_cast<int>(traceSnapshot.forceSensorValue.size()) &&
+                std::isfinite(traceSnapshot.forceSensorValue[axis])){
+            feedback.cableTensionN[axis] = traceSnapshot.forceSensorValue[axis];
+            const bool sameFrame = axis < static_cast<int>(
+                        traceSnapshot.forceSensorFrameMonotonicUs.size()) &&
+                    traceSnapshot.forceSensorFrameMonotonicUs[axis] ==
+                        traceSnapshot.monotonicUs;
+            feedback.cableTensionValid[axis] = sameFrame;
+        }
     }
 
     const ForceInteractionRuntimeStatus statusBeforeStep =
@@ -3060,7 +3083,8 @@ void ControlWorker::processForceInteractionRuntime(
     if(!statusBeforeStep.interactionTriggered &&
             statusAfterStep.interactionTriggered){
         emit displayInfoSignal(
-                    QStringLiteral("阶段C首次有效受力已确认：最长运行时间从当前时刻开始计算。")
+                    QStringLiteral("%1首次有效受力已确认：最长运行时间从当前时刻开始计算。")
+                        .arg(forceInteractionStageName(statusAfterStep.stage))
                         .toStdString(),
                     "normal");
     }
@@ -3068,7 +3092,7 @@ void ControlWorker::processForceInteractionRuntime(
             statusAfterStep.state == ForceInteractionRuntimeStatus::State::Braking){
         emit displayInfoSignal(
                     QStringLiteral("%1力输入已冻结并进入协同减速：%2；本次微重力交互有效=%3")
-                    .arg(forceInteractionStageName(statusAfterStep.wrenchSourceKind))
+                    .arg(forceInteractionStageName(statusAfterStep.stage))
                     .arg(statusAfterStep.message)
                     .arg(statusAfterStep.experimentValid ?
                              QStringLiteral("是") : QStringLiteral("否"))

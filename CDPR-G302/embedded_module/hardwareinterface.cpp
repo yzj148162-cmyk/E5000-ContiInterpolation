@@ -1901,7 +1901,10 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesVelocitySignals(
 bool HardwareInterface::runtimeTraceUsageProfileIncludesCommandVelocity(
         RuntimeTraceUsageProfile profile) const
 {
-    // 六维力交互也保留板卡指令速度，便于完整记录并核对实际下发链路。
+    // 阶段D把有限的Trace对象预算留给八路张力；本周期软件下发值由运行记录器保存。
+    if(profile == RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime){
+        return false;
+    }
     return runtimeTraceUsageProfileIncludesVelocitySignals(profile);
 }
 
@@ -1911,8 +1914,12 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesForceSensors(
     if(profile == RuntimeTraceUsageProfile::Base){
         return baseRuntimeTraceForceSensorEnabled;
     }
-    if(runtimeTraceUsageProfileIncludesFtSensor(profile)){
+    if(runtimeTraceUsageProfileIncludesFtSensor(profile) &&
+            profile != RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime){
         return false;
+    }
+    if(profile == RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime){
+        return true;
     }
     return RuntimeFeatureSwitches::kOnlineVelocityForceSensorTraceEnabled;
 }
@@ -1922,7 +1929,8 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesFtSensor(
 {
     return profile == RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning ||
             profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
-            profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime;
+            profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime;
 }
 
 bool HardwareInterface::runtimeTraceUsesForceInteractionTiming(
@@ -1934,6 +1942,7 @@ bool HardwareInterface::runtimeTraceUsesForceInteractionTiming(
             profile == RuntimeTraceUsageProfile::ForceInteractionVelocity ||
             profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
             profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime ||
             (profile == RuntimeTraceUsageProfile::PresetOnlineVelocity &&
              runtimeTraceCommissioningAxis >= 0);
 }
@@ -2176,6 +2185,13 @@ bool HardwareInterface::setForceInteractionRuntimeTraceWithFtEnabled(bool enable
 {
     return setRuntimeTraceUsageProfile(
                 enabled ? RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime :
+                          RuntimeTraceUsageProfile::Base);
+}
+
+bool HardwareInterface::setForceInteractionPhysicalRuntimeTraceEnabled(bool enabled)
+{
+    return setRuntimeTraceUsageProfile(
+                enabled ? RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime :
                           RuntimeTraceUsageProfile::Base);
 }
 
@@ -6467,6 +6483,9 @@ bool HardwareInterface::configureRuntimeTraceRead()
                 RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
             activeRuntimeTraceUsageProfile ==
                 RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime;
+    const bool forceInteractionPhysicalProfile =
+            activeRuntimeTraceUsageProfile ==
+                RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime;
     const bool ftSensorOnlyProfile =
             activeRuntimeTraceUsageProfile ==
                 RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning;
@@ -6475,7 +6494,7 @@ bool HardwareInterface::configureRuntimeTraceRead()
     if(ftSensorOnlyProfile){
         traceAxes.clear();
     }
-    if(!forceInteractionVelocityProfile){
+    if(!forceInteractionVelocityProfile && !forceInteractionPhysicalProfile){
         for(const RuntimeTraceAxis& axis : traceAxes){
             MotorCommandPositionTraceObject object;
             object.logicalAxis = axis.logicalAxis;
@@ -6602,7 +6621,7 @@ bool HardwareInterface::configureRuntimeTraceRead()
         }
     }
 
-    if(!forceInteractionVelocityProfile){
+    if(!forceInteractionVelocityProfile && !forceInteractionPhysicalProfile){
         for(const RuntimeTraceAxis& axis : traceAxes){
             if(axis.logicalAxis < 0 ||
                     axis.logicalAxis >= traceProfile.feedbackAndTorqueLogicalAxisCount){

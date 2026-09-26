@@ -245,18 +245,20 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v11\n"
+    stream << "# schema=force_interaction_run_v12\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
            << ",source=" << csvSafe(metadata_.sourceName)
            << ",machine_template=" << csvSafe(metadata_.machineTemplateName)
+           << ",mechanical_mode=" << csvSafe(metadata_.mechanicalMode)
            << '\n'
            << "# control_period_s=" << metadata_.controlPeriodS
            << ",planned_duration_s=" << metadata_.plannedDurationS << '\n'
            << "# availability_mask:1=sensor_wrench,2=platform_wrench,4=desired_state,"
               "8=cable_kinematics,16=forward_kinematics,32=axis_reference,"
-              "64=axis_command,128=axis_trace,256=timing,512=ft_diagnostics\n";
+              "64=axis_command,128=axis_trace,256=timing,512=ft_diagnostics,"
+              "1024=cable_tension\n";
     stream << "# workspace_replay_enabled="
            << (metadata_.workspaceReplayEnabled ? 1 : 0) << '\n';
     if(metadata_.workspaceReplayEnabled){
@@ -356,6 +358,8 @@ void ForceInteractionRunRecorder::run()
     writeGroupHeader(stream, "axis_trace_velocity", kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_status_word", kForceInteractionCableCount);
     writeGroupHeader(stream, "axis_state_machine", kForceInteractionCableCount);
+    writeGroupHeader(stream, "cable_tension_n", kForceInteractionCableCount);
+    writeGroupHeader(stream, "cable_tension_valid", kForceInteractionCableCount);
     stream << ",calculation_us,hardware_api_us,full_cycle_us\n";
     ready_.release();
 
@@ -438,6 +442,8 @@ void ForceInteractionRunRecorder::run()
             writeArray(stream, record.axisTraceVelocity);
             writeArray(stream, record.axisStatusWord);
             writeArray(stream, record.axisStateMachine);
+            writeArray(stream, record.cableTensionN);
+            writeArray(stream, record.cableTensionValid);
             stream << ',' << record.calculationDurationUs
                    << ',' << record.hardwareApiDurationUs
                    << ',' << record.fullCycleDurationUs << '\n';

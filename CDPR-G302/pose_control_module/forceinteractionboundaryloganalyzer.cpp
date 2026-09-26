@@ -244,6 +244,7 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     bool schemaV9 = false;
     bool schemaV10 = false;
     bool schemaV11 = false;
+    bool schemaV12 = false;
     QStringList header;
 
     QTextStream stream(&file);
@@ -289,6 +290,11 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
                     QStringLiteral("# schema=force_interaction_run_v11")){
                 schemaV11 = true;
                 result.sourceSchemaVersion = 11;
+            }
+            else if(line.trimmed() ==
+                    QStringLiteral("# schema=force_interaction_run_v12")){
+                schemaV12 = true;
+                result.sourceSchemaVersion = 12;
             }
             QString value = valueAfterEquals(line,
                                                QStringLiteral("workspace_replay_enabled"));
@@ -478,14 +484,14 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     const bool orientationMetadataComplete =
             !boundaryConfig.orientationBoundsEnabled ||
             (orientationMinimumRead && orientationMaximumRead);
-    const bool v5TerminalMetadataComplete = !(schemaV5 || schemaV6 || schemaV7 || schemaV8 || schemaV9 || schemaV10 || schemaV11) ||
+    const bool v5TerminalMetadataComplete = !(schemaV5 || schemaV6 || schemaV7 || schemaV8 || schemaV9 || schemaV10 || schemaV11 || schemaV12) ||
             (terminalSummaryPresenceRead && result.terminalSummaryPresent &&
              terminalStateRead && terminalCauseRead &&
              terminalExperimentValidRead && terminalStepCountRead &&
              terminalCommandCountRead && terminalMissedCycleCountRead &&
              terminalElapsedRead && terminalClearanceRead &&
              terminalReasonRead && terminalSafetyReasonRead);
-    if((!schemaV4 && !schemaV5 && !schemaV6 && !schemaV7 && !schemaV8 && !schemaV9 && !schemaV10 && !schemaV11) || !replayEnabled ||
+    if((!schemaV4 && !schemaV5 && !schemaV6 && !schemaV7 && !schemaV8 && !schemaV9 && !schemaV10 && !schemaV11 && !schemaV12) || !replayEnabled ||
             !frameMinimumRead || !frameMaximumRead ||
             !orientationEnabledRead ||
             pointCount <= 0 || pointCount > kPhysicalWorkspaceMaximumPlatformPoints ||
@@ -750,7 +756,7 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     }
     file.close();
 
-    const bool schemaHasTerminalSummary = schemaV5 || schemaV6 || schemaV7 || schemaV8 || schemaV9 || schemaV10 || schemaV11;
+    const bool schemaHasTerminalSummary = schemaV5 || schemaV6 || schemaV7 || schemaV8 || schemaV9 || schemaV10 || schemaV11 || schemaV12;
     if(schemaHasTerminalSummary){
         constexpr int kCompletedState = 5;
         constexpr int kStoppedState = 6;

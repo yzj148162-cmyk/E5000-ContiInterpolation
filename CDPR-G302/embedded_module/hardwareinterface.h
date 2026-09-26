@@ -275,7 +275,10 @@ public:
         EndpointRemoteRunning,
         // 阶段C实时运行专用：与准备态保持相同的完整八轴及F/T对象契约，
         // 区别只在于Trace由ControlWorker唯一推进。
-        ForceInteractionVelocityWithFtRuntime
+        ForceInteractionVelocityWithFtRuntime,
+        // 阶段D最终运行：八轴实际位置/速度/状态字、六维F/T和八路张力同帧。
+        // 为保持对象数可控，不采集可由软件精确记录的板卡指令速度。
+        ForceInteractionPhysicalRuntime
     };
 
     enum class MotorSafetyRelativePositionSource {
@@ -849,6 +852,7 @@ public:
     bool setForceInteractionRuntimeTraceProfileEnabled(bool enabled);
     bool setForceTorqueSensorCommissioningTraceEnabled(bool enabled);
     bool setForceInteractionRuntimeTraceWithFtEnabled(bool enabled);
+    bool setForceInteractionPhysicalRuntimeTraceEnabled(bool enabled);
     // 六维力交互使用独立的F/T拓扑参数：原G302为8电机+1009张力变送器+
     // 1010六维F/T；临时8轴模板没有张力变送器，六维F/T位于1009。
     void setForceInteractionFtTopology(int ftSlaveId,
