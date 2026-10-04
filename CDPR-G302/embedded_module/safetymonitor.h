@@ -85,6 +85,9 @@ public:
         // 在线速度专用 Trace 不含力传感器时关闭所有力传感器依赖；电机位置、
         // 速度和反馈力矩保护不受该开关影响。
         bool forceSensorMonitoringEnabled = true;
+        // 阶段D D1直接消费ControlWorker发布的同帧Trace，不依赖传统力控线程。
+        bool forceInteractionTensionTraceFreshnessEnabled = false;
+        qint64 forceInteractionTraceTimeoutUs = 100000;
         bool singleCableForceDebugMode = false;
         bool motorPositionLimitRecoveryActive = false;
         int snapshotTimeoutMs = 300;
@@ -97,6 +100,13 @@ public:
         // 六维力实时控制运行时，安全线程直接读取 ControlWorker 发布的逐步期望状态，
         // 避免依赖 UI 低频转发，并用 stepCount 检测状态停更。
         bool forceInteractionWorkspacePoseSource = false;
+        // 可选Nokov仅作为D1低频实物边界监督，不参与速度命令生成。
+        bool forceInteractionMocapBoundaryEnabled = false;
+        bool forceInteractionMocapPoseValid = false;
+        qint64 forceInteractionMocapPoseTimestampMs = -1;
+        int forceInteractionMocapTimeoutMs = 1000;
+        double forceInteractionMocapEmergencyMarginMm = 0.0;
+        std::vector<double> forceInteractionMocapPose;
         // 工作空间判定接收当前运动功能发布的可靠末端位姿；物理边界统一检查
         // 动平台全部代表点，而不是只检查质心坐标。
         bool hasWorkspacePose = false;

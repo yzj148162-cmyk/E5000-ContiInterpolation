@@ -73,9 +73,14 @@ struct ForceInteractionRuntimeConfig
     double onlineChangeTimeS = 0.001;
     qint64 traceTimeoutUs = 100000;
     bool tensionTraceRequired = false;
-    bool tensionProtectionEnabled = false;
-    double minimumCableTensionN = 10.0;
-    double maximumCableTensionN = 0.0;
+    // D1 does not maintain a second set of runtime tension limits.  These
+    // values are a frozen copy of the centralized SafetyMonitor settings and
+    // are used only for admission, diagnostics and replay metadata.
+    bool globalTensionSafetyEnabled = false;
+    double globalMinimumCableTensionN = 0.0;
+    // Indexed by the runtime tension/force-sensor channel, after applying the
+    // same motor-axis-to-sensor mapping used by the global SafetyMonitor.
+    OnlineVelocityAxisArray globalMaximumCableTensionN{};
     DynamicWorkspaceSafetyConfig workspaceSafety;
     double brakingStopVelocityMmPerSec = 0.1;
     QString recordingDirectory;

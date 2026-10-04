@@ -142,10 +142,19 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
                 !tensionTraceRequired){
             return fail(QStringLiteral("阶段D必须使用真实F/T、明确D0/D1机械状态并启用八路张力Trace"));
         }
-        if(mechanicalMode == ForceInteractionMechanicalMode::D1PhysicalCabled &&
-                (!tensionProtectionEnabled || minimumCableTensionN < 0.0 ||
-                 maximumCableTensionN <= minimumCableTensionN)){
-            return fail(QStringLiteral("阶段D D1必须确认有效的张力上下限"));
+        if(mechanicalMode == ForceInteractionMechanicalMode::D1PhysicalCabled){
+            if(!globalTensionSafetyEnabled || globalMinimumCableTensionN <= 0.0){
+                return fail(QStringLiteral("阶段D D1必须启用全局SafetyMonitor并配置非零张力下限"));
+            }
+            for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+                if(!std::isfinite(globalMaximumCableTensionN[axis]) ||
+                        globalMaximumCableTensionN[axis] <=
+                            globalMinimumCableTensionN){
+                    return fail(QStringLiteral(
+                                    "阶段D D1轴%1的全局张力上限无效")
+                                .arg(axis + 1));
+                }
+            }
         }
     }
     if(periodUs < 1000 || periodUs > 20000){
@@ -738,23 +747,10 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
             return output;
         }
     }
-    if(config_.tensionProtectionEnabled){
-        for(int cable = 0; cable < kOnlineVelocityAxisCount; ++cable){
-            const double tension = feedback.cableTensionN[cable];
-            if(tension < config_.minimumCableTensionN ||
-                    tension > config_.maximumCableTensionN){
-                output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
-                output.reason = QStringLiteral(
-                            "%1绳索%2张力%3 N越过[%4, %5] N")
-                        .arg(runtimeStageName(config_.stage))
-                        .arg(cable + 1)
-                        .arg(tension, 0, 'f', 3)
-                        .arg(config_.minimumCableTensionN, 0, 'f', 3)
-                        .arg(config_.maximumCableTensionN, 0, 'f', 3);
-                return output;
-            }
-        }
-    }
+    // D1 tension faults are evaluated exclusively by the independent
+    // SafetyMonitor.  The runtime controller still requires complete same-
+    // frame tension data, records it, and obeys the centralized stop request;
+    // it must not apply a second single-sample threshold here.
     if(!actualStartCaptured_){
         // Trace配置及FIFO追平发生在启动请求之后；第一帧可靠反馈才是模型时间零点，
         // 不能把等待Trace的时间误计为控制漏周期。

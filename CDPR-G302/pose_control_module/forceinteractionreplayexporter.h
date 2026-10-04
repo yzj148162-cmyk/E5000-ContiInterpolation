@@ -22,9 +22,9 @@ struct ForceInteractionReplayExportContext
     QString actuatorTemplateName;
     QString mechanicalModeName;
     QString mocapModeName;
-    bool tensionProtectionEnabled = false;
-    double minimumCableTensionN = 0.0;
-    double maximumCableTensionN = 0.0;
+    bool globalTensionSafetyEnabled = false;
+    double globalMinimumCableTensionN = 0.0;
+    OnlineVelocityAxisArray globalMaximumCableTensionN{};
     int controlPeriodUs = 0;
     int tracePeriodUs = 0;
     bool translationOnly = false;

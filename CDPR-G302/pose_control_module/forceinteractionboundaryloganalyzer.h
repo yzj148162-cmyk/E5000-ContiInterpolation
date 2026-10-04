@@ -7,7 +7,12 @@
 
 struct ForceInteractionBoundaryLogAnalysisResult
 {
+    // passed/boundaryConsistencyPassed describe the boundary replay itself.
+    // Recording completeness is reported independently so a dropped
+    // diagnostic row cannot be mistaken for a boundary-algorithm failure.
     bool passed = false;
+    bool boundaryConsistencyPassed = false;
+    bool recordingComplete = false;
     int sourceSchemaVersion = 0;
     quint64 dataRows = 0;
     quint64 replayedRows = 0;

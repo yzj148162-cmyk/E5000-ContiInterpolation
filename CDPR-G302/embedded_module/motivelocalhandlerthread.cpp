@@ -118,26 +118,49 @@ void MotiveLocalHandlerThread::beginPoseCapture(int sampleCount)
 
 }
 
+void MotiveLocalHandlerThread::setContinuousMonitoringEnabled(bool enabled)
+{
+    if(m_continuousMonitoringEnabled == enabled){
+        return;
+    }
+    m_continuousMonitoringEnabled = enabled;
+    m_lastContinuousMonitorUpdateMs = -1;
+    if(m_client){
+        m_client->SetFrameDataEnabled(enabled || m_captureActive);
+    }
+}
+
 void MotiveLocalHandlerThread::dataProcessor()
 {
-    if (!m_captureActive) {
+    if (!m_captureActive && !m_continuousMonitoringEnabled) {
         return;
     }
 
     if (!m_client || !m_isConnected) {
-        failPoseCapture(QStringLiteral("NOKOV client is not connected"));
+        if(m_captureActive){
+            failPoseCapture(QStringLiteral("NOKOV client is not connected"));
+        }
         return;
     }
 
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
-    if (m_captureStartTimestampMs >= 0 &&
+    if (m_captureActive && m_captureStartTimestampMs >= 0 &&
             nowMs - m_captureStartTimestampMs > CAPTURE_TIMEOUT_MS) {
         failPoseCapture(QStringLiteral("采样超时"));
         return;
     }
 
+    if(!m_captureActive && m_lastContinuousMonitorUpdateMs >= 0 &&
+            nowMs - m_lastContinuousMonitorUpdateMs <
+                CONTINUOUS_MONITOR_PERIOD_MS){
+        return;
+    }
+
     const QVector<MarkerPoint> rigidMarkers = currentRigidMarkers();
-    m_lastMarkerCount = rigidMarkers.size();
+    {
+        QMutexLocker locker(&m_poseMutex);
+        m_lastMarkerCount = rigidMarkers.size();
+    }
     if (rigidMarkers.size() != NokovPoseCalculator::REQUIRED_MARKER_COUNT) {
         if (extraInfo) {
             qDebug() << "Nokov rigid body skipped. markers size =" << rigidMarkers.size()
@@ -149,14 +172,19 @@ void MotiveLocalHandlerThread::dataProcessor()
     NokovPoseCalculator::Result poseResult;
 
     if (m_poseCalculator.update(rigidMarkers, poseResult)) {
-        accumulatePoseSample(poseResult);
+        if(m_captureActive){
+            accumulatePoseSample(poseResult);
+        }
+        else{
+            publishContinuousPose(poseResult, nowMs);
+        }
         if (detailInfo) {
             qDebug() << "Nokov pose capture sample"
                      << m_captureSampleCount
                      << "/"
                      << m_captureSampleTarget;
         }
-        if (m_captureSampleCount >= m_captureSampleTarget) {
+        if (m_captureActive && m_captureSampleCount >= m_captureSampleTarget) {
             finishPoseCapture();
         }
     } else {
@@ -167,9 +195,10 @@ void MotiveLocalHandlerThread::dataProcessor()
     }
 }
 
-std::vector<std::vector<double>> MotiveLocalHandlerThread::getRigidPose()
+std::vector<std::vector<double>> MotiveLocalHandlerThread::getRigidPose() const
 {
     // 使用 tempRigidPose，避免在更新瞬间读到空 rigidPose
+    QMutexLocker locker(&m_poseMutex);
     return tempRigidPose;
 }
 
@@ -180,11 +209,13 @@ std::vector<std::vector<double>> MotiveLocalHandlerThread::calCableStartPos()
 
 bool MotiveLocalHandlerThread::hasCurrentRigidBody() const
 {
+    QMutexLocker locker(&m_poseMutex);
     return m_lastRigidBodyValid;
 }
 
 bool MotiveLocalHandlerThread::hasRecentRigidBody(int maxAgeMs) const
 {
+    QMutexLocker locker(&m_poseMutex);
     if (m_lastValidRigidBodyTimestampMs < 0 || maxAgeMs < 0 || tempRigidPose.empty()) {
         return false;
     }
@@ -193,13 +224,21 @@ bool MotiveLocalHandlerThread::hasRecentRigidBody(int maxAgeMs) const
     return (nowMs - m_lastValidRigidBodyTimestampMs) <= maxAgeMs;
 }
 
+qint64 MotiveLocalHandlerThread::lastValidRigidBodyTimestampMs() const
+{
+    QMutexLocker locker(&m_poseMutex);
+    return m_lastValidRigidBodyTimestampMs;
+}
+
 bool MotiveLocalHandlerThread::hasCapturedRigidBody() const
 {
+    QMutexLocker locker(&m_poseMutex);
     return !tempRigidPose.empty() && tempRigidPose.front().size() >= 6;
 }
 
 int MotiveLocalHandlerThread::lastMarkerCount() const
 {
+    QMutexLocker locker(&m_poseMutex);
     return m_lastMarkerCount;
 }
 
@@ -228,19 +267,47 @@ QVector<MarkerPoint> MotiveLocalHandlerThread::currentRigidMarkers()
 void MotiveLocalHandlerThread::resetCaptureState(bool clearPose)
 {
     if (m_client) {
-        m_client->SetFrameDataEnabled(false);
+        m_client->SetFrameDataEnabled(m_continuousMonitoringEnabled);
     }
     m_captureActive = false;
     m_captureSampleCount = 0;
     m_captureStartTimestampMs = -1;
     m_captureMarkerSums.clear();
-    m_lastRigidBodyValid = false;
-    m_lastMarkerCount = 0;
-    m_lastValidRigidBodyTimestampMs = -1;
-    rigidPose.clear();
-    if (clearPose) {
-        tempRigidPose.clear();
+    {
+        QMutexLocker locker(&m_poseMutex);
+        m_lastRigidBodyValid = false;
+        m_lastMarkerCount = 0;
+        m_lastValidRigidBodyTimestampMs = -1;
+        rigidPose.clear();
+        if (clearPose) {
+            tempRigidPose.clear();
+        }
     }
+}
+
+void MotiveLocalHandlerThread::publishContinuousPose(
+        const NokovPoseCalculator::Result& poseResult,
+        qint64 timestampMs)
+{
+    const QVector3D origin = poseResult.positionMm;
+    const QVector3D eulerAnglesDeg = poseResult.eulerDeg;
+    const std::vector<std::vector<double>> pose{{
+        static_cast<double>(origin.x()),
+        static_cast<double>(origin.y()),
+        static_cast<double>(origin.z()),
+        qDegreesToRadians(static_cast<double>(eulerAnglesDeg.x())),
+        qDegreesToRadians(static_cast<double>(eulerAnglesDeg.y())),
+        qDegreesToRadians(static_cast<double>(eulerAnglesDeg.z()))
+    }};
+    {
+        QMutexLocker locker(&m_poseMutex);
+        rigidPose = pose;
+        tempRigidPose = pose;
+        m_lastRigidBodyValid = true;
+        m_lastValidRigidBodyTimestampMs = timestampMs;
+    }
+    m_lastContinuousMonitorUpdateMs = timestampMs;
+    emit dataUpdateSignal(pose);
 }
 
 void MotiveLocalHandlerThread::failPoseCapture(const QString& reason)
@@ -292,43 +359,45 @@ void MotiveLocalHandlerThread::finishPoseCapture()
 
     const QVector3D origin = poseResult.positionMm;
     const QVector3D eulerAnglesDeg = poseResult.eulerDeg;
-    rigidPose.clear();
-    rigidPose.push_back({
+    const std::vector<std::vector<double>> completedPose{{
         static_cast<double>(origin.x()),
         static_cast<double>(origin.y()),
         static_cast<double>(origin.z()),
         qDegreesToRadians(static_cast<double>(eulerAnglesDeg.x())),
         qDegreesToRadians(static_cast<double>(eulerAnglesDeg.y())),
         qDegreesToRadians(static_cast<double>(eulerAnglesDeg.z()))
-    });
-
-    tempRigidPose = rigidPose;
-    m_lastRigidBodyValid = true;
-    m_lastValidRigidBodyTimestampMs = QDateTime::currentMSecsSinceEpoch();
+    }};
+    {
+        QMutexLocker locker(&m_poseMutex);
+        rigidPose = completedPose;
+        tempRigidPose = completedPose;
+        m_lastRigidBodyValid = true;
+        m_lastValidRigidBodyTimestampMs = QDateTime::currentMSecsSinceEpoch();
+    }
     const int sampleCount = m_captureSampleCount;
     m_captureActive = false;
     m_captureSampleCount = 0;
     m_captureStartTimestampMs = -1;
     m_captureMarkerSums.clear();
     if (m_client) {
-        m_client->SetFrameDataEnabled(false);
+        m_client->SetFrameDataEnabled(m_continuousMonitoringEnabled);
     }
 
     if (detailInfo) {
         qDebug() << "Nokov pose capture finished. samples =" << sampleCount
                  << "pose(mm/rad):"
-                 << rigidPose[0][0]
-                 << rigidPose[0][1]
-                 << rigidPose[0][2]
-                 << rigidPose[0][3]
-                 << rigidPose[0][4]
-                 << rigidPose[0][5]
+                 << completedPose[0][0]
+                 << completedPose[0][1]
+                 << completedPose[0][2]
+                 << completedPose[0][3]
+                 << completedPose[0][4]
+                 << completedPose[0][5]
                  << "euler(deg):"
                  << eulerAnglesDeg.x()
                  << eulerAnglesDeg.y()
                  << eulerAnglesDeg.z();
     }
 
-    emit dataUpdateSignal(rigidPose);
-    emit poseCaptureCompleted(rigidPose, sampleCount);
+    emit dataUpdateSignal(completedPose);
+    emit poseCaptureCompleted(completedPose, sampleCount);
 }

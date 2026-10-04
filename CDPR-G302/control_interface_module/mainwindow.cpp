@@ -19309,6 +19309,19 @@ void MainWindow::setupForceInteractionValidationTab()
     connect(ui->forceInteractionStageDMechanicalModeComboBox,
             qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int){ refreshForceInteractionRuntimeUi(); });
+    connect(ui->forceInteractionStageDMocapModeComboBox,
+            qOverload<int>(&QComboBox::currentIndexChanged),
+            this, [this](int index){
+        if(motiveLocalHandlerThread){
+            QMetaObject::invokeMethod(
+                        motiveLocalHandlerThread,
+                        "setContinuousMonitoringEnabled",
+                        Qt::QueuedConnection,
+                        Q_ARG(bool, index == 1));
+        }
+        updateSafetyMonitorConfig();
+        refreshForceInteractionRuntimeUi();
+    });
     connect(ui->forceInteractionStageCLowPassCheckBox,
             &QCheckBox::toggled, this, [this](bool enabled){
         ui->forceInteractionStageCLowPassCutoffSpinBox->setEnabled(enabled);
@@ -20641,6 +20654,74 @@ void MainWindow::cancelForceInteractionSoftwareValidation()
                 QStringLiteral("正在等待当前数学步安全结束……"));
 }
 
+bool MainWindow::stageDGlobalTensionSafetyConfig(
+        double* minimumTensionN,
+        OnlineVelocityAxisArray* maximumTensionN,
+        QString* errorMessage) const
+{
+    const auto fail = [errorMessage](const QString& message){
+        if(errorMessage){
+            *errorMessage = message;
+        }
+        return false;
+    };
+    if(!ui || !ui->devUseLS->isChecked()){
+        return fail(QStringLiteral("全局独立安全监控尚未启用"));
+    }
+
+    const ControlWorker::Config controlConfig = buildControlWorkerConfig();
+    const double lower = std::max(0.0, controlConfig.initForce * 0.5);
+    if(!std::isfinite(lower) || lower <= 0.0){
+        return fail(QStringLiteral(
+                        "全局张力下限无效：当前预紧力为%1 N，SafetyMonitor下限=预紧力×0.5；请先配置并完成预紧")
+                    .arg(controlConfig.initForce, 0, 'f', 3));
+    }
+    if(static_cast<int>(controlConfig.axes.size()) < kOnlineVelocityAxisCount){
+        return fail(QStringLiteral("全局安全配置不足8个绳索轴"));
+    }
+
+    OnlineVelocityAxisArray upper{};
+    std::array<bool, kOnlineVelocityAxisCount> sensorUsed{};
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        const ControlWorker::AxisConfig& axisConfig = controlConfig.axes[axis];
+        if(!axisConfig.isMotorAxis || axisConfig.sensorIndex < 0 ||
+                axisConfig.sensorIndex >= kOnlineVelocityAxisCount){
+            return fail(QStringLiteral(
+                            "轴%1缺少有效的全局张力传感器映射")
+                        .arg(axis + 1));
+        }
+        if(sensorUsed[axisConfig.sensorIndex]){
+            return fail(QStringLiteral(
+                            "全局张力传感器通道%1被多个绳索轴重复使用")
+                        .arg(axisConfig.sensorIndex + 1));
+        }
+        sensorUsed[axisConfig.sensorIndex] = true;
+        // Runtime tension samples are indexed by sensor channel.  Preserve the
+        // same axis-to-sensor mapping used by SafetyMonitor instead of assuming
+        // that motor-axis order and tension-channel order are identical.
+        upper[axisConfig.sensorIndex] = axisConfig.forceMax;
+        if(!std::isfinite(upper[axisConfig.sensorIndex]) ||
+                upper[axisConfig.sensorIndex] <= lower){
+            return fail(QStringLiteral(
+                            "轴%1全局张力上限%2 N不大于全局下限%3 N")
+                        .arg(axis + 1)
+                        .arg(upper[axisConfig.sensorIndex], 0, 'f', 3)
+                        .arg(lower, 0, 'f', 3));
+        }
+    }
+
+    if(minimumTensionN){
+        *minimumTensionN = lower;
+    }
+    if(maximumTensionN){
+        *maximumTensionN = upper;
+    }
+    if(errorMessage){
+        errorMessage->clear();
+    }
+    return true;
+}
+
 ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
         ForceInteractionRuntimeStage stage,
         ForceInteractionMechanicalMode mechanicalMode,
@@ -20894,13 +20975,18 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
             ui->forceInteractionRuntimeEmergencyMarginSpinBox->value();
     if(stage == ForceInteractionRuntimeStage::StageD){
         config.tensionTraceRequired = true;
-        config.minimumCableTensionN =
-                ui->forceInteractionStageDMinimumTensionSpinBox->value();
-        config.maximumCableTensionN =
-                ui->forceInteractionStageDMaximumTensionSpinBox->value();
-        config.tensionProtectionEnabled =
-                mechanicalMode == ForceInteractionMechanicalMode::D1PhysicalCabled &&
-                ui->forceInteractionStageDTensionLimitConfirmedCheckBox->isChecked();
+        if(mechanicalMode == ForceInteractionMechanicalMode::D1PhysicalCabled){
+            QString tensionSafetyError;
+            config.globalTensionSafetyEnabled = stageDGlobalTensionSafetyConfig(
+                        &config.globalMinimumCableTensionN,
+                        &config.globalMaximumCableTensionN,
+                        &tensionSafetyError);
+            if(!config.globalTensionSafetyEnabled){
+                fail(QStringLiteral("阶段D D1全局张力保护未就绪：%1")
+                     .arg(tensionSafetyError));
+                return config;
+            }
+        }
     }
     config.recordingDirectory = QDir(uiEventLogDirPath()).filePath(
                 QStringLiteral("force_interaction_runs"));
@@ -20968,9 +21054,9 @@ ForceInteractionReplayExportContext MainWindow::buildForceInteractionReplayConte
     context.mocapModeName = config.stage == ForceInteractionRuntimeStage::StageD &&
             ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1 ?
                 QStringLiteral("monitor_only") : QStringLiteral("disabled");
-    context.tensionProtectionEnabled = config.tensionProtectionEnabled;
-    context.minimumCableTensionN = config.minimumCableTensionN;
-    context.maximumCableTensionN = config.maximumCableTensionN;
+    context.globalTensionSafetyEnabled = config.globalTensionSafetyEnabled;
+    context.globalMinimumCableTensionN = config.globalMinimumCableTensionN;
+    context.globalMaximumCableTensionN = config.globalMaximumCableTensionN;
     context.controlPeriodUs = config.periodUs;
     context.tracePeriodUs =
             hardwareInterface.readRuntimeTraceLatestSnapshot().traceSamplePeriodUs;
@@ -21039,7 +21125,7 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
     if(stageD && ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1 &&
             (!motiveLocalHandlerThread || !motiveLocalHandlerThread->isInit ||
              !motiveLocalHandlerThread->hasRecentRigidBody(1000))){
-        displayInfo("阶段D准备失败：已选择“动捕仅监测”，但最近1 s内没有可靠的Nokov三标记点重算位姿", "error");
+        displayInfo("阶段D准备失败：已选择“Nokov实物边界监督”，但最近1 s内没有可靠的三标记点重算位姿", "error");
         return;
     }
     if(currentRobotState(false).anyMotionRunning){
@@ -21244,8 +21330,8 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         for(int cable = 0; cable < kOnlineVelocityAxisCount; ++cable){
             const double tension = preparedTraceSnapshot.forceSensorValue[cable];
             if(!std::isfinite(tension) ||
-                    tension < config.minimumCableTensionN ||
-                    tension > config.maximumCableTensionN){
+                    tension < config.globalMinimumCableTensionN ||
+                    tension > config.globalMaximumCableTensionN[cable]){
                 invalidTensions << QStringLiteral("绳%1=%2 N")
                         .arg(cable + 1).arg(tension, 0, 'f', 3);
             }
@@ -21253,9 +21339,8 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         if(!invalidTensions.isEmpty()){
             restoreForceInteractionFtMonitoringProfile();
             displayInfo(QStringLiteral(
-                            "阶段D D1准备失败：当前张力未全部进入[%1, %2] N：%3")
-                        .arg(config.minimumCableTensionN, 0, 'f', 3)
-                        .arg(config.maximumCableTensionN, 0, 'f', 3)
+                            "阶段D D1准备失败：当前张力未全部进入全局SafetyMonitor范围（统一下限=%1 N，各张力通道上限来自对应轴的全局配置）：%2")
+                        .arg(config.globalMinimumCableTensionN, 0, 'f', 3)
                         .arg(invalidTensions.join(QStringLiteral("，")))
                         .toStdString(), "error");
             refreshForceInteractionRuntimeUi();
@@ -21434,7 +21519,7 @@ void MainWindow::startPreparedForceInteractionRuntime(
             stageD ?
                 (preparedStatus.mechanicalMode == ForceInteractionMechanicalMode::D0MotorDryRun ?
                     QStringLiteral("将使用阶段D最终Trace、真实F/T、纯惯性Newmark、八绳运动学和八路张力记录驱动未接绞盘/绳索的八电机。D0不启用实物张力越限保护。") :
-                    QStringLiteral("将启动绞盘、绳索和动平台已接入的D1实机交互。已确认初始位姿、八路张力范围、边界、抱闸和急停均已备妥吗？")) :
+                    QStringLiteral("将启动绞盘、绳索和动平台已接入的D1实机交互。八路张力将统一由全局SafetyMonitor保护；已确认预紧、初始位姿、边界、抱闸和急停均已备妥吗？")) :
             realFt ?
                 QStringLiteral("将使用同一Runtime Trace帧内的真实F/T与八轴反馈，经冻结零点、安装变换、纯惯性Newmark和虚拟绞盘模型周期下发八轴速度。当前电机未连接绳索；请轻触传感器、短时低速运行并保持急停可用。") :
                 QStringLiteral("将使用当前模拟六维力、纯惯性Newmark和虚拟绞盘模型周期下发八轴速度。电机未连接真实绳索时只能验证软件链和轴运动；请从零力、短时、低速开始，并保持急停可用。"))){
@@ -21729,11 +21814,11 @@ void MainWindow::startForceInteractionBoundaryLogAnalysis(
         return;
     }
     if(forceInteractionBoundaryLogAnalysisWorker){
-        displayInfo("阶段B边界离线复算未启动：上一份记录仍在分析", "warning");
+        displayInfo("六维力交互边界离线复算未启动：上一份记录仍在分析", "warning");
         return;
     }
     forceInteractionBoundaryAnalysisSummary = QStringLiteral(
-                "阶段B边界离线复算中：%1")
+                "六维力交互边界离线复算中：%1")
             .arg(QDir::toNativeSeparators(csvPath));
     auto* worker = new ForceInteractionBoundaryLogAnalysisWorker(csvPath, this);
     forceInteractionBoundaryLogAnalysisWorker = worker;
@@ -21741,7 +21826,8 @@ void MainWindow::startForceInteractionBoundaryLogAnalysis(
         const ForceInteractionBoundaryLogAnalysisResult analysis = worker->result();
         forceInteractionBoundaryAnalysisSummary = analysis.summary;
         displayInfo(analysis.summary.toStdString(),
-                    analysis.passed ? "normal" : "error");
+                    !analysis.passed ? "error" :
+                    (analysis.recordingComplete ? "normal" : "warning"));
         if(forceInteractionBoundaryLogAnalysisWorker == worker){
             forceInteractionBoundaryLogAnalysisWorker = nullptr;
         }
@@ -21994,10 +22080,14 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                 prepared && stageC ? QStringLiteral("取消准备") :
                                      QStringLiteral("协同减速停止"));
     const bool stageDD1 = ui->forceInteractionStageDMechanicalModeComboBox->currentIndex() == 1;
-    const bool stageDTensionReady = !stageDD1 ||
-            (ui->forceInteractionStageDTensionLimitConfirmedCheckBox->isChecked() &&
-             ui->forceInteractionStageDMaximumTensionSpinBox->value() >
-                ui->forceInteractionStageDMinimumTensionSpinBox->value());
+    double globalTensionMinimumN = 0.0;
+    OnlineVelocityAxisArray globalTensionMaximumN{};
+    QString globalTensionSafetyError;
+    const bool globalTensionSafetyReady = stageDGlobalTensionSafetyConfig(
+                &globalTensionMinimumN,
+                &globalTensionMaximumN,
+                &globalTensionSafetyError);
+    const bool stageDTensionReady = !stageDD1 || globalTensionSafetyReady;
     const bool stageDInitialPoseReady = currentRuntimeMotorHomeReferenceLoaded &&
             hasFinitePoseMatrix(currentRuntimeMotorHomePlatformPose);
     const bool stageDOriginalActuator =
@@ -22013,15 +22103,30 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                 prepared && stageD ? QStringLiteral("取消准备") :
                                      QStringLiteral("协同减速停止"));
     ui->forceInteractionStageDConfigurationGroupBox->setEnabled(!locked);
-    ui->forceInteractionStageDMinimumTensionSpinBox->setEnabled(!locked && stageDD1);
-    ui->forceInteractionStageDMaximumTensionSpinBox->setEnabled(!locked && stageDD1);
-    ui->forceInteractionStageDTensionLimitConfirmedCheckBox->setEnabled(
-                !locked && stageDD1);
+    if(stageDD1 && globalTensionSafetyReady){
+        QStringList upperValues;
+        for(double value : globalTensionMaximumN){
+            upperValues << QString::number(value, 'f', 1);
+        }
+        ui->forceInteractionStageDGlobalTensionSafetyLabel->setText(
+                    QStringLiteral("D1使用全局SafetyMonitor：统一下限=%1 N（预紧力×0.5），按张力通道排列的上限=[%2] N；运行期持续越限、严重越限和断绳均由独立安全线程判定。")
+                        .arg(globalTensionMinimumN, 0, 'f', 3)
+                        .arg(upperValues.join(QStringLiteral(", "))));
+    }
+    else if(stageDD1){
+        ui->forceInteractionStageDGlobalTensionSafetyLabel->setText(
+                    QStringLiteral("D1全局张力保护未就绪：%1")
+                        .arg(globalTensionSafetyError));
+    }
+    else{
+        ui->forceInteractionStageDGlobalTensionSafetyLabel->setText(
+                    QStringLiteral("D0仅采集和记录八路张力；全局松绳、过张力和断绳判定明确旁路。"));
+    }
     QStringList stageDMissing;
     if(!stageDOriginalActuator) stageDMissing << QStringLiteral("G302原执行器模板");
     if(!stageDInitialPoseReady) stageDMissing << QStringLiteral("已确认初始位姿/八轴零点快照");
     if(!stageCAdmissionReady) stageDMissing << QStringLiteral("真实F/T准入");
-    if(!stageDTensionReady) stageDMissing << QStringLiteral("已确认的D1张力上下限");
+    if(!stageDTensionReady) stageDMissing << QStringLiteral("有效的全局SafetyMonitor张力保护");
     ui->forceInteractionStageDAdmissionLabel->setText(
                 stageDMissing.isEmpty() ?
                     QStringLiteral("阶段D准入条件已满足；请核对D0/D1机械状态后准备。") :
@@ -22206,7 +22311,7 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                                                            QStringLiteral("(无效)"));
         }
         detail += status.mechanicalMode == ForceInteractionMechanicalMode::D1PhysicalCabled ?
-                    QStringLiteral("\n当前为D1：张力越限保护已纳入高频控制链。") :
+                    QStringLiteral("\n当前为D1：张力故障统一由全局独立SafetyMonitor判定。") :
                     QStringLiteral("\n当前为D0：张力仅记录，不触发实物张力故障。");
         if(ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1){
             if(motiveLocalHandlerThread && motiveLocalHandlerThread->isInit &&
@@ -22215,7 +22320,7 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                         motiveLocalHandlerThread->getRigidPose();
                 if(!mocapPose.empty() && mocapPose.front().size() >= 6){
                     detail += QStringLiteral(
-                                "\n动捕仅监测位姿=[%1,%2,%3 mm；%4,%5,%6 rad]")
+                                "\nNokov实物监督位姿=[%1,%2,%3 mm；%4,%5,%6 rad]")
                             .arg(mocapPose.front()[0], 0, 'f', 3)
                             .arg(mocapPose.front()[1], 0, 'f', 3)
                             .arg(mocapPose.front()[2], 0, 'f', 3)
@@ -22225,7 +22330,10 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                 }
             }
             else{
-                detail += QStringLiteral("\n动捕仅监测：当前数据已超时；不影响高频速度控制，请检查Nokov链路。");
+                detail += status.mechanicalMode ==
+                        ForceInteractionMechanicalMode::D1PhysicalCabled ?
+                            QStringLiteral("\nNokov实物监督：当前数据已超时；D1独立安全监控将按传感器故障停车，请检查Nokov链路。") :
+                            QStringLiteral("\nNokov实物监督：当前数据已超时；D0不据此停车，请检查Nokov链路。");
             }
         }
     }
@@ -34361,6 +34469,8 @@ bool MainWindow::initPara(){
             this, &MainWindow::setAllMotorHomeToCurrentPosition);
     connect(ui->mainAllCableMotorsNegativeHalfTurnButton, &QPushButton::clicked,
             this, &MainWindow::moveAllCableMotorsNegativeHalfTurn);
+    connect(ui->mainCurrentCableMotorNegativeHalfTurnButton, &QPushButton::clicked,
+            this, &MainWindow::moveCurrentCableMotorNegativeHalfTurn);
     if(QPushButton* recoveryButton =
             findOptionalUiObject<QPushButton>(this, "mainTraceRecoveryPvtButton")){
         connect(recoveryButton, &QPushButton::clicked,
@@ -40167,11 +40277,37 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
                 std::max(1, static_cast<int>(std::lround(
                     commissioningMotionTimeoutSeconds * 1000.0))) :
                 0;
+    const ForceInteractionRuntimeStatus forceInteractionSafetyStatus =
+            controlWorker ? controlWorker->forceInteractionRuntimeStatus() :
+                            ForceInteractionRuntimeStatus{};
+    const bool stageDForceInteractionSession =
+            runtimeState.forceInteractionRuntimeActive &&
+            forceInteractionSafetyStatus.stage ==
+                ForceInteractionRuntimeStage::StageD;
     config.forceSensorMonitoringEnabled =
             !runtimeState.forceInteractionGenericActuatorSessionActive &&
             runtimeState.runMode != RunMode::OnlineVelocityControl;
+    if(stageDForceInteractionSession){
+        // D0 has no physical cables, so tension is recorded but all physical
+        // low/high/break decisions are bypassed.  D1 uses this centralized
+        // SafetyMonitor path exclusively; the runtime controller has no
+        // second single-frame tension threshold.
+        config.forceSensorMonitoringEnabled =
+                forceInteractionSafetyStatus.mechanicalMode ==
+                    ForceInteractionMechanicalMode::D1PhysicalCabled;
+    }
     config.forceThreadRunning = config.forceSensorMonitoringEnabled &&
             isForceControlThreadActuallyRunning();
+    config.forceInteractionTensionTraceFreshnessEnabled =
+            stageDForceInteractionSession &&
+            forceInteractionSafetyStatus.mechanicalMode ==
+                ForceInteractionMechanicalMode::D1PhysicalCabled;
+    config.forceInteractionTraceTimeoutUs = ui &&
+            ui->forceInteractionRuntimeTraceTimeoutSpinBox ?
+                std::max<qint64>(1000,
+                    static_cast<qint64>(
+                        ui->forceInteractionRuntimeTraceTimeoutSpinBox->value()) * 1000) :
+                100000;
     config.singleCableForceDebugMode = isSingleCableForceDebugModeActive();
     config.motorPositionLimitRecoveryActive =
             controlConfig.motorPositionLimitRecoveryActive;
@@ -40282,6 +40418,30 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
     }
     else{
         config.workspacePose.clear();
+    }
+    const bool stageDD1MocapBoundaryEnabled =
+            stageDForceInteractionSession &&
+            forceInteractionSafetyStatus.mechanicalMode ==
+                ForceInteractionMechanicalMode::D1PhysicalCabled &&
+            ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1;
+    config.forceInteractionMocapBoundaryEnabled =
+            stageDD1MocapBoundaryEnabled;
+    config.forceInteractionMocapTimeoutMs = 1000;
+    config.forceInteractionMocapEmergencyMarginMm =
+            ui->forceInteractionRuntimeEmergencyMarginSpinBox->value();
+    if(stageDD1MocapBoundaryEnabled && motiveLocalHandlerThread){
+        const std::vector<std::vector<double>> mocapPose =
+                motiveLocalHandlerThread->getRigidPose();
+        config.forceInteractionMocapPoseTimestampMs =
+                motiveLocalHandlerThread->lastValidRigidBodyTimestampMs();
+        config.forceInteractionMocapPoseValid =
+                !mocapPose.empty() && mocapPose.front().size() >= 6 &&
+                hasFiniteValues(mocapPose.front(), 6);
+        if(config.forceInteractionMocapPoseValid){
+            config.forceInteractionMocapPose.assign(
+                        mocapPose.front().begin(),
+                        mocapPose.front().begin() + 6);
+        }
     }
 
     QString physicalWorkspaceError;
@@ -49647,7 +49807,31 @@ void MainWindow::setAllMotorHomeToCurrentPosition(){
 
 bool MainWindow::moveAllCableMotorsNegativeHalfTurn()
 {
-    const QString actionName = QStringLiteral("绳索电机松半圈");
+    return moveCableMotorsNegativeHalfTurn(-1);
+}
+
+bool MainWindow::moveCurrentCableMotorNegativeHalfTurn()
+{
+    const int axisIndex = selectedSingleMotorIndex();
+    if(axisIndex < 0){
+        displayInfo("错误：当前绳索电机松半圈失败，单电机点动区的电机编号必须为1到8", "error");
+        return false;
+    }
+    if(!isModeledMotorAxis(axisIndex)){
+        displayInfo(QStringLiteral("错误：当前选择的%1不是已建模绳索电机")
+                    .arg(motorAxisDisplayName(axisIndex)).toStdString(),
+                    "error");
+        return false;
+    }
+    return moveCableMotorsNegativeHalfTurn(axisIndex);
+}
+
+bool MainWindow::moveCableMotorsNegativeHalfTurn(int requestedAxisIndex)
+{
+    const bool singleAxis = requestedAxisIndex >= 0;
+    const QString actionName = singleAxis ?
+                QStringLiteral("当前绳索电机松半圈") :
+                QStringLiteral("全部绳索电机松半圈");
     if(!ensureSafetyReadyForMotion(actionName)){
         return false;
     }
@@ -49699,6 +49883,9 @@ bool MainWindow::moveAllCableMotorsNegativeHalfTurn()
     QStringList disabledAxes;
 
     for(int axisIndex=0; axisIndex<ui->devAxisNum->value(); ++axisIndex){
+        if(singleAxis && axisIndex != requestedAxisIndex){
+            continue;
+        }
         if(!isModeledMotorAxis(axisIndex)){
             continue;
         }
@@ -49786,8 +49973,10 @@ bool MainWindow::moveAllCableMotorsNegativeHalfTurn()
     refreshMotorPosDisplay();
     updateSafetyMonitorConfig();
     refreshRunModeUiStateThrottled();
-    displayInfo(QStringLiteral("已下发所有绳索电机松半圈：电机数%1，放绳位移%2 %3，默认速度%4 %5/s（已按机型方向映射）")
-                .arg(static_cast<int>(moveCommands.size()))
+    displayInfo(QStringLiteral("已下发%1：%2，放绳位移%3 %4，默认速度%5 %6/s（已按机型方向映射）")
+                .arg(actionName)
+                .arg(singleAxis ? motorAxisDisplayName(requestedAxisIndex) :
+                                  QStringLiteral("电机数%1").arg(static_cast<int>(moveCommands.size())))
                 .arg(halfTurn, 0, 'f', 6)
                 .arg(unitText)
                 .arg(defaultVelocity, 0, 'f', 6)
@@ -53219,6 +53408,13 @@ void MainWindow::updatePara(){
                     &MotiveLocalHandlerThread::poseCaptureFailed,
                     this,
                     &MainWindow::handleMotivePoseCaptureFailed);
+            QMetaObject::invokeMethod(
+                        motiveLocalHandlerThread,
+                        "setContinuousMonitoringEnabled",
+                        Qt::QueuedConnection,
+                        Q_ARG(bool,
+                              ui->forceInteractionStageDMocapModeComboBox &&
+                              ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1));
             appendUnique(appliedItems,
                          QStringLiteral("重建动捕线程：类型=%1，控制周期=%2 ms")
                          .arg(camTypeText)

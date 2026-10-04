@@ -109,11 +109,15 @@ bool writeReport(const ForceInteractionBoundaryLogAnalysisResult& result,
 {
     QJsonObject root;
     root.insert(QStringLiteral("schema"),
-                QStringLiteral("force_interaction_boundary_analysis_v2"));
+                QStringLiteral("force_interaction_boundary_analysis_v3"));
     root.insert(QStringLiteral("generated_at"),
                 QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
     root.insert(QStringLiteral("csv_path"), result.csvPath);
     root.insert(QStringLiteral("passed"), result.passed);
+    root.insert(QStringLiteral("boundary_consistency_passed"),
+                result.boundaryConsistencyPassed);
+    root.insert(QStringLiteral("recording_complete"),
+                result.recordingComplete);
     root.insert(QStringLiteral("source_schema_version"),
                 result.sourceSchemaVersion);
     root.insert(QStringLiteral("data_rows"), static_cast<double>(result.dataRows));
@@ -201,9 +205,9 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
 
     QFile file(result.csvPath);
     if(!file.open(QIODevice::ReadOnly | QIODevice::Text)){
-        result.errorMessage = QStringLiteral("无法打开阶段B CSV：%1")
+        result.errorMessage = QStringLiteral("无法打开六维力交互CSV：%1")
                 .arg(file.errorString());
-        result.summary = QStringLiteral("阶段B边界离线复算失败：%1")
+        result.summary = QStringLiteral("六维力交互边界离线复算失败：%1")
                 .arg(result.errorMessage);
         return result;
     }
@@ -507,7 +511,7 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
         result.errorMessage = configError.isEmpty() ?
                     QStringLiteral("CSV不是带完整边界快照的v4~v10六维力交互记录，或终态摘要不完整") :
                     configError;
-        result.summary = QStringLiteral("阶段B边界离线复算失败：%1")
+        result.summary = QStringLiteral("六维力交互边界离线复算失败：%1")
                 .arg(result.errorMessage);
         QString reportError;
         writeReport(result, &reportError);
@@ -584,7 +588,7 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     }
     if(!columnsComplete){
         result.errorMessage = QStringLiteral("CSV缺少边界复算所需字段");
-        result.summary = QStringLiteral("阶段B边界离线复算失败：%1")
+        result.summary = QStringLiteral("六维力交互边界离线复算失败：%1")
                 .arg(result.errorMessage);
         QString reportError;
         writeReport(result, &reportError);
@@ -594,7 +598,7 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
     PhysicalWorkspaceBoundary boundary;
     if(!boundary.configure(boundaryConfig, &configError)){
         result.errorMessage = configError;
-        result.summary = QStringLiteral("阶段B边界离线复算失败：%1")
+        result.summary = QStringLiteral("六维力交互边界离线复算失败：%1")
                 .arg(result.errorMessage);
         QString reportError;
         writeReport(result, &reportError);
@@ -603,9 +607,9 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
 
     qint64 previousTraceSequence = -1;
     if(!file.open(QIODevice::ReadOnly | QIODevice::Text)){
-        result.errorMessage = QStringLiteral("无法重新打开阶段B CSV：%1")
+        result.errorMessage = QStringLiteral("无法重新打开六维力交互CSV：%1")
                 .arg(file.errorString());
-        result.summary = QStringLiteral("阶段B边界离线复算失败：%1")
+        result.summary = QStringLiteral("六维力交互边界离线复算失败：%1")
                 .arg(result.errorMessage);
         QString reportError;
         writeReport(result, &reportError);
@@ -782,15 +786,17 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
                 !result.terminalReason.trimmed().isEmpty();
     }
 
-    result.passed = result.dataRows > 0 &&
+    result.boundaryConsistencyPassed = result.dataRows > 0 &&
             result.replayedRows == result.dataRows &&
             result.malformedRows == 0 && result.mismatchRows == 0 &&
             result.traceInvalidRows == 0 &&
             result.traceNonMonotonicRows == 0 &&
+            (!schemaHasTerminalSummary || result.terminalSummaryValid);
+    result.recordingComplete =
             result.recorderDroppedRows == 0 &&
             result.recorderAcceptedRows == result.recorderWrittenRows &&
-            result.recorderWrittenRows == result.dataRows &&
-            (!schemaHasTerminalSummary || result.terminalSummaryValid);
+            result.recorderWrittenRows == result.dataRows;
+    result.passed = result.boundaryConsistencyPassed;
     const QString terminalText = schemaHasTerminalSummary ?
                 QStringLiteral("终态摘要=%1（状态/原因/试验有效=%2/%3/%4）")
                     .arg(result.terminalSummaryValid ?
@@ -800,10 +806,13 @@ ForceInteractionBoundaryLogAnalyzer::analyze(const QString& csvPath)
                     .arg(result.terminalExperimentValid ? 1 : 0) :
                 QStringLiteral("终态摘要=旧v4记录未提供（仅复算周期数据）");
     result.summary = QStringLiteral(
-                "阶段B边界离线复算%1：复算/数据=%2/%3行，在线结论不一致=%4行（动作=%5，连接点=%6），"
-                "格式错误=%7行，Trace无效/非递增=%8/%9行，有效交互/制动=%10/%11行，"
-                "记录接受/写入/丢弃=%12/%13/%14，最大余量/触发距离/连接点差=%15/%16/%17 mm，%18。报告=%19")
-            .arg(result.passed ? QStringLiteral("通过") : QStringLiteral("未通过"))
+                "六维力交互边界离线复算%1；记录完整性%2：复算/数据=%3/%4行，在线结论不一致=%5行（动作=%6，连接点=%7），"
+                "格式错误=%8行，Trace无效/非递增=%9/%10行，有效交互/制动=%11/%12行，"
+                "记录接受/写入/丢弃=%13/%14/%15，最大余量/触发距离/连接点差=%16/%17/%18 mm，%19。报告=%20")
+            .arg(result.boundaryConsistencyPassed ?
+                     QStringLiteral("通过") : QStringLiteral("未通过"))
+            .arg(result.recordingComplete ?
+                     QStringLiteral("通过") : QStringLiteral("未通过"))
             .arg(result.replayedRows)
             .arg(result.dataRows)
             .arg(result.mismatchRows)

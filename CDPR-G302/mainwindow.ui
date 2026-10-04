@@ -12650,25 +12650,65 @@ border-radius: 6px;</string>
          </widget>
         </item>
         <item row="9" column="2">
-         <widget class="QPushButton" name="mainAllCableMotorsNegativeHalfTurnButton">
-          <property name="sizePolicy">
-           <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
-            <horstretch>0</horstretch>
-            <verstretch>0</verstretch>
-           </sizepolicy>
+         <layout class="QVBoxLayout" name="verticalLayoutCableMotorHalfTurn">
+          <property name="spacing">
+           <number>2</number>
           </property>
-          <property name="font">
-           <font>
-            <bold>true</bold>
-           </font>
+          <property name="leftMargin">
+           <number>0</number>
           </property>
-          <property name="toolTip">
-           <string>将所有已建模绳索电机从当前位置按当前机型的放绳方向转动半圈，执行前会检查使能状态、当前运动状态和软件限位</string>
+          <property name="topMargin">
+           <number>0</number>
           </property>
-          <property name="text">
-           <string>绳索电机松半圈</string>
+          <property name="rightMargin">
+           <number>0</number>
           </property>
-         </widget>
+          <property name="bottomMargin">
+           <number>0</number>
+          </property>
+          <item>
+           <widget class="QPushButton" name="mainAllCableMotorsNegativeHalfTurnButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>1</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="font">
+             <font>
+              <bold>true</bold>
+             </font>
+            </property>
+            <property name="toolTip">
+             <string>将所有已建模绳索电机从当前位置按当前机型的放绳方向转动半圈，执行前会检查使能状态、当前运动状态和软件限位</string>
+            </property>
+            <property name="text">
+             <string>全部绳索电机松半圈</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QPushButton" name="mainCurrentCableMotorNegativeHalfTurnButton">
+            <property name="sizePolicy">
+             <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+              <horstretch>0</horstretch>
+              <verstretch>1</verstretch>
+             </sizepolicy>
+            </property>
+            <property name="font">
+             <font>
+              <bold>true</bold>
+             </font>
+            </property>
+            <property name="toolTip">
+             <string>仅将“单电机点动”中的当前绳索电机按当前机型的放绳方向转动半圈，执行前会检查轴类型、使能状态、当前运动状态和软件限位</string>
+            </property>
+            <property name="text">
+             <string>当前绳索电机松半圈</string>
+            </property>
+           </widget>
+          </item>
+         </layout>
         </item>
        </layout>
       </widget>
@@ -16790,7 +16830,7 @@ border-radius: 6px;</string>
         <item>
          <widget class="QTabWidget" name="forceInteractionSubTabWidget">
           <property name="currentIndex">
-           <number>4</number>
+           <number>5</number>
           </property>
           <widget class="QWidget" name="forceInteractionTraceDelayCalibrationTab">
            <attribute name="title">
@@ -18956,31 +18996,214 @@ border-radius: 6px;</string>
            </layout>
           </widget>
           <widget class="QWidget" name="forceInteractionStageDRuntimeTab">
-           <attribute name="title"><string>实机力交互（阶段D）</string></attribute>
+           <attribute name="title">
+            <string>实机力交互（阶段D）</string>
+           </attribute>
            <layout class="QVBoxLayout" name="verticalLayoutForceInteractionStageD">
-            <item><widget class="QLabel" name="forceInteractionStageDHintLabel"><property name="text"><string>阶段D使用最终真实F/T—Newmark—八绳运动学—八轴速度链。D0先在断开绞盘/绳索时验证实机代码；D1才接入绞盘、绳索和动平台。初始位姿只接受“已知位姿点确认”或“更新动捕→动捕位姿填入起点”建立的已确认快照。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-            <item><widget class="QGroupBox" name="forceInteractionStageDConfigurationGroupBox"><property name="title"><string>实机会话配置</string></property><layout class="QGridLayout" name="gridLayoutForceInteractionStageDConfiguration">
-             <item row="0" column="0"><widget class="QLabel" name="forceInteractionStageDMechanicalModeTitleLabel"><property name="text"><string>机械状态</string></property></widget></item>
-             <item row="0" column="1"><widget class="QComboBox" name="forceInteractionStageDMechanicalModeComboBox"><item><property name="text"><string>D0：电机空转（未接绞盘/绳索）</string></property></item><item><property name="text"><string>D1：绞盘、绳索和动平台已接入</string></property></item></widget></item>
-             <item row="0" column="2"><widget class="QLabel" name="forceInteractionStageDMocapModeTitleLabel"><property name="text"><string>动捕</string></property></widget></item>
-             <item row="0" column="3"><widget class="QComboBox" name="forceInteractionStageDMocapModeComboBox"><item><property name="text"><string>不接入</string></property></item><item><property name="text"><string>仅监测（不参与高频控制）</string></property></item></widget></item>
-             <item row="1" column="0"><widget class="QLabel" name="forceInteractionStageDDurationTitleLabel"><property name="text"><string>最长运行</string></property></widget></item>
-             <item row="1" column="1"><widget class="QDoubleSpinBox" name="forceInteractionStageDDurationSpinBox"><property name="suffix"><string> s</string></property><property name="decimals"><number>3</number></property><property name="minimum"><double>0.100000000000000</double></property><property name="maximum"><double>3600.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property></widget></item>
-             <item row="1" column="2"><widget class="QLabel" name="forceInteractionStageDMinimumTensionTitleLabel"><property name="text"><string>张力下限</string></property></widget></item>
-             <item row="1" column="3"><widget class="QDoubleSpinBox" name="forceInteractionStageDMinimumTensionSpinBox"><property name="suffix"><string> N</string></property><property name="decimals"><number>2</number></property><property name="minimum"><double>0.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property><property name="value"><double>10.000000000000000</double></property></widget></item>
-             <item row="2" column="0"><widget class="QLabel" name="forceInteractionStageDMaximumTensionTitleLabel"><property name="text"><string>张力上限</string></property></widget></item>
-             <item row="2" column="1"><widget class="QDoubleSpinBox" name="forceInteractionStageDMaximumTensionSpinBox"><property name="suffix"><string> N</string></property><property name="decimals"><number>2</number></property><property name="minimum"><double>0.000000000000000</double></property><property name="maximum"><double>10000.000000000000000</double></property></widget></item>
-             <item row="2" column="2" colspan="2"><widget class="QCheckBox" name="forceInteractionStageDTensionLimitConfirmedCheckBox"><property name="text"><string>已根据实物确认D1张力上下限</string></property></widget></item>
-             <item row="3" column="0" colspan="4"><widget class="QLabel" name="forceInteractionStageDAdmissionLabel"><property name="text"><string>尚未准备阶段D。D0记录张力但不启用实物张力保护；D1必须确认有效张力范围。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item>
-            </layout></widget></item>
-            <item><widget class="QGroupBox" name="forceInteractionStageDOperationGroupBox"><property name="title"><string>操作</string></property><layout class="QHBoxLayout" name="horizontalLayoutForceInteractionStageDOperation">
-             <item><widget class="QPushButton" name="forceInteractionStageDPrepareButton"><property name="text"><string>准备阶段D</string></property></widget></item>
-             <item><widget class="QPushButton" name="forceInteractionStageDStartButton"><property name="enabled"><bool>false</bool></property><property name="text"><string>启动实机力交互</string></property></widget></item>
-             <item><widget class="QPushButton" name="forceInteractionStageDStopButton"><property name="enabled"><bool>false</bool></property><property name="text"><string>协同减速停止</string></property></widget></item>
-             <item><widget class="QPushButton" name="forceInteractionStageDEmergencyButton"><property name="enabled"><bool>false</bool></property><property name="styleSheet"><string notr="true">QPushButton:enabled { color:#b00020; font-weight:bold; }</string></property><property name="text"><string>立即停止</string></property></widget></item>
-             <item><spacer name="horizontalSpacerForceInteractionStageDOperation"><property name="orientation"><enum>Qt::Orientation::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
-            </layout></widget></item>
-            <item><widget class="QGroupBox" name="forceInteractionStageDStatusGroupBox"><property name="title"><string>阶段D状态</string></property><layout class="QVBoxLayout" name="verticalLayoutForceInteractionStageDStatus"><item><widget class="QLabel" name="forceInteractionStageDStatusLabel"><property name="text"><string>尚未准备。</string></property><property name="wordWrap"><bool>true</bool></property></widget></item><item><widget class="QPlainTextEdit" name="forceInteractionStageDResultPlainTextEdit"><property name="minimumSize"><size><width>0</width><height>180</height></size></property><property name="readOnly"><bool>true</bool></property><property name="plainText"><string>运行时显示期望/反馈位姿、八轴误差、八路张力、F/T、Trace与周期耗时；完整数据异步写入force_interaction_runs。</string></property></widget></item></layout></widget></item>
+            <item>
+             <widget class="QLabel" name="forceInteractionStageDHintLabel">
+              <property name="text">
+               <string>阶段D使用最终真实F/T—Newmark—八绳运动学—八轴速度链。D0先在断开绞盘/绳索时验证实机代码；D1才接入绞盘、绳索和动平台。初始位姿只接受“已知位姿点确认”或“更新动捕→动捕位姿填入起点”建立的已确认快照。</string>
+              </property>
+              <property name="wordWrap">
+               <bool>true</bool>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="forceInteractionStageDConfigurationGroupBox">
+              <property name="title">
+               <string>实机会话配置</string>
+              </property>
+              <layout class="QGridLayout" name="gridLayoutForceInteractionStageDConfiguration">
+               <item row="0" column="0">
+                <widget class="QLabel" name="forceInteractionStageDMechanicalModeTitleLabel">
+                 <property name="text">
+                  <string>机械状态</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QComboBox" name="forceInteractionStageDMechanicalModeComboBox">
+                 <item>
+                  <property name="text">
+                   <string>D0：电机空转（未接绞盘/绳索）</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>D1：绞盘、绳索和动平台已接入</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+               <item row="0" column="2">
+                <widget class="QLabel" name="forceInteractionStageDMocapModeTitleLabel">
+                 <property name="text">
+                  <string>动捕</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="3">
+                <widget class="QComboBox" name="forceInteractionStageDMocapModeComboBox">
+                 <item>
+                  <property name="text">
+                   <string>不接入</string>
+                  </property>
+                 </item>
+                 <item>
+                  <property name="text">
+                   <string>仅监测（不参与高频控制）</string>
+                  </property>
+                 </item>
+                </widget>
+               </item>
+               <item row="1" column="0">
+                <widget class="QLabel" name="forceInteractionStageDDurationTitleLabel">
+                 <property name="text">
+                  <string>最长运行</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="1">
+                <widget class="QDoubleSpinBox" name="forceInteractionStageDDurationSpinBox">
+                 <property name="suffix">
+                  <string> s</string>
+                 </property>
+                 <property name="decimals">
+                  <number>3</number>
+                 </property>
+                 <property name="minimum">
+                  <double>0.100000000000000</double>
+                 </property>
+                 <property name="maximum">
+                  <double>3600.000000000000000</double>
+                 </property>
+                 <property name="value">
+                  <double>10.000000000000000</double>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="2" colspan="2">
+                <widget class="QLabel" name="forceInteractionStageDGlobalTensionSafetyLabel">
+                 <property name="text">
+                  <string>D1张力保护统一读取全局SafetyMonitor；D0仅记录张力。</string>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="0" colspan="4">
+                <widget class="QLabel" name="forceInteractionStageDAdmissionLabel">
+                 <property name="text">
+                  <string>尚未准备阶段D。D0记录张力但不启用实物张力保护；D1必须完成预紧并启用全局SafetyMonitor。</string>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="forceInteractionStageDOperationGroupBox">
+              <property name="title">
+               <string>操作</string>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayoutForceInteractionStageDOperation">
+               <item>
+                <widget class="QPushButton" name="forceInteractionStageDPrepareButton">
+                 <property name="text">
+                  <string>准备阶段D</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="forceInteractionStageDStartButton">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="text">
+                  <string>启动实机力交互</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="forceInteractionStageDStopButton">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="text">
+                  <string>协同减速停止</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="forceInteractionStageDEmergencyButton">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="styleSheet">
+                  <string notr="true">QPushButton:enabled { color:#b00020; font-weight:bold; }</string>
+                 </property>
+                 <property name="text">
+                  <string>立即停止</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacerForceInteractionStageDOperation">
+                 <property name="orientation">
+                  <enum>Qt::Orientation::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
+             <widget class="QGroupBox" name="forceInteractionStageDStatusGroupBox">
+              <property name="title">
+               <string>阶段D状态</string>
+              </property>
+              <layout class="QVBoxLayout" name="verticalLayoutForceInteractionStageDStatus">
+               <item>
+                <widget class="QLabel" name="forceInteractionStageDStatusLabel">
+                 <property name="text">
+                  <string>尚未准备。</string>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPlainTextEdit" name="forceInteractionStageDResultPlainTextEdit">
+                 <property name="minimumSize">
+                  <size>
+                   <width>0</width>
+                   <height>180</height>
+                  </size>
+                 </property>
+                 <property name="readOnly">
+                  <bool>true</bool>
+                 </property>
+                 <property name="plainText">
+                  <string>运行时显示期望/反馈位姿、八轴误差、八路张力、F/T、Trace与周期耗时；完整数据异步写入force_interaction_runs。</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
            </layout>
           </widget>
          </widget>

@@ -615,6 +615,10 @@ private:
             ForceInteractionWrenchSourceKind sourceKind,
             const FtSensorMonitoringService::Snapshot* ftSnapshot,
             QString* errorMessage = nullptr);
+    bool stageDGlobalTensionSafetyConfig(
+            double* minimumTensionN,
+            OnlineVelocityAxisArray* maximumTensionN,
+            QString* errorMessage = nullptr) const;
     void prepareForceInteractionRuntimeFromUi();
     void prepareForceInteractionStageCRuntimeFromUi();
     void prepareForceInteractionStageDRuntimeFromUi();
@@ -2491,6 +2495,10 @@ private:
     bool motor2Home();// 鐢垫満褰掗浂浣?
     // 将所有绳索电机按当前机型的放绳方向移动半圈，用于预紧/调试。
     bool moveAllCableMotorsNegativeHalfTurn();
+    // 将单电机点动区当前选择的绳索电机按放绳方向移动半圈。
+    bool moveCurrentCableMotorNegativeHalfTurn();
+    // requestedAxisIndex < 0 表示全部已建模绳索轴，否则仅移动指定轴。
+    bool moveCableMotorsNegativeHalfTurn(int requestedAxisIndex);
     // 将指定轴按保存的起点角度返回。
     void returnMotorAxesToStart(const std::vector<int>& motorIndex, const std::vector<double>& targetTheta);
     // 执行位置模式：规划末端轨迹、仿真绳长并准备 PVT。

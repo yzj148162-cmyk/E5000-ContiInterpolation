@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QStringList>
 #include <QTimer>
 
 #include <algorithm>
@@ -747,6 +748,68 @@ void SafetyMonitor::evaluateSafety()
                 ForceInteractionRuntimeStatus::State::Running ||
             forceInteractionStatus.state ==
                 ForceInteractionRuntimeStatus::State::Braking;
+    if(cfg.forceInteractionTensionTraceFreshnessEnabled &&
+            forceInteractionTraceRunning && snapshotAdvanced){
+        const qint64 traceNowUs = monotonicNowUs();
+        const qint64 traceAgeUs = snapshot.runtimeTraceFrameMonotonicUs > 0 &&
+                traceNowUs >= snapshot.runtimeTraceFrameMonotonicUs ?
+                    traceNowUs - snapshot.runtimeTraceFrameMonotonicUs :
+                    std::numeric_limits<qint64>::max();
+        bool tensionTraceReliable =
+                snapshot.runtimeTraceUsageProfile ==
+                    HardwareInterface::RuntimeTraceUsageProfile::
+                        ForceInteractionPhysicalRuntime &&
+                snapshot.runtimeTraceFromHardware &&
+                snapshot.runtimeTraceFrameSequenceValid &&
+                snapshot.runtimeTraceTimingReliable &&
+                snapshot.runtimeTraceFifoCaughtUp &&
+                !snapshot.runtimeTraceLost &&
+                traceAgeUs <= std::max<qint64>(
+                    1000, cfg.forceInteractionTraceTimeoutUs);
+        QStringList invalidChannels;
+        for(int axisIndex = 0;
+            tensionTraceReliable && axisIndex < static_cast<int>(cfg.axes.size());
+            ++axisIndex){
+            const AxisConfig& axis = cfg.axes[axisIndex];
+            if(!axis.monitored || !axis.monitorForce || axis.sensorIndex < 0){
+                continue;
+            }
+            const bool channelValid =
+                    axis.sensorIndex < static_cast<int>(
+                        snapshot.forceSensorValue.size()) &&
+                    axis.sensorIndex < static_cast<int>(
+                        snapshot.forceSensorTraceFrameMonotonicUs.size()) &&
+                    std::isfinite(snapshot.forceSensorValue[axis.sensorIndex]) &&
+                    snapshot.forceSensorTraceFrameMonotonicUs[axis.sensorIndex] ==
+                        snapshot.runtimeTraceFrameMonotonicUs;
+            if(!channelValid){
+                invalidChannels << QString::number(axis.sensorIndex + 1);
+                tensionTraceReliable = false;
+            }
+        }
+        if(!tensionTraceReliable){
+            triggerFault(
+                        StopLevel::EmergencyStop,
+                        FaultCode::SensorInvalid,
+                        QStringLiteral("阶段D D1张力Trace反馈失效"),
+                        QStringLiteral(
+                            "D1独立安全监控未取得新鲜、完整且与八轴同帧的八路张力反馈"
+                            "（profile=%1，帧龄=%2 us，允许=%3 us，来源/序号/时序/追平/丢帧=%4/%5/%6/%7/%8，异常通道=%9）。")
+                            .arg(static_cast<int>(snapshot.runtimeTraceUsageProfile))
+                            .arg(traceAgeUs == std::numeric_limits<qint64>::max() ?
+                                     -1 : traceAgeUs)
+                            .arg(cfg.forceInteractionTraceTimeoutUs)
+                            .arg(snapshot.runtimeTraceFromHardware ? 1 : 0)
+                            .arg(snapshot.runtimeTraceFrameSequenceValid ? 1 : 0)
+                            .arg(snapshot.runtimeTraceTimingReliable ? 1 : 0)
+                            .arg(snapshot.runtimeTraceFifoCaughtUp ? 1 : 0)
+                            .arg(snapshot.runtimeTraceLost ? 1 : 0)
+                            .arg(invalidChannels.isEmpty() ?
+                                     QStringLiteral("无/整帧无效") :
+                                     invalidChannels.join(QLatin1Char(','))));
+            return;
+        }
+    }
     // 只在ControlWorker发布新快照时接纳并验证采集时帧龄。同一个已经接纳
     // 的缓存快照在SafetyMonitor异步读取期间自然老化，不应被重新解释为
     // “采集时超过5 ms”；若ControlWorker停止发布，前面的快照超时和遥控
@@ -859,7 +922,10 @@ void SafetyMonitor::evaluateSafety()
                          ForceInteractionVelocity ||
                  snapshot.runtimeTraceUsageProfile ==
                      HardwareInterface::RuntimeTraceUsageProfile::
-                         ForceInteractionVelocityWithFtRuntime) &&
+                         ForceInteractionVelocityWithFtRuntime ||
+                 snapshot.runtimeTraceUsageProfile ==
+                     HardwareInterface::RuntimeTraceUsageProfile::
+                         ForceInteractionPhysicalRuntime) &&
                     snapshot.runtimeTraceFromHardware &&
                     snapshot.runtimeTraceFrameSequenceValid &&
                     snapshot.runtimeTraceTimingReliable &&
@@ -1152,6 +1218,77 @@ void SafetyMonitor::evaluateSafety()
         resetWorkspaceState();
     }
 
+    if(cfg.forceInteractionMocapBoundaryEnabled &&
+            forceInteractionTraceRunning){
+        const qint64 poseAgeMs = cfg.forceInteractionMocapPoseTimestampMs > 0 ?
+                    std::max<qint64>(
+                        0, nowMs - cfg.forceInteractionMocapPoseTimestampMs) :
+                    std::numeric_limits<qint64>::max();
+        if(!cfg.forceInteractionMocapPoseValid ||
+                cfg.forceInteractionMocapPose.size() < 6 ||
+                poseAgeMs > std::max(1, cfg.forceInteractionMocapTimeoutMs)){
+            triggerFault(
+                        StopLevel::EmergencyStop,
+                        FaultCode::SensorInvalid,
+                        QStringLiteral("阶段D Nokov实物位姿反馈超时"),
+                        QStringLiteral(
+                            "D1已选择Nokov低频边界监督，但最近有效三标记点重算位姿帧龄为%1 ms，允许上限为%2 ms。")
+                            .arg(poseAgeMs == std::numeric_limits<qint64>::max() ?
+                                     -1 : poseAgeMs)
+                            .arg(cfg.forceInteractionMocapTimeoutMs));
+            return;
+        }
+
+        std::array<double, 6> mocapPoseMmRad{};
+        std::copy_n(cfg.forceInteractionMocapPose.cbegin(),
+                    mocapPoseMmRad.size(), mocapPoseMmRad.begin());
+        PhysicalWorkspaceBoundary boundary;
+        QString boundaryError;
+        if(!cfg.physicalWorkspaceConfigured ||
+                !boundary.configure(cfg.physicalWorkspace, &boundaryError)){
+            triggerFault(StopLevel::EmergencyStop,
+                         FaultCode::SensorInvalid,
+                         QStringLiteral("阶段D Nokov实物边界配置无效"),
+                         boundaryError);
+            return;
+        }
+        const PhysicalWorkspaceBoundaryResult mocapResult =
+                boundary.evaluatePose(mocapPoseMmRad);
+        if(mocapResult.action == PhysicalWorkspaceAction::Invalid){
+            triggerFault(StopLevel::EmergencyStop,
+                         FaultCode::SensorInvalid,
+                         QStringLiteral("阶段D Nokov实物位姿判定失败"),
+                         mocapResult.reason);
+            return;
+        }
+        const bool crossedEmergencyLine =
+                mocapResult.minimumClearanceMm <=
+                    std::max(0.0,
+                        cfg.forceInteractionMocapEmergencyMarginMm);
+        if(mocapResult.action == PhysicalWorkspaceAction::EmergencyStop ||
+                crossedEmergencyLine){
+            triggerFault(
+                        StopLevel::EmergencyStop,
+                        FaultCode::WorkspaceExceeded,
+                        QStringLiteral("阶段D Nokov实物位姿到达安全急停边界"),
+                        QStringLiteral(
+                            "%1；连接点=%2，限制轴=%3，实物最小余量=%4 mm，固定急停余量=%5 mm，Nokov位姿=[%6,%7,%8 mm；%9,%10,%11 rad]")
+                            .arg(mocapResult.reason)
+                            .arg(mocapResult.limitingPointIndex + 1)
+                            .arg(mocapResult.limitingAxis)
+                            .arg(mocapResult.minimumClearanceMm, 0, 'f', 6)
+                            .arg(cfg.forceInteractionMocapEmergencyMarginMm,
+                                 0, 'f', 6)
+                            .arg(mocapPoseMmRad[0], 0, 'f', 3)
+                            .arg(mocapPoseMmRad[1], 0, 'f', 3)
+                            .arg(mocapPoseMmRad[2], 0, 'f', 3)
+                            .arg(mocapPoseMmRad[3], 0, 'f', 6)
+                            .arg(mocapPoseMmRad[4], 0, 'f', 6)
+                            .arg(mocapPoseMmRad[5], 0, 'f', 6));
+            return;
+        }
+    }
+
     if(cfg.singleCableForceDebugMode){
         std::fill(lowForceCycles.begin(), lowForceCycles.end(), 0);
         previousForceSensorValue = snapshot.forceSensorValue;
@@ -1230,24 +1367,6 @@ void SafetyMonitor::evaluateSafety()
             }
 
             if(!skipLowForceAndBreakChecks && axis.forceMin > 1e-6){
-                if(axis.sensorIndex < static_cast<int>(previousForceSensorValue.size())){
-                    const double previousForce = previousForceSensorValue[axis.sensorIndex];
-                    const double dropThreshold = std::max(axis.forceMin * cfg.breakForceRatio, 0.1);
-                    const double requiredDrop = axis.forceMin * cfg.breakDropRatio;
-                    if(previousForce > axis.forceMin &&
-                            forceValue <= dropThreshold &&
-                            (previousForce - forceValue) >= requiredDrop){
-                        triggerFault(StopLevel::EmergencyStop,
-                                     FaultCode::CableBreak,
-                                     QStringLiteral("检测到疑似断绳/断崖式失张"),
-                                     QStringLiteral("轴 %1 张力由 %2 快速跌落至 %3")
-                                         .arg(axisIndex + 1)
-                                         .arg(previousForce, 0, 'f', 3)
-                                         .arg(forceValue, 0, 'f', 3));
-                        return;
-                    }
-                }
-
                 if(forceValue < axis.forceMin){
                     lowForceCycles[axis.sensorIndex]++;
                     if(lowForceCycles[axis.sensorIndex] >= std::max(cfg.persistentFaultCycles, 1)){

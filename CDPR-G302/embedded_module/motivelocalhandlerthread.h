@@ -9,6 +9,7 @@
 #define MOTIVELOCALHANDLERTHREAD_H
 
 #include <QObject>
+#include <QMutex>
 #include <QTimer>
 #include <QString>
 #include <QtGlobal>
@@ -43,13 +44,15 @@ public:
     double ctrlCycleMs = 0.0;
 
     // 返回最近一次有效刚体位姿矩阵。
-    std::vector<std::vector<double>> getRigidPose();
+    std::vector<std::vector<double>> getRigidPose() const;
     // 根据当前刚体位姿计算绳索起点坐标，保留给旧流程使用。
     std::vector<std::vector<double>> calCableStartPos();
     // 判断当前缓存中是否有有效刚体。
     bool hasCurrentRigidBody() const;
     // 判断最近 maxAgeMs 内是否收到有效刚体。
     bool hasRecentRigidBody(int maxAgeMs) const;
+    // 返回最近一帧有效连续/人工采样位姿的主机墙钟时间戳。
+    qint64 lastValidRigidBodyTimestampMs() const;
     // 判断姿态采集工作流是否已经得到有效结果。
     bool hasCapturedRigidBody() const;
     // 返回上一帧参与位姿计算的标记点数量。
@@ -62,9 +65,13 @@ public:
 public slots:
     // 开始多帧姿态采集，累计 sampleCount 帧后输出平均位姿。
     void beginPoseCapture(int sampleCount = DEFAULT_CAPTURE_SAMPLE_COUNT);
+    // 阶段D可选的低频实物监督入口。连续监测只刷新最新位姿，
+    // 不改变人工多帧平均确认得到的初始位姿绑定关系。
+    void setContinuousMonitoringEnabled(bool enabled);
 
 private:
     static constexpr int CAPTURE_TIMEOUT_MS = 5000;
+    static constexpr int CONTINUOUS_MONITOR_PERIOD_MS = 200;
 
     QTimer* timer = nullptr;
     bool isFirstLoop = true;
@@ -85,6 +92,9 @@ private:
     bool m_lastRigidBodyValid = false;
     int m_lastMarkerCount = 0;
     qint64 m_lastValidRigidBodyTimestampMs = -1;
+    qint64 m_lastContinuousMonitorUpdateMs = -1;
+    bool m_continuousMonitoringEnabled = false;
+    mutable QMutex m_poseMutex;
     NokovPoseCalculator m_poseCalculator;
     bool m_captureActive = false;
     int m_captureSampleTarget = DEFAULT_CAPTURE_SAMPLE_COUNT;
@@ -103,6 +113,8 @@ private:
     void failPoseCapture(const QString& reason);
     // 累加一帧采集结果，供 finishPoseCapture 求平均。
     void accumulatePoseSample(const NokovPoseCalculator::Result& poseResult);
+    void publishContinuousPose(const NokovPoseCalculator::Result& poseResult,
+                               qint64 timestampMs);
     // 结束采集并输出平均刚体位姿。
     void finishPoseCapture();
 

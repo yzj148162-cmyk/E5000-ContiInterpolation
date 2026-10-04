@@ -8,7 +8,9 @@
 #include <QJsonObject>
 #include <QSaveFile>
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 
@@ -132,11 +134,19 @@ bool ForceInteractionReplayExporter::writeJson(
     root.insert(QStringLiteral("mechanical_mode"), context.mechanicalModeName);
     root.insert(QStringLiteral("mocap_mode"), context.mocapModeName);
     root.insert(QStringLiteral("tension_protection_enabled"),
-                context.tensionProtectionEnabled);
+                context.globalTensionSafetyEnabled);
     root.insert(QStringLiteral("minimum_cable_tension_n"),
-                context.minimumCableTensionN);
+                context.globalMinimumCableTensionN);
+    double strictestMaximumTensionN =
+            std::numeric_limits<double>::infinity();
+    for(double value : context.globalMaximumCableTensionN){
+        strictestMaximumTensionN = std::min(strictestMaximumTensionN, value);
+    }
     root.insert(QStringLiteral("maximum_cable_tension_n"),
-                context.maximumCableTensionN);
+                std::isfinite(strictestMaximumTensionN) ?
+                    strictestMaximumTensionN : 0.0);
+    root.insert(QStringLiteral("maximum_cable_tension_n_by_sensor_channel"),
+                numberArray(context.globalMaximumCableTensionN));
     root.insert(QStringLiteral("control_period_us"), context.controlPeriodUs);
     root.insert(QStringLiteral("trace_period_us"), context.tracePeriodUs);
     root.insert(QStringLiteral("translation_only"), context.translationOnly);
