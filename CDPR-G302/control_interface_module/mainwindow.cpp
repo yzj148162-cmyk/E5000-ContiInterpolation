@@ -11702,6 +11702,13 @@ bool MainWindow::loadParameterConfigFromFile(const QString& filePath, QString* e
         applyForcePidParameterSnapshot(snapshot, errorMessage);
         return true;
     }
+    if(!motorFeedbackUnitChangeAllowed()){
+        if(errorMessage){
+            *errorMessage = QStringLiteral(
+                        "控制卡已连接或整机正在运行，不能导入包含轴单位、限位和脉冲当量的完整参数配置；请先断连");
+        }
+        return false;
+    }
     if(!widgetsValue.isObject() || snapshot.isEmpty()){
         if(errorMessage){
             *errorMessage = QStringLiteral("配置文件中未找到 widgets 配置项");
@@ -12305,6 +12312,10 @@ void MainWindow::applyParameterConfigSnapshot(const QJsonObject& snapshot)
 void MainWindow::applyParameterTemplate(const QString& templateName)
 {
     if(templateName == kParameterTemplateG3 || templateName == kParameterTemplateLite){
+        if(!motorFeedbackUnitChangeAllowed()){
+            displayInfo("参数模板加载被拒绝：模板会重置电机反馈单位、限位和轴配置，请先停止运动并断开雷赛控制卡", "error");
+            return;
+        }
         const bool useLiteTemplate = templateName == kParameterTemplateLite;
         const QSignalBlocker g3TemplateBlocker(ui->devUseG3);
         const QSignalBlocker liteTemplateBlocker(ui->devUseLite);
@@ -16846,6 +16857,8 @@ void MainWindow::refreshRunModeUiState(){
         return;
     }
     lastRunModeUiRefreshMs = QDateTime::currentMSecsSinceEpoch();
+    refreshMotorFeedbackUnitEditability();
+    refreshForceInteractionUnitAdmissionUi();
 
     auto setLabelTextIfChanged = [](QLabel* label, const QString& text){
         if(label && label->text() != text){
@@ -19192,8 +19205,8 @@ void MainWindow::refreshForceInteractionUnitAdmissionUi()
                 runtimeState.systemRunning;
         ui->forceInteractionUnitAdmissionLabel->setText(
                     connected ?
-                        QStringLiteral("六维力交互统一使用角度单位；当前为圈数且控制卡已连接。请先断连，再到【嵌入式模块】选择【角度】。") :
-                        QStringLiteral("六维力交互统一使用角度单位。请到【嵌入式模块】将“电机数据反馈单位”选择为【角度】。"));
+                        QStringLiteral("六维力交互统一使用角度单位。请先停止运动并断开雷赛控制卡，再到【嵌入式模块】选择【角度】，然后重新启动整机；控制卡连接期间禁止切换角度/圈数。") :
+                        QStringLiteral("六维力交互统一使用角度单位。当前已断连，请到【嵌入式模块】将“电机数据反馈单位”选择为【角度】，再启动整机。"));
     }
 }
 
@@ -19309,6 +19322,12 @@ void MainWindow::setupForceInteractionValidationTab()
     connect(ui->forceInteractionStageDMechanicalModeComboBox,
             qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int){ refreshForceInteractionRuntimeUi(); });
+    connect(ui->forceInteractionStageDTensionMinimumSpinBox,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [this](double){ refreshForceInteractionRuntimeUi(); });
+    connect(ui->forceInteractionStageDTensionMaximumSpinBox,
+            qOverload<double>(&QDoubleSpinBox::valueChanged),
+            this, [this](double){ refreshForceInteractionRuntimeUi(); });
     connect(ui->forceInteractionStageDMocapModeComboBox,
             qOverload<int>(&QComboBox::currentIndexChanged),
             this, [this](int index){
@@ -19416,7 +19435,7 @@ void MainWindow::setupForceInteractionValidationTab()
                 }
                 else{
                     forceInteractionFtUsingLastConfirmedZero = true;
-                    displayInfo("已采用当前程序内上次人工确认的F/T零漂；本轮不再等待预热判稳，但实时PDO/Trace与样本状态仍参与阶段C准入。",
+                    displayInfo("已采用当前程序内上次人工确认的F/T零漂；本轮不再等待预热判稳，但实时PDO/Trace与样本状态仍参与真实F/T准入。",
                                 "normal");
                 }
             }
@@ -20178,11 +20197,11 @@ void MainWindow::refreshForceInteractionFtUi()
     }
     ui->forceInteractionFtStageCAdmissionLabel->setText(
                 missingAdmissionItems.isEmpty() ?
-                    QStringLiteral("阶段C传感器准入通过：PDO、连续采样、%1、软件零点和实测阈值均有效；真实力驱动仍需单独启动流程。")
+                    QStringLiteral("真实F/T准入通过：PDO、连续采样、%1、软件零点和实测阈值均有效；阶段C/D真实力驱动仍需单独启动流程。")
                         .arg(forceInteractionFtUsingLastConfirmedZero ?
                                  QStringLiteral("上次零漂复用资格") :
                                  QStringLiteral("本轮预热判稳")) :
-                    QStringLiteral("阶段C准入未通过：%1；真实力驱动电机保持关闭。")
+                    QStringLiteral("真实F/T准入未通过：%1；阶段C/D真实力驱动保持关闭。")
                         .arg(missingAdmissionItems.join(QStringLiteral("、"))));
     if(ui->forceInteractionStageCAdmissionSummaryLabel){
         ui->forceInteractionStageCAdmissionSummaryLabel->setText(
@@ -20670,11 +20689,19 @@ bool MainWindow::stageDGlobalTensionSafetyConfig(
     }
 
     const ControlWorker::Config controlConfig = buildControlWorkerConfig();
-    const double lower = std::max(0.0, controlConfig.initForce * 0.5);
+    // 2026-10-05: D1张力保护使用六维力交互页的独立统一上下限。
+    // 阈值仍交由全局SafetyMonitor执行，不再依赖力控PID或轴参数页。
+    const double lower = ui->forceInteractionStageDTensionMinimumSpinBox->value();
+    const double upperLimit = ui->forceInteractionStageDTensionMaximumSpinBox->value();
     if(!std::isfinite(lower) || lower <= 0.0){
         return fail(QStringLiteral(
-                        "全局张力下限无效：当前预紧力为%1 N，SafetyMonitor下限=预紧力×0.5；请先配置并完成预紧")
-                    .arg(controlConfig.initForce, 0, 'f', 3));
+                        "D1张力下限无效：请输入大于0 N的数值"));
+    }
+    if(!std::isfinite(upperLimit) || upperLimit <= lower){
+        return fail(QStringLiteral(
+                        "D1张力上限%1 N必须大于下限%2 N")
+                    .arg(upperLimit, 0, 'f', 3)
+                    .arg(lower, 0, 'f', 3));
     }
     if(static_cast<int>(controlConfig.axes.size()) < kOnlineVelocityAxisCount){
         return fail(QStringLiteral("全局安全配置不足8个绳索轴"));
@@ -20699,15 +20726,7 @@ bool MainWindow::stageDGlobalTensionSafetyConfig(
         // Runtime tension samples are indexed by sensor channel.  Preserve the
         // same axis-to-sensor mapping used by SafetyMonitor instead of assuming
         // that motor-axis order and tension-channel order are identical.
-        upper[axisConfig.sensorIndex] = axisConfig.forceMax;
-        if(!std::isfinite(upper[axisConfig.sensorIndex]) ||
-                upper[axisConfig.sensorIndex] <= lower){
-            return fail(QStringLiteral(
-                            "轴%1全局张力上限%2 N不大于全局下限%3 N")
-                        .arg(axis + 1)
-                        .arg(upper[axisConfig.sensorIndex], 0, 'f', 3)
-                        .arg(lower, 0, 'f', 3));
-        }
+        upper[axisConfig.sensorIndex] = upperLimit;
     }
 
     if(minimumTensionN){
@@ -21339,8 +21358,9 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         if(!invalidTensions.isEmpty()){
             restoreForceInteractionFtMonitoringProfile();
             displayInfo(QStringLiteral(
-                            "阶段D D1准备失败：当前张力未全部进入全局SafetyMonitor范围（统一下限=%1 N，各张力通道上限来自对应轴的全局配置）：%2")
+                            "阶段D D1准备失败：当前张力未全部进入本页设定的SafetyMonitor范围（统一下限=%1 N、统一上限=%2 N）：%3")
                         .arg(config.globalMinimumCableTensionN, 0, 'f', 3)
+                        .arg(config.globalMaximumCableTensionN[0], 0, 'f', 3)
                         .arg(invalidTensions.join(QStringLiteral("，")))
                         .toStdString(), "error");
             refreshForceInteractionRuntimeUi();
@@ -21433,8 +21453,14 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
                     .arg(config.realFtConditioning.torqueStartThresholdNm, 0, 'f', 4)
                     .arg(config.realFtConditioning.torqueReleaseThresholdNm, 0, 'f', 4) :
                 QString{};
+    const QString tensionDescription = stageD && mechanicalMode ==
+            ForceInteractionMechanicalMode::D1PhysicalCabled ?
+                QStringLiteral("，D1冻结张力下限/上限=%1/%2 N（全局SafetyMonitor执行）")
+                    .arg(config.globalMinimumCableTensionN, 0, 'f', 3)
+                    .arg(config.globalMaximumCableTensionN[0], 0, 'f', 3) :
+                QString{};
     displayInfo(QStringLiteral(
-                    "%1已准备：执行器=%2，输入=%3，周期=%4 ms，最长运行=%5 s，PID=%6（当前固定关闭），末端加速度/制动a=%7 mm/s²，附加余量/急停线=%8/%9 mm，八轴公共加速度缩放=关闭%10；配置、初始位姿和输入参数已冻结，尚未下发速度命令")
+                    "%1已准备：执行器=%2，输入=%3，周期=%4 ms，最长运行=%5 s，PID=%6（当前固定关闭），末端加速度/制动a=%7 mm/s²，附加余量/急停线=%8/%9 mm，八轴公共加速度缩放=关闭%10%11；配置、初始位姿和输入参数已冻结，尚未下发速度命令")
                 .arg(stage)
                 .arg(runtimeState.forceInteractionGenericActuatorSessionActive ?
                          QStringLiteral("通用增量编码器8轴（临时）") :
@@ -21447,6 +21473,7 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
                 .arg(config.workspaceSafety.additionalSafetyMarginMm, 0, 'f', 3)
                 .arg(config.workspaceSafety.emergencyLineMarginMm, 0, 'f', 3)
                 .arg(conditioningDescription)
+                .arg(tensionDescription)
                 .toStdString(), "normal");
     refreshForceInteractionValidationInputState();
     refreshForceInteractionRuntimeUi();
@@ -21646,6 +21673,8 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
                 forceInteractionRuntimeForwardKinematicsConfig;
         forceInteractionLastRunMotorUnitPerRadian =
                 forceInteractionRuntimeMotorUnitPerRadian;
+        forceInteractionLastRunActualStartSafetyRelativePosition =
+                status.actualStartSafetyRelativePosition;
         forceInteractionLastRunReferenceCableLengthMm =
                 forceInteractionRuntimeReferenceCableLengthMm;
         forceInteractionLastRunInitialPoseMmRad =
@@ -21862,6 +21891,8 @@ void MainWindow::startForceInteractionKinematicLogAnalysis()
     request.csvPath = forceInteractionLastRunRecordFile;
     request.kinematics = forceInteractionLastRunKinematicsConfig;
     request.motorUnitPerRadian = forceInteractionLastRunMotorUnitPerRadian;
+    request.actualStartSafetyRelativePosition =
+            forceInteractionLastRunActualStartSafetyRelativePosition;
     request.referenceCableLengthMm = forceInteractionLastRunReferenceCableLengthMm;
     request.initialPoseMmRad = forceInteractionLastRunInitialPoseMmRad;
     request.physicalWorkspace = forceInteractionLastRunPhysicalWorkspace;
@@ -22103,15 +22134,13 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                 prepared && stageD ? QStringLiteral("取消准备") :
                                      QStringLiteral("协同减速停止"));
     ui->forceInteractionStageDConfigurationGroupBox->setEnabled(!locked);
+    ui->forceInteractionStageDTensionMinimumSpinBox->setEnabled(!locked && stageDD1);
+    ui->forceInteractionStageDTensionMaximumSpinBox->setEnabled(!locked && stageDD1);
     if(stageDD1 && globalTensionSafetyReady){
-        QStringList upperValues;
-        for(double value : globalTensionMaximumN){
-            upperValues << QString::number(value, 'f', 1);
-        }
         ui->forceInteractionStageDGlobalTensionSafetyLabel->setText(
-                    QStringLiteral("D1使用全局SafetyMonitor：统一下限=%1 N（预紧力×0.5），按张力通道排列的上限=[%2] N；运行期持续越限、严重越限和断绳均由独立安全线程判定。")
+                    QStringLiteral("D1使用本页独立阈值并由全局SafetyMonitor执行：八路统一下限=%1 N、上限=%2 N；运行期持续越限、严重越限和断绳均由独立安全线程判定。")
                         .arg(globalTensionMinimumN, 0, 'f', 3)
-                        .arg(upperValues.join(QStringLiteral(", "))));
+                        .arg(globalTensionMaximumN[0], 0, 'f', 3));
     }
     else if(stageDD1){
         ui->forceInteractionStageDGlobalTensionSafetyLabel->setText(
@@ -25593,6 +25622,8 @@ void MainWindow::toggleLiteControllerConnection()
         runtimeState.systemRunning = false;
         resetLiteCommissioningState(false);
         updateLiteCommissioningTabAvailability();
+        refreshMotorFeedbackUnitEditability();
+        refreshForceInteractionUnitAdmissionUi();
         appendLiteCommissioningEvent(QStringLiteral("controller_disconnect"), -1, true,
                                      QStringLiteral("已停止调试动作、失能在线轴并清除会话零点"));
         return;
@@ -25643,6 +25674,8 @@ void MainWindow::toggleLiteControllerConnection()
     runtimeState.hardwareRunState = HardwareRunState::ControllerConnected;
     runtimeState.safetyArmed = false;
     runtimeState.commissioningMotionStartMs = -1;
+    refreshMotorFeedbackUnitEditability();
+    refreshForceInteractionUnitAdmissionUi();
     // “连接/通信检查”只验证控制卡和主站总线，不探测任何电机轴。
     // 轴诊断留给用户选择电机后主动点击“刷新只读诊断”。
     liteCommissioningControllerDiagnostics = controller;
@@ -33523,6 +33556,14 @@ bool MainWindow::initPara(){
     connect(ui->devUpdateParaBtn,&IntBtn::sendInt,this,&MainWindow::updatePara);
     connect(ui->devUseG3, &QRadioButton::toggled, this, [this](bool checked){
         if(checked){
+            if(!motorFeedbackUnitChangeAllowed()){
+                const QSignalBlocker g3Blocker(ui->devUseG3);
+                const QSignalBlocker liteBlocker(ui->devUseLite);
+                ui->devUseG3->setChecked(false);
+                ui->devUseLite->setChecked(true);
+                displayInfo("参数模板切换被拒绝：模板会重置电机反馈单位、限位和轴配置，请先停止运动并断开雷赛控制卡", "error");
+                return;
+            }
             if(ui->devTemplatePresetCombo){
                 ui->devTemplatePresetCombo->setCurrentText(kParameterTemplateG3);
             }
@@ -33532,6 +33573,14 @@ bool MainWindow::initPara(){
     });
     connect(ui->devUseLite, &QRadioButton::toggled, this, [this](bool checked){
         if(checked){
+            if(!motorFeedbackUnitChangeAllowed()){
+                const QSignalBlocker g3Blocker(ui->devUseG3);
+                const QSignalBlocker liteBlocker(ui->devUseLite);
+                ui->devUseLite->setChecked(false);
+                ui->devUseG3->setChecked(true);
+                displayInfo("参数模板切换被拒绝：模板会重置电机反馈单位、限位和轴配置，请先停止运动并断开雷赛控制卡", "error");
+                return;
+            }
             if(ui->devTemplatePresetCombo){
                 ui->devTemplatePresetCombo->setCurrentText(kParameterTemplateLite);
             }
@@ -34880,35 +34929,12 @@ bool MainWindow::initPara(){
         refreshSingleMotorEnableStateUi();
     });
     refreshSingleMotorEnableStateUi();
-    connect(ui->devMotorFeedbackIsTheta,&QRadioButton::toggled,this,[this](bool checked){
-        if(checked){
-            if(suppressMotorLimitUnitConversion){
-                lastMotorFeedbackDisplayUnit = currentMotorFeedbackDisplayUnit();
-                refreshForceInteractionUnitAdmissionUi();
-                return;
-            }
-            refreshMotorLimitUnitUi(true);
-            if(applyLeadshineAxisEquivFromUi()){
-                updateControlWorkerConfig();
-            }
-            refreshForceInteractionUnitAdmissionUi();
-        }
-    });
-    connect(ui->devMotorFeedbackIsRd,&QRadioButton::toggled,this,[this](bool checked){
-        if(checked){
-            if(suppressMotorLimitUnitConversion){
-                lastMotorFeedbackDisplayUnit = currentMotorFeedbackDisplayUnit();
-                refreshForceInteractionUnitAdmissionUi();
-                return;
-            }
-            refreshMotorLimitUnitUi(true);
-            if(applyLeadshineAxisEquivFromUi()){
-                updateControlWorkerConfig();
-            }
-            refreshForceInteractionUnitAdmissionUi();
-        }
-    });
+    connect(ui->devMotorFeedbackIsTheta, &QRadioButton::toggled,
+            this, &MainWindow::handleMotorFeedbackUnitSelectionChanged);
+    connect(ui->devMotorFeedbackIsRd, &QRadioButton::toggled,
+            this, &MainWindow::handleMotorFeedbackUnitSelectionChanged);
     refreshMotorLimitUnitUi(false);
+    refreshMotorFeedbackUnitEditability();
     initializePrimaryOperationUi();
     initializeConnectionStatusUi();
     initializeCalibrationUi();
@@ -35394,6 +35420,72 @@ MainWindow::MotorFeedbackDisplayUnit MainWindow::currentMotorFeedbackDisplayUnit
         return MotorFeedbackDisplayUnit::Degree;
     }
     return MotorFeedbackDisplayUnit::Revolution;
+}
+
+bool MainWindow::motorFeedbackUnitChangeAllowed() const
+{
+    return !hardwareInterface.isLSConnected() && !runtimeState.systemRunning;
+}
+
+void MainWindow::refreshMotorFeedbackUnitEditability()
+{
+    if(!ui || !ui->devMotorFeedbackIsTheta || !ui->devMotorFeedbackIsRd){
+        return;
+    }
+    const bool editable = motorFeedbackUnitChangeAllowed();
+    ui->devMotorFeedbackIsTheta->setEnabled(editable);
+    ui->devMotorFeedbackIsRd->setEnabled(editable);
+    const QString tip = editable ?
+                QStringLiteral("电机反馈单位会同步改变轴脉冲当量及位置/速度限位；请在启动整机前完成选择。") :
+                QStringLiteral("控制卡连接或整机运行期间禁止切换角度/圈数；请先停止运动并断连。");
+    ui->devMotorFeedbackIsTheta->setToolTip(tip);
+    ui->devMotorFeedbackIsRd->setToolTip(tip);
+    if(ui->devUseG3){
+        ui->devUseG3->setEnabled(editable);
+        ui->devUseG3->setToolTip(tip);
+    }
+    if(ui->devUseLite){
+        ui->devUseLite->setEnabled(editable);
+        ui->devUseLite->setToolTip(tip);
+    }
+    if(ui->devTemplatePresetCombo){
+        ui->devTemplatePresetCombo->setEnabled(editable);
+        ui->devTemplatePresetCombo->setToolTip(tip);
+    }
+    if(ui->devApplyTemplateBtn){
+        ui->devApplyTemplateBtn->setEnabled(editable);
+        ui->devApplyTemplateBtn->setToolTip(tip);
+    }
+}
+
+void MainWindow::handleMotorFeedbackUnitSelectionChanged(bool checked)
+{
+    if(!checked){
+        return;
+    }
+    if(!motorFeedbackUnitChangeAllowed()){
+        const QSignalBlocker thetaBlocker(ui->devMotorFeedbackIsTheta);
+        const QSignalBlocker revolutionBlocker(ui->devMotorFeedbackIsRd);
+        const bool restoreDegree =
+                lastMotorFeedbackDisplayUnit == MotorFeedbackDisplayUnit::Degree;
+        ui->devMotorFeedbackIsTheta->setChecked(restoreDegree);
+        ui->devMotorFeedbackIsRd->setChecked(!restoreDegree);
+        refreshMotorLimitUnitUi(false);
+        refreshMotorFeedbackUnitEditability();
+        refreshForceInteractionUnitAdmissionUi();
+        displayInfo("电机数据反馈单位切换被拒绝：角度/圈数会改变轴脉冲当量和软件限位，请先停止运动并断开雷赛控制卡", "error");
+        return;
+    }
+    if(suppressMotorLimitUnitConversion){
+        lastMotorFeedbackDisplayUnit = currentMotorFeedbackDisplayUnit();
+        refreshForceInteractionUnitAdmissionUi();
+        return;
+    }
+    refreshMotorLimitUnitUi(true);
+    if(applyLeadshineAxisEquivFromUi()){
+        updateControlWorkerConfig();
+    }
+    refreshForceInteractionUnitAdmissionUi();
 }
 
 void MainWindow::refreshMotorLimitUnitUi(bool convertValues)
@@ -40378,9 +40470,16 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
     config.watchdogLogFilePath = softwareFaultGuardLogFilePath();
     config.axes.resize(controlConfig.axes.size());
 
-    // In the current UI there is no dedicated per-rope lower tension threshold yet.
-    // Use half of the configured pretension as the software lower safety threshold.
-    const double forceMinThreshold = std::max(0.0, controlConfig.initForce * 0.5);
+    // 2026-10-05: D1会话活动时，使用阶段D页冻结的统一张力上下限覆盖
+    // SafetyMonitor；会话结束后此条件自动失效，其余模块继续使用原配置。
+    const bool stageDD1TensionOverride = stageDForceInteractionSession &&
+            forceInteractionSafetyStatus.mechanicalMode ==
+                ForceInteractionMechanicalMode::D1PhysicalCabled;
+    const double forceMinThreshold = stageDD1TensionOverride ?
+                forceInteractionSafetyStatus.globalMinimumCableTensionN :
+                std::max(0.0, controlConfig.initForce * 0.5);
+    const double forceMaxThreshold = stageDD1TensionOverride ?
+                forceInteractionSafetyStatus.globalMaximumCableTensionN[0] : 0.0;
     const std::vector<bool> commissioningParticipants =
             liteCommissioningMotionParticipantMask(config.axisCount);
     for(int axisIndex=0; axisIndex<static_cast<int>(controlConfig.axes.size()); ++axisIndex){
@@ -40401,7 +40500,8 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
                 (config.commissioningMode ? axis.forceControlEnabled : true);
         monitorAxis.sensorIndex = axis.sensorIndex;
         monitorAxis.forceMin = forceMinThreshold;
-        monitorAxis.forceMax = axis.forceMax;
+        monitorAxis.forceMax = stageDD1TensionOverride ?
+                    forceMaxThreshold : axis.forceMax;
         monitorAxis.motorMin = axis.motorMin;
         monitorAxis.motorMax = axis.motorMax;
         monitorAxis.motorVelMax = axis.motorVelMax;
@@ -47319,6 +47419,8 @@ void MainWindow::runFullSystemSwitch(){
         updateSafetyMonitorConfig();
         setMotorControllerEnable(false);
         hardwareInterface.disconnectLS();
+        refreshMotorFeedbackUnitEditability();
+        refreshForceInteractionUnitAdmissionUi();
         hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(false);
         hardwareInterface.setForceSensorTraceReadEnabled(true);
         motorTraceRecoveryStateValid = false;
@@ -47359,6 +47461,8 @@ void MainWindow::runFullSystemSwitch(){
                     QStringLiteral("整机启动失败并断连"));
         setMotorControllerEnable(false);
         hardwareInterface.disconnectLS();
+        refreshMotorFeedbackUnitEditability();
+        refreshForceInteractionUnitAdmissionUi();
         hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(false);
         hardwareInterface.setForceSensorTraceReadEnabled(true);
         runtimeState.systemRunning = false;
@@ -47554,6 +47658,8 @@ void MainWindow::runFullSystemSwitch(){
             runtimeState.controlBoxSoftwareEmergencyStopState = -1;
             updateSafetyMonitorConfig();
             runStartupSelfCheck(true, true);
+            refreshMotorFeedbackUnitEditability();
+            refreshForceInteractionUnitAdmissionUi();
             scheduleMotorTraceRecoveryStateRefreshAfterStartup(true);
             announceLitePretensionWorkflowReady();
             return;
@@ -47692,6 +47798,8 @@ void MainWindow::runFullSystemSwitch(){
         runtimeState.controlBoxSoftwareEmergencyStopState = -1;
         updateSafetyMonitorConfig();
         runStartupSelfCheck(true, true);
+        refreshMotorFeedbackUnitEditability();
+        refreshForceInteractionUnitAdmissionUi();
         scheduleMotorTraceRecoveryStateRefreshAfterStartup(true);
         announceLitePretensionWorkflowReady();
         refreshForceInteractionActuatorProfileUi();

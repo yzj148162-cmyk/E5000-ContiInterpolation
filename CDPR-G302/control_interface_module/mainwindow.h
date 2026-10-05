@@ -680,6 +680,8 @@ private:
     CompensatedCableKinematics::Configuration
             forceInteractionLastRunKinematicsConfig;
     OnlineVelocityAxisArray forceInteractionLastRunMotorUnitPerRadian{};
+    OnlineVelocityAxisArray
+            forceInteractionLastRunActualStartSafetyRelativePosition{};
     std::vector<double> forceInteractionLastRunReferenceCableLengthMm;
     std::vector<double> forceInteractionLastRunInitialPoseMmRad;
     PhysicalWorkspaceBoundaryConfig forceInteractionLastRunPhysicalWorkspace;
@@ -2281,6 +2283,12 @@ private:
     void applyParameterConfigSnapshot(const QJsonObject& snapshot);
     // 返回当前电机反馈显示单位。
     MotorFeedbackDisplayUnit currentMotorFeedbackDisplayUnit() const;
+    // 电机反馈单位属于全局结构参数，只允许在控制卡完全断连且整机未运行时修改。
+    bool motorFeedbackUnitChangeAllowed() const;
+    // 根据全局连接状态刷新角度/圈数控件的可编辑性。
+    void refreshMotorFeedbackUnitEditability();
+    // 统一处理用户或模板触发的角度/圈数切换，并在在线切换时恢复原值。
+    void handleMotorFeedbackUnitSelectionChanged(bool checked);
     // 刷新电机限位单位 UI，可选择同步转换数值。
     void refreshMotorLimitUnitUi(bool convertValues);
     // 应用参数模板。

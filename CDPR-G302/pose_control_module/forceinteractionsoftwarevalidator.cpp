@@ -73,8 +73,7 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
         return false;
     }
 
-    // 自检和正式仿真必须使用同一份冻结安装参数，避免出现“自检使用实测
-    // 力臂、正式循环却把模拟量直接当作质心力旋量”的双重语义。
+    // 自检和正式仿真必须使用同一份冻结安装参数，避免安装语义不一致。
     WrenchTransformer transformer(configuration.sensorTransform);
     ForceInteractionWrenchSample sensor;
     sensor.stamp.valid = true;
@@ -88,7 +87,7 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
             std::abs(transformed.sample.wrench[4] -
                      configuration.sensorTransform.sensorOriginInPlatformM[2]) > 1.0e-12){
         if(errorMessage){
-            *errorMessage = QStringLiteral("实测F/T力臂的力旋量平移自检失败");
+            *errorMessage = QStringLiteral("F/T安装变换自检失败");
         }
         return false;
     }

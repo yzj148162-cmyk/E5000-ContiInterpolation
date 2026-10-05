@@ -13,15 +13,14 @@ using ForceInteractionVector3 = std::array<double, 3>;
 using ForceInteractionVector6 = std::array<double, kForceInteractionDofCount>;
 using ForceInteractionMatrix3 = std::array<double, 9>;
 
-// 实测六维力受力/测量参考点位于动平台局部坐标系原点（正二十面体几何中心）
-// 正上方 325.48 mm。动力学和力旋量变换统一使用 SI，因此此处保存为 m。
-// 当前把该实测点作为传感器坐标系 S 的原点；若传感器手册另行定义测量原点，
-// 应在实物标定时修正本向量。
+// 2026-10-05：姿态调试按“传感器测量参考点等效位于动平台质心”建模。
+// 因而平台质心到传感器原点的平移为零；动力学和力旋量变换统一使用 SI。
+// 历史 +Z 偏移值只保留在设计文档中，不再参与当前计算。
 inline constexpr ForceInteractionVector3 kMeasuredForceSensorOriginInPlatformM{{
-    0.0, 0.0, 0.32548
+    0.0, 0.0, 0.0
 }};
 
-// 实测安装关系：传感器坐标系 S 的三轴方向与动平台局部坐标系 E 完全一致，
+// 当前安装关系：传感器坐标系 S 的三轴方向与动平台局部坐标系 E 完全一致，
 // 因而从 S 到 E 的旋转矩阵 R_ES 为单位阵。
 inline constexpr ForceInteractionMatrix3 kMeasuredForceSensorToPlatformRotation{{
     1.0, 0.0, 0.0,

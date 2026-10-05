@@ -73,9 +73,8 @@ struct ForceInteractionRuntimeConfig
     double onlineChangeTimeS = 0.001;
     qint64 traceTimeoutUs = 100000;
     bool tensionTraceRequired = false;
-    // D1 does not maintain a second set of runtime tension limits.  These
-    // values are a frozen copy of the centralized SafetyMonitor settings and
-    // are used only for admission, diagnostics and replay metadata.
+    // 2026-10-05: D1在六维力交互页独立设置统一张力上下限；准备时冻结，
+    // 运行期仍由集中式SafetyMonitor执行，不在RuntimeControl内重复判定。
     bool globalTensionSafetyEnabled = false;
     double globalMinimumCableTensionN = 0.0;
     // Indexed by the runtime tension/force-sensor channel, after applying the
@@ -145,6 +144,10 @@ struct ForceInteractionRuntimeStatus
     ForceInteractionRuntimeStage stage = ForceInteractionRuntimeStage::StageB;
     ForceInteractionMechanicalMode mechanicalMode =
             ForceInteractionMechanicalMode::NotApplicable;
+    // 2026-10-05: D1准备时冻结的专属统一张力上下限，供全局
+    // SafetyMonitor在运行期使用；D0及阶段B/C保持为0。
+    double globalMinimumCableTensionN = 0.0;
+    OnlineVelocityAxisArray globalMaximumCableTensionN{};
     QString message;
     QString recordFile;
     quint64 stepCount = 0;

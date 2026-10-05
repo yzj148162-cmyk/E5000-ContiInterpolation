@@ -15,6 +15,9 @@ struct ForceInteractionKinematicLogAnalysisRequest
     QString csvPath;
     CompensatedCableKinematics::Configuration kinematics;
     std::array<double, 8> motorUnitPerRadian{};
+    // 运行记录中的 safety-relative Trace 位置以整机安全零点为基准；
+    // 正运动学所需的是相对本次六维力会话起点的电机位移。
+    std::array<double, 8> actualStartSafetyRelativePosition{};
     std::vector<double> referenceCableLengthMm;
     std::vector<double> initialPoseMmRad;
     PhysicalWorkspaceBoundaryConfig physicalWorkspace;

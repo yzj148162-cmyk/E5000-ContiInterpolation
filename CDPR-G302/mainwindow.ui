@@ -17160,7 +17160,7 @@ border-radius: 6px;</string>
           </widget>
           <widget class="QWidget" name="forceInteractionFtSensorTab">
            <attribute name="title">
-            <string>F/T传感器（阶段C准备）</string>
+            <string>F/T传感器（真实力准备）</string>
            </attribute>
            <layout class="QVBoxLayout" name="verticalLayoutForceInteractionFtSensor">
             <item>
@@ -17474,7 +17474,7 @@ border-radius: 6px;</string>
                <item row="1" column="4" colspan="2">
                 <widget class="QCheckBox" name="forceInteractionFtThresholdConfirmedCheckBox">
                  <property name="toolTip">
-                  <string>默认阈值仅用于采集调试。至少用多次冷启动预热原始CSV复核后再勾选；未勾选时阶段C准入不会通过。</string>
+                  <string>默认阈值仅用于采集调试。至少用多次冷启动预热原始CSV复核后再勾选；未勾选时真实F/T准入不会通过。</string>
                  </property>
                  <property name="text">
                   <string>判稳阈值已由实测数据确认</string>
@@ -17540,7 +17540,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QLabel" name="forceInteractionFtStageCAdmissionLabel">
               <property name="text">
-               <string>阶段C准入：尚未完成F/T PDO读回、连续采样、预热判稳和软件零点确认；真实力驱动电机保持关闭。</string>
+               <string>真实F/T准入：尚未完成PDO读回、连续采样、预热判稳和软件零点确认；阶段C/D真实力驱动保持关闭。</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>
@@ -17899,7 +17899,7 @@ border-radius: 6px;</string>
                   <string>r_ES从动平台质心指向传感器测量参考点，在平台局部坐标系E表达；传感器三轴与E系同向。</string>
                  </property>
                  <property name="text">
-                  <string>实测安装：r_ES=[0, 0, 325.48] mm，R_ES=I；Fx/Fy/Fz会通过r×F产生质心力矩</string>
+                  <string>当前等效安装：传感器测量原点位于动平台质心，r_ES=[0, 0, 0] mm，R_ES=I；传感器六维力直接作为平台质心局部系力旋量</string>
                  </property>
                  <property name="wordWrap">
                   <bool>true</bool>
@@ -17909,7 +17909,7 @@ border-radius: 6px;</string>
                <item row="5" column="0" colspan="6">
                 <widget class="QCheckBox" name="forceInteractionTranslationOnlyCheckBox">
                  <property name="toolTip">
-                  <string>调试专用：仍先按r_ES和R_ES完成真实安装变换，再把质心处Mx/My/Mz清零，使Newmark只保留平动响应。正式六自由度验证时应取消勾选。</string>
+                  <string>调试专用：按当前r_ES=0、R_ES=I完成安装变换后，再把质心处Mx/My/Mz清零，使Newmark只保留平动响应。正式六自由度验证时应取消勾选。</string>
                  </property>
                  <property name="text">
                   <string>仅平动调试（安装变换后清零质心处三维力矩）</string>
@@ -18634,7 +18634,7 @@ border-radius: 6px;</string>
                <item>
                 <widget class="QLabel" name="forceInteractionStageCAdmissionSummaryLabel">
                  <property name="text">
-                  <string>尚未取得阶段C传感器准入。请先在“F/T传感器（阶段C准备）”完成连续采集、预热判稳、软件取零和阈值确认。</string>
+                  <string>尚未取得真实F/T准入。请先在“F/T传感器（真实力准备）”完成连续采集、预热判稳、软件取零和阈值确认。</string>
                  </property>
                  <property name="wordWrap">
                   <bool>true</bool>
@@ -19080,21 +19080,85 @@ border-radius: 6px;</string>
                   <double>3600.000000000000000</double>
                  </property>
                  <property name="value">
+                 <double>10.000000000000000</double>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="2">
+                <widget class="QLabel" name="forceInteractionStageDTensionMinimumTitleLabel">
+                 <property name="text">
+                  <string>D1张力下限</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="3">
+                <widget class="QDoubleSpinBox" name="forceInteractionStageDTensionMinimumSpinBox">
+                 <property name="toolTip">
+                  <string>D1实机力交互专用的八路统一张力下限；由全局SafetyMonitor执行，0为无效配置。</string>
+                 </property>
+                 <property name="suffix">
+                  <string> N</string>
+                 </property>
+                 <property name="decimals">
+                  <number>3</number>
+                 </property>
+                 <property name="minimum">
+                  <double>0.000000000000000</double>
+                 </property>
+                 <property name="maximum">
+                  <double>9999.000000000000000</double>
+                 </property>
+                 <property name="singleStep">
+                  <double>1.000000000000000</double>
+                 </property>
+                 <property name="value">
                   <double>10.000000000000000</double>
                  </property>
                 </widget>
                </item>
-               <item row="1" column="2" colspan="2">
+               <item row="2" column="0">
+                <widget class="QLabel" name="forceInteractionStageDTensionMaximumTitleLabel">
+                 <property name="text">
+                  <string>D1张力上限</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QDoubleSpinBox" name="forceInteractionStageDTensionMaximumSpinBox">
+                 <property name="toolTip">
+                  <string>D1实机力交互专用的八路统一张力上限；由全局SafetyMonitor执行。</string>
+                 </property>
+                 <property name="suffix">
+                  <string> N</string>
+                 </property>
+                 <property name="decimals">
+                  <number>3</number>
+                 </property>
+                 <property name="minimum">
+                  <double>0.000000000000000</double>
+                 </property>
+                 <property name="maximum">
+                  <double>9999.000000000000000</double>
+                 </property>
+                 <property name="singleStep">
+                  <double>10.000000000000000</double>
+                 </property>
+                 <property name="value">
+                  <double>400.000000000000000</double>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="2" colspan="2">
                 <widget class="QLabel" name="forceInteractionStageDGlobalTensionSafetyLabel">
                  <property name="text">
-                  <string>D1张力保护统一读取全局SafetyMonitor；D0仅记录张力。</string>
+                  <string>D1使用本页上下限并由全局SafetyMonitor执行；D0仅记录张力。</string>
                  </property>
                  <property name="wordWrap">
                   <bool>true</bool>
                  </property>
                 </widget>
                </item>
-               <item row="2" column="0" colspan="4">
+               <item row="3" column="0" colspan="4">
                 <widget class="QLabel" name="forceInteractionStageDAdmissionLabel">
                  <property name="text">
                   <string>尚未准备阶段D。D0记录张力但不启用实物张力保护；D1必须完成预紧并启用全局SafetyMonitor。</string>

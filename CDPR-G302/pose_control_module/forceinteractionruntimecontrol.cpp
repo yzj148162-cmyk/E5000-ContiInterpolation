@@ -272,6 +272,8 @@ bool ForceInteractionRuntimeControl::prepare(
     status_.wrenchSourceKind = config.wrenchSourceKind;
     status_.stage = config.stage;
     status_.mechanicalMode = config.mechanicalMode;
+    status_.globalMinimumCableTensionN = config.globalMinimumCableTensionN;
+    status_.globalMaximumCableTensionN = config.globalMaximumCableTensionN;
     status_.frozenFtSoftwareZero = config.ftSoftwareZero;
     status_.state = ForceInteractionRuntimeStatus::State::Prepared;
     status_.message = QStringLiteral("%1已准备").arg(

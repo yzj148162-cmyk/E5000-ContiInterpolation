@@ -6,6 +6,12 @@ platformForceN = nan(n, 3);
 for axis = 1:8
     relative(:,axis) = data.(sprintf( ...
         'axis_safety_relative_trace_position_%d', axis-1));
+    % 与Qt实时5 Hz正运动学保持同一基准：记录值以安全零点为基准，
+    % 必须先扣除本次六维力会话启动时的位置，才能得到本次运动增量。
+    if isfield(cfg.axes(axis), 'actual_start_safety_relative_position')
+        relative(:,axis) = relative(:,axis) - ...
+            double(cfg.axes(axis).actual_start_safety_relative_position);
+    end
 end
 for dim = 1:6
     desiredSi(:,dim) = data.(sprintf('desired_pose_si_%d', dim-1));

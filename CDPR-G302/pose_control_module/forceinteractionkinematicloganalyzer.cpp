@@ -201,7 +201,10 @@ ForceInteractionKinematicLogAnalyzer::analyze(
                 cableValid = false;
                 break;
             }
-            const double motorTheta = row.relativeTrace[axis] / unitPerRad;
+            const double relativeFromRunStart =
+                    row.relativeTrace[axis] -
+                    request.actualStartSafetyRelativePosition[axis];
+            const double motorTheta = relativeFromRunStart / unitPerRad;
             const double platformDelta = WinchCompensation::platformDeltaFromMotorTheta(
                         request.kinematics.winchConfig[axis], motorTheta, scale);
             solveRequest.cableLength.push_back(request.referenceCableLengthMm[axis] - platformDelta);

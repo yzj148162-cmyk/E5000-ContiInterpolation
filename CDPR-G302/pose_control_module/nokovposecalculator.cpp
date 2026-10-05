@@ -15,7 +15,10 @@ constexpr double kPi = 3.14159265358979323846;
 // constexpr double kMocapToQtYawDeg = 0.3555;
 // constexpr double kMocapToQtYawDeg = 0.365210689450862;
 // constexpr double kMocapToQtYawDeg = 0.800394062171612;
-constexpr double kMocapToQtYawDeg = 1.2634;
+// 2026-10-04：保留上一次动捕坐标系标定值，当前不再使用。
+// constexpr double kMocapToQtYawDeg = 1.2634;
+// 2026-10-04：采用202610041818yzj1八组固定靶球数据重新标定的绕Z轴转角。
+constexpr double kMocapToQtYawDeg = -1.008984919609855;
 
 Eigen::Vector3d markerToVector(const MarkerPoint& marker)
 {
@@ -35,7 +38,12 @@ Eigen::Vector3d transformMocapPointToQt(const Eigen::Vector3d& point)
     // const Eigen::Vector3d offset(152.62675,281.9953,48.5727);
     // const Eigen::Vector3d offset(-502.4504,-542.6511,-141.5380);
     // const Eigen::Vector3d offset(-168.2879，-519.5231，-141.4515);
-    const Eigen::Vector3d offset(-168.2879,-519.5231,-141.4515);
+    // 2026-10-04：保留上一次动捕坐标系标定偏置，当前不再使用。
+    // const Eigen::Vector3d offset(-168.2879, -519.5231, -141.4515);
+    // 2026-10-04：采用202610041818yzj1八组固定靶球数据重新标定的平移偏置，单位mm。
+    const Eigen::Vector3d offset(-9.134277236979869,
+                                 -110.674112343325874,
+                                 -141.438555081868543);
     return rotation * point + offset;
 }
 
