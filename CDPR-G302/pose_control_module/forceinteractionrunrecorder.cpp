@@ -245,7 +245,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v12\n"
+    stream << "# schema=force_interaction_run_v13\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -258,7 +258,7 @@ void ForceInteractionRunRecorder::run()
            << "# availability_mask:1=sensor_wrench,2=platform_wrench,4=desired_state,"
               "8=cable_kinematics,16=forward_kinematics,32=axis_reference,"
               "64=axis_command,128=axis_trace,256=timing,512=ft_diagnostics,"
-              "1024=cable_tension\n";
+              "1024=cable_tension,2048=tension_shadow\n";
     stream << "# workspace_replay_enabled="
            << (metadata_.workspaceReplayEnabled ? 1 : 0) << '\n';
     if(metadata_.workspaceReplayEnabled){
@@ -360,6 +360,15 @@ void ForceInteractionRunRecorder::run()
     writeGroupHeader(stream, "axis_state_machine", kForceInteractionCableCount);
     writeGroupHeader(stream, "cable_tension_n", kForceInteractionCableCount);
     writeGroupHeader(stream, "cable_tension_valid", kForceInteractionCableCount);
+    stream << ",tension_shadow_available,tension_shadow_valid,tension_shadow_expired,"
+              "tension_shadow_source_trace_sequence,tension_shadow_source_trace_us,"
+              "tension_shadow_age_us,tension_shadow_calculation_us,"
+              "tension_shadow_fk_rms_mm,tension_shadow_fk_maximum_mm,"
+              "tension_shadow_wrench_residual,tension_shadow_minimum_tension_margin_n";
+    writeGroupHeader(stream, "tension_shadow_target_tension_n",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "tension_shadow_nominal_torque_nm",
+                     kForceInteractionCableCount);
     stream << ",calculation_us,hardware_api_us,full_cycle_us\n";
     ready_.release();
 
@@ -444,6 +453,19 @@ void ForceInteractionRunRecorder::run()
             writeArray(stream, record.axisStateMachine);
             writeArray(stream, record.cableTensionN);
             writeArray(stream, record.cableTensionValid);
+            stream << ',' << (record.tensionShadowAvailable ? 1 : 0)
+                   << ',' << (record.tensionShadowValid ? 1 : 0)
+                   << ',' << (record.tensionShadowExpired ? 1 : 0)
+                   << ',' << record.tensionShadowSourceTraceSequence
+                   << ',' << record.tensionShadowSourceTraceUs
+                   << ',' << record.tensionShadowAgeUs
+                   << ',' << record.tensionShadowCalculationUs
+                   << ',' << record.tensionShadowFkRmsMm
+                   << ',' << record.tensionShadowFkMaximumMm
+                   << ',' << record.tensionShadowWrenchResidual
+                   << ',' << record.tensionShadowMinimumTensionMarginN;
+            writeArray(stream, record.tensionShadowTargetTensionN);
+            writeArray(stream, record.tensionShadowNominalTorqueNm);
             stream << ',' << record.calculationDurationUs
                    << ',' << record.hardwareApiDurationUs
                    << ',' << record.fullCycleDurationUs << '\n';

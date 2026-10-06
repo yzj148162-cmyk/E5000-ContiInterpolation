@@ -46,6 +46,7 @@
 #include "controlworker.h"
 #include "forwardkinematicssolver.h"
 #include "forceinteractionreplayexporter.h"
+#include "forceinteractiontensionshadow.h"
 #include "pvtexecutionworker.h"
 #include "simulationworker.h"
 #include "hardwareinterface.h"
@@ -685,6 +686,8 @@ private:
     std::vector<double> forceInteractionLastRunReferenceCableLengthMm;
     std::vector<double> forceInteractionLastRunInitialPoseMmRad;
     PhysicalWorkspaceBoundaryConfig forceInteractionLastRunPhysicalWorkspace;
+    ForceInteractionTensionShadowConfig forceInteractionLastRunTensionShadowConfig;
+    bool forceInteractionLastRunTensionShadowConfigValid = false;
     bool forceInteractionLastRunKinematicContextValid = false;
     ForceInteractionReplayExportContext forceInteractionRuntimeReplayContext;
     ForceInteractionReplayExportContext forceInteractionLastRunReplayContext;
@@ -693,6 +696,8 @@ private:
     QString forceInteractionLastReplayConfigFile;
     QString forceInteractionBoundaryAnalysisSummary;
     PhysicalWorkspaceBoundaryConfig forceInteractionRuntimePhysicalWorkspace;
+    ForceInteractionTensionShadowConfig forceInteractionRuntimeTensionShadowConfig;
+    bool forceInteractionRuntimeTensionShadowConfigValid = false;
     bool forceInteractionRuntimePhysicalWorkspaceValid = false;
     CompensatedCableKinematics::Configuration
             forceInteractionRuntimeForwardKinematicsConfig;

@@ -2,6 +2,7 @@
 
 #include "forceinteractionrunrecorder.h"
 #include "forceinteractionruntimecontrol.h"
+#include "forceinteractiontensionshadowvalidator.h"
 #include "forwardkinematicssolver.h"
 #include "ftsensorpreheatmonitor.h"
 #include "wrenchtransformer.h"
@@ -69,6 +70,15 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
         if(errorMessage){
             *errorMessage = QStringLiteral("F/T Trace新帧纪元自检失败：%1")
                     .arg(traceEpochError);
+        }
+        return false;
+    }
+    QString tensionShadowError;
+    if(!ForceInteractionTensionShadowValidator::runSelfChecks(
+               &tensionShadowError)){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("在线张力M0纯算法自检失败：%1")
+                    .arg(tensionShadowError);
         }
         return false;
     }
@@ -617,6 +627,7 @@ ForceInteractionValidationResult ForceInteractionSoftwareValidator::run(
             .arg(result.finalState.pose[4], 0, 'g', 8)
             .arg(result.finalState.pose[5], 0, 'g', 8);
     result.summary += QStringLiteral(
+                "\n在线张力迁移：M0纯算法自检通过（仅平动方向、分配可行/不可行、0525方向与斜率、非数值拒绝）；未下发转矩。"
                 "\n冻结模拟输入幅值/常值=[%1, %2, %3 N, %4, %5, %6 N·m]"
                 "\n冻结惯量矩阵=[%7, %8, %9; %10, %11, %12; %13, %14, %15] kg·m²"
                 "\n通过阈值：平移≤%16 mm，姿态≤%17 deg，绳长残差≤%18 mm")

@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QTextStream>
 
 namespace {
@@ -25,6 +26,8 @@ struct Row {
     qint64 traceUs = 0;
     bool traceValid = false;
     std::array<double, kPoseCount> desired{}; // m, rad
+    std::array<double, kPoseCount> desiredTwist{}; // m/s, rad/s
+    std::array<double, kPoseCount> desiredAcceleration{}; // m/s2, rad/s2
     std::array<double, kAxisCount> relativeTrace{};
 };
 
@@ -53,24 +56,42 @@ bool integer64(const QStringList& values, int index, qint64* value)
     return true;
 }
 
-std::array<double, kPoseCount> desiredAtHost(
+struct DesiredStateAtHost
+{
+    std::array<double, kPoseCount> pose{};
+    std::array<double, kPoseCount> twist{};
+    std::array<double, kPoseCount> acceleration{};
+};
+
+DesiredStateAtHost desiredStateAtHost(
         const std::vector<Row>& rows, qint64 hostUs)
 {
     if(rows.empty()) return {};
     const auto upper = std::lower_bound(rows.begin(), rows.end(), hostUs,
         [](const Row& row, qint64 value){ return row.hostUs < value; });
-    if(upper == rows.begin()) return upper->desired;
-    if(upper == rows.end()) return rows.back().desired;
+    auto fromRow = [](const Row& row){
+        DesiredStateAtHost state;
+        state.pose = row.desired;
+        state.twist = row.desiredTwist;
+        state.acceleration = row.desiredAcceleration;
+        return state;
+    };
+    if(upper == rows.begin()) return fromRow(*upper);
+    if(upper == rows.end()) return fromRow(rows.back());
     const Row& b = *upper;
     const Row& a = *(upper - 1);
     const qint64 span = b.hostUs - a.hostUs;
     const double ratio = span > 0 ?
                 std::clamp(double(hostUs - a.hostUs) / double(span), 0.0, 1.0) : 0.0;
-    std::array<double, kPoseCount> result{};
+    DesiredStateAtHost result;
     for(int i = 0; i < kPoseCount; ++i){
         double delta = b.desired[i] - a.desired[i];
         if(i >= 3) delta = wrappedAngle(delta);
-        result[i] = a.desired[i] + ratio * delta;
+        result.pose[i] = a.desired[i] + ratio * delta;
+        result.twist[i] = a.desiredTwist[i] +
+                ratio * (b.desiredTwist[i] - a.desiredTwist[i]);
+        result.acceleration[i] = a.desiredAcceleration[i] +
+                ratio * (b.desiredAcceleration[i] - a.desiredAcceleration[i]);
     }
     return result;
 }
@@ -128,6 +149,12 @@ ForceInteractionKinematicLogAnalyzer::analyze(
             complete = complete && number(values,
                     header.indexOf(QStringLiteral("desired_pose_si_%1").arg(i)),
                     &row.desired[i]);
+            complete = complete && number(values,
+                    header.indexOf(QStringLiteral("desired_twist_si_%1").arg(i)),
+                    &row.desiredTwist[i]);
+            complete = complete && number(values,
+                    header.indexOf(QStringLiteral("desired_acceleration_si_%1").arg(i)),
+                    &row.desiredAcceleration[i]);
         }
         for(int axis = 0; axis < kAxisCount; ++axis){
             complete = complete && number(values,
@@ -169,14 +196,27 @@ ForceInteractionKinematicLogAnalyzer::analyze(
     stream << "step_index,trace_sequence,trace_time_us,aligned_model_time_s";
     for(int i=0;i<kPoseCount;++i) stream << ",desired_pose_mm_rad_" << i;
     for(int i=0;i<kPoseCount;++i) stream << ",actual_pose_mm_rad_" << i;
-    stream << ",translation_error_mm,orientation_error_deg,rms_cable_residual_mm,maximum_cable_residual_mm,solver_success,solver_termination,solver_iterations\n";
+    stream << ",translation_error_mm,orientation_error_deg,rms_cable_residual_mm,maximum_cable_residual_mm,solver_success,solver_termination,solver_iterations"
+              ",shadow_evaluated,shadow_valid,shadow_calculation_us,shadow_wrench_residual,shadow_tension_margin_n";
+    for(int i=0;i<kAxisCount;++i) stream << ",shadow_target_tension_n_" << i;
+    for(int i=0;i<kAxisCount;++i) stream << ",shadow_nominal_torque_nm_" << i;
+    stream << ",shadow_error\n";
+
+    ForceInteractionTensionShadow shadow;
+    QString shadowConfigurationError;
+    const bool shadowConfigured = request.tensionShadowEnabled &&
+            shadow.configure(request.tensionShadow, &shadowConfigurationError);
+    qint64 previousShadowTraceUs = 0;
+    ForceInteractionPlatformState previousObserved;
+    const qint64 shadowPeriodUs = request.tensionShadowEnabled ?
+                qint64(std::llround(request.tensionShadow.outerPeriodS * 1.0e6)) : 0;
 
     ForwardKinematicsSolver solver;
     solver.setInitialPose(request.initialPoseMmRad);
     double sumTranslation2 = 0.0, sumOrientation2 = 0.0, sumResidual2 = 0.0;
     for(const Row& row : rows){
         const qint64 alignedHostUs = row.traceUs + anchorOffset;
-        const auto desired = desiredAtHost(rows, alignedHostUs);
+        const DesiredStateAtHost desired = desiredStateAtHost(rows, alignedHostUs);
         ForwardKinematicsSolver::Request solveRequest;
         solveRequest.anchorPos = request.kinematics.anchorCableCoordinate;
         solveRequest.contactPointLocal = request.kinematics.endCableContactPos.front();
@@ -213,15 +253,16 @@ ForceInteractionKinematicLogAnalyzer::analyze(
         if(cableValid) solved = solver.solve(solveRequest);
         stream << row.step << ',' << row.traceSequence << ',' << row.traceUs << ','
                << (row.modelTimeS + double(alignedHostUs - row.hostUs) * 1.0e-6);
-        for(int i=0;i<kPoseCount;++i) stream << ',' << (i < 3 ? desired[i]*1000.0 : desired[i]);
+        for(int i=0;i<kPoseCount;++i)
+            stream << ',' << (i < 3 ? desired.pose[i]*1000.0 : desired.pose[i]);
         for(int i=0;i<kPoseCount;++i)
             stream << ',' << (solved.success && i < int(solved.pose.size()) ? solved.pose[i] : std::numeric_limits<double>::quiet_NaN());
         double translation = std::numeric_limits<double>::quiet_NaN();
         double orientation = std::numeric_limits<double>::quiet_NaN();
         if(solved.success && solved.pose.size() >= kPoseCount){
             double translation2 = 0.0, orientation2 = 0.0;
-            for(int i=0;i<3;++i){ const double d=solved.pose[i]-desired[i]*1000.0; translation2 += d*d; }
-            for(int i=3;i<6;++i){ const double d=wrappedAngle(solved.pose[i]-desired[i]); orientation2 += d*d; }
+            for(int i=0;i<3;++i){ const double d=solved.pose[i]-desired.pose[i]*1000.0; translation2 += d*d; }
+            for(int i=3;i<6;++i){ const double d=wrappedAngle(solved.pose[i]-desired.pose[i]); orientation2 += d*d; }
             translation = std::sqrt(translation2);
             orientation = std::sqrt(orientation2) * kRadToDeg;
             ++result.solvedRows;
@@ -237,7 +278,84 @@ ForceInteractionKinematicLogAnalyzer::analyze(
         stream << ',' << translation << ',' << orientation << ','
                << solved.rmsCableResidualMm << ',' << solved.maximumCableResidualMm << ','
                << (solved.success ? 1 : 0) << ',' << solved.terminationType << ','
-               << solved.iterationCount << '\n';
+               << solved.iterationCount;
+
+        const bool shadowDue = shadowConfigured && solved.success &&
+                solved.pose.size() >= kPoseCount &&
+                (previousShadowTraceUs == 0 ||
+                 row.traceUs - previousShadowTraceUs >= shadowPeriodUs);
+        bool shadowValid = false;
+        qint64 shadowCalculationUs = 0;
+        double shadowResidual = std::numeric_limits<double>::quiet_NaN();
+        double shadowMargin = std::numeric_limits<double>::quiet_NaN();
+        RedundantTorqueAllocator::Vector8d shadowTension =
+                RedundantTorqueAllocator::Vector8d::Constant(
+                    std::numeric_limits<double>::quiet_NaN());
+        RedundantTorqueAllocator::Vector8d shadowTorque = shadowTension;
+        QString shadowError;
+        if(shadowDue){
+            ++result.shadowEvaluatedRows;
+            ForceInteractionTensionShadowInput shadowInput;
+            for(int i = 0; i < kPoseCount; ++i){
+                shadowInput.desired.pose[i] = desired.pose[i];
+                shadowInput.desired.twist[i] = desired.twist[i];
+                shadowInput.desired.acceleration[i] = desired.acceleration[i];
+                shadowInput.observed.pose[i] = i < 3 ?
+                            solved.pose[i] * 1.0e-3 : solved.pose[i];
+            }
+            shadowInput.desired.poseValid = true;
+            shadowInput.desired.twistValid = true;
+            shadowInput.desired.accelerationValid = true;
+            shadowInput.observed.poseValid = true;
+            shadowInput.observed.twistValid = true;
+            shadowInput.dtS = previousShadowTraceUs > 0 ?
+                        double(row.traceUs - previousShadowTraceUs) * 1.0e-6 :
+                        request.tensionShadow.outerPeriodS;
+            if(previousObserved.poseValid && shadowInput.dtS > 0.0){
+                for(int i = 0; i < kPoseCount; ++i){
+                    double delta = shadowInput.observed.pose[i] -
+                            previousObserved.pose[i];
+                    if(i >= 3) delta = wrappedAngle(delta);
+                    shadowInput.observed.twist[i] = delta / shadowInput.dtS;
+                }
+            }
+            QElapsedTimer shadowTimer;
+            shadowTimer.start();
+            const ForceInteractionTensionShadowResult shadowResult =
+                    shadow.evaluate(shadowInput);
+            shadowCalculationUs = shadowTimer.nsecsElapsed() / 1000;
+            result.shadowMaximumCalculationUs = std::max(
+                        result.shadowMaximumCalculationUs,
+                        shadowCalculationUs);
+            if(shadowResult.valid){
+                shadowValid = true;
+                ++result.shadowValidRows;
+                shadowResidual = shadowResult.allocation.maximumGeneralizedControlResidual;
+                shadowMargin = shadowResult.allocation.minimumTensionMargin;
+                shadowTension = shadowResult.allocation.predictedTension;
+                shadowTorque = shadowResult.allocation.hardwareMotorTorque;
+                result.shadowMinimumTensionMarginN = std::min(
+                            result.shadowMinimumTensionMarginN,
+                            shadowResult.allocation.minimumTensionMargin);
+                result.shadowMaximumWrenchResidual = std::max(
+                            result.shadowMaximumWrenchResidual,
+                            shadowResult.allocation.maximumGeneralizedControlResidual);
+            }
+            else{
+                ++result.shadowInfeasibleRows;
+                shadowError = shadowResult.errorMessage;
+            }
+            previousObserved = shadowInput.observed;
+            previousShadowTraceUs = row.traceUs;
+        }
+        stream << ',' << (shadowDue ? 1 : 0)
+               << ',' << (shadowValid ? 1 : 0)
+               << ',' << shadowCalculationUs
+               << ',' << shadowResidual
+               << ',' << shadowMargin;
+        for(int i=0;i<kAxisCount;++i) stream << ',' << shadowTension[i];
+        for(int i=0;i<kAxisCount;++i) stream << ',' << shadowTorque[i];
+        stream << ',' << shadowError.replace(',', QStringLiteral("；")) << '\n';
     }
     output.close();
     if(result.solvedRows){
@@ -257,6 +375,25 @@ ForceInteractionKinematicLogAnalyzer::analyze(
             .arg(result.cableResidualRmsMm,0,'f',6).arg(result.cableResidualMaximumMm,0,'f',6)
             .arg(result.nonMonotonicTraceRows)
             .arg(QDir::toNativeSeparators(result.resultCsvPath));
+    if(request.tensionShadowEnabled){
+        if(!shadowConfigured){
+            result.summary += QStringLiteral(
+                        "\nM1在线张力离线影子未运行：冻结配置无效（%1）。")
+                    .arg(shadowConfigurationError);
+        }
+        else{
+            result.summary += QStringLiteral(
+                        "\nM1在线张力离线影子（仅平动、25 ms外环、无硬件下发）："
+                        "计算/有效/不可行=%1/%2/%3，最大计算=%4 us，"
+                        "最小张力分配余量=%5 N，最大力旋量残差=%6。")
+                    .arg(result.shadowEvaluatedRows)
+                    .arg(result.shadowValidRows)
+                    .arg(result.shadowInfeasibleRows)
+                    .arg(result.shadowMaximumCalculationUs)
+                    .arg(result.shadowMinimumTensionMarginN, 0, 'g', 8)
+                    .arg(result.shadowMaximumWrenchResidual, 0, 'g', 8);
+        }
+    }
     return result;
 }
 

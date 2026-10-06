@@ -27,7 +27,8 @@ enum ForceInteractionRecordAvailability : quint32
     ForceRecordAxisTrace = 1u << 7,
     ForceRecordTiming = 1u << 8,
     ForceRecordFtDiagnostics = 1u << 9,
-    ForceRecordCableTension = 1u << 10
+    ForceRecordCableTension = 1u << 10,
+    ForceRecordTensionShadow = 1u << 11
 };
 
 struct ForceInteractionRunMetadata
@@ -139,6 +140,25 @@ struct ForceInteractionRunRecord
     std::array<int, kForceInteractionCableCount> axisStateMachine{};
     std::array<double, kForceInteractionCableCount> cableTensionN{};
     std::array<int, kForceInteractionCableCount> cableTensionValid{};
+
+    // M2 shadow data are diagnostic only.  They are computed on a bounded
+    // background worker while this record's motor command remains velocity
+    // controlled; no value in this block is sent to hardware.
+    bool tensionShadowAvailable = false;
+    bool tensionShadowValid = false;
+    bool tensionShadowExpired = false;
+    quint64 tensionShadowSourceTraceSequence = 0;
+    qint64 tensionShadowSourceTraceUs = 0;
+    qint64 tensionShadowAgeUs = -1;
+    qint64 tensionShadowCalculationUs = 0;
+    double tensionShadowFkRmsMm = 0.0;
+    double tensionShadowFkMaximumMm = 0.0;
+    double tensionShadowWrenchResidual = 0.0;
+    double tensionShadowMinimumTensionMarginN = 0.0;
+    std::array<double, kForceInteractionCableCount>
+            tensionShadowTargetTensionN{};
+    std::array<double, kForceInteractionCableCount>
+            tensionShadowNominalTorqueNm{};
 
     qint64 calculationDurationUs = 0;
     qint64 hardwareApiDurationUs = 0;

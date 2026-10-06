@@ -10,9 +10,11 @@
 
 #include <QObject>
 #include <QMutex>
+#include <QMap>
 #include <QTimer>
 #include <QVector>
 #include <atomic>
+#include <memory>
 #include <vector>
 
 #include "forcecontroller.h"
@@ -21,6 +23,7 @@
 #include "onlinevelocitycontrol.h"
 #include "endpointremotecontrol.h"
 #include "forceinteractionruntimecontrol.h"
+#include "forceinteractiontensionshadowworker.h"
 #include "tracedelaycalibrationrunner.h"
 
 class ControlWorker : public QObject
@@ -629,6 +632,19 @@ private:
     OnlineVelocityStatus onlineVelocityStatusCache;
     ForceInteractionRuntimeControl forceInteractionRuntimeControl;
     ForceInteractionRuntimeStatus forceInteractionRuntimeStatusCache;
+    ForceInteractionTensionShadowWorker forceInteractionTensionShadowWorker;
+    std::shared_ptr<const ForceInteractionTensionShadowWorker::Result>
+            forceInteractionLatestTensionShadow;
+    bool forceInteractionTensionShadowEnabled = false;
+    quint64 forceInteractionTensionShadowEpoch = 0;
+    qint64 forceInteractionTensionShadowNextDueUs = 0;
+    quint64 forceInteractionTensionShadowSubmitted = 0;
+    quint64 forceInteractionTensionShadowBusySkipped = 0;
+    quint64 forceInteractionTensionShadowCompleted = 0;
+    quint64 forceInteractionTensionShadowInvalid = 0;
+    quint64 forceInteractionTensionShadowExpired = 0;
+    qint64 forceInteractionTensionShadowMaximumCalculationUs = 0;
+    QMap<QString, quint64> forceInteractionTensionShadowInvalidReasons;
     EndpointRemoteControl endpointRemoteControl;
     EndpointRemoteStatus endpointRemoteStatusCache;
     EndpointRemoteTracePhase endpointRemoteTracePhase =

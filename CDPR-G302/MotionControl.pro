@@ -46,12 +46,18 @@ SOURCES += \
     pose_control_module/cdprdynamics.cpp \
     pose_control_module/compensatedcablekinematics.cpp \
     pose_control_module/endpointremotecontrol.cpp \
+    pose_control_module/eightcableouterloop.cpp \
+    pose_control_module/eightcabletensionfeedback.cpp \
     pose_control_module/forceinteractionboundaryloganalyzer.cpp \
     pose_control_module/forceinteractionkinematicloganalyzer.cpp \
     pose_control_module/forceinteractionreplayexporter.cpp \
     pose_control_module/forceinteractionrunrecorder.cpp \
     pose_control_module/forceinteractionruntimecontrol.cpp \
     pose_control_module/forceinteractionsoftwarevalidator.cpp \
+    pose_control_module/forceinteractiontensionshadow.cpp \
+    pose_control_module/forceinteractiontensionshadowreplay.cpp \
+    pose_control_module/forceinteractiontensionshadowworker.cpp \
+    pose_control_module/forceinteractiontensionshadowvalidator.cpp \
     pose_control_module/forcewrenchconditioner.cpp \
     pose_control_module/ftsensormonitoringservice.cpp \
     pose_control_module/ftsensorpreheatmonitor.cpp \
@@ -61,6 +67,8 @@ SOURCES += \
     pose_control_module/forcecontroller.cpp \
     pose_control_module/forwardkinematicssolver.cpp \
     pose_control_module/forcepid0525.cpp \
+    pose_control_module/redundanttorqueallocator.cpp \
+    pose_control_module/taskspacetorquecontrol.cpp \
     pose_control_module/kalmanhandler.cpp \
     pose_control_module/linalg.cpp \
     pose_control_module/nokovposecalculator.cpp \
@@ -121,12 +129,20 @@ HEADERS += \
     pose_control_module/cdprdynamics.h \
     pose_control_module/compensatedcablekinematics.h \
     pose_control_module/endpointremotecontrol.h \
+    pose_control_module/eightcableouterloop.h \
+    pose_control_module/eightcablepreviewtiming.h \
+    pose_control_module/eightcabletensionfeedback.h \
+    pose_control_module/eightcabletimingprofile.h \
     pose_control_module/forceinteractionboundaryloganalyzer.h \
     pose_control_module/forceinteractionkinematicloganalyzer.h \
     pose_control_module/forceinteractionreplayexporter.h \
     pose_control_module/forceinteractionrunrecorder.h \
     pose_control_module/forceinteractionruntimecontrol.h \
     pose_control_module/forceinteractionsoftwarevalidator.h \
+    pose_control_module/forceinteractiontensionshadow.h \
+    pose_control_module/forceinteractiontensionshadowreplay.h \
+    pose_control_module/forceinteractiontensionshadowworker.h \
+    pose_control_module/forceinteractiontensionshadowvalidator.h \
     pose_control_module/forceinteractiontypes.h \
     pose_control_module/forcewrenchconditioner.h \
     pose_control_module/ftsensormonitoringservice.h \
@@ -138,6 +154,7 @@ HEADERS += \
     pose_control_module/forcecontroller.h \
     pose_control_module/forwardkinematicssolver.h \
     pose_control_module/forcepid0525.h \
+    pose_control_module/forcepidtorquelimits.h \
     pose_control_module/kalmanhandler.h \
     pose_control_module/linalg.h \
     pose_control_module/nokovposecalculator.h \
@@ -148,10 +165,12 @@ HEADERS += \
     pose_control_module/positionsimulationmodel.h \
     pose_control_module/pvtexecutionworker.h \
     pose_control_module/ropeelasticcompensation.h \
+    pose_control_module/redundanttorqueallocator.h \
     pose_control_module/simulationworker.h \
     pose_control_module/solvers.h \
     pose_control_module/trajectorygenerator.h \
     pose_control_module/trajectoryplanner.h \
+    pose_control_module/taskspacetorquecontrol.h \
     pose_control_module/wrenchsource.h \
     pose_control_module/wrenchtransformer.h \
     pose_control_module/winchcompensation.h \

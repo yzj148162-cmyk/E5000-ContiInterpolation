@@ -81,6 +81,66 @@ QJsonObject workspaceObject(const PhysicalWorkspaceBoundaryConfig& workspace,
     return result;
 }
 
+template<typename Derived>
+QJsonArray eigenArray(const Eigen::MatrixBase<Derived>& values)
+{
+    QJsonArray result;
+    for(Eigen::Index row = 0; row < values.rows(); ++row){
+        for(Eigen::Index column = 0; column < values.cols(); ++column){
+            result.append(values(row, column));
+        }
+    }
+    return result;
+}
+
+QJsonObject tensionShadowObject(
+        const ForceInteractionTensionShadowConfig& config)
+{
+    QJsonObject result;
+    result.insert(QStringLiteral("translation_only"), config.translationOnly);
+    result.insert(QStringLiteral("outer_period_s"), config.outerPeriodS);
+    result.insert(QStringLiteral("gravity_m_s2"), config.gravityMPerSec2);
+    result.insert(QStringLiteral("effective_radius_m_per_rad"),
+                  eigenArray(config.effectiveRadiusMPerRad));
+    QJsonObject controller;
+    controller.insert(QStringLiteral("virtual_mass_kg"),
+                      eigenArray(config.controller.virtualMass));
+    controller.insert(QStringLiteral("virtual_body_inertia_kg_m2"),
+                      eigenArray(config.controller.virtualBodyInertia));
+    controller.insert(QStringLiteral("damping_ratio"),
+                      config.controller.dampingRatio);
+    controller.insert(QStringLiteral("stiffness"),
+                      eigenArray(config.controller.stiffness));
+    controller.insert(QStringLiteral("integral_gain"),
+                      eigenArray(config.controller.integralGain));
+    controller.insert(QStringLiteral("integral_limit"),
+                      eigenArray(config.controller.integralLimit));
+    controller.insert(QStringLiteral("integral_enabled"),
+                      config.controller.integralEnabled);
+    result.insert(QStringLiteral("controller"), controller);
+    QJsonObject allocator;
+    allocator.insert(QStringLiteral("tension_minimum_n"),
+                     eigenArray(config.allocator.tensionMinimum));
+    allocator.insert(QStringLiteral("tension_maximum_n"),
+                     eigenArray(config.allocator.tensionMaximum));
+    allocator.insert(QStringLiteral("tension_bias_n"),
+                     eigenArray(config.allocator.tensionBias));
+    allocator.insert(QStringLiteral("tension_weight"),
+                     eigenArray(config.allocator.tensionWeight));
+    allocator.insert(QStringLiteral("hardware_torque_minimum_nm"),
+                     eigenArray(config.allocator.hardwareTorqueMinimum));
+    allocator.insert(QStringLiteral("hardware_torque_maximum_nm"),
+                     eigenArray(config.allocator.hardwareTorqueMaximum));
+    allocator.insert(QStringLiteral("hardware_direction"),
+                     eigenArray(config.allocator.hardwareDirection));
+    allocator.insert(QStringLiteral("torque_slew_enabled"),
+                     config.allocator.torqueSlewEnabled);
+    allocator.insert(QStringLiteral("hardware_torque_slew_rate_nm_s"),
+                     eigenArray(config.allocator.hardwareTorqueSlewRate));
+    result.insert(QStringLiteral("allocator"), allocator);
+    return result;
+}
+
 } // namespace
 
 QString ForceInteractionReplayExporter::sidecarPathForCsv(const QString& csvPath)
@@ -124,7 +184,7 @@ bool ForceInteractionReplayExporter::writeJson(
     root.insert(QStringLiteral("run_id"), csvInfo.completeBaseName());
     root.insert(QStringLiteral("csv_file"), csvInfo.fileName());
     root.insert(QStringLiteral("csv_schema"),
-                QStringLiteral("force_interaction_run_v12"));
+                QStringLiteral("force_interaction_run_v13"));
     root.insert(QStringLiteral("stage"), context.stageName);
     root.insert(QStringLiteral("wrench_source"), context.wrenchSourceName);
     root.insert(QStringLiteral("kinematic_template"),
@@ -150,6 +210,15 @@ bool ForceInteractionReplayExporter::writeJson(
     root.insert(QStringLiteral("control_period_us"), context.controlPeriodUs);
     root.insert(QStringLiteral("trace_period_us"), context.tracePeriodUs);
     root.insert(QStringLiteral("translation_only"), context.translationOnly);
+    root.insert(QStringLiteral("platform_mass_kg"), context.rigidBody.massKg);
+    root.insert(QStringLiteral("platform_inertia_kg_m2"),
+                numberArray(context.rigidBody.inertiaKgM2));
+    root.insert(QStringLiteral("tension_shadow_enabled"),
+                context.tensionShadowEnabled);
+    if(context.tensionShadowEnabled){
+        root.insert(QStringLiteral("tension_shadow"),
+                    tensionShadowObject(context.tensionShadow));
+    }
 
     QJsonObject conventions;
     conventions.insert(QStringLiteral("length_unit"), QStringLiteral("mm"));

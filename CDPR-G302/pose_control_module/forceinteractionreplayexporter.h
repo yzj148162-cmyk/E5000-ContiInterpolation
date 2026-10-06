@@ -2,6 +2,8 @@
 #define FORCEINTERACTIONREPLAYEXPORTER_H
 
 #include "compensatedcablekinematics.h"
+#include "forceinteractiontypes.h"
+#include "forceinteractiontensionshadow.h"
 #include "onlinevelocitycontrol.h"
 #include "physicalworkspaceboundary.h"
 
@@ -28,6 +30,9 @@ struct ForceInteractionReplayExportContext
     int controlPeriodUs = 0;
     int tracePeriodUs = 0;
     bool translationOnly = false;
+    ForceInteractionRigidBodyConfig rigidBody;
+    bool tensionShadowEnabled = false;
+    ForceInteractionTensionShadowConfig tensionShadow;
 
     CompensatedCableKinematics::Configuration kinematics;
     PhysicalWorkspaceBoundaryConfig physicalWorkspace;

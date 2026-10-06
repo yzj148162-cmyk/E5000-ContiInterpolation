@@ -1931,6 +1931,43 @@ bool ControlWorker::prepareForceInteractionRuntime(
     if(!forceInteractionRuntimeControl.prepare(runtimeConfig, errorMessage)){
         return false;
     }
+    // M2 is deliberately best-effort and diagnostic-only.  Failure to arm it
+    // must not change the already validated online-velocity D1 path.
+    forceInteractionTensionShadowWorker.take();
+    forceInteractionTensionShadowEnabled = false;
+    forceInteractionLatestTensionShadow.reset();
+    forceInteractionTensionShadowNextDueUs = 0;
+    forceInteractionTensionShadowSubmitted = 0;
+    forceInteractionTensionShadowBusySkipped = 0;
+    forceInteractionTensionShadowCompleted = 0;
+    forceInteractionTensionShadowInvalid = 0;
+    forceInteractionTensionShadowExpired = 0;
+    forceInteractionTensionShadowMaximumCalculationUs = 0;
+    forceInteractionTensionShadowInvalidReasons.clear();
+    if(runtimeConfig.stage == ForceInteractionRuntimeStage::StageD &&
+            runtimeConfig.mechanicalMode ==
+                ForceInteractionMechanicalMode::D1PhysicalCabled &&
+            runtimeConfig.translationOnly){
+        QString shadowError;
+        forceInteractionTensionShadowEnabled =
+                forceInteractionTensionShadowWorker.configure(
+                    runtimeConfig, &shadowError);
+        if(forceInteractionTensionShadowEnabled){
+            forceInteractionTensionShadowEpoch =
+                    forceInteractionTensionShadowWorker.epoch();
+            emit displayInfoSignal(
+                        QStringLiteral(
+                            "M2在线张力影子已准备：25 ms外环，仅计算和记录，不下发转矩")
+                            .toStdString(),
+                        "normal");
+        }
+        else{
+            emit displayInfoSignal(
+                        QStringLiteral("M2在线张力影子未启用（不影响速度D1）：%1")
+                            .arg(shadowError).toStdString(),
+                        "warning");
+        }
+    }
     publishForceInteractionRuntimeStatus();
     return true;
 }
@@ -2074,6 +2111,9 @@ void ControlWorker::resetForceInteractionRuntimeSession()
         return;
     }
     forceInteractionRuntimeControl.resetSession();
+    forceInteractionTensionShadowWorker.resetSession();
+    forceInteractionTensionShadowEnabled = false;
+    forceInteractionLatestTensionShadow.reset();
     publishForceInteractionRuntimeStatus();
 }
 
@@ -3076,7 +3116,28 @@ void ControlWorker::processForceInteractionRuntime(
             forceInteractionRuntimeControl.status();
     const ForceInteractionRuntimeStatus::State stateBeforeStep =
             statusBeforeStep.state;
-    const ForceInteractionRuntimeStep step =
+    if(forceInteractionTensionShadowEnabled){
+        const auto completed = forceInteractionTensionShadowWorker.take();
+        if(completed && completed->epoch == forceInteractionTensionShadowEpoch){
+            forceInteractionLatestTensionShadow = completed;
+            ++forceInteractionTensionShadowCompleted;
+            const qint64 calculationUs = std::max<qint64>(
+                        0, completed->finishedUs - completed->startedUs);
+            forceInteractionTensionShadowMaximumCalculationUs = std::max(
+                        forceInteractionTensionShadowMaximumCalculationUs,
+                        calculationUs);
+            if(!completed->valid){
+                ++forceInteractionTensionShadowInvalid;
+                const QString reason = completed->errorMessage.trimmed().isEmpty() ?
+                            QStringLiteral("未提供错误原因") :
+                            completed->errorMessage.trimmed();
+                ++forceInteractionTensionShadowInvalidReasons[reason];
+            }
+            if(completed->expired) ++forceInteractionTensionShadowExpired;
+        }
+    }
+
+    ForceInteractionRuntimeStep step =
             forceInteractionRuntimeControl.step(feedback, nowUs);
     const ForceInteractionRuntimeStatus statusAfterStep =
             forceInteractionRuntimeControl.status();
@@ -3102,6 +3163,62 @@ void ControlWorker::processForceInteractionRuntime(
     if(step.action == ForceInteractionRuntimeStep::Action::None){
         publishForceInteractionRuntimeStatus();
         return;
+    }
+    if(forceInteractionTensionShadowEnabled &&
+            step.action == ForceInteractionRuntimeStep::Action::CommandVelocity){
+        const qint64 outerPeriodUs = 25000;
+        if(forceInteractionTensionShadowNextDueUs <= 0){
+            forceInteractionTensionShadowNextDueUs = nowUs;
+        }
+        if(nowUs >= forceInteractionTensionShadowNextDueUs){
+            ForceInteractionTensionShadowWorker::Request request;
+            request.epoch = forceInteractionTensionShadowEpoch;
+            request.sourceTraceSequence = feedback.logicalFrameSequence;
+            request.sourceTraceUs = step.record.stamp.traceTimeUs;
+            request.submittedUs = nowUs;
+            request.deadlineUs = nowUs + outerPeriodUs;
+            request.desired = step.record.desiredState;
+            request.safetyRelativePosition = feedback.safetyRelativePosition;
+            request.actualStartSafetyRelativePosition =
+                    statusAfterStep.actualStartSafetyRelativePosition;
+            if(forceInteractionTensionShadowWorker.submit(request)){
+                ++forceInteractionTensionShadowSubmitted;
+            }
+            else{
+                ++forceInteractionTensionShadowBusySkipped;
+            }
+            do{
+                forceInteractionTensionShadowNextDueUs += outerPeriodUs;
+            }while(forceInteractionTensionShadowNextDueUs <= nowUs);
+        }
+        const auto& shadow = forceInteractionLatestTensionShadow;
+        if(shadow && shadow->epoch == forceInteractionTensionShadowEpoch){
+            step.record.availabilityMask |= ForceRecordTensionShadow;
+            step.record.tensionShadowAvailable = true;
+            step.record.tensionShadowValid = shadow->valid;
+            step.record.tensionShadowExpired = shadow->expired;
+            step.record.tensionShadowSourceTraceSequence =
+                    shadow->sourceTraceSequence;
+            step.record.tensionShadowSourceTraceUs = shadow->sourceTraceUs;
+            step.record.tensionShadowAgeUs = std::max<qint64>(
+                        0, step.record.stamp.traceTimeUs - shadow->sourceTraceUs);
+            step.record.tensionShadowCalculationUs = std::max<qint64>(
+                        0, shadow->finishedUs - shadow->startedUs);
+            step.record.tensionShadowFkRmsMm =
+                    shadow->forwardKinematics.rmsCableResidualMm;
+            step.record.tensionShadowFkMaximumMm =
+                    shadow->forwardKinematics.maximumCableResidualMm;
+            step.record.tensionShadowWrenchResidual =
+                    shadow->shadow.allocation.maximumGeneralizedControlResidual;
+            step.record.tensionShadowMinimumTensionMarginN =
+                    shadow->shadow.allocation.minimumTensionMargin;
+            for(int cable = 0; cable < kOnlineVelocityAxisCount; ++cable){
+                step.record.tensionShadowTargetTensionN[cable] =
+                        shadow->shadow.allocation.predictedTension[cable];
+                step.record.tensionShadowNominalTorqueNm[cable] =
+                        shadow->shadow.allocation.hardwareMotorTorque[cable];
+            }
+        }
     }
     const std::vector<int> axes{0, 1, 2, 3, 4, 5, 6, 7};
     bool commandOk = true;
@@ -3147,6 +3264,31 @@ void ControlWorker::processForceInteractionRuntime(
                         HardwareInterface::RuntimeTraceUsageProfile::Base);
         }
         forceInteractionRuntimeControl.finishRecording();
+        if(forceInteractionTensionShadowEnabled){
+            QStringList invalidReasonItems;
+            for(auto it = forceInteractionTensionShadowInvalidReasons.cbegin();
+                it != forceInteractionTensionShadowInvalidReasons.cend(); ++it){
+                invalidReasonItems.push_back(
+                            QStringLiteral("%1=%2").arg(it.key()).arg(it.value()));
+            }
+            const QString invalidReasonSummary = invalidReasonItems.isEmpty() ?
+                        QStringLiteral("无") : invalidReasonItems.join(QStringLiteral("；"));
+            emit displayInfoSignal(
+                        QStringLiteral(
+                            "M2在线张力影子结束（速度后端仍为唯一执行者）：提交/完成/忙跳过=%1/%2/%3，"
+                            "无效/过期=%4/%5，最大后台计算=%6 us；无效原因={%7}")
+                            .arg(forceInteractionTensionShadowSubmitted)
+                            .arg(forceInteractionTensionShadowCompleted)
+                            .arg(forceInteractionTensionShadowBusySkipped)
+                            .arg(forceInteractionTensionShadowInvalid)
+                            .arg(forceInteractionTensionShadowExpired)
+                            .arg(forceInteractionTensionShadowMaximumCalculationUs)
+                            .arg(invalidReasonSummary)
+                            .toStdString(),
+                        forceInteractionTensionShadowInvalid == 0 &&
+                        forceInteractionTensionShadowExpired == 0 ?
+                            "normal" : "warning");
+        }
     }
     publishForceInteractionRuntimeStatus();
 }

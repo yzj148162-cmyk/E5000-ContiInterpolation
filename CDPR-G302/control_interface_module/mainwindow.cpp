@@ -19190,14 +19190,26 @@ bool MainWindow::requireForceInteractionDegreeUnit(const QString& actionName)
 void MainWindow::refreshForceInteractionUnitAdmissionUi()
 {
     if(!ui || !ui->forceInteractionActuatorProfileGroupBox ||
+            !ui->forceInteractionCommonRuntimeParameterGroupBox ||
             !ui->forceInteractionSubTabWidget ||
             !ui->forceInteractionUnitAdmissionLabel){
         return;
     }
     const bool admitted = forceInteractionDegreeUnitAdmitted();
-    // 只控制页面的两个现有根区域，Qt会递归禁用其全部子控件；提示标签
-    // 保持在禁用区域之外，避免为每个按钮维护重复的启用/禁用代码。
+    const ForceInteractionRuntimeStatus runtimeStatus = controlWorker ?
+                controlWorker->forceInteractionRuntimeStatus() :
+                ForceInteractionRuntimeStatus{};
+    const bool runtimeLocked =
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::Prepared ||
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::Running ||
+            runtimeStatus.state == ForceInteractionRuntimeStatus::State::Braking;
+    // 只控制页面的现有根区域，Qt会递归禁用其全部子控件；提示标签
+    // 保持在禁用区域之外。公共运行参数还必须保留会话冻结条件，避免单位
+    // 准入刷新把准备/运行期间的参数重新启用。
     ui->forceInteractionActuatorProfileGroupBox->setEnabled(admitted);
+    ui->forceInteractionCommonRuntimeParameterGroupBox->setEnabled(
+                admitted && !runtimeLocked);
     ui->forceInteractionSubTabWidget->setEnabled(admitted);
     ui->forceInteractionUnitAdmissionLabel->setVisible(!admitted);
     if(!admitted){
@@ -19344,6 +19356,10 @@ void MainWindow::setupForceInteractionValidationTab()
     connect(ui->forceInteractionStageCLowPassCheckBox,
             &QCheckBox::toggled, this, [this](bool enabled){
         ui->forceInteractionStageCLowPassCutoffSpinBox->setEnabled(enabled);
+    });
+    connect(ui->forceInteractionRuntimeFeedForwardCheckBox,
+            &QCheckBox::toggled, this, [this](bool){
+        refreshForceInteractionRuntimeUi();
     });
     ui->forceInteractionStageCLowPassCutoffSpinBox->setEnabled(
                 ui->forceInteractionStageCLowPassCheckBox->isChecked());
@@ -20457,6 +20473,9 @@ void MainWindow::refreshForceInteractionValidationInputState()
     const bool liteTemplate = isLiteTemplateActive();
 
     ui->forceInteractionValidationInputGroupBox->setEnabled(!running && !runtimeLocked);
+    // 2026-10-06: “仅平动调试”已上移到六维力交互执行器公共区域，
+    // 脱离阶段A输入组后仍须沿用原有会话冻结规则，避免UI状态与已冻结配置不一致。
+    ui->forceInteractionTranslationOnlyCheckBox->setEnabled(!running && !runtimeLocked);
     ui->forceInteractionFormulaGroupBox->setEnabled(!running && !runtimeLocked && formula);
     ui->forceInteractionFrequencyTitleLabel->setEnabled(!running && !runtimeLocked && sine);
     ui->forceInteractionFrequencySpinBox->setEnabled(!running && !runtimeLocked && sine);
@@ -21080,6 +21099,7 @@ ForceInteractionReplayExportContext MainWindow::buildForceInteractionReplayConte
     context.tracePeriodUs =
             hardwareInterface.readRuntimeTraceLatestSnapshot().traceSamplePeriodUs;
     context.translationOnly = config.translationOnly;
+    context.rigidBody = config.rigidBody;
     context.kinematics = config.kinematics;
     context.physicalWorkspace = config.physicalWorkspace;
     context.workspaceSafety = config.workspaceSafety;
@@ -21421,6 +21441,30 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
     }
     forceInteractionRuntimeReplayContext =
             buildForceInteractionReplayContext(config);
+    forceInteractionRuntimeTensionShadowConfigValid =
+            stageD && mechanicalMode ==
+            ForceInteractionMechanicalMode::D1PhysicalCabled;
+    if(forceInteractionRuntimeTensionShadowConfigValid){
+        forceInteractionRuntimeTensionShadowConfig =
+                makeDefaultG302TranslationShadowConfig(
+                    config.rigidBody, config.kinematics,
+                    config.globalMinimumCableTensionN,
+                    config.globalMaximumCableTensionN[0]);
+        QString shadowError;
+        forceInteractionRuntimeTensionShadowConfigValid =
+                forceInteractionRuntimeTensionShadowConfig.validate(&shadowError);
+        if(!forceInteractionRuntimeTensionShadowConfigValid){
+            displayInfo(QStringLiteral(
+                            "M1/M2在线张力影子配置冻结失败（不影响现有速度D1）：%1")
+                        .arg(shadowError).toStdString(), "warning");
+        }
+    }
+    forceInteractionRuntimeReplayContext.tensionShadowEnabled =
+            forceInteractionRuntimeTensionShadowConfigValid;
+    if(forceInteractionRuntimeTensionShadowConfigValid){
+        forceInteractionRuntimeReplayContext.tensionShadow =
+                forceInteractionRuntimeTensionShadowConfig;
+    }
     forceInteractionRuntimeReplayContextValid =
             forceInteractionRuntimeForwardKinematicsConfigValid &&
             forceInteractionRuntimePhysicalWorkspaceValid &&
@@ -21681,6 +21725,10 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
                 forceInteractionRuntimeInitialPoseMmRad;
         forceInteractionLastRunPhysicalWorkspace =
                 forceInteractionRuntimePhysicalWorkspace;
+        forceInteractionLastRunTensionShadowConfig =
+                forceInteractionRuntimeTensionShadowConfig;
+        forceInteractionLastRunTensionShadowConfigValid =
+                forceInteractionRuntimeTensionShadowConfigValid;
         forceInteractionLastRunKinematicContextValid =
                 forceInteractionRuntimeForwardKinematicsConfigValid &&
                 forceInteractionRuntimePhysicalWorkspaceValid;
@@ -21896,6 +21944,9 @@ void MainWindow::startForceInteractionKinematicLogAnalysis()
     request.referenceCableLengthMm = forceInteractionLastRunReferenceCableLengthMm;
     request.initialPoseMmRad = forceInteractionLastRunInitialPoseMmRad;
     request.physicalWorkspace = forceInteractionLastRunPhysicalWorkspace;
+    request.tensionShadow = forceInteractionLastRunTensionShadowConfig;
+    request.tensionShadowEnabled =
+            forceInteractionLastRunTensionShadowConfigValid;
     ui->forceInteractionKinematicAnalyzeButton->setEnabled(false);
     ui->forceInteractionKinematicAnalyzeStatusLabel->setText(
                 QStringLiteral("运行后验算：后台计算中……"));
@@ -22161,12 +22212,30 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                     QStringLiteral("阶段D准入条件已满足；请核对D0/D1机械状态后准备。") :
                     QStringLiteral("阶段D尚缺：%1。")
                         .arg(stageDMissing.join(QStringLiteral("、"))));
+    // 2026-10-06: 公共B/C/D参数已移出阶段B；真实F/T调理已移到F/T页。
+    // 所有准备态、等待Trace、运行和制动态均冻结，结束/取消准备后统一恢复。
+    const bool commonParametersEditable = !locked && forceInteractionDegreeUnitAdmitted();
+    ui->forceInteractionCommonRuntimeParameterGroupBox->setEnabled(
+                commonParametersEditable);
+    ui->forceInteractionRuntimeFeedForwardGainSpinBox->setEnabled(
+                commonParametersEditable &&
+                ui->forceInteractionRuntimeFeedForwardCheckBox->isChecked());
+    ui->forceInteractionStageBParameterGroupBox->setEnabled(!locked);
     ui->forceInteractionStageCParameterGroupBox->setEnabled(!locked);
-    ui->forceInteractionRuntimeControlGroupBox->setEnabled(!locked);
-    ui->forceInteractionRuntimeLimitGroupBox->setEnabled(!locked);
+    ui->forceInteractionRealFtConditioningGroupBox->setEnabled(!locked);
     // 当前只验收速度前馈链；PID控件暂留但不可启用。
     ui->forceInteractionRuntimePidCheckBox->setChecked(false);
     ui->forceInteractionRuntimePidCheckBox->setEnabled(false);
+    ui->forceInteractionRuntimeKpTitleLabel->setEnabled(false);
+    ui->forceInteractionRuntimeKpSpinBox->setEnabled(false);
+    ui->forceInteractionRuntimeKiTitleLabel->setEnabled(false);
+    ui->forceInteractionRuntimeKiSpinBox->setEnabled(false);
+    ui->forceInteractionRuntimeKdTitleLabel->setEnabled(false);
+    ui->forceInteractionRuntimeKdSpinBox->setEnabled(false);
+    ui->forceInteractionRuntimeIntegralLimitTitleLabel->setEnabled(false);
+    ui->forceInteractionRuntimeIntegralLimitSpinBox->setEnabled(false);
+    ui->forceInteractionRuntimeCorrectionLimitTitleLabel->setEnabled(false);
+    ui->forceInteractionRuntimeCorrectionLimitSpinBox->setEnabled(false);
     refreshForceInteractionActuatorProfileUi();
     const QString interactionClockText = realFt ?
                 (status.interactionTriggered ?

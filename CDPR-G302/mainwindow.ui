@@ -137,7 +137,7 @@
        </size>
       </property>
       <property name="currentIndex">
-       <number>1</number>
+       <number>9</number>
       </property>
       <widget class="QWidget" name="mainTab">
        <attribute name="title">
@@ -2063,7 +2063,7 @@
                       <rect>
                        <x>0</x>
                        <y>0</y>
-                       <width>90</width>
+                       <width>98</width>
                        <height>218</height>
                       </rect>
                      </property>
@@ -16785,6 +16785,19 @@ border-radius: 6px;</string>
              </property>
             </widget>
            </item>
+           <item row="3" column="0" colspan="2">
+            <widget class="QCheckBox" name="forceInteractionTranslationOnlyCheckBox">
+             <property name="toolTip">
+              <string>调试专用：按当前r_ES=0、R_ES=I完成安装变换后，再把质心处Mx/My/Mz清零，使Newmark只保留平动响应。正式六自由度验证时应取消勾选。</string>
+             </property>
+             <property name="text">
+              <string>仅平动调试（安装变换后清零质心处三维力矩）</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
            <item row="3" column="4">
             <widget class="QPushButton" name="forceInteractionReplayOpenDirectoryButton">
              <property name="enabled">
@@ -16802,6 +16815,252 @@ border-radius: 6px;</string>
             <widget class="QLabel" name="forceInteractionReplayExportStatusLabel">
              <property name="text">
               <string>MATLAB回放：尚无导出记录</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+          </layout>
+        </widget>
+       </item>
+        <item>
+         <widget class="QGroupBox" name="forceInteractionCommonRuntimeParameterGroupBox">
+          <property name="title">
+           <string>公共运行与安全参数（阶段B/C/D共用，准备后冻结）</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayoutForceInteractionCommonRuntimeParameter">
+           <item row="0" column="0">
+            <widget class="QCheckBox" name="forceInteractionRuntimeFeedForwardCheckBox">
+             <property name="text">
+              <string>速度前馈</string>
+             </property>
+             <property name="checked">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLabel" name="forceInteractionRuntimeFeedForwardGainTitleLabel">
+             <property name="text">
+              <string>前馈增益</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QDoubleSpinBox" name="forceInteractionRuntimeFeedForwardGainSpinBox">
+             <property name="decimals">
+              <number>6</number>
+             </property>
+             <property name="minimum">
+              <double>0.000000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>10.000000000000000</double>
+             </property>
+             <property name="value">
+              <double>1.000000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <widget class="QLabel" name="forceInteractionRuntimeVelocityLimitTitleLabel">
+             <property name="text">
+              <string>轴速上限</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="4">
+            <widget class="QDoubleSpinBox" name="forceInteractionRuntimeVelocityLimitSpinBox">
+             <property name="suffix">
+              <string> unit/s</string>
+             </property>
+             <property name="decimals">
+              <number>3</number>
+             </property>
+             <property name="minimum">
+              <double>0.001000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>100000.000000000000000</double>
+             </property>
+             <property name="value">
+              <double>540.000000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="5">
+            <widget class="QLabel" name="forceInteractionRuntimeChangeTimeTitleLabel">
+             <property name="text">
+              <string>在线变速时间</string>
+             </property>
+            </widget>
+           </item>
+           <item row="0" column="6">
+            <widget class="QDoubleSpinBox" name="forceInteractionRuntimeChangeTimeSpinBox">
+             <property name="suffix">
+              <string> s</string>
+             </property>
+             <property name="decimals">
+              <number>6</number>
+             </property>
+             <property name="minimum">
+              <double>0.000000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>10.000000000000000</double>
+             </property>
+             <property name="singleStep">
+              <double>0.001000000000000</double>
+             </property>
+             <property name="value">
+              <double>0.001000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QLabel" name="forceInteractionRuntimeTraceTimeoutTitleLabel">
+             <property name="text">
+              <string>Trace超时</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1">
+            <widget class="QSpinBox" name="forceInteractionRuntimeTraceTimeoutSpinBox">
+             <property name="suffix">
+              <string> ms</string>
+             </property>
+             <property name="minimum">
+              <number>10</number>
+             </property>
+             <property name="maximum">
+              <number>5000</number>
+             </property>
+             <property name="value">
+              <number>100</number>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="2">
+            <widget class="QLabel" name="forceInteractionRuntimeFollowingErrorTitleLabel">
+             <property name="text">
+              <string>最大轴位置误差</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="3">
+            <widget class="QDoubleSpinBox" name="forceInteractionRuntimeFollowingErrorSpinBox">
+             <property name="suffix">
+              <string> unit</string>
+             </property>
+             <property name="decimals">
+              <number>6</number>
+             </property>
+             <property name="minimum">
+              <double>0.000001000000000</double>
+             </property>
+             <property name="maximum">
+              <double>100000.000000000000000</double>
+             </property>
+             <property name="value">
+              <double>5.000000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="4">
+            <widget class="QLabel" name="forceInteractionRuntimeAccelerationLimitTitleLabel">
+             <property name="toolTip">
+              <string>末端平动加速度上限a，同时作为安全停车的末端减速度。正常力响应超过该值时，本次试验判为失败并进入协同减速。</string>
+             </property>
+             <property name="text">
+              <string>末端加速度/制动a</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="5">
+            <widget class="QDoubleSpinBox" name="forceInteractionRuntimeAccelerationLimitSpinBox">
+             <property name="toolTip">
+              <string>既是正常响应加速度上限，也是停车距离v²/(2a)和受控制动使用的减速度。</string>
+             </property>
+             <property name="suffix">
+              <string> mm/s²</string>
+             </property>
+             <property name="decimals">
+              <number>3</number>
+             </property>
+             <property name="minimum">
+              <double>1.000000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>100000.000000000000000</double>
+             </property>
+             <property name="value">
+              <double>500.000000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="0">
+            <widget class="QLabel" name="forceInteractionRuntimeSafetyMarginTitleLabel">
+             <property name="toolTip">
+              <string>在理论停车距离v²/(2a)之外增加的保守余量，不包含单独的延迟补偿项。</string>
+             </property>
+             <property name="text">
+              <string>附加安全余量</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="1">
+            <widget class="QDoubleSpinBox" name="forceInteractionRuntimeSafetyMarginSpinBox">
+             <property name="suffix">
+              <string> mm</string>
+             </property>
+             <property name="decimals">
+              <number>3</number>
+             </property>
+             <property name="minimum">
+              <double>0.001000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>1000.000000000000000</double>
+             </property>
+             <property name="value">
+              <double>50.000000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="2">
+            <widget class="QLabel" name="forceInteractionRuntimeEmergencyMarginTitleLabel">
+             <property name="toolTip">
+              <string>距离物理硬边界的固定急停线；连接点进入该距离后立即急停。</string>
+             </property>
+             <property name="text">
+              <string>固定急停线</string>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="3">
+            <widget class="QDoubleSpinBox" name="forceInteractionRuntimeEmergencyMarginSpinBox">
+             <property name="suffix">
+              <string> mm</string>
+             </property>
+             <property name="decimals">
+              <number>3</number>
+             </property>
+             <property name="minimum">
+              <double>0.000000000000000</double>
+             </property>
+             <property name="maximum">
+              <double>999.000000000000000</double>
+             </property>
+             <property name="value">
+              <double>10.000000000000000</double>
+             </property>
+            </widget>
+           </item>
+           <item row="2" column="4" colspan="3">
+            <widget class="QLabel" name="forceInteractionCommonRuntimeParameterHintLabel">
+             <property name="text">
+              <string>以上参数在阶段B/C/D准备时冻结；准备或运行期间禁止修改。</string>
              </property>
              <property name="wordWrap">
               <bool>true</bool>
@@ -16830,7 +17089,7 @@ border-radius: 6px;</string>
         <item>
          <widget class="QTabWidget" name="forceInteractionSubTabWidget">
           <property name="currentIndex">
-           <number>5</number>
+           <number>2</number>
           </property>
           <widget class="QWidget" name="forceInteractionTraceDelayCalibrationTab">
            <attribute name="title">
@@ -17538,6 +17797,209 @@ border-radius: 6px;</string>
              </widget>
             </item>
             <item>
+             <widget class="QGroupBox" name="forceInteractionRealFtConditioningGroupBox">
+              <property name="title">
+               <string>真实F/T调理与响应门限（阶段C/D共用，准备后冻结）</string>
+              </property>
+              <layout class="QGridLayout" name="gridLayoutForceInteractionRealFtConditioning">
+               <item row="0" column="0">
+                <widget class="QLabel" name="forceInteractionStageCFtTimeoutTitleLabel">
+                 <property name="text">
+                  <string>F/T样本超时</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QSpinBox" name="forceInteractionStageCFtTimeoutSpinBox">
+                 <property name="toolTip">
+                  <string>同一SampleCounter允许短时ZOH保持；超过该时间仍无新样本则判定本次试验失效并协同停车。</string>
+                 </property>
+                 <property name="suffix">
+                  <string> ms</string>
+                 </property>
+                 <property name="minimum">
+                  <number>10</number>
+                 </property>
+                 <property name="maximum">
+                  <number>1000</number>
+                 </property>
+                 <property name="value">
+                  <number>50</number>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="0" colspan="2">
+                <widget class="QCheckBox" name="forceInteractionStageCLowPassCheckBox">
+                 <property name="toolTip">
+                  <string>仅对去零并转换到动平台质心后的真实F/T力旋量做一阶低通；原始Trace、预热判稳和软件取零数据保持不变。</string>
+                 </property>
+                 <property name="text">
+                  <string>启用真实F/T一阶低通</string>
+                 </property>
+                 <property name="checked">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="2">
+                <widget class="QLabel" name="forceInteractionStageCLowPassCutoffTitleLabel">
+                 <property name="text">
+                  <string>截止频率</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="1" column="3">
+                <widget class="QDoubleSpinBox" name="forceInteractionStageCLowPassCutoffSpinBox">
+                 <property name="toolTip">
+                  <string>一阶低通截止频率；必须不超过控制采样频率的45%。频率越低越平滑，但引入的响应滞后越大。</string>
+                 </property>
+                 <property name="suffix">
+                  <string> Hz</string>
+                 </property>
+                 <property name="decimals">
+                  <number>2</number>
+                 </property>
+                 <property name="minimum">
+                  <double>0.100000000000000</double>
+                 </property>
+                 <property name="maximum">
+                  <double>100.000000000000000</double>
+                 </property>
+                 <property name="value">
+                  <double>10.000000000000000</double>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="2" colspan="3">
+                <widget class="QLabel" name="forceInteractionStageCConditioningHintLabel">
+                 <property name="text">
+                  <string>阈值按三轴合力/合力矩模长判定；启动值大于释放值形成迟滞，避免零点附近反复启停。</string>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="0">
+                <widget class="QLabel" name="forceInteractionStageCForceStartTitleLabel">
+                 <property name="text">
+                  <string>合力启动阈值</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QDoubleSpinBox" name="forceInteractionStageCForceStartSpinBox">
+                 <property name="toolTip">
+                  <string>滤波后三轴合力模长达到该值时开始把三维力送入Newmark。设为0表示不设力门槛。</string>
+                 </property>
+                 <property name="suffix">
+                  <string> N</string>
+                 </property>
+                 <property name="decimals">
+                  <number>3</number>
+                 </property>
+                 <property name="minimum">
+                  <double>0.000000000000000</double>
+                 </property>
+                 <property name="maximum">
+                  <double>1000.000000000000000</double>
+                 </property>
+                 <property name="value">
+                  <double>0.300000000000000</double>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="2">
+                <widget class="QLabel" name="forceInteractionStageCForceReleaseTitleLabel">
+                 <property name="text">
+                  <string>合力释放阈值</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="2" column="3">
+                <widget class="QDoubleSpinBox" name="forceInteractionStageCForceReleaseSpinBox">
+                 <property name="toolTip">
+                  <string>力响应已启动后，滤波合力下降到该值才重新归零；不得大于启动阈值。</string>
+                 </property>
+                 <property name="suffix">
+                  <string> N</string>
+                 </property>
+                 <property name="decimals">
+                  <number>3</number>
+                 </property>
+                 <property name="minimum">
+                  <double>0.000000000000000</double>
+                 </property>
+                 <property name="maximum">
+                  <double>1000.000000000000000</double>
+                 </property>
+                 <property name="value">
+                  <double>0.150000000000000</double>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="0">
+                <widget class="QLabel" name="forceInteractionStageCTorqueStartTitleLabel">
+                 <property name="text">
+                  <string>合力矩启动阈值</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QDoubleSpinBox" name="forceInteractionStageCTorqueStartSpinBox">
+                 <property name="toolTip">
+                  <string>滤波后三轴合力矩模长达到该值时开始把三维力矩送入Newmark；仅平动模式下仍强制忽略力矩。</string>
+                 </property>
+                 <property name="suffix">
+                  <string> N·m</string>
+                 </property>
+                 <property name="decimals">
+                  <number>4</number>
+                 </property>
+                 <property name="minimum">
+                  <double>0.000000000000000</double>
+                 </property>
+                 <property name="maximum">
+                  <double>100.000000000000000</double>
+                 </property>
+                 <property name="value">
+                  <double>0.010000000000000</double>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="2">
+                <widget class="QLabel" name="forceInteractionStageCTorqueReleaseTitleLabel">
+                 <property name="text">
+                  <string>合力矩释放阈值</string>
+                 </property>
+                </widget>
+               </item>
+               <item row="3" column="3">
+                <widget class="QDoubleSpinBox" name="forceInteractionStageCTorqueReleaseSpinBox">
+                 <property name="toolTip">
+                  <string>力矩响应已启动后，滤波合力矩下降到该值才重新归零；不得大于启动阈值。</string>
+                 </property>
+                 <property name="suffix">
+                  <string> N·m</string>
+                 </property>
+                 <property name="decimals">
+                  <number>4</number>
+                 </property>
+                 <property name="minimum">
+                  <double>0.000000000000000</double>
+                 </property>
+                 <property name="maximum">
+                  <double>100.000000000000000</double>
+                 </property>
+                 <property name="value">
+                  <double>0.005000000000000</double>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item>
              <widget class="QLabel" name="forceInteractionFtStageCAdmissionLabel">
               <property name="text">
                <string>真实F/T准入：尚未完成PDO读回、连续采样、预热判稳和软件零点确认；阶段C/D真实力驱动保持关闭。</string>
@@ -17615,45 +18077,13 @@ border-radius: 6px;</string>
                 </widget>
                </item>
                <item row="0" column="2">
-                <widget class="QLabel" name="forceInteractionPeriodTitleLabel">
-                 <property name="visible">
-                  <bool>false</bool>
-                 </property>
-                 <property name="text">
-                  <string>计算周期</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="3">
-                <widget class="QDoubleSpinBox" name="forceInteractionPeriodMsSpinBox">
-                 <property name="visible">
-                  <bool>false</bool>
-                 </property>
-                 <property name="suffix">
-                  <string> ms</string>
-                 </property>
-                 <property name="decimals">
-                  <number>3</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.100000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>1000.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>5.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="4">
                 <widget class="QLabel" name="forceInteractionDurationTitleLabel">
                  <property name="text">
                   <string>验证时长</string>
                  </property>
                 </widget>
                </item>
-               <item row="0" column="5">
+               <item row="0" column="3">
                 <widget class="QDoubleSpinBox" name="forceInteractionDurationSpinBox">
                  <property name="suffix">
                   <string> s</string>
@@ -17906,19 +18336,6 @@ border-radius: 6px;</string>
                  </property>
                 </widget>
                </item>
-               <item row="5" column="0" colspan="6">
-                <widget class="QCheckBox" name="forceInteractionTranslationOnlyCheckBox">
-                 <property name="toolTip">
-                  <string>调试专用：按当前r_ES=0、R_ES=I完成安装变换后，再把质心处Mx/My/Mz清零，使Newmark只保留平动响应。正式六自由度验证时应取消勾选。</string>
-                 </property>
-                 <property name="text">
-                  <string>仅平动调试（安装变换后清零质心处三维力矩）</string>
-                 </property>
-                 <property name="checked">
-                  <bool>true</bool>
-                 </property>
-                </widget>
-               </item>
               </layout>
              </widget>
             </item>
@@ -18088,7 +18505,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QLabel" name="forceInteractionRuntimeHintLabel">
               <property name="text">
-               <string>阶段B复用“软件验证（阶段A）”中的模拟六维力及仅平动设置：模拟力 → 安装变换 → 纯惯性Newmark-β → 八绳逆运动学 → 八轴速度前馈/位置PID → 同帧Trace。仅用于8台空载电机虚拟CDPR验证，不代表实物平台已安全可用。</string>
+               <string>阶段B复用阶段A中的模拟六维力，并采用页顶“仅平动调试”和公共运行与安全参数：模拟力 → 安装变换 → 纯惯性Newmark-β → 八绳逆运动学 → 八轴速度前馈 → 同帧Trace。仅用于8台空载电机虚拟CDPR验证，不代表实物平台已安全可用。</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>
@@ -18096,64 +18513,19 @@ border-radius: 6px;</string>
              </widget>
             </item>
             <item>
-             <widget class="QGroupBox" name="forceInteractionRuntimeControlGroupBox">
+             <widget class="QGroupBox" name="forceInteractionStageBParameterGroupBox">
               <property name="title">
-               <string>控制</string>
+               <string>阶段B参数与暂留位置PID</string>
               </property>
-              <layout class="QGridLayout" name="gridLayoutForceInteractionRuntimeControl">
+              <layout class="QGridLayout" name="gridLayoutForceInteractionStageBParameter">
                <item row="0" column="0">
-                <widget class="QLabel" name="forceInteractionRuntimePeriodTitleLabel">
-                 <property name="visible">
-                  <bool>false</bool>
-                 </property>
-                 <property name="text">
-                  <string>控制周期</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="1">
-                <widget class="QComboBox" name="forceInteractionRuntimePeriodComboBox">
-                 <property name="visible">
-                  <bool>false</bool>
-                 </property>
-                 <property name="currentIndex">
-                  <number>2</number>
-                 </property>
-                 <item>
-                  <property name="text">
-                   <string>1 ms</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>2 ms</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>5 ms</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>10 ms</string>
-                  </property>
-                 </item>
-                 <item>
-                  <property name="text">
-                   <string>20 ms</string>
-                  </property>
-                 </item>
-                </widget>
-               </item>
-               <item row="0" column="2">
                 <widget class="QLabel" name="forceInteractionRuntimeDurationTitleLabel">
                  <property name="text">
                   <string>最长调试时间</string>
                  </property>
                 </widget>
                </item>
-               <item row="0" column="3">
+               <item row="0" column="1">
                 <widget class="QDoubleSpinBox" name="forceInteractionRuntimeDurationSpinBox">
                  <property name="suffix">
                   <string> s</string>
@@ -18169,32 +18541,6 @@ border-radius: 6px;</string>
                  </property>
                  <property name="value">
                   <double>10.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="4">
-                <widget class="QCheckBox" name="forceInteractionRuntimeFeedForwardCheckBox">
-                 <property name="text">
-                  <string>速度前馈</string>
-                 </property>
-                 <property name="checked">
-                  <bool>true</bool>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="5">
-                <widget class="QDoubleSpinBox" name="forceInteractionRuntimeFeedForwardGainSpinBox">
-                 <property name="decimals">
-                  <number>6</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.000000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>10.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>1.000000000000000</double>
                  </property>
                 </widget>
                </item>
@@ -18309,209 +18655,6 @@ border-radius: 6px;</string>
              </widget>
             </item>
             <item>
-             <widget class="QGroupBox" name="forceInteractionRuntimeLimitGroupBox">
-              <property name="title">
-               <string>限制</string>
-              </property>
-              <layout class="QGridLayout" name="gridLayoutForceInteractionRuntimeLimit">
-               <item row="0" column="0">
-                <widget class="QLabel" name="forceInteractionRuntimeVelocityLimitTitleLabel">
-                 <property name="text">
-                  <string>轴速上限</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="1">
-                <widget class="QDoubleSpinBox" name="forceInteractionRuntimeVelocityLimitSpinBox">
-                 <property name="suffix">
-                  <string> unit/s</string>
-                 </property>
-                 <property name="decimals">
-                  <number>3</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.001000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>100000.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>540.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="0">
-                <widget class="QLabel" name="forceInteractionRuntimeChangeTimeTitleLabel">
-                 <property name="text">
-                  <string>在线变速时间</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="1">
-                <widget class="QDoubleSpinBox" name="forceInteractionRuntimeChangeTimeSpinBox">
-                 <property name="suffix">
-                  <string> s</string>
-                 </property>
-                 <property name="decimals">
-                  <number>6</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.000000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>10.000000000000000</double>
-                 </property>
-                 <property name="singleStep">
-                  <double>0.001000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>0.001000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="2">
-                <widget class="QLabel" name="forceInteractionRuntimeTraceTimeoutTitleLabel">
-                 <property name="text">
-                  <string>Trace超时</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="3">
-                <widget class="QSpinBox" name="forceInteractionRuntimeTraceTimeoutSpinBox">
-                 <property name="suffix">
-                  <string> ms</string>
-                 </property>
-                 <property name="minimum">
-                  <number>10</number>
-                 </property>
-                 <property name="maximum">
-                  <number>5000</number>
-                 </property>
-                 <property name="value">
-                  <number>100</number>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="2">
-                <widget class="QLabel" name="forceInteractionRuntimeFollowingErrorTitleLabel">
-                 <property name="text">
-                  <string>最大轴位置误差</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="3">
-                <widget class="QDoubleSpinBox" name="forceInteractionRuntimeFollowingErrorSpinBox">
-                 <property name="suffix">
-                  <string> unit</string>
-                 </property>
-                 <property name="decimals">
-                  <number>6</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.000001000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>100000.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>5.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="0">
-                <widget class="QLabel" name="forceInteractionRuntimeAccelerationLimitTitleLabel">
-                 <property name="toolTip">
-                  <string>末端平动加速度上限a，同时作为安全停车的末端减速度。正常力响应超过该值时，本次试验判为失败并进入协同减速。</string>
-                 </property>
-                 <property name="text">
-                  <string>末端加速度a</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="1">
-                <widget class="QDoubleSpinBox" name="forceInteractionRuntimeAccelerationLimitSpinBox">
-                 <property name="toolTip">
-                  <string>既是正常响应加速度上限，也是停车距离v²/(2a)和受控制动使用的减速度。</string>
-                 </property>
-                 <property name="suffix">
-                  <string> mm/s²</string>
-                 </property>
-                 <property name="decimals">
-                  <number>3</number>
-                 </property>
-                 <property name="minimum">
-                  <double>1.000000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>100000.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>500.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="2">
-                <widget class="QLabel" name="forceInteractionRuntimeSafetyMarginTitleLabel">
-                 <property name="toolTip">
-                  <string>在理论停车距离v²/(2a)之外增加的保守余量，不包含单独的延迟补偿项。</string>
-                 </property>
-                 <property name="text">
-                  <string>附加安全余量</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="3">
-                <widget class="QDoubleSpinBox" name="forceInteractionRuntimeSafetyMarginSpinBox">
-                 <property name="suffix">
-                  <string> mm</string>
-                 </property>
-                 <property name="decimals">
-                  <number>3</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.001000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>1000.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>50.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="3" column="0">
-                <widget class="QLabel" name="forceInteractionRuntimeEmergencyMarginTitleLabel">
-                 <property name="toolTip">
-                  <string>距离物理硬边界的固定急停线；连接点进入该距离后立即急停。</string>
-                 </property>
-                 <property name="text">
-                  <string>固定急停线</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="3" column="1">
-                <widget class="QDoubleSpinBox" name="forceInteractionRuntimeEmergencyMarginSpinBox">
-                 <property name="suffix">
-                  <string> mm</string>
-                 </property>
-                 <property name="decimals">
-                  <number>3</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.000000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>999.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>10.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-              </layout>
-             </widget>
-            </item>
-            <item>
              <widget class="QGroupBox" name="forceInteractionRuntimeOperationGroupBox">
               <property name="title">
                <string>操作</string>
@@ -18618,7 +18761,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QLabel" name="forceInteractionStageCHintLabel">
               <property name="text">
-               <string>真实F/T工程量 → 冻结软件零点 → 安装变换 → 纯惯性Newmark-β → 八绳逆运动学 → 八轴速度前馈 → 同帧Trace。复用阶段B的控制、速度、跟随误差、边界和停车参数；PID仍固定关闭。本页只用于未连接绞盘和绳索的八电机空转。</string>
+               <string>真实F/T工程量 → 冻结软件零点 → F/T页调理与门限 → 安装变换 → 纯惯性Newmark-β → 八绳逆运动学 → 八轴速度前馈 → 同帧Trace。控制、速度、跟随误差、边界和停车均使用页顶公共参数；PID固定关闭。本页只用于未连接绞盘和绳索的八电机空转。</string>
               </property>
               <property name="wordWrap">
                <bool>true</bool>
@@ -18657,7 +18800,7 @@ border-radius: 6px;</string>
             <item>
              <widget class="QGroupBox" name="forceInteractionStageCParameterGroupBox">
               <property name="title">
-               <string>阶段C附加参数</string>
+               <string>阶段C参数</string>
               </property>
               <layout class="QGridLayout" name="gridLayoutForceInteractionStageCParameter">
                <item row="0" column="0">
@@ -18690,206 +18833,12 @@ border-radius: 6px;</string>
                 </widget>
                </item>
                <item row="0" column="2">
-                <widget class="QLabel" name="forceInteractionStageCFtTimeoutTitleLabel">
-                 <property name="text">
-                  <string>F/T样本超时</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="3">
-                <widget class="QSpinBox" name="forceInteractionStageCFtTimeoutSpinBox">
-                 <property name="toolTip">
-                  <string>同一SampleCounter允许短时ZOH保持；超过该时间仍无新样本则判定本次试验失效并协同停车。</string>
-                 </property>
-                 <property name="suffix">
-                  <string> ms</string>
-                 </property>
-                 <property name="minimum">
-                  <number>10</number>
-                 </property>
-                 <property name="maximum">
-                  <number>1000</number>
-                 </property>
-                 <property name="value">
-                  <number>50</number>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="4">
                 <widget class="QLabel" name="forceInteractionStageCSharedParameterLabel">
                  <property name="text">
-                  <string>公共参数：控制周期见页顶；前馈、轴速/误差、在线变速、末端加速度与边界复用阶段B当前值。</string>
+                  <string>公共控制与安全参数见页顶；真实F/T调理与响应门限见F/T传感器页。</string>
                  </property>
                  <property name="wordWrap">
                   <bool>true</bool>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="0" colspan="2">
-                <widget class="QCheckBox" name="forceInteractionStageCLowPassCheckBox">
-                 <property name="toolTip">
-                  <string>仅对去零并转换到动平台质心后的真实F/T力旋量做一阶低通；原始Trace、预热判稳和软件取零数据保持不变。</string>
-                 </property>
-                 <property name="text">
-                  <string>启用真实F/T一阶低通</string>
-                 </property>
-                 <property name="checked">
-                  <bool>true</bool>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="2">
-                <widget class="QLabel" name="forceInteractionStageCLowPassCutoffTitleLabel">
-                 <property name="text">
-                  <string>截止频率</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="3">
-                <widget class="QDoubleSpinBox" name="forceInteractionStageCLowPassCutoffSpinBox">
-                 <property name="toolTip">
-                  <string>一阶低通截止频率；必须不超过控制采样频率的45%。频率越低越平滑，但引入的响应滞后越大。</string>
-                 </property>
-                 <property name="suffix">
-                  <string> Hz</string>
-                 </property>
-                 <property name="decimals">
-                  <number>2</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.100000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>100.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>10.000000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="1" column="4">
-                <widget class="QLabel" name="forceInteractionStageCConditioningHintLabel">
-                 <property name="text">
-                  <string>阈值按三轴合力/合力矩模长判定；启动值大于释放值形成迟滞，避免零点附近反复启停。</string>
-                 </property>
-                 <property name="wordWrap">
-                  <bool>true</bool>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="0">
-                <widget class="QLabel" name="forceInteractionStageCForceStartTitleLabel">
-                 <property name="text">
-                  <string>合力启动阈值</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="1">
-                <widget class="QDoubleSpinBox" name="forceInteractionStageCForceStartSpinBox">
-                 <property name="toolTip">
-                  <string>滤波后三轴合力模长达到该值时开始把三维力送入Newmark。设为0表示不设力门槛。</string>
-                 </property>
-                 <property name="suffix">
-                  <string> N</string>
-                 </property>
-                 <property name="decimals">
-                  <number>3</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.000000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>1000.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>0.300000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="2">
-                <widget class="QLabel" name="forceInteractionStageCForceReleaseTitleLabel">
-                 <property name="text">
-                  <string>合力释放阈值</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="2" column="3">
-                <widget class="QDoubleSpinBox" name="forceInteractionStageCForceReleaseSpinBox">
-                 <property name="toolTip">
-                  <string>力响应已启动后，滤波合力下降到该值才重新归零；不得大于启动阈值。</string>
-                 </property>
-                 <property name="suffix">
-                  <string> N</string>
-                 </property>
-                 <property name="decimals">
-                  <number>3</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.000000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>1000.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>0.150000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="3" column="0">
-                <widget class="QLabel" name="forceInteractionStageCTorqueStartTitleLabel">
-                 <property name="text">
-                  <string>合力矩启动阈值</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="3" column="1">
-                <widget class="QDoubleSpinBox" name="forceInteractionStageCTorqueStartSpinBox">
-                 <property name="toolTip">
-                  <string>滤波后三轴合力矩模长达到该值时开始把三维力矩送入Newmark；仅平动模式下仍强制忽略力矩。</string>
-                 </property>
-                 <property name="suffix">
-                  <string> N·m</string>
-                 </property>
-                 <property name="decimals">
-                  <number>4</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.000000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>100.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>0.010000000000000</double>
-                 </property>
-                </widget>
-               </item>
-               <item row="3" column="2">
-                <widget class="QLabel" name="forceInteractionStageCTorqueReleaseTitleLabel">
-                 <property name="text">
-                  <string>合力矩释放阈值</string>
-                 </property>
-                </widget>
-               </item>
-               <item row="3" column="3">
-                <widget class="QDoubleSpinBox" name="forceInteractionStageCTorqueReleaseSpinBox">
-                 <property name="toolTip">
-                  <string>力矩响应已启动后，滤波合力矩下降到该值才重新归零；不得大于启动阈值。</string>
-                 </property>
-                 <property name="suffix">
-                  <string> N·m</string>
-                 </property>
-                 <property name="decimals">
-                  <number>4</number>
-                 </property>
-                 <property name="minimum">
-                  <double>0.000000000000000</double>
-                 </property>
-                 <property name="maximum">
-                  <double>100.000000000000000</double>
-                 </property>
-                 <property name="value">
-                  <double>0.005000000000000</double>
                  </property>
                 </widget>
                </item>
@@ -19080,7 +19029,7 @@ border-radius: 6px;</string>
                   <double>3600.000000000000000</double>
                  </property>
                  <property name="value">
-                 <double>10.000000000000000</double>
+                  <double>10.000000000000000</double>
                  </property>
                 </widget>
                </item>

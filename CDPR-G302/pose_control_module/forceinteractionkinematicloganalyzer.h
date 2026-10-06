@@ -3,8 +3,10 @@
 
 #include "compensatedcablekinematics.h"
 #include "physicalworkspaceboundary.h"
+#include "forceinteractiontensionshadow.h"
 
 #include <array>
+#include <limits>
 #include <vector>
 
 #include <QString>
@@ -21,6 +23,9 @@ struct ForceInteractionKinematicLogAnalysisRequest
     std::vector<double> referenceCableLengthMm;
     std::vector<double> initialPoseMmRad;
     PhysicalWorkspaceBoundaryConfig physicalWorkspace;
+    // 2026-10-05: M1 uses the same frozen run context and never reads live UI.
+    ForceInteractionTensionShadowConfig tensionShadow;
+    bool tensionShadowEnabled = false;
 };
 
 struct ForceInteractionKinematicLogAnalysisResult
@@ -37,6 +42,13 @@ struct ForceInteractionKinematicLogAnalysisResult
     double orientationMaximumDeg = 0.0;
     double cableResidualRmsMm = 0.0;
     double cableResidualMaximumMm = 0.0;
+    quint64 shadowEvaluatedRows = 0;
+    quint64 shadowValidRows = 0;
+    quint64 shadowInfeasibleRows = 0;
+    qint64 shadowMaximumCalculationUs = 0;
+    double shadowMinimumTensionMarginN =
+            std::numeric_limits<double>::infinity();
+    double shadowMaximumWrenchResidual = 0.0;
     qint64 traceHostAnchorOffsetUs = 0;
     QString csvPath;
     QString resultCsvPath;
