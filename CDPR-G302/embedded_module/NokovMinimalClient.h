@@ -74,6 +74,20 @@ public:
     // 控制是否在 SDK 回调中解析并缓存帧数据。
     void SetFrameDataEnabled(bool enabled);
 
+    // 2026-10-06: 为六维力在线张力外环提供一次性、一致的Nokov原始帧快照。
+    // sequence和receivedMonotonicUs用于拒绝重复帧并判断控制反馈的新鲜度。
+    struct CaptureFrame {
+        QVector<MarkerPoint> markers;
+        QVector<RigidBodyData> rigidBodies;
+        int sequence = -1;
+        qint64 deviceTimestampRaw = 0;
+        qint64 receivedAtMs = 0;
+        qint64 receivedMonotonicUs = 0;
+        double latencyRaw = 0.0;
+        quint64 connectionGeneration = 0;
+    };
+    CaptureFrame GetCaptureFrame() const;
+
     // 获取最新数据
     // 获取最近一帧命名标记点快照。
     const QVector<MarkerPoint> GetMarkers() const;
@@ -96,6 +110,7 @@ private:
     NokovSDKClient* _client;
     bool _initialized;
     bool _frameDataEnabled;
+    quint64 _connectionGeneration = 0;
 
     // 回调函数
     DataCallback _dataCallback;
@@ -117,6 +132,11 @@ private:
 
     // 时间戳（用于其他可能的时间相关计算）
     long long _lastTimestamp;
+    int _captureFrameSequence = -1;
+    qint64 _captureDeviceTimestampRaw = 0;
+    qint64 _captureReceivedAtMs = 0;
+    qint64 _captureReceivedMonotonicUs = 0;
+    double _captureLatencyRaw = 0.0;
 
     mutable QMutex _dataMutex;
 

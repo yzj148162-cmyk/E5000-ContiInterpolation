@@ -1,14 +1,11 @@
 #include "forceinteractiontensionshadowworker.h"
 
-#include "winchcompensation.h"
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <limits>
 
 namespace {
-constexpr int kAxisCount = 8;
 constexpr int kPoseCount = 6;
 
 double wrappedAngle(double value)
@@ -53,6 +50,9 @@ bool ForceInteractionTensionShadowWorker::configure(
             !runtimeConfig.translationOnly){
         return fail(QStringLiteral("M2当前仅允许阶段D1平动影子计算"));
     }
+    if(!runtimeConfig.tensionControlMocapEnabled){
+        return fail(QStringLiteral("M2需要启用Nokov在线张力外环反馈"));
+    }
     const double maximumTensionN = *std::min_element(
                 runtimeConfig.globalMaximumCableTensionN.cbegin(),
                 runtimeConfig.globalMaximumCableTensionN.cend());
@@ -64,36 +64,10 @@ bool ForceInteractionTensionShadowWorker::configure(
     if(!frozen.shadow.validate(&validationError)){
         return fail(validationError);
     }
-    frozen.kinematics = runtimeConfig.kinematics;
-    frozen.physicalWorkspace = runtimeConfig.physicalWorkspace;
-    frozen.motorUnitPerRadian = runtimeConfig.motorUnitPerRadian;
-    frozen.initialPoseMmRad.resize(kPoseCount);
-    for(int i = 0; i < kPoseCount; ++i){
-        frozen.initialPoseMmRad[static_cast<size_t>(i)] = i < 3 ?
-                    runtimeConfig.initialState.pose[static_cast<size_t>(i)] * 1000.0 :
-                    runtimeConfig.initialState.pose[static_cast<size_t>(i)];
-    }
-    CompensatedCableKinematics kinematics;
-    if(!kinematics.initialize(frozen.kinematics,
-                              {frozen.initialPoseMmRad}, {},
-                              &validationError)){
-        return fail(validationError);
-    }
-    frozen.referenceCableLengthMm = kinematics.cableLengthsForPose(
-                {frozen.initialPoseMmRad}, &validationError);
-    if(frozen.referenceCableLengthMm.size() != kAxisCount){
-        return fail(validationError.isEmpty() ?
-                    QStringLiteral("M2初始参考绳长不是完整八轴数据") :
-                    validationError);
-    }
-    for(double value : frozen.motorUnitPerRadian){
-        if(!std::isfinite(value) || std::abs(value) < 1.0e-12){
-            return fail(QStringLiteral("M2电机角度换算参数无效"));
-        }
-    }
+    frozen.mocapTimeoutUs = runtimeConfig.tensionControlMocapTimeoutUs;
     {
         std::lock_guard<std::mutex> lock(mutex_);
-        if(busy_){
+        if(executing_){
             return fail(QStringLiteral("M2上一影子计算尚未退出"));
         }
         ++epoch_;
@@ -116,17 +90,26 @@ void ForceInteractionTensionShadowWorker::resetSession()
     result_.reset();
 }
 
-bool ForceInteractionTensionShadowWorker::submit(const Request& value)
+ForceInteractionTensionShadowWorker::SubmitResult
+ForceInteractionTensionShadowWorker::submit(const Request& value)
 {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
-    if(!lock.owns_lock() || stopping_ || !configured_ || busy_ ||
-            value.epoch != epoch_){
-        return false;
+    if(!lock.owns_lock()){
+        return SubmitResult::LockContended;
     }
-    busy_ = true;
+    if(stopping_ || !configured_ || value.epoch != epoch_){
+        return SubmitResult::NotReady;
+    }
+    if(executing_ || request_){
+        return SubmitResult::WorkerBusy;
+    }
+    if(result_){
+        return SubmitResult::ResultPending;
+    }
+    executing_ = true;
     request_ = std::make_shared<Request>(value);
     wake_.notify_one();
-    return true;
+    return SubmitResult::Accepted;
 }
 
 std::shared_ptr<const ForceInteractionTensionShadowWorker::Result>
@@ -134,9 +117,7 @@ ForceInteractionTensionShadowWorker::take()
 {
     std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
     if(!lock.owns_lock() || !result_) return {};
-    auto result = std::move(result_);
-    busy_ = false;
-    return result;
+    return std::move(result_);
 }
 
 quint64 ForceInteractionTensionShadowWorker::epoch() const
@@ -148,9 +129,9 @@ quint64 ForceInteractionTensionShadowWorker::epoch() const
 void ForceInteractionTensionShadowWorker::run()
 {
     ForceInteractionPlatformState previousObserved;
-    qint64 previousTraceUs = 0;
+    qint64 previousMocapUs = 0;
+    quint64 previousMocapSequence = 0;
     quint64 activeEpoch = 0;
-    ForwardKinematicsSolver solver;
     ForceInteractionTensionShadow shadow;
     for(;;){
         std::shared_ptr<const Request> request;
@@ -166,64 +147,48 @@ void ForceInteractionTensionShadowWorker::run()
         result->epoch = request->epoch;
         result->sourceTraceSequence = request->sourceTraceSequence;
         result->sourceTraceUs = request->sourceTraceUs;
+        result->mocapSequence = request->mocapSequence;
+        result->mocapSourceFrameSequence = request->mocapSourceFrameSequence;
+        result->mocapReceivedUs = request->mocapReceivedUs;
+        result->mocapAgeUs = request->submittedUs >= request->mocapReceivedUs ?
+                    request->submittedUs - request->mocapReceivedUs : -1;
         result->startedUs = nowUs();
         if(activeEpoch != config.epoch){
             activeEpoch = config.epoch;
             previousObserved = {};
-            previousTraceUs = 0;
-            solver.setInitialPose(config.initialPoseMmRad);
+            previousMocapUs = 0;
+            previousMocapSequence = 0;
             QString error;
             if(!shadow.configure(config.shadow, &error)){
                 result->errorMessage = error;
             }
         }
         if(result->errorMessage.isEmpty()){
-            ForwardKinematicsSolver::Request solveRequest;
-            solveRequest.anchorPos = config.kinematics.anchorCableCoordinate;
-            solveRequest.contactPointLocal =
-                    config.kinematics.endCableContactPos.front();
-            solveRequest.pulleyRadius = config.kinematics.pulleyRadiusMm;
-            solveRequest.initialPose = solver.initialPose();
-            solveRequest.keepRotation = true;
-            solveRequest.enforcePhysicalWorkspace = true;
-            PhysicalWorkspaceBoundary boundary(config.physicalWorkspace);
-            const auto lower = boundary.solverLowerBounds();
-            const auto upper = boundary.solverUpperBounds();
-            solveRequest.poseLowerBounds.assign(lower.begin(), lower.end());
-            solveRequest.poseUpperBounds.assign(upper.begin(), upper.end());
-            for(int axis = 0; axis < kAxisCount; ++axis){
-                const double relative = request->safetyRelativePosition[axis] -
-                        request->actualStartSafetyRelativePosition[axis];
-                const double motorTheta = relative /
-                        config.motorUnitPerRadian[axis];
-                const double scale = std::abs(
-                            config.kinematics.cableMotorScaleRadPerMm[axis]);
-                const double platformDelta =
-                        WinchCompensation::platformDeltaFromMotorTheta(
-                            config.kinematics.winchConfig[axis],
-                            motorTheta, scale);
-                solveRequest.cableLength.push_back(
-                            config.referenceCableLengthMm[axis] - platformDelta);
+            if(!request->observed.poseValid || request->mocapSequence == 0 ||
+                    request->mocapReceivedUs <= 0 ||
+                    result->mocapAgeUs < 0 ||
+                    result->mocapAgeUs > config.mocapTimeoutUs){
+                result->errorMessage = QStringLiteral(
+                            "M2 Nokov位姿无效或超时：帧龄=%1 us，上限=%2 us")
+                        .arg(result->mocapAgeUs)
+                        .arg(config.mocapTimeoutUs);
             }
-            result->forwardKinematics = solver.solve(solveRequest);
-            if(!result->forwardKinematics.success ||
-                    result->forwardKinematics.pose.size() < kPoseCount){
-                result->errorMessage = QStringLiteral("M2正运动学未收敛");
+            else if(previousMocapSequence > 0 &&
+                    request->mocapSequence <= previousMocapSequence){
+                result->errorMessage = QStringLiteral("M2 Nokov帧未推进");
             }
             else{
                 ForceInteractionTensionShadowInput input;
                 input.desired = request->desired;
-                input.observed.poseValid = true;
+                input.observed = request->observed;
                 input.observed.twistValid = true;
-                for(int i = 0; i < kPoseCount; ++i){
-                    input.observed.pose[static_cast<size_t>(i)] = i < 3 ?
-                                result->forwardKinematics.pose[i] * 1.0e-3 :
-                                result->forwardKinematics.pose[i];
-                }
-                input.dtS = previousTraceUs > 0 ?
-                            double(request->sourceTraceUs - previousTraceUs) * 1.0e-6 :
+                input.dtS = previousMocapUs > 0 ?
+                            double(request->mocapReceivedUs - previousMocapUs) * 1.0e-6 :
                             config.shadow.outerPeriodS;
-                if(previousObserved.poseValid && input.dtS > 0.0){
+                if(!std::isfinite(input.dtS) || input.dtS <= 0.0){
+                    result->errorMessage = QStringLiteral("M2 Nokov时间戳未递增");
+                }
+                else if(previousObserved.poseValid){
                     for(int i = 0; i < kPoseCount; ++i){
                         double delta = input.observed.pose[static_cast<size_t>(i)] -
                                 previousObserved.pose[static_cast<size_t>(i)];
@@ -232,11 +197,14 @@ void ForceInteractionTensionShadowWorker::run()
                                 delta / input.dtS;
                     }
                 }
-                result->shadow = shadow.evaluate(input);
-                result->valid = result->shadow.valid;
-                result->errorMessage = result->shadow.errorMessage;
-                previousObserved = input.observed;
-                previousTraceUs = request->sourceTraceUs;
+                if(result->errorMessage.isEmpty()){
+                    result->shadow = shadow.evaluate(input);
+                    result->valid = result->shadow.valid;
+                    result->errorMessage = result->shadow.errorMessage;
+                    previousObserved = input.observed;
+                    previousMocapUs = request->mocapReceivedUs;
+                    previousMocapSequence = request->mocapSequence;
+                }
             }
         }
         result->finishedUs = nowUs();
@@ -245,6 +213,7 @@ void ForceInteractionTensionShadowWorker::run()
             std::lock_guard<std::mutex> lock(mutex_);
             if(stopping_) return;
             result_ = std::move(result);
+            executing_ = false;
         }
     }
 }

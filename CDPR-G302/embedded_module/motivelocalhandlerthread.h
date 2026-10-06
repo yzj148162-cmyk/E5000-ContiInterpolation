@@ -16,9 +16,11 @@
 
 #include <vector>
 #include <string>
+#include <memory>
 
 #include "NokovMinimalClient.h"
 #include "nokovposecalculator.h"
+#include "../pose_control_module/forceinteractionmocappose.h"
 
 #pragma execution_character_set("utf-8")
 
@@ -57,6 +59,10 @@ public:
     bool hasCapturedRigidBody() const;
     // 返回上一帧参与位姿计算的标记点数量。
     int lastMarkerCount() const;
+    // 2026-10-06: M2及后续张力外环只通过该值快照读取Nokov位姿，
+    // 不直接依赖动捕线程对象或UI缓存。
+    std::shared_ptr<ForceInteractionMocapPoseStore> forceInteractionPoseStore() const
+    { return m_forceInteractionPoseStore; }
 
     bool isInit = false;
     bool extraInfo = false;
@@ -72,7 +78,6 @@ public slots:
 private:
     static constexpr int CAPTURE_TIMEOUT_MS = 5000;
     static constexpr int CONTINUOUS_MONITOR_PERIOD_MS = 200;
-
     QTimer* timer = nullptr;
     bool isFirstLoop = true;
     bool isFirst = true;
@@ -94,8 +99,12 @@ private:
     qint64 m_lastValidRigidBodyTimestampMs = -1;
     qint64 m_lastContinuousMonitorUpdateMs = -1;
     bool m_continuousMonitoringEnabled = false;
+    int m_lastProcessedFrameSequence = -1;
+    quint64 m_lastProcessedConnectionGeneration = 0;
     mutable QMutex m_poseMutex;
     NokovPoseCalculator m_poseCalculator;
+    std::shared_ptr<ForceInteractionMocapPoseStore> m_forceInteractionPoseStore =
+            std::make_shared<ForceInteractionMocapPoseStore>();
     bool m_captureActive = false;
     int m_captureSampleTarget = DEFAULT_CAPTURE_SAMPLE_COUNT;
     int m_captureSampleCount = 0;
@@ -106,7 +115,8 @@ private:
     std::vector<std::vector<double>> tempRigidPose;
 
     // 从 Nokov 缓存中取出本项目刚体位姿计算所需的标记点。
-    QVector<MarkerPoint> currentRigidMarkers();
+    QVector<MarkerPoint> currentRigidMarkers(
+            const NokovMinimalClient::CaptureFrame& frame);
     // 重置采集状态，可选择清空已捕获位姿。
     void resetCaptureState(bool clearPose);
     // 采集失败时统一发信号并记录原因。
@@ -114,7 +124,7 @@ private:
     // 累加一帧采集结果，供 finishPoseCapture 求平均。
     void accumulatePoseSample(const NokovPoseCalculator::Result& poseResult);
     void publishContinuousPose(const NokovPoseCalculator::Result& poseResult,
-                               qint64 timestampMs);
+                               const NokovMinimalClient::CaptureFrame& frame);
     // 结束采集并输出平均刚体位姿。
     void finishPoseCapture();
 

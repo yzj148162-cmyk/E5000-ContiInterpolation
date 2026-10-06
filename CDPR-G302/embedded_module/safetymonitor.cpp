@@ -748,6 +748,12 @@ void SafetyMonitor::evaluateSafety()
                 ForceInteractionRuntimeStatus::State::Running ||
             forceInteractionStatus.state ==
                 ForceInteractionRuntimeStatus::State::Braking;
+    // 2026-10-06: 六维力会话在启动前和正常收尾后存在短暂的状态同步窗口。
+    // 只有 Running/Braking 才要求 ControlWorker 持续提供期望位姿；否则清零
+    // 工作空间看门狗，避免把已结束会话误判为“运行期间位姿超时”。
+    const bool forceInteractionWorkspacePoseReady =
+            !cfg.forceInteractionWorkspacePoseSource ||
+            forceInteractionTraceRunning;
     if(cfg.forceInteractionTensionTraceFreshnessEnabled &&
             forceInteractionTraceRunning && snapshotAdvanced){
         const qint64 traceNowUs = monotonicNowUs();
@@ -1071,7 +1077,9 @@ void SafetyMonitor::evaluateSafety()
         return;
     }
 
-    if(cfg.workspaceMonitorEnabled && !cfg.singleCableForceDebugMode){
+    if(cfg.workspaceMonitorEnabled &&
+            !cfg.singleCableForceDebugMode &&
+            forceInteractionWorkspacePoseReady){
         // 六维力运行时直接读取 ControlWorker 每步发布的期望位姿；其他模式仍使用
         // MainWindow 汇总的当前命令位姿。独立线程只做全平台几何硬边界复核，
         // 动态停车仍由实时控制器按每个控制周期判定。

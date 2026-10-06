@@ -295,6 +295,18 @@ void EndpointRemoteInputSupervisor::tick()
     }
     if(x56InputChannel){
         x56InputChannel->setRemoteRunning(sessionToken, remoteRunning);
+        bool suppressBackgroundAccess = false;
+        if(controlWorker && sessionToken == 0){
+            const ForceInteractionRuntimeStatus forceStatus =
+                    controlWorker->forceInteractionRuntimeStatus();
+            suppressBackgroundAccess =
+                    forceStatus.state == ForceInteractionRuntimeStatus::State::Prepared ||
+                    forceStatus.state == ForceInteractionRuntimeStatus::State::WaitingForTrace ||
+                    forceStatus.state == ForceInteractionRuntimeStatus::State::Running ||
+                    forceStatus.state == ForceInteractionRuntimeStatus::State::Braking;
+        }
+        x56InputChannel->setBackgroundAccessSuppressed(
+                    suppressBackgroundAccess);
     }
 
     const X56InputWorkerSnapshot workerSnapshot = x56InputChannel ?

@@ -80,6 +80,10 @@ struct ForceInteractionRuntimeConfig
     // Indexed by the runtime tension/force-sensor channel, after applying the
     // same motor-axis-to-sensor mapping used by the global SafetyMonitor.
     OnlineVelocityAxisArray globalMaximumCableTensionN{};
+    // 2026-10-06: M2及后续在线张力外环统一使用Nokov实际位姿。
+    // 该开关只授权张力外环，不改变既有速度D1和独立安全监控的职责。
+    bool tensionControlMocapEnabled = false;
+    qint64 tensionControlMocapTimeoutUs = 30000;
     DynamicWorkspaceSafetyConfig workspaceSafety;
     double brakingStopVelocityMmPerSec = 0.1;
     QString recordingDirectory;

@@ -155,6 +155,11 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
                                 .arg(axis + 1));
                 }
             }
+            if(tensionControlMocapEnabled &&
+                    (tensionControlMocapTimeoutUs < 10000 ||
+                     tensionControlMocapTimeoutUs > 1000000)){
+                return fail(QStringLiteral("阶段D D1在线张力动捕超时必须位于10~1000 ms"));
+            }
         }
     }
     if(periodUs < 1000 || periodUs > 20000){

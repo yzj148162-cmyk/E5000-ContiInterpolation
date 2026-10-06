@@ -135,6 +135,7 @@ HEADERS += \
     pose_control_module/eightcabletimingprofile.h \
     pose_control_module/forceinteractionboundaryloganalyzer.h \
     pose_control_module/forceinteractionkinematicloganalyzer.h \
+    pose_control_module/forceinteractionmocappose.h \
     pose_control_module/forceinteractionreplayexporter.h \
     pose_control_module/forceinteractionrunrecorder.h \
     pose_control_module/forceinteractionruntimecontrol.h \

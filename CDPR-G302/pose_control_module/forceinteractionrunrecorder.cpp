@@ -245,7 +245,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v13\n"
+    stream << "# schema=force_interaction_run_v14\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -363,7 +363,8 @@ void ForceInteractionRunRecorder::run()
     stream << ",tension_shadow_available,tension_shadow_valid,tension_shadow_expired,"
               "tension_shadow_source_trace_sequence,tension_shadow_source_trace_us,"
               "tension_shadow_age_us,tension_shadow_calculation_us,"
-              "tension_shadow_fk_rms_mm,tension_shadow_fk_maximum_mm,"
+              "tension_shadow_mocap_sequence,tension_shadow_mocap_source_frame_sequence,"
+              "tension_shadow_mocap_received_us,tension_shadow_mocap_age_us,"
               "tension_shadow_wrench_residual,tension_shadow_minimum_tension_margin_n";
     writeGroupHeader(stream, "tension_shadow_target_tension_n",
                      kForceInteractionCableCount);
@@ -460,8 +461,10 @@ void ForceInteractionRunRecorder::run()
                    << ',' << record.tensionShadowSourceTraceUs
                    << ',' << record.tensionShadowAgeUs
                    << ',' << record.tensionShadowCalculationUs
-                   << ',' << record.tensionShadowFkRmsMm
-                   << ',' << record.tensionShadowFkMaximumMm
+                   << ',' << record.tensionShadowMocapSequence
+                   << ',' << record.tensionShadowMocapSourceFrameSequence
+                   << ',' << record.tensionShadowMocapReceivedUs
+                   << ',' << record.tensionShadowMocapAgeUs
                    << ',' << record.tensionShadowWrenchResidual
                    << ',' << record.tensionShadowMinimumTensionMarginN;
             writeArray(stream, record.tensionShadowTargetTensionN);

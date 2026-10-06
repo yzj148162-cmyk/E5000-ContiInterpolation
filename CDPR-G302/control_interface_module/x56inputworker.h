@@ -22,6 +22,7 @@ struct X56InputWorkerRequest
     quint64 sessionToken = 0;
     bool remoteRunning = false;
     bool applicationActive = false;
+    bool backgroundAccessSuppressed = false;
     quint64 safetyResetGeneration = 0;
 };
 
@@ -51,6 +52,7 @@ public:
     void setSession(quint64 sessionToken, bool remoteRunning);
     void setRemoteRunning(quint64 sessionToken, bool remoteRunning);
     void setApplicationActive(bool active);
+    void setBackgroundAccessSuppressed(bool suppressed);
     quint64 requestSafetyReset();
 
     X56InputWorkerRequest request() const;

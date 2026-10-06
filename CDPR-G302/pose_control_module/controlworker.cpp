@@ -1939,6 +1939,9 @@ bool ControlWorker::prepareForceInteractionRuntime(
     forceInteractionTensionShadowNextDueUs = 0;
     forceInteractionTensionShadowSubmitted = 0;
     forceInteractionTensionShadowBusySkipped = 0;
+    forceInteractionTensionShadowResultPendingSkipped = 0;
+    forceInteractionTensionShadowLockContendedSkipped = 0;
+    forceInteractionTensionShadowNotReadySkipped = 0;
     forceInteractionTensionShadowCompleted = 0;
     forceInteractionTensionShadowInvalid = 0;
     forceInteractionTensionShadowExpired = 0;
@@ -1947,17 +1950,37 @@ bool ControlWorker::prepareForceInteractionRuntime(
     if(runtimeConfig.stage == ForceInteractionRuntimeStage::StageD &&
             runtimeConfig.mechanicalMode ==
                 ForceInteractionMechanicalMode::D1PhysicalCabled &&
-            runtimeConfig.translationOnly){
+            runtimeConfig.translationOnly &&
+            runtimeConfig.tensionControlMocapEnabled){
         QString shadowError;
-        forceInteractionTensionShadowEnabled =
-                forceInteractionTensionShadowWorker.configure(
-                    runtimeConfig, &shadowError);
+        std::shared_ptr<ForceInteractionMocapPoseStore> mocapStore;
+        {
+            QMutexLocker lock(&forceInteractionMocapStoreMutex);
+            mocapStore = forceInteractionMocapPoseStore;
+        }
+        const ForceInteractionMocapPose mocap = mocapStore ?
+                    mocapStore->latest() : ForceInteractionMocapPose{};
+        const qint64 nowUs = monotonicNowUs();
+        const qint64 mocapAgeUs = mocap.receivedMonotonicUs > 0 ?
+                    nowUs - mocap.receivedMonotonicUs : -1;
+        if(!mocapStore || !mocap.valid || mocapAgeUs < 0 ||
+                mocapAgeUs > runtimeConfig.tensionControlMocapTimeoutUs){
+            shadowError = QStringLiteral(
+                        "Nokov在线位姿尚未就绪：帧龄=%1 us，上限=%2 us")
+                    .arg(mocapAgeUs)
+                    .arg(runtimeConfig.tensionControlMocapTimeoutUs);
+        }
+        else{
+            forceInteractionTensionShadowEnabled =
+                    forceInteractionTensionShadowWorker.configure(
+                        runtimeConfig, &shadowError);
+        }
         if(forceInteractionTensionShadowEnabled){
             forceInteractionTensionShadowEpoch =
                     forceInteractionTensionShadowWorker.epoch();
             emit displayInfoSignal(
                         QStringLiteral(
-                            "M2在线张力影子已准备：25 ms外环，仅计算和记录，不下发转矩")
+                            "M2在线张力影子已准备：25 ms外环，实际位姿=Nokov；仅计算和记录，不下发转矩")
                             .toStdString(),
                         "normal");
         }
@@ -1970,6 +1993,13 @@ bool ControlWorker::prepareForceInteractionRuntime(
     }
     publishForceInteractionRuntimeStatus();
     return true;
+}
+
+void ControlWorker::setForceInteractionMocapPoseStore(
+        std::shared_ptr<ForceInteractionMocapPoseStore> store)
+{
+    QMutexLocker lock(&forceInteractionMocapStoreMutex);
+    forceInteractionMocapPoseStore = std::move(store);
 }
 
 bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
@@ -3175,17 +3205,49 @@ void ControlWorker::processForceInteractionRuntime(
             request.epoch = forceInteractionTensionShadowEpoch;
             request.sourceTraceSequence = feedback.logicalFrameSequence;
             request.sourceTraceUs = step.record.stamp.traceTimeUs;
-            request.submittedUs = nowUs;
-            request.deadlineUs = nowUs + outerPeriodUs;
             request.desired = step.record.desiredState;
-            request.safetyRelativePosition = feedback.safetyRelativePosition;
-            request.actualStartSafetyRelativePosition =
-                    statusAfterStep.actualStartSafetyRelativePosition;
-            if(forceInteractionTensionShadowWorker.submit(request)){
+            std::shared_ptr<ForceInteractionMocapPoseStore> mocapStore;
+            {
+                QMutexLocker lock(&forceInteractionMocapStoreMutex);
+                mocapStore = forceInteractionMocapPoseStore;
+            }
+            const ForceInteractionMocapPose mocap = mocapStore ?
+                        mocapStore->latest() : ForceInteractionMocapPose{};
+            // 2026-10-06: 动捕回调可能在本控制周期入口时间nowUs之后发布新帧。
+            // 快照读取完成后再取提交时刻，避免把正常的新帧误判成-1 us负帧龄。
+            request.submittedUs = monotonicNowUs();
+            request.deadlineUs = request.submittedUs + outerPeriodUs;
+            request.mocapSequence = mocap.sequence;
+            request.mocapSourceFrameSequence = mocap.sourceFrameSequence;
+            request.mocapReceivedUs = mocap.receivedMonotonicUs;
+            request.observed.poseValid = mocap.valid;
+            request.observed.twistValid = true;
+            for(int dimension = 0; dimension < 6; ++dimension){
+                request.observed.pose[static_cast<size_t>(dimension)] =
+                        dimension < 3 ?
+                            mocap.poseMmRad[static_cast<size_t>(dimension)] * 1.0e-3 :
+                            mocap.poseMmRad[static_cast<size_t>(dimension)];
+            }
+            const auto shadowSubmitResult =
+                    forceInteractionTensionShadowWorker.submit(request);
+            if(shadowSubmitResult == ForceInteractionTensionShadowWorker::
+                    SubmitResult::Accepted){
                 ++forceInteractionTensionShadowSubmitted;
             }
-            else{
+            else if(shadowSubmitResult == ForceInteractionTensionShadowWorker::
+                    SubmitResult::WorkerBusy){
                 ++forceInteractionTensionShadowBusySkipped;
+            }
+            else if(shadowSubmitResult == ForceInteractionTensionShadowWorker::
+                    SubmitResult::ResultPending){
+                ++forceInteractionTensionShadowResultPendingSkipped;
+            }
+            else if(shadowSubmitResult == ForceInteractionTensionShadowWorker::
+                    SubmitResult::LockContended){
+                ++forceInteractionTensionShadowLockContendedSkipped;
+            }
+            else{
+                ++forceInteractionTensionShadowNotReadySkipped;
             }
             do{
                 forceInteractionTensionShadowNextDueUs += outerPeriodUs;
@@ -3204,10 +3266,11 @@ void ControlWorker::processForceInteractionRuntime(
                         0, step.record.stamp.traceTimeUs - shadow->sourceTraceUs);
             step.record.tensionShadowCalculationUs = std::max<qint64>(
                         0, shadow->finishedUs - shadow->startedUs);
-            step.record.tensionShadowFkRmsMm =
-                    shadow->forwardKinematics.rmsCableResidualMm;
-            step.record.tensionShadowFkMaximumMm =
-                    shadow->forwardKinematics.maximumCableResidualMm;
+            step.record.tensionShadowMocapSequence = shadow->mocapSequence;
+            step.record.tensionShadowMocapSourceFrameSequence =
+                    shadow->mocapSourceFrameSequence;
+            step.record.tensionShadowMocapReceivedUs = shadow->mocapReceivedUs;
+            step.record.tensionShadowMocapAgeUs = shadow->mocapAgeUs;
             step.record.tensionShadowWrenchResidual =
                     shadow->shadow.allocation.maximumGeneralizedControlResidual;
             step.record.tensionShadowMinimumTensionMarginN =
@@ -3275,11 +3338,15 @@ void ControlWorker::processForceInteractionRuntime(
                         QStringLiteral("无") : invalidReasonItems.join(QStringLiteral("；"));
             emit displayInfoSignal(
                         QStringLiteral(
-                            "M2在线张力影子结束（速度后端仍为唯一执行者）：提交/完成/忙跳过=%1/%2/%3，"
-                            "无效/过期=%4/%5，最大后台计算=%6 us；无效原因={%7}")
+                            "M2在线张力影子结束（速度后端仍为唯一执行者）：提交/完成/计算忙跳过=%1/%2/%3，"
+                            "结果待取/锁竞争/未就绪=%4/%5/%6，无效/过期=%7/%8，"
+                            "最大后台计算=%9 us；无效原因={%10}")
                             .arg(forceInteractionTensionShadowSubmitted)
                             .arg(forceInteractionTensionShadowCompleted)
                             .arg(forceInteractionTensionShadowBusySkipped)
+                            .arg(forceInteractionTensionShadowResultPendingSkipped)
+                            .arg(forceInteractionTensionShadowLockContendedSkipped)
+                            .arg(forceInteractionTensionShadowNotReadySkipped)
                             .arg(forceInteractionTensionShadowInvalid)
                             .arg(forceInteractionTensionShadowExpired)
                             .arg(forceInteractionTensionShadowMaximumCalculationUs)

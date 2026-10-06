@@ -20790,6 +20790,11 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
                 ui->forceInteractionStageCDurationSpinBox->value() :
                 ui->forceInteractionRuntimeDurationSpinBox->value();
     config.translationOnly = ui->forceInteractionTranslationOnlyCheckBox->isChecked();
+    config.tensionControlMocapEnabled =
+            stage == ForceInteractionRuntimeStage::StageD &&
+            mechanicalMode == ForceInteractionMechanicalMode::D1PhysicalCabled &&
+            ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1;
+    config.tensionControlMocapTimeoutUs = 30000;
     config.sensorTransform.configured = true;
     config.sensorTransform.rotationSensorToPlatform =
             kMeasuredForceSensorToPlatformRotation;
@@ -21091,7 +21096,8 @@ ForceInteractionReplayExportContext MainWindow::buildForceInteractionReplayConte
                 QStringLiteral("not_applicable"));
     context.mocapModeName = config.stage == ForceInteractionRuntimeStage::StageD &&
             ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1 ?
-                QStringLiteral("monitor_only") : QStringLiteral("disabled");
+                QStringLiteral("safety_and_tension_outer") :
+                QStringLiteral("disabled");
     context.globalTensionSafetyEnabled = config.globalTensionSafetyEnabled;
     context.globalMinimumCableTensionN = config.globalMinimumCableTensionN;
     context.globalMaximumCableTensionN = config.globalMaximumCableTensionN;
@@ -21164,7 +21170,7 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
     if(stageD && ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1 &&
             (!motiveLocalHandlerThread || !motiveLocalHandlerThread->isInit ||
              !motiveLocalHandlerThread->hasRecentRigidBody(1000))){
-        displayInfo("阶段D准备失败：已选择“Nokov实物边界监督”，但最近1 s内没有可靠的三标记点重算位姿", "error");
+        displayInfo("阶段D准备失败：已选择“Nokov反馈”，但最近1 s内没有可靠的三标记点重算位姿", "error");
         return;
     }
     if(currentRobotState(false).anyMotionRunning){
@@ -38134,6 +38140,9 @@ bool MainWindow::startAndWaitForPositionSimulationPaths(
 void MainWindow::stopMotiveThread(){
     MotiveLocalHandlerThread* worker = motiveLocalHandlerThread;
     QThread* thread = mlhThread;
+    if(controlWorker){
+        controlWorker->setForceInteractionMocapPoseStore({});
+    }
     motiveLocalHandlerThread = nullptr;
     mlhThread = nullptr;
 
@@ -53558,6 +53567,10 @@ void MainWindow::updatePara(){
         if(motiveLocalHandlerThread->isInit){
             mlhThread = new QThread(this);
             motiveLocalHandlerThread->moveToThread(mlhThread);
+            if(controlWorker){
+                controlWorker->setForceInteractionMocapPoseStore(
+                            motiveLocalHandlerThread->forceInteractionPoseStore());
+            }
             connect(mlhThread, &QThread::started, motiveLocalHandlerThread, &MotiveLocalHandlerThread::startTimer);
             connect(mlhThread, &QThread::finished, motiveLocalHandlerThread, &MotiveLocalHandlerThread::stopTimer);
 

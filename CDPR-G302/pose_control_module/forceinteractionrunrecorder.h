@@ -151,8 +151,10 @@ struct ForceInteractionRunRecord
     qint64 tensionShadowSourceTraceUs = 0;
     qint64 tensionShadowAgeUs = -1;
     qint64 tensionShadowCalculationUs = 0;
-    double tensionShadowFkRmsMm = 0.0;
-    double tensionShadowFkMaximumMm = 0.0;
+    quint64 tensionShadowMocapSequence = 0;
+    int tensionShadowMocapSourceFrameSequence = -1;
+    qint64 tensionShadowMocapReceivedUs = 0;
+    qint64 tensionShadowMocapAgeUs = -1;
     double tensionShadowWrenchResidual = 0.0;
     double tensionShadowMinimumTensionMarginN = 0.0;
     std::array<double, kForceInteractionCableCount>

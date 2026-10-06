@@ -23,6 +23,7 @@
 #include "onlinevelocitycontrol.h"
 #include "endpointremotecontrol.h"
 #include "forceinteractionruntimecontrol.h"
+#include "forceinteractionmocappose.h"
 #include "forceinteractiontensionshadowworker.h"
 #include "tracedelaycalibrationrunner.h"
 
@@ -424,6 +425,9 @@ public:
     bool prepareForceInteractionRuntime(
             const ForceInteractionRuntimeConfig& config,
             QString* errorMessage = nullptr);
+    // 2026-10-06: 注入与动捕线程解耦的只读快照仓；可在重建动捕线程时安全替换。
+    void setForceInteractionMocapPoseStore(
+            std::shared_ptr<ForceInteractionMocapPoseStore> store);
     bool startForceInteractionRuntime(QString* errorMessage = nullptr);
     void stopForceInteractionRuntime(bool emergency,
                                      const QString& reason = QStringLiteral("用户停止六维力交互实机运行"));
@@ -633,6 +637,9 @@ private:
     ForceInteractionRuntimeControl forceInteractionRuntimeControl;
     ForceInteractionRuntimeStatus forceInteractionRuntimeStatusCache;
     ForceInteractionTensionShadowWorker forceInteractionTensionShadowWorker;
+    mutable QMutex forceInteractionMocapStoreMutex;
+    std::shared_ptr<ForceInteractionMocapPoseStore>
+            forceInteractionMocapPoseStore;
     std::shared_ptr<const ForceInteractionTensionShadowWorker::Result>
             forceInteractionLatestTensionShadow;
     bool forceInteractionTensionShadowEnabled = false;
@@ -640,6 +647,9 @@ private:
     qint64 forceInteractionTensionShadowNextDueUs = 0;
     quint64 forceInteractionTensionShadowSubmitted = 0;
     quint64 forceInteractionTensionShadowBusySkipped = 0;
+    quint64 forceInteractionTensionShadowResultPendingSkipped = 0;
+    quint64 forceInteractionTensionShadowLockContendedSkipped = 0;
+    quint64 forceInteractionTensionShadowNotReadySkipped = 0;
     quint64 forceInteractionTensionShadowCompleted = 0;
     quint64 forceInteractionTensionShadowInvalid = 0;
     quint64 forceInteractionTensionShadowExpired = 0;

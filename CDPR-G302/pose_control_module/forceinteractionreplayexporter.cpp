@@ -184,7 +184,7 @@ bool ForceInteractionReplayExporter::writeJson(
     root.insert(QStringLiteral("run_id"), csvInfo.completeBaseName());
     root.insert(QStringLiteral("csv_file"), csvInfo.fileName());
     root.insert(QStringLiteral("csv_schema"),
-                QStringLiteral("force_interaction_run_v13"));
+                QStringLiteral("force_interaction_run_v14"));
     root.insert(QStringLiteral("stage"), context.stageName);
     root.insert(QStringLiteral("wrench_source"), context.wrenchSourceName);
     root.insert(QStringLiteral("kinematic_template"),

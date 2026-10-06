@@ -41,6 +41,12 @@ void X56InputChannel::setApplicationActive(bool active)
     currentRequest.applicationActive = active;
 }
 
+void X56InputChannel::setBackgroundAccessSuppressed(bool suppressed)
+{
+    QMutexLocker locker(&mutex);
+    currentRequest.backgroundAccessSuppressed = suppressed;
+}
+
 quint64 X56InputChannel::requestSafetyReset()
 {
     QMutexLocker locker(&mutex);
@@ -162,9 +168,19 @@ void X56InputWorker::poll()
     const X56InputWorkerRequest request = inputChannel->request();
     const qint64 pollStartedUs = monotonicNowUs();
     synchronizeReader(request);
-    X56DirectInputSnapshot input =
-            reader.poll(request.remoteRunning,
-                        request.applicationActive);
+    X56DirectInputSnapshot input;
+    if(request.backgroundAccessSuppressed && request.sessionToken == 0){
+        // 2026-10-06: A prepared/running force-interaction session owns the
+        // realtime budget. Keep publishing a zero snapshot, but do not call
+        // DirectInput or enumerate USB devices in the background.
+        input.state = X56DirectInputSnapshot::State::WaitingForRun;
+        input.statusText = QStringLiteral(
+                    "X56：六维力交互期间后台设备访问已暂停");
+    }
+    else{
+        input = reader.poll(request.remoteRunning,
+                            request.applicationActive);
+    }
     const std::vector<X56DirectInputDeviceInfo> devices = reader.devices();
     const qint64 publishedAtUs = monotonicNowUs();
     const qint64 pollDurationUs = std::max<qint64>(

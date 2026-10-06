@@ -2,6 +2,16 @@
 #include <iostream>
 #include <cmath>
 #include <cstring>
+#include <chrono>
+#include <QDateTime>
+
+namespace {
+qint64 monotonicNowUs()
+{
+    return std::chrono::duration_cast<std::chrono::microseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+}
+}
 
 /*
  * 文件总览：
@@ -80,6 +90,11 @@ void NokovMinimalClient::Uninitialize()
     _unnamedMarkers.clear();
     _rigidBodies.clear();
     _lastTimestamp = 0;
+    _captureFrameSequence = -1;
+    _captureDeviceTimestampRaw = 0;
+    _captureReceivedAtMs = 0;
+    _captureReceivedMonotonicUs = 0;
+    _captureLatencyRaw = 0.0;
 }
 
 // 设置数据回调
@@ -97,6 +112,9 @@ void NokovMinimalClient::SetNotifyCallback(NotifyCallback callback)
 void NokovMinimalClient::SetFrameDataEnabled(bool enabled)
 {
     QMutexLocker locker(&_dataMutex);
+    if(enabled && !_frameDataEnabled){
+        ++_connectionGeneration;
+    }
     _frameDataEnabled = enabled;
     if (!enabled) {
         _markers.clear();
@@ -109,7 +127,21 @@ void NokovMinimalClient::SetFrameDataEnabled(bool enabled)
         _lastRigidBodies.clear();
         _prevLastRigidBodies.clear();
         _lastTimestamp = 0;
+        _captureFrameSequence = -1;
+        _captureDeviceTimestampRaw = 0;
+        _captureReceivedAtMs = 0;
+        _captureReceivedMonotonicUs = 0;
+        _captureLatencyRaw = 0.0;
     }
+}
+
+NokovMinimalClient::CaptureFrame NokovMinimalClient::GetCaptureFrame() const
+{
+    QMutexLocker locker(&_dataMutex);
+    return {_markers, _rigidBodies, _captureFrameSequence,
+            _captureDeviceTimestampRaw, _captureReceivedAtMs,
+            _captureReceivedMonotonicUs, _captureLatencyRaw,
+            _connectionGeneration};
 }
 
 // 获取标记点数据
@@ -195,6 +227,8 @@ void NokovMinimalClient::NotifyHandlerStatic(sNotifyMsg* pNotify, void* pUserDat
 // 处理帧数据
 void NokovMinimalClient::ProcessFrameData(const sFrameOfMocapData* data)
 {
+    const qint64 receivedMonotonicUs = monotonicNowUs();
+    const qint64 receivedWallClockMs = QDateTime::currentMSecsSinceEpoch();
     if (!data) {
         return;
     }
@@ -206,6 +240,12 @@ void NokovMinimalClient::ProcessFrameData(const sFrameOfMocapData* data)
     if (!_frameDataEnabled) {
         return;
     }
+
+    _captureFrameSequence = data->iFrame;
+    _captureDeviceTimestampRaw = data->iTimeStamp;
+    _captureReceivedAtMs = receivedWallClockMs;
+    _captureReceivedMonotonicUs = receivedMonotonicUs;
+    _captureLatencyRaw = data->fLatency;
 
     // 更新标记点数据
     // 根据实验结果，在程序长时间运行后，此处的clear会导致程序报错，原因是：多线程数据竞争，即两个不同的线程同时在操作同一个变量

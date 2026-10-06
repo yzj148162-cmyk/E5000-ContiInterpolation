@@ -3,28 +3,40 @@
 
 #include "forceinteractionruntimecontrol.h"
 #include "forceinteractiontensionshadow.h"
-#include "forwardkinematicssolver.h"
 
 #include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <thread>
 
-// 2026-10-05: M2 online shadow executor.  It owns no hardware and has one
-// bounded request/result slot, so a slow FK/allocation pass can never build a
-// queue or delay the existing 5 ms online-velocity controller.
+// 2026-10-06: M2 online shadow executor. It owns no hardware and consumes an
+// immutable Nokov pose snapshot. Encoder-to-cable-length FK is deliberately
+// outside M2/M3+, so task-space feedback has the same source as the reference
+// online-tension controller.
 class ForceInteractionTensionShadowWorker
 {
 public:
+    // 2026-10-06: Separate a real worker overrun from mailbox lock contention
+    // and from a completed result that has not yet been consumed.
+    enum class SubmitResult {
+        Accepted,
+        WorkerBusy,
+        ResultPending,
+        LockContended,
+        NotReady
+    };
+
     struct Request {
         quint64 epoch = 0;
         quint64 sourceTraceSequence = 0;
         qint64 sourceTraceUs = 0;
         qint64 submittedUs = 0;
         qint64 deadlineUs = 0;
+        quint64 mocapSequence = 0;
+        int mocapSourceFrameSequence = -1;
+        qint64 mocapReceivedUs = 0;
         ForceInteractionPlatformState desired;
-        OnlineVelocityAxisArray safetyRelativePosition{};
-        OnlineVelocityAxisArray actualStartSafetyRelativePosition{};
+        ForceInteractionPlatformState observed;
     };
 
     struct Result {
@@ -36,7 +48,10 @@ public:
         bool valid = false;
         bool expired = false;
         QString errorMessage;
-        ForwardKinematicsSolver::Result forwardKinematics;
+        quint64 mocapSequence = 0;
+        int mocapSourceFrameSequence = -1;
+        qint64 mocapReceivedUs = 0;
+        qint64 mocapAgeUs = -1;
         ForceInteractionTensionShadowResult shadow;
     };
 
@@ -50,7 +65,7 @@ public:
     bool configure(const ForceInteractionRuntimeConfig& runtimeConfig,
                    QString* errorMessage = nullptr);
     void resetSession();
-    bool submit(const Request& request);
+    SubmitResult submit(const Request& request);
     std::shared_ptr<const Result> take();
     quint64 epoch() const;
 
@@ -58,11 +73,7 @@ private:
     struct FrozenConfig {
         quint64 epoch = 0;
         ForceInteractionTensionShadowConfig shadow;
-        CompensatedCableKinematics::Configuration kinematics;
-        PhysicalWorkspaceBoundaryConfig physicalWorkspace;
-        std::vector<double> initialPoseMmRad;
-        std::vector<double> referenceCableLengthMm;
-        OnlineVelocityAxisArray motorUnitPerRadian{};
+        qint64 mocapTimeoutUs = 30000;
     };
 
     static qint64 nowUs();
@@ -74,7 +85,7 @@ private:
     std::shared_ptr<const Request> request_;
     std::shared_ptr<const Result> result_;
     bool configured_ = false;
-    bool busy_ = false;
+    bool executing_ = false;
     bool stopping_ = false;
     quint64 epoch_ = 0;
     std::thread thread_;

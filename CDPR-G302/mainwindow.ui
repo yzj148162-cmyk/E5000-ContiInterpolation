@@ -19002,7 +19002,7 @@ border-radius: 6px;</string>
                  </item>
                  <item>
                   <property name="text">
-                   <string>仅监测（不参与高频控制）</string>
+                   <string>Nokov反馈（安全监测/在线张力外环）</string>
                   </property>
                  </item>
                 </widget>

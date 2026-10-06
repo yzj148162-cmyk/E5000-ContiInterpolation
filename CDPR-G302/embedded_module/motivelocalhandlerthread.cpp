@@ -4,6 +4,8 @@
 #include <QDateTime>
 #include <QtMath>
 
+#include <algorithm>
+
 /*
  * 文件总览：
  * - MotiveLocalHandlerThread 的实现文件，负责 Nokov 连接、轮询、数据有效性判断、位姿计算和采集状态机。
@@ -125,6 +127,11 @@ void MotiveLocalHandlerThread::setContinuousMonitoringEnabled(bool enabled)
     }
     m_continuousMonitoringEnabled = enabled;
     m_lastContinuousMonitorUpdateMs = -1;
+    m_lastProcessedFrameSequence = -1;
+    m_lastProcessedConnectionGeneration = 0;
+    if(!enabled && m_forceInteractionPoseStore){
+        m_forceInteractionPoseStore->invalidate();
+    }
     if(m_client){
         m_client->SetFrameDataEnabled(enabled || m_captureActive);
     }
@@ -150,13 +157,20 @@ void MotiveLocalHandlerThread::dataProcessor()
         return;
     }
 
-    if(!m_captureActive && m_lastContinuousMonitorUpdateMs >= 0 &&
-            nowMs - m_lastContinuousMonitorUpdateMs <
-                CONTINUOUS_MONITOR_PERIOD_MS){
+    const NokovMinimalClient::CaptureFrame frame = m_client->GetCaptureFrame();
+    if(frame.sequence < 0 || frame.receivedMonotonicUs <= 0){
         return;
     }
+    // 2026-10-06: 定时器可以快于Nokov的10 ms抓拍周期；只处理真正的新帧，
+    // 不允许重复读取缓存帧并伪造更年轻的控制反馈时间戳。
+    if(frame.sequence == m_lastProcessedFrameSequence &&
+            frame.connectionGeneration == m_lastProcessedConnectionGeneration){
+        return;
+    }
+    m_lastProcessedFrameSequence = frame.sequence;
+    m_lastProcessedConnectionGeneration = frame.connectionGeneration;
 
-    const QVector<MarkerPoint> rigidMarkers = currentRigidMarkers();
+    const QVector<MarkerPoint> rigidMarkers = currentRigidMarkers(frame);
     {
         QMutexLocker locker(&m_poseMutex);
         m_lastMarkerCount = rigidMarkers.size();
@@ -176,7 +190,7 @@ void MotiveLocalHandlerThread::dataProcessor()
             accumulatePoseSample(poseResult);
         }
         else{
-            publishContinuousPose(poseResult, nowMs);
+            publishContinuousPose(poseResult, frame);
         }
         if (detailInfo) {
             qDebug() << "Nokov pose capture sample"
@@ -242,23 +256,19 @@ int MotiveLocalHandlerThread::lastMarkerCount() const
     return m_lastMarkerCount;
 }
 
-QVector<MarkerPoint> MotiveLocalHandlerThread::currentRigidMarkers()
+QVector<MarkerPoint> MotiveLocalHandlerThread::currentRigidMarkers(
+        const NokovMinimalClient::CaptureFrame& frame)
 {
-    QVector<MarkerPoint> markers = m_client->GetMarkers();
-    QVector<RigidBodyData> rigidBodies = m_client->GetRigidBodies();
-    QVector<UnnamedMarkerPoint> unnamedMarkers = m_client->GetUnnamedMarkers();
-
-    Q_UNUSED(unnamedMarkers);
-
     QVector<MarkerPoint> rigidMarkers;
-    for (const RigidBodyData& rigidBody : rigidBodies) {
+    for (const RigidBodyData& rigidBody : frame.rigidBodies) {
         if (rigidBody.markers.size() == NokovPoseCalculator::REQUIRED_MARKER_COUNT) {
             rigidMarkers = rigidBody.markers;
             break;
         }
     }
-    if (rigidMarkers.isEmpty() && markers.size() == NokovPoseCalculator::REQUIRED_MARKER_COUNT) {
-        rigidMarkers = markers;
+    if (rigidMarkers.isEmpty() &&
+            frame.markers.size() == NokovPoseCalculator::REQUIRED_MARKER_COUNT) {
+        rigidMarkers = frame.markers;
     }
 
     return rigidMarkers;
@@ -283,11 +293,14 @@ void MotiveLocalHandlerThread::resetCaptureState(bool clearPose)
             tempRigidPose.clear();
         }
     }
+    if(clearPose && m_forceInteractionPoseStore){
+        m_forceInteractionPoseStore->invalidate();
+    }
 }
 
 void MotiveLocalHandlerThread::publishContinuousPose(
         const NokovPoseCalculator::Result& poseResult,
-        qint64 timestampMs)
+        const NokovMinimalClient::CaptureFrame& frame)
 {
     const QVector3D origin = poseResult.positionMm;
     const QVector3D eulerAnglesDeg = poseResult.eulerDeg;
@@ -299,14 +312,32 @@ void MotiveLocalHandlerThread::publishContinuousPose(
         qDegreesToRadians(static_cast<double>(eulerAnglesDeg.y())),
         qDegreesToRadians(static_cast<double>(eulerAnglesDeg.z()))
     }};
+    // 2026-10-06: 控制快照跟随每个Nokov新帧；原有UI/低频安全通道仍保持
+    // 200 ms节流，避免在线张力接入扩大界面刷新和跨线程信号负担。
+    if(m_forceInteractionPoseStore){
+        ForceInteractionMocapPose observation;
+        observation.valid = true;
+        observation.sourceFrameSequence = frame.sequence;
+        observation.connectionGeneration = frame.connectionGeneration;
+        observation.receivedMonotonicUs = frame.receivedMonotonicUs;
+        observation.receivedWallClockMs = frame.receivedAtMs;
+        std::copy(pose.front().begin(), pose.front().begin() + 6,
+                  observation.poseMmRad.begin());
+        m_forceInteractionPoseStore->publish(observation);
+    }
+    if(m_lastContinuousMonitorUpdateMs >= 0 &&
+            frame.receivedAtMs - m_lastContinuousMonitorUpdateMs <
+                CONTINUOUS_MONITOR_PERIOD_MS){
+        return;
+    }
     {
         QMutexLocker locker(&m_poseMutex);
         rigidPose = pose;
         tempRigidPose = pose;
         m_lastRigidBodyValid = true;
-        m_lastValidRigidBodyTimestampMs = timestampMs;
+        m_lastValidRigidBodyTimestampMs = frame.receivedAtMs;
     }
-    m_lastContinuousMonitorUpdateMs = timestampMs;
+    m_lastContinuousMonitorUpdateMs = frame.receivedAtMs;
     emit dataUpdateSignal(pose);
 }
 
