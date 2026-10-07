@@ -512,12 +512,13 @@ Idle
 
 ## 12. SafetyMonitor 接入边界
 
-集中式 SafetyMonitor 继续负责：
+集中式安全链继续负责（当前实际转矩数值上限由`ControlWorker`执行并上报
+`MotorTorqueExceeded`，其余项目由`SafetyMonitor`执行）：
 
 - 控制快照停更；
 - 控制卡连接和驱动状态；
 - 八路实测张力上下限及断绳；
-- 实际电机转矩上限；
+- 实际电机转矩上限（沿用现有`ControlWorker`全局判定，不在M3复制阈值）；
 - 电机行程和超速；
 - 工作空间硬边界；
 - 软件看门狗和急停锁存。
@@ -844,7 +845,7 @@ M3新增独立Runtime Trace profile，不修改现有速度D1 profile。首版�
 
 M3不需要F/T对象，因为交互输入被关闭；M4再在同一转矩反馈基线上增加9个F/T对象，预计仍为41个。实际速度不占Trace对象，由连续的1 ms实际位置帧按真实Trace周期估计；不得用相邻5 ms控制快照简单差分，也不得复用同一帧伪造零速度。
 
-`RuntimeTraceSnapshot`必须额外给出实际转矩的有效位、来源逻辑序号和同帧标识。SafetyMonitor对M3 profile显式放行状态字、张力和实际转矩，同时继续使用原D1张力上下限，不新增第二套实测张力故障判断。
+`RuntimeTraceSnapshot`必须额外给出实际转矩的有效位、来源逻辑序号和同帧标识。SafetyMonitor对M3 profile显式放行状态字、张力和实际转矩的新鲜度，同时继续使用原D1张力上下限；实际转矩数值上限继续由现有`ControlWorker`全局逻辑执行，不新增第二套张力或转矩阈值判断。
 
 ### 20.6 5 ms内环与Windows调度边界
 
