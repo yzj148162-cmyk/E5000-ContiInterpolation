@@ -278,7 +278,10 @@ public:
         ForceInteractionVelocityWithFtRuntime,
         // 阶段D最终运行：八轴实际位置/速度/状态字、六维F/T和八路张力同帧。
         // 为保持对象数可控，不采集可由软件精确记录的板卡指令速度。
-        ForceInteractionPhysicalRuntime
+        ForceInteractionPhysicalRuntime,
+        // M3静态张力保持：实际位置/状态字/实际转矩/八路张力同帧，
+        // 不采集F/T和板卡速度；共32个对象，专用于转矩模式安全交接。
+        ForceInteractionStaticTensionTorque
     };
 
     enum class MotorSafetyRelativePositionSource {
@@ -401,6 +404,8 @@ public:
         std::vector<double> motorCommandVelocity;
         std::vector<double> motorActualVelocity;
         std::vector<double> motorTorqueNm;
+        std::vector<bool> motorTorqueValid;
+        std::vector<qint64> motorTorqueFrameMonotonicUs;
         std::vector<double> forceSensorValue;
         std::vector<qint64> forceSensorFrameMonotonicUs;
         std::vector<ForceSensorTraceSample> forceSensorTraceSamples;
@@ -452,6 +457,21 @@ public:
     struct EndpointRemoteTraceCommandResult {
         RuntimeTraceSnapshot traceSnapshot;
         EndpointRemoteVelocityCommandReport commandReport;
+    };
+
+    struct TorqueBatchResult {
+        bool success = false;
+        bool partialCommand = false;
+        // 仅可在首轴写入前置true；SDK失败和部分下发绝不归类为可延后。
+        bool deferredBeforeWrite = false;
+        qint64 hardwareQueueWaitUs = 0;
+        qint64 budgetCheckedUs = 0;
+        qint64 budgetRemainingUs = 0;
+        int failedLogicalAxis = -1;
+        qint64 firstCommandMonotonicUs = 0;
+        qint64 lastCommandMonotonicUs = 0;
+        qint64 apiDurationUs = 0;
+        QString message;
     };
 
     struct MotorTracePositionSample {
@@ -701,6 +721,18 @@ public:
     bool motorTorqueStart(int index, double torqueNm);
     // 在力矩模式下按原始电机坐标修改目标力矩，不做绳索方向换算。
     bool motorTorqueChange(int index, double torqueNm);
+    // 2026-10-07：M3专用八轴事务式转矩入口。所有输入先校验；首轴写入
+    // 后任一失败均标记partialCommand并触发现有全轴安全急停。
+    TorqueBatchResult motorTorqueStartBatchFast(
+            const std::vector<int>& motorIndex,
+            const std::vector<double>& torqueNm);
+    TorqueBatchResult motorTorqueChangeBatchFast(
+            const std::vector<int>& motorIndex,
+            const std::vector<double>& torqueNm,
+            qint64 deadlineUs,
+            qint64 executionBudgetUs);
+    // 当前G302驱动已确认dmc_stop会从转矩模式回到当前位置保持。
+    bool motorTorqueReturnToPositionHold(const std::vector<int>& logicalAxes);
     // 读取指定轴当前绝对位置。
     double readMotorCurPos(int index);
     // 从运行期 Trace 读取指定轴绝对位置，避免轮询所有轴的 dmc_get_position_unit。
@@ -853,6 +885,7 @@ public:
     bool setForceTorqueSensorCommissioningTraceEnabled(bool enabled);
     bool setForceInteractionRuntimeTraceWithFtEnabled(bool enabled);
     bool setForceInteractionPhysicalRuntimeTraceEnabled(bool enabled);
+    bool setForceInteractionStaticTensionTorqueTraceEnabled(bool enabled);
     // 六维力交互使用独立的F/T拓扑参数：原G302为8电机+1009张力变送器+
     // 1010六维F/T；临时8轴模板没有张力变送器，六维F/T位于1009。
     void setForceInteractionFtTopology(int ftSlaveId,
@@ -1330,6 +1363,10 @@ private:
     bool runtimeTraceUsageProfileIncludesVelocitySignals(
             RuntimeTraceUsageProfile profile) const;
     bool runtimeTraceUsageProfileIncludesCommandVelocity(
+            RuntimeTraceUsageProfile profile) const;
+    bool runtimeTraceUsageProfileIncludesStatusWords(
+            RuntimeTraceUsageProfile profile) const;
+    bool runtimeTraceUsageProfileIncludesMotorTorque(
             RuntimeTraceUsageProfile profile) const;
     bool runtimeTraceUsageProfileIncludesForceSensors(
             RuntimeTraceUsageProfile profile) const;

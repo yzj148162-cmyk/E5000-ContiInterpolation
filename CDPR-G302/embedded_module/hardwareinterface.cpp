@@ -1895,7 +1895,8 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesVelocitySignals(
         RuntimeTraceUsageProfile profile) const
 {
     return profile != RuntimeTraceUsageProfile::Base &&
-            profile != RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning;
+            profile != RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning &&
+            profile != RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque;
 }
 
 bool HardwareInterface::runtimeTraceUsageProfileIncludesCommandVelocity(
@@ -1906,6 +1907,23 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesCommandVelocity(
         return false;
     }
     return runtimeTraceUsageProfileIncludesVelocitySignals(profile);
+}
+
+bool HardwareInterface::runtimeTraceUsageProfileIncludesStatusWords(
+        RuntimeTraceUsageProfile profile) const
+{
+    return runtimeTraceUsageProfileIncludesVelocitySignals(profile) ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque;
+}
+
+bool HardwareInterface::runtimeTraceUsageProfileIncludesMotorTorque(
+        RuntimeTraceUsageProfile profile) const
+{
+    return profile == RuntimeTraceUsageProfile::Base ||
+            profile == RuntimeTraceUsageProfile::PresetOnlineVelocity ||
+            profile == RuntimeTraceUsageProfile::EndpointRemoteTransition ||
+            profile == RuntimeTraceUsageProfile::EndpointRemoteRunning ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque;
 }
 
 bool HardwareInterface::runtimeTraceUsageProfileIncludesForceSensors(
@@ -1919,6 +1937,9 @@ bool HardwareInterface::runtimeTraceUsageProfileIncludesForceSensors(
         return false;
     }
     if(profile == RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime){
+        return true;
+    }
+    if(profile == RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque){
         return true;
     }
     return RuntimeFeatureSwitches::kOnlineVelocityForceSensorTraceEnabled;
@@ -1943,6 +1964,7 @@ bool HardwareInterface::runtimeTraceUsesForceInteractionTiming(
             profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFt ||
             profile == RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ||
             profile == RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime ||
+            profile == RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque ||
             (profile == RuntimeTraceUsageProfile::PresetOnlineVelocity &&
              runtimeTraceCommissioningAxis >= 0);
 }
@@ -1988,6 +2010,10 @@ bool HardwareInterface::setRuntimeTraceUsageProfile(
                 runtimeTraceUsageProfileIncludesVelocitySignals(profile) ||
             runtimeTraceUsageProfileIncludesForceSensors(previousProfile) !=
                 runtimeTraceUsageProfileIncludesForceSensors(profile) ||
+            runtimeTraceUsageProfileIncludesStatusWords(previousProfile) !=
+                runtimeTraceUsageProfileIncludesStatusWords(profile) ||
+            runtimeTraceUsageProfileIncludesMotorTorque(previousProfile) !=
+                runtimeTraceUsageProfileIncludesMotorTorque(profile) ||
             runtimeTraceUsageProfileIncludesFtSensor(previousProfile) !=
                 runtimeTraceUsageProfileIncludesFtSensor(profile) ||
             (previousProfile != profile &&
@@ -2192,6 +2218,13 @@ bool HardwareInterface::setForceInteractionPhysicalRuntimeTraceEnabled(bool enab
 {
     return setRuntimeTraceUsageProfile(
                 enabled ? RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime :
+                          RuntimeTraceUsageProfile::Base);
+}
+
+bool HardwareInterface::setForceInteractionStaticTensionTorqueTraceEnabled(bool enabled)
+{
+    return setRuntimeTraceUsageProfile(
+                enabled ? RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque :
                           RuntimeTraceUsageProfile::Base);
 }
 
@@ -4823,6 +4856,161 @@ bool HardwareInterface::motorTorqueChange(int index, double torqueNm)
     });
 }
 
+HardwareInterface::TorqueBatchResult HardwareInterface::motorTorqueStartBatchFast(
+        const std::vector<int>& motorIndex,
+        const std::vector<double>& torqueNm)
+{
+    const qint64 queuedUs = monotonicNowUs();
+    return runOnHardwareThread([&]() -> TorqueBatchResult {
+        TorqueBatchResult result;
+        const qint64 apiStartedUs = monotonicNowUs();
+        result.hardwareQueueWaitUs = std::max<qint64>(0, apiStartedUs - queuedUs);
+        const auto fail = [&](const QString& message, int axis, bool partial){
+            result.success = false;
+            result.partialCommand = partial;
+            result.failedLogicalAxis = axis;
+            result.message = message;
+            result.apiDurationUs = std::max<qint64>(0, monotonicNowUs() - apiStartedUs);
+            if(partial) emergencyStopAxes(motorIndex);
+            return result;
+        };
+        if(motorIndex.empty() || motorIndex.size() != torqueNm.size()){
+            return fail(QStringLiteral("八轴转矩启动批次尺寸不一致"), -1, false);
+        }
+        if(!isConnectLS){
+            return fail(QStringLiteral("雷赛控制卡未连接"), -1, false);
+        }
+        for(size_t command = 0; command < motorIndex.size(); ++command){
+            const int axis = motorIndex[command];
+            const bool duplicate = std::find(motorIndex.begin(),
+                                             motorIndex.begin() + command,
+                                             axis) != motorIndex.begin() + command;
+            const double limited = activeRuntimeTraceConfigType ==
+                    RuntimeTraceConfigType::G302 ?
+                        std::clamp(torqueNm[command],
+                                   -kLiteMotorTorqueCommandLimitNm,
+                                   kLiteMotorTorqueCommandLimitNm) :
+                        torqueNm[command];
+            const int raw = std::isfinite(limited) ?
+                        leadshineTorqueNmToRaw(limited,
+                                              leadshineRatedMotorTorqueNm) : 0;
+            if(axis < 0 || axis >= static_cast<int>(motorComType.size()) ||
+                    motorComType[axis] != COM_EC_LS ||
+                    resolveLeadshineAxisIndex(axis) < 0 ||
+                    !std::isfinite(torqueNm[command]) || raw == 0 || duplicate){
+                return fail(QStringLiteral("八轴转矩启动参数无效：轴%1").arg(axis),
+                            axis, false);
+            }
+        }
+        for(size_t command = 0; command < motorIndex.size(); ++command){
+            if(result.firstCommandMonotonicUs <= 0)
+                result.firstCommandMonotonicUs = monotonicNowUs();
+            if(!motorTorqueStart(motorIndex[command], torqueNm[command])){
+                result.lastCommandMonotonicUs = monotonicNowUs();
+                return fail(QStringLiteral("八轴转矩启动在轴%1失败")
+                            .arg(motorIndex[command]), motorIndex[command],
+                            command > 0);
+            }
+            result.lastCommandMonotonicUs = monotonicNowUs();
+        }
+        result.success = true;
+        result.message = QStringLiteral("八轴转矩模式已事务式启动");
+        result.apiDurationUs = std::max<qint64>(0, monotonicNowUs() - apiStartedUs);
+        return result;
+    });
+}
+
+HardwareInterface::TorqueBatchResult HardwareInterface::motorTorqueChangeBatchFast(
+        const std::vector<int>& motorIndex,
+        const std::vector<double>& torqueNm,
+        qint64 deadlineUs,
+        qint64 executionBudgetUs)
+{
+    const qint64 queuedUs = monotonicNowUs();
+    return runOnHardwareThread([&]() -> TorqueBatchResult {
+        TorqueBatchResult result;
+        const qint64 apiStartedUs = monotonicNowUs();
+        result.hardwareQueueWaitUs = std::max<qint64>(0, apiStartedUs - queuedUs);
+        const auto fail = [&](const QString& message, int axis, bool partial){
+            result.success = false;
+            result.partialCommand = partial;
+            result.failedLogicalAxis = axis;
+            result.message = message;
+            result.apiDurationUs = std::max<qint64>(0, monotonicNowUs() - apiStartedUs);
+            if(partial) emergencyStopAxes(motorIndex);
+            return result;
+        };
+        if(motorIndex.empty() || motorIndex.size() != torqueNm.size()){
+            return fail(QStringLiteral("八轴转矩更新批次尺寸不一致"), -1, false);
+        }
+        if(!isConnectLS){
+            return fail(QStringLiteral("雷赛控制卡未连接"), -1, false);
+        }
+        for(size_t command = 0; command < motorIndex.size(); ++command){
+            const int axis = motorIndex[command];
+            const bool duplicate = std::find(motorIndex.begin(),
+                                             motorIndex.begin() + command,
+                                             axis) != motorIndex.begin() + command;
+            if(axis < 0 || axis >= static_cast<int>(motorComType.size()) ||
+                    motorComType[axis] != COM_EC_LS ||
+                    resolveLeadshineAxisIndex(axis) < 0 ||
+                    !std::isfinite(torqueNm[command]) || duplicate){
+                return fail(QStringLiteral("八轴转矩更新参数无效：轴%1").arg(axis),
+                            axis, false);
+            }
+        }
+
+        const qint64 dispatchUs = monotonicNowUs();
+        result.budgetCheckedUs = dispatchUs;
+        result.budgetRemainingUs = deadlineUs > 0 ? deadlineUs - dispatchUs : 0;
+        if(deadlineUs > 0 && executionBudgetUs > 0 &&
+                result.budgetRemainingUs < executionBudgetUs){
+            result.deferredBeforeWrite = true;
+            return fail(QStringLiteral("八轴转矩批次在首轴写入前因预算不足而放弃：%1/%2 us")
+                        .arg(result.budgetRemainingUs).arg(executionBudgetUs),
+                        -1, false);
+        }
+        for(size_t command = 0; command < motorIndex.size(); ++command){
+            const qint64 callUs = monotonicNowUs();
+            if((deadlineUs > 0 && callUs >= deadlineUs) ||
+                    (executionBudgetUs > 0 &&
+                     callUs - apiStartedUs >= executionBudgetUs)){
+                return fail(QStringLiteral("八轴转矩批次在轴%1前超过截止时间")
+                            .arg(motorIndex[command]), motorIndex[command],
+                            command > 0);
+            }
+            if(result.firstCommandMonotonicUs <= 0)
+                result.firstCommandMonotonicUs = callUs;
+            if(!motorTorqueChange(motorIndex[command], torqueNm[command])){
+                result.lastCommandMonotonicUs = monotonicNowUs();
+                return fail(QStringLiteral("八轴转矩更新在轴%1失败")
+                            .arg(motorIndex[command]), motorIndex[command],
+                            command > 0);
+            }
+            result.lastCommandMonotonicUs = monotonicNowUs();
+        }
+        if((deadlineUs > 0 && result.lastCommandMonotonicUs > deadlineUs) ||
+                (executionBudgetUs > 0 &&
+                 result.lastCommandMonotonicUs - apiStartedUs > executionBudgetUs)){
+            return fail(QStringLiteral("八轴转矩批次完成时已经超过截止时间"),
+                        -1, true);
+        }
+        result.success = true;
+        result.message = QStringLiteral("八轴转矩批次更新成功");
+        result.apiDurationUs = std::max<qint64>(0, monotonicNowUs() - apiStartedUs);
+        return result;
+    });
+}
+
+bool HardwareInterface::motorTorqueReturnToPositionHold(
+        const std::vector<int>& logicalAxes)
+{
+    // 当前G302驱动的已验证语义：dmc_stop退出转矩模式并保持当前位置。
+    // 新鲜位置资格由M3协调器在调用前检查，本层只执行一次全轴硬件任务。
+    if(logicalAxes.empty()) return false;
+    return motorStopAxes(logicalAxes);
+}
+
 bool HardwareInterface::motorVelWithTargetPosAndStopVel(int index, double vel, double targetPos, double stopVel) {
     return runOnHardwareThread([&]() -> bool {
     if (index < 0 || index >= static_cast<int>(motorComType.size())) {
@@ -6486,6 +6674,9 @@ bool HardwareInterface::configureRuntimeTraceRead()
     const bool forceInteractionPhysicalProfile =
             activeRuntimeTraceUsageProfile ==
                 RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime;
+    const bool forceInteractionTensionTorqueProfile =
+            activeRuntimeTraceUsageProfile ==
+                RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque;
     const bool ftSensorOnlyProfile =
             activeRuntimeTraceUsageProfile ==
                 RuntimeTraceUsageProfile::ForceTorqueSensorCommissioning;
@@ -6494,7 +6685,8 @@ bool HardwareInterface::configureRuntimeTraceRead()
     if(ftSensorOnlyProfile){
         traceAxes.clear();
     }
-    if(!forceInteractionVelocityProfile && !forceInteractionPhysicalProfile){
+    if(!forceInteractionVelocityProfile && !forceInteractionPhysicalProfile &&
+            !forceInteractionTensionTorqueProfile){
         for(const RuntimeTraceAxis& axis : traceAxes){
             MotorCommandPositionTraceObject object;
             object.logicalAxis = axis.logicalAxis;
@@ -6591,9 +6783,13 @@ bool HardwareInterface::configureRuntimeTraceRead()
             runtimeTraceObjects.push_back(runtimeObject);
         }
 
+    }
+
+    if(runtimeTraceUsageProfileIncludesStatusWords(
+                activeRuntimeTraceUsageProfile)){
         // Read CiA 402 statusword through the generic slave PDO channel.  The
         // object is deliberately part of the same configured Trace frame as
-        // the position and velocity feedback used by online control.
+        // the position and feedback used by online control.
         for(const RuntimeTraceAxis& axis : traceAxes){
             if(axis.logicalAxis < 0 ||
                     axis.logicalAxis >= traceProfile.feedbackAndTorqueLogicalAxisCount){
@@ -6621,7 +6817,8 @@ bool HardwareInterface::configureRuntimeTraceRead()
         }
     }
 
-    if(!forceInteractionVelocityProfile && !forceInteractionPhysicalProfile){
+    if(runtimeTraceUsageProfileIncludesMotorTorque(
+                activeRuntimeTraceUsageProfile)){
         for(const RuntimeTraceAxis& axis : traceAxes){
             if(axis.logicalAxis < 0 ||
                     axis.logicalAxis >= traceProfile.feedbackAndTorqueLogicalAxisCount){
@@ -8315,6 +8512,8 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
     snapshot.motorCommandVelocity.assign(motorIdVec.size(), nan);
     snapshot.motorActualVelocity.assign(motorIdVec.size(), nan);
     snapshot.motorTorqueNm.assign(motorIdVec.size(), nan);
+    snapshot.motorTorqueValid.assign(motorIdVec.size(), false);
+    snapshot.motorTorqueFrameMonotonicUs.assign(motorIdVec.size(), 0);
     snapshot.usageProfile = activeRuntimeTraceUsageProfile;
     snapshot.usageProfileGeneration = runtimeTraceUsageProfileGeneration;
     snapshot.configurationGeneration = runtimeTraceConfigurationGeneration;
@@ -8572,6 +8771,25 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
     }
 
     snapshot.motorTorqueNm = currentMotorTorqueTraceCachedValues();
+    const int torqueCount = std::min(
+                static_cast<int>(snapshot.motorTorqueNm.size()),
+                static_cast<int>(motorTraceTorqueNm.size()));
+    for(int axis = 0; axis < torqueCount; ++axis){
+        const bool sameLatestFrame =
+                runtimeTraceLastFrameMonotonicUs > 0 &&
+                axis < static_cast<int>(motorTraceTorqueValid.size()) &&
+                motorTraceTorqueValid[axis] &&
+                axis < static_cast<int>(motorTraceTorqueMonotonicUs.size()) &&
+                motorTraceTorqueMonotonicUs[axis] ==
+                    runtimeTraceLastFrameMonotonicUs;
+        snapshot.motorTorqueValid[axis] = sameLatestFrame;
+        if(sameLatestFrame){
+            snapshot.motorTorqueFrameMonotonicUs[axis] =
+                    motorTraceTorqueMonotonicUs[axis];
+        }else{
+            snapshot.motorTorqueNm[axis] = nan;
+        }
+    }
     const int commandVelocityCount = std::min(
                 static_cast<int>(snapshot.motorCommandVelocity.size()),
                 static_cast<int>(motorTraceCommandVelocity.size()));
