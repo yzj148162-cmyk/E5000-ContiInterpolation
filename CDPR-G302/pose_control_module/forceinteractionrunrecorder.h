@@ -28,7 +28,8 @@ enum ForceInteractionRecordAvailability : quint32
     ForceRecordTiming = 1u << 8,
     ForceRecordFtDiagnostics = 1u << 9,
     ForceRecordCableTension = 1u << 10,
-    ForceRecordTensionShadow = 1u << 11
+    ForceRecordTensionShadow = 1u << 11,
+    ForceRecordStaticTensionTorque = 1u << 12
 };
 
 struct ForceInteractionRunMetadata
@@ -37,6 +38,7 @@ struct ForceInteractionRunMetadata
     QString sourceName;
     QString machineTemplateName;
     QString mechanicalMode;
+    QString executionMode = QStringLiteral("online_velocity");
     double controlPeriodS = 0.0;
     double plannedDurationS = 0.0;
     bool workspaceReplayEnabled = false;
@@ -161,6 +163,26 @@ struct ForceInteractionRunRecord
             tensionShadowTargetTensionN{};
     std::array<double, kForceInteractionCableCount>
             tensionShadowNominalTorqueNm{};
+
+    // 2026-10-07: M3 static-tension torque diagnostics. These columns are
+    // present in v15 for every run, but are valid only when availabilityMask
+    // contains ForceRecordStaticTensionTorque.
+    int staticTensionState = 0;
+    quint64 staticTensionProposalSequence = 0;
+    bool staticTensionProposalValid = false;
+    bool staticTensionProposalCommitted = false;
+    bool staticTensionBatchSucceeded = false;
+    qint64 staticTensionBatchDurationUs = 0;
+    std::array<double, kForceInteractionCableCount>
+            staticTensionTargetN{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionMeasuredN{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionErrorN{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionCommandTorqueNm{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionActualTorqueNm{};
 
     qint64 calculationDurationUs = 0;
     qint64 hardwareApiDurationUs = 0;

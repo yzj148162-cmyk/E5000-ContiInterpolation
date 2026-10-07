@@ -245,20 +245,22 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v14\n"
+    stream << "# schema=force_interaction_run_v15\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
            << ",source=" << csvSafe(metadata_.sourceName)
            << ",machine_template=" << csvSafe(metadata_.machineTemplateName)
            << ",mechanical_mode=" << csvSafe(metadata_.mechanicalMode)
+           << ",execution_mode=" << csvSafe(metadata_.executionMode)
            << '\n'
            << "# control_period_s=" << metadata_.controlPeriodS
            << ",planned_duration_s=" << metadata_.plannedDurationS << '\n'
            << "# availability_mask:1=sensor_wrench,2=platform_wrench,4=desired_state,"
               "8=cable_kinematics,16=forward_kinematics,32=axis_reference,"
               "64=axis_command,128=axis_trace,256=timing,512=ft_diagnostics,"
-              "1024=cable_tension,2048=tension_shadow\n";
+              "1024=cable_tension,2048=tension_shadow,"
+              "4096=static_tension_torque\n";
     stream << "# workspace_replay_enabled="
            << (metadata_.workspaceReplayEnabled ? 1 : 0) << '\n';
     if(metadata_.workspaceReplayEnabled){
@@ -370,6 +372,19 @@ void ForceInteractionRunRecorder::run()
                      kForceInteractionCableCount);
     writeGroupHeader(stream, "tension_shadow_nominal_torque_nm",
                      kForceInteractionCableCount);
+    stream << ",static_tension_state,static_tension_proposal_sequence,"
+              "static_tension_proposal_valid,static_tension_proposal_committed,"
+              "static_tension_batch_succeeded,static_tension_batch_duration_us";
+    writeGroupHeader(stream, "static_tension_target_n",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_measured_n",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_error_n",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_command_torque_nm",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_actual_torque_nm",
+                     kForceInteractionCableCount);
     stream << ",calculation_us,hardware_api_us,full_cycle_us\n";
     ready_.release();
 
@@ -469,6 +484,17 @@ void ForceInteractionRunRecorder::run()
                    << ',' << record.tensionShadowMinimumTensionMarginN;
             writeArray(stream, record.tensionShadowTargetTensionN);
             writeArray(stream, record.tensionShadowNominalTorqueNm);
+            stream << ',' << record.staticTensionState
+                   << ',' << record.staticTensionProposalSequence
+                   << ',' << (record.staticTensionProposalValid ? 1 : 0)
+                   << ',' << (record.staticTensionProposalCommitted ? 1 : 0)
+                   << ',' << (record.staticTensionBatchSucceeded ? 1 : 0)
+                   << ',' << record.staticTensionBatchDurationUs;
+            writeArray(stream, record.staticTensionTargetN);
+            writeArray(stream, record.staticTensionMeasuredN);
+            writeArray(stream, record.staticTensionErrorN);
+            writeArray(stream, record.staticTensionCommandTorqueNm);
+            writeArray(stream, record.staticTensionActualTorqueNm);
             stream << ',' << record.calculationDurationUs
                    << ',' << record.hardwareApiDurationUs
                    << ',' << record.fullCycleDurationUs << '\n';
