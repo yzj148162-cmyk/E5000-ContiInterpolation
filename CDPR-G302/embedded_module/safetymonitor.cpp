@@ -761,10 +761,15 @@ void SafetyMonitor::evaluateSafety()
                 traceNowUs >= snapshot.runtimeTraceFrameMonotonicUs ?
                     traceNowUs - snapshot.runtimeTraceFrameMonotonicUs :
                     std::numeric_limits<qint64>::max();
-        bool tensionTraceReliable =
+        const bool staticTensionTorqueProfile =
                 snapshot.runtimeTraceUsageProfile ==
                     HardwareInterface::RuntimeTraceUsageProfile::
-                        ForceInteractionPhysicalRuntime &&
+                        ForceInteractionStaticTensionTorque;
+        bool tensionTraceReliable =
+                (snapshot.runtimeTraceUsageProfile ==
+                     HardwareInterface::RuntimeTraceUsageProfile::
+                         ForceInteractionPhysicalRuntime ||
+                 staticTensionTorqueProfile) &&
                 snapshot.runtimeTraceFromHardware &&
                 snapshot.runtimeTraceFrameSequenceValid &&
                 snapshot.runtimeTraceTimingReliable &&
@@ -777,6 +782,22 @@ void SafetyMonitor::evaluateSafety()
             tensionTraceReliable && axisIndex < static_cast<int>(cfg.axes.size());
             ++axisIndex){
             const AxisConfig& axis = cfg.axes[axisIndex];
+            if(staticTensionTorqueProfile && axis.monitored &&
+                    axis.motionParticipant){
+                const bool torqueValid =
+                        axisIndex < static_cast<int>(snapshot.motorTorqueNm.size()) &&
+                        axisIndex < static_cast<int>(snapshot.motorTorqueTraceValid.size()) &&
+                        axisIndex < static_cast<int>(
+                            snapshot.motorTorqueTraceFrameMonotonicUs.size()) &&
+                        snapshot.motorTorqueTraceValid[axisIndex] &&
+                        std::isfinite(snapshot.motorTorqueNm[axisIndex]) &&
+                        snapshot.motorTorqueTraceFrameMonotonicUs[axisIndex] ==
+                            snapshot.runtimeTraceFrameMonotonicUs;
+                if(!torqueValid){
+                    invalidChannels << QStringLiteral("转矩轴%1").arg(axisIndex + 1);
+                    tensionTraceReliable = false;
+                }
+            }
             if(!axis.monitored || !axis.monitorForce || axis.sensorIndex < 0){
                 continue;
             }
@@ -931,7 +952,10 @@ void SafetyMonitor::evaluateSafety()
                          ForceInteractionVelocityWithFtRuntime ||
                  snapshot.runtimeTraceUsageProfile ==
                      HardwareInterface::RuntimeTraceUsageProfile::
-                         ForceInteractionPhysicalRuntime) &&
+                         ForceInteractionPhysicalRuntime ||
+                 snapshot.runtimeTraceUsageProfile ==
+                     HardwareInterface::RuntimeTraceUsageProfile::
+                         ForceInteractionStaticTensionTorque) &&
                     snapshot.runtimeTraceFromHardware &&
                     snapshot.runtimeTraceFrameSequenceValid &&
                     snapshot.runtimeTraceTimingReliable &&

@@ -7496,6 +7496,9 @@ void ControlWorker::updateSnapshot(const Config& cfg,
             remoteStatus.state == EndpointRemoteStatus::State::Running;
     snapshot.endpointRemoteTracePhase = endpointRemoteTracePhase;
     snapshot.motorTorqueNm = motorTorqueNm;
+    snapshot.motorTorqueTraceValid = runtimeTraceSnapshot.motorTorqueValid;
+    snapshot.motorTorqueTraceFrameMonotonicUs =
+            runtimeTraceSnapshot.motorTorqueFrameMonotonicUs;
     snapshot.motorCommand = motorCommand;
     snapshot.forceSensorValue = forceSensorValue;
     snapshot.expectedForce = expectedForce;

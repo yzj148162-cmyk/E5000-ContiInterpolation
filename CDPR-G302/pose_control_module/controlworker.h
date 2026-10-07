@@ -251,6 +251,9 @@ public:
                 EndpointRemoteTracePhase::Inactive;
         // 原始电机坐标实际力矩；G302 中正=放绳、负=收绳。
         std::vector<double> motorTorqueNm;
+        // M3专用Trace中实际转矩必须与位置/状态/张力来自同一完整帧。
+        std::vector<bool> motorTorqueTraceValid;
+        std::vector<qint64> motorTorqueTraceFrameMonotonicUs;
         // 已完成绳索方向映射、准备下发的原始电机坐标力矩命令。
         std::vector<double> motorCommand;
         std::vector<double> forceSensorValue;
