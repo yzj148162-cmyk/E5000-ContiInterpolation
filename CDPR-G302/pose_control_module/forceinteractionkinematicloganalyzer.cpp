@@ -213,6 +213,8 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
         bool slewOk = slewNmPerSec > 0.0;
         for(int axis = 0; axis < kAxisCount; ++axis){
             double target = 0.0, measured = 0.0, recordedError = 0.0;
+            double actualTorque = 0.0;
+            qint64 tensionValid = 0;
             rowComplete = rowComplete &&
                     number(values, header.indexOf(QStringLiteral(
                                "static_tension_target_n_%1").arg(axis)), &target) &&
@@ -223,7 +225,13 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
                            &recordedError) &&
                     number(values, header.indexOf(QStringLiteral(
                                "static_tension_command_torque_nm_%1").arg(axis)),
-                           &command[axis]);
+                           &command[axis]) &&
+                    number(values, header.indexOf(QStringLiteral(
+                               "static_tension_actual_torque_nm_%1").arg(axis)),
+                           &actualTorque) &&
+                    integer64(values, header.indexOf(QStringLiteral(
+                               "cable_tension_valid_%1").arg(axis)),
+                              &tensionValid) && tensionValid != 0;
             if(!rowComplete) break;
             maximumError = std::max(maximumError, std::abs(recordedError));
             if(std::abs(recordedError - (target - measured)) > 1.0e-6)
