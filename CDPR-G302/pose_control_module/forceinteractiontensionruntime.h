@@ -39,6 +39,7 @@ struct ForceInteractionTensionRuntimeConfig
             RedundantTorqueAllocator::Vector8d::Zero();
     double hardwareTorqueQuantumNm = 0.0345;
     double maximumEntryTargetDifferenceN = 100.0;
+    double maximumEntryAbsVelocityUnitPerSec = 2.0;
     qint64 innerPeriodUs = 5000;
 
     bool validate(QString* errorMessage = nullptr) const;
@@ -48,6 +49,8 @@ struct ForceInteractionTensionEntrySnapshot
 {
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
     RedundantTorqueAllocator::Vector8d actualPositionUnit =
+            RedundantTorqueAllocator::Vector8d::Zero();
+    RedundantTorqueAllocator::Vector8d actualVelocityUnitPerSec =
             RedundantTorqueAllocator::Vector8d::Zero();
     RedundantTorqueAllocator::Vector8d measuredTensionN =
             RedundantTorqueAllocator::Vector8d::Zero();

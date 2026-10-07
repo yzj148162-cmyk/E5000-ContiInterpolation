@@ -256,6 +256,12 @@ void ForceInteractionRunRecorder::run()
            << '\n'
            << "# control_period_s=" << metadata_.controlPeriodS
            << ",planned_duration_s=" << metadata_.plannedDurationS << '\n'
+           << "# static_tension_torque_quantum_nm="
+           << metadata_.staticTensionTorqueQuantumNm
+           << ",static_tension_torque_slew_nm_s="
+           << metadata_.staticTensionTorqueSlewNmPerSec
+           << ",static_tension_parameter_source="
+           << csvSafe(metadata_.staticTensionParameterSource) << '\n'
            << "# availability_mask:1=sensor_wrench,2=platform_wrench,4=desired_state,"
               "8=cable_kinematics,16=forward_kinematics,32=axis_reference,"
               "64=axis_command,128=axis_trace,256=timing,512=ft_diagnostics,"

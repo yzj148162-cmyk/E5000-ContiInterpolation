@@ -8808,6 +8808,42 @@ HardwareInterface::RuntimeTraceSnapshot HardwareInterface::readRuntimeTraceLates
             snapshot.motorActualVelocity[axis] = motorTraceActualVelocity[axis];
         }
     }
+    if(activeRuntimeTraceUsageProfile ==
+            RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque){
+        // 2026-10-07: M3的32对象Trace不占用8个实际速度对象。用以最新
+        // 1 ms Trace帧结尾、至少5 ms跨度的位置窗口估速，只用于切入转矩
+        // 模式前的静止准入；不使用相邻5 ms控制快照伪造速度。
+        for(int axis = 0; axis < actualVelocityCount; ++axis){
+            if(std::isfinite(snapshot.motorActualVelocity[axis]) ||
+                    axis >= static_cast<int>(motorTracePositionSampleQueues.size())){
+                continue;
+            }
+            const auto& samples = motorTracePositionSampleQueues[axis];
+            if(samples.size() < 2){
+                continue;
+            }
+            const MotorTracePositionSample& latest = samples.back();
+            if(latest.monotonicUs != runtimeTraceLastFrameMonotonicUs ||
+                    !std::isfinite(latest.feedbackRelativePosition)){
+                continue;
+            }
+            for(auto it = std::next(samples.rbegin()); it != samples.rend(); ++it){
+                const qint64 dtUs = latest.monotonicUs - it->monotonicUs;
+                if(dtUs < 5000){
+                    continue;
+                }
+                if(dtUs > 20000 ||
+                        !std::isfinite(it->feedbackRelativePosition)){
+                    break;
+                }
+                snapshot.motorActualVelocity[axis] =
+                        (latest.feedbackRelativePosition -
+                         it->feedbackRelativePosition) * 1000000.0 /
+                        static_cast<double>(dtUs);
+                break;
+            }
+        }
+    }
     const int statusWordCount = std::min(
                 static_cast<int>(snapshot.motorStatusWord.size()),
                 static_cast<int>(motorTraceStatusWord.size()));

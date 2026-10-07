@@ -689,6 +689,7 @@ private:
     ForceInteractionTensionShadowConfig forceInteractionLastRunTensionShadowConfig;
     bool forceInteractionLastRunTensionShadowConfigValid = false;
     bool forceInteractionLastRunKinematicContextValid = false;
+    bool forceInteractionLastRunStaticTensionMode = false;
     ForceInteractionReplayExportContext forceInteractionRuntimeReplayContext;
     ForceInteractionReplayExportContext forceInteractionLastRunReplayContext;
     bool forceInteractionRuntimeReplayContextValid = false;

@@ -17067,6 +17067,40 @@ border-radius: 6px;</string>
              </property>
             </widget>
            </item>
+           <item row="4" column="0">
+            <widget class="QLabel" name="forceInteractionExecutionModeTitleLabel">
+             <property name="text">
+              <string>执行后端</string>
+             </property>
+            </widget>
+           </item>
+           <item row="4" column="1" colspan="2">
+            <widget class="QComboBox" name="forceInteractionExecutionModeComboBox">
+             <property name="toolTip">
+              <string>在线速度控制是现有默认后端；M3只用于D1、仅平动、Nokov有效时的短时静态张力保持，不接受F/T或Newmark改变目标。</string>
+             </property>
+             <item>
+              <property name="text">
+               <string>在线速度控制（已验证，默认）</string>
+              </property>
+             </item>
+             <item>
+              <property name="text">
+               <string>静态在线张力控制（M3实验）</string>
+              </property>
+             </item>
+            </widget>
+           </item>
+           <item row="4" column="3" colspan="4">
+            <widget class="QLabel" name="forceInteractionExecutionModeHintLabel">
+             <property name="text">
+              <string>当前为在线速度后端；阶段D仍由真实F/T—Newmark生成运动。</string>
+             </property>
+             <property name="wordWrap">
+              <bool>true</bool>
+             </property>
+            </widget>
+           </item>
           </layout>
          </widget>
         </item>

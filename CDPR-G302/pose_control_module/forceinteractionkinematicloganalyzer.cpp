@@ -1,6 +1,7 @@
 #include "forceinteractionkinematicloganalyzer.h"
 
 #include "forwardkinematicssolver.h"
+#include "forceinteractionrunrecorder.h"
 #include "winchcompensation.h"
 
 #include <algorithm>
@@ -95,6 +96,220 @@ DesiredStateAtHost desiredStateAtHost(
     }
     return result;
 }
+
+bool metadataNumber(const QString& line, const QString& key, double* value)
+{
+    const QString token = key + '=';
+    const int begin = line.indexOf(token);
+    if(begin < 0) return false;
+    const int valueBegin = begin + token.size();
+    const int comma = line.indexOf(',', valueBegin);
+    bool ok = false;
+    const double parsed = line.mid(valueBegin,
+                                   comma < 0 ? -1 : comma - valueBegin)
+            .trimmed().toDouble(&ok);
+    if(!ok || !std::isfinite(parsed)) return false;
+    *value = parsed;
+    return true;
+}
+
+ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
+        const QString& csvPath)
+{
+    ForceInteractionKinematicLogAnalysisResult result;
+    result.csvPath = csvPath;
+    result.staticTensionMode = true;
+    QFile source(csvPath);
+    if(!source.open(QIODevice::ReadOnly | QIODevice::Text)){
+        result.errorMessage = QStringLiteral("无法读取M3运行记录：%1")
+                .arg(source.errorString());
+        result.summary = QStringLiteral("M3静态张力验算失败：%1")
+                .arg(result.errorMessage);
+        return result;
+    }
+
+    QTextStream input(&source);
+    QStringList header;
+    double quantumNm = 0.0;
+    double slewNmPerSec = 0.0;
+    double terminalPresent = 0.0;
+    double terminalExperimentValid = 0.0;
+    double recorderAccepted = -1.0;
+    double recorderWritten = -1.0;
+    double recorderDropped = -1.0;
+    QFileInfo sourceInfo(csvPath);
+    result.resultCsvPath = sourceInfo.dir().filePath(
+                sourceInfo.completeBaseName() +
+                QStringLiteral("_static_tension_analysis.csv"));
+    QFile output(result.resultCsvPath);
+    if(!output.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate)){
+        result.errorMessage = QStringLiteral("无法创建M3验算结果：%1")
+                .arg(output.errorString());
+        result.summary = QStringLiteral("M3静态张力验算失败：%1")
+                .arg(result.errorMessage);
+        return result;
+    }
+    QTextStream report(&output);
+    report.setRealNumberNotation(QTextStream::SmartNotation);
+    report.setRealNumberPrecision(12);
+    report << "row_index,trace_sequence,batch_ok,error_consistent,quantized,slew_ok,"
+              "maximum_abs_tension_error_n,maximum_quantum_residual_nm,"
+              "maximum_slew_excess_nm\n";
+
+    bool havePreviousCommand = false;
+    qint64 previousHostUs = 0;
+    std::array<double, kAxisCount> previousCommand{};
+    quint64 rowIndex = 0;
+    while(!input.atEnd()){
+        const QString line = input.readLine();
+        if(line.startsWith('#')){
+            metadataNumber(line, QStringLiteral("static_tension_torque_quantum_nm"),
+                           &quantumNm);
+            metadataNumber(line, QStringLiteral("static_tension_torque_slew_nm_s"),
+                           &slewNmPerSec);
+            metadataNumber(line, QStringLiteral("terminal_summary_present"),
+                           &terminalPresent);
+            metadataNumber(line, QStringLiteral("terminal_experiment_valid"),
+                           &terminalExperimentValid);
+            metadataNumber(line, QStringLiteral("recorder_accepted"),
+                           &recorderAccepted);
+            metadataNumber(line, QStringLiteral("recorder_written"),
+                           &recorderWritten);
+            metadataNumber(line, QStringLiteral("recorder_dropped"),
+                           &recorderDropped);
+            continue;
+        }
+        if(line.trimmed().isEmpty()) continue;
+        if(header.isEmpty()){
+            header = line.split(',');
+            continue;
+        }
+        ++result.dataRows;
+        ++rowIndex;
+        const QStringList values = line.split(',');
+        qint64 availability = 0, traceValid = 0, traceSequence = 0, hostUs = 0;
+        qint64 proposalCommitted = 0, batchSucceeded = 0;
+        if(!integer64(values, header.indexOf("availability_mask"), &availability) ||
+                !(quint32(availability) & ForceRecordStaticTensionTorque)){
+            continue;
+        }
+        ++result.staticTensionRows;
+        bool rowComplete =
+                integer64(values, header.indexOf("trace_valid"), &traceValid) &&
+                integer64(values, header.indexOf("trace_sequence"), &traceSequence) &&
+                integer64(values, header.indexOf("host_monotonic_us"), &hostUs) &&
+                integer64(values, header.indexOf(
+                              "static_tension_proposal_committed"),
+                          &proposalCommitted) &&
+                integer64(values, header.indexOf(
+                              "static_tension_batch_succeeded"),
+                          &batchSucceeded);
+        std::array<double, kAxisCount> command{};
+        double maximumError = 0.0;
+        double maximumQuantumResidual = 0.0;
+        double maximumSlewExcess = 0.0;
+        bool errorConsistent = true;
+        bool quantized = quantumNm > 0.0;
+        bool slewOk = slewNmPerSec > 0.0;
+        for(int axis = 0; axis < kAxisCount; ++axis){
+            double target = 0.0, measured = 0.0, recordedError = 0.0;
+            rowComplete = rowComplete &&
+                    number(values, header.indexOf(QStringLiteral(
+                               "static_tension_target_n_%1").arg(axis)), &target) &&
+                    number(values, header.indexOf(QStringLiteral(
+                               "static_tension_measured_n_%1").arg(axis)), &measured) &&
+                    number(values, header.indexOf(QStringLiteral(
+                               "static_tension_error_n_%1").arg(axis)),
+                           &recordedError) &&
+                    number(values, header.indexOf(QStringLiteral(
+                               "static_tension_command_torque_nm_%1").arg(axis)),
+                           &command[axis]);
+            if(!rowComplete) break;
+            maximumError = std::max(maximumError, std::abs(recordedError));
+            if(std::abs(recordedError - (target - measured)) > 1.0e-6)
+                errorConsistent = false;
+            if(quantumNm > 0.0){
+                const double residual = std::abs(command[axis] -
+                        std::round(command[axis] / quantumNm) * quantumNm);
+                maximumQuantumResidual = std::max(maximumQuantumResidual, residual);
+                if(residual > 1.0e-6) quantized = false;
+            }
+            if(havePreviousCommand && slewNmPerSec > 0.0 && hostUs > previousHostUs){
+                const double allowed = slewNmPerSec *
+                        double(hostUs - previousHostUs) * 1.0e-6 + quantumNm + 1.0e-6;
+                const double excess = std::abs(command[axis] -
+                                                previousCommand[axis]) - allowed;
+                maximumSlewExcess = std::max(maximumSlewExcess,
+                                              std::max(0.0, excess));
+                if(excess > 0.0) slewOk = false;
+            }
+        }
+        if(!rowComplete || traceValid == 0){
+            ++result.failedRows;
+            continue;
+        }
+        ++result.validTraceRows;
+        if(proposalCommitted != 0) ++result.staticTensionCommittedRows;
+        const bool batchOk = batchSucceeded != 0;
+        if(!batchOk) ++result.staticTensionBatchFailureRows;
+        if(!errorConsistent) ++result.staticTensionErrorMismatchRows;
+        if(!quantized) ++result.staticTensionQuantizationViolationRows;
+        if(!slewOk) ++result.staticTensionSlewViolationRows;
+        result.staticTensionMaximumAbsErrorN = std::max(
+                    result.staticTensionMaximumAbsErrorN, maximumError);
+        result.staticTensionMaximumQuantumResidualNm = std::max(
+                    result.staticTensionMaximumQuantumResidualNm,
+                    maximumQuantumResidual);
+        result.staticTensionMaximumSlewExcessNm = std::max(
+                    result.staticTensionMaximumSlewExcessNm, maximumSlewExcess);
+        report << rowIndex << ',' << traceSequence << ',' << (batchOk ? 1 : 0)
+               << ',' << (errorConsistent ? 1 : 0) << ',' << (quantized ? 1 : 0)
+               << ',' << (slewOk ? 1 : 0) << ',' << maximumError << ','
+               << maximumQuantumResidual << ',' << maximumSlewExcess << '\n';
+        previousCommand = command;
+        previousHostUs = hostUs;
+        havePreviousCommand = true;
+    }
+    if(quantumNm <= 0.0 || slewNmPerSec <= 0.0){
+        result.errorMessage = QStringLiteral("M3记录缺少冻结的转矩量化或斜率参数");
+    }
+    else if(terminalPresent != 1.0 || terminalExperimentValid != 1.0){
+        result.errorMessage = QStringLiteral("M3记录缺少有效的终态摘要");
+    }
+    else if(recorderAccepted < 0.0 || recorderWritten < 0.0 ||
+            recorderDropped != 0.0 || recorderAccepted != recorderWritten){
+        result.errorMessage = QStringLiteral("M3记录队列不完整");
+    }
+    else if(result.staticTensionRows == 0){
+        result.errorMessage = QStringLiteral("记录中没有M3静态张力数据行");
+    }
+    else if(result.failedRows || result.staticTensionBatchFailureRows ||
+            result.staticTensionErrorMismatchRows ||
+            result.staticTensionQuantizationViolationRows ||
+            result.staticTensionSlewViolationRows){
+        result.errorMessage = QStringLiteral("M3记录存在数据、批次、误差、量化或斜率不一致");
+    }
+    result.completed = result.errorMessage.isEmpty();
+    result.summary = QStringLiteral(
+                "M3静态张力验算%1：数据/有效/提交=%2/%3/%4行，"
+                "批次失败/误差不一致/量化越界/斜率越界=%5/%6/%7/%8行，"
+                "最大|张力误差|=%9 N，最大量化残差=%10 N·m，"
+                "最大斜率超额=%11 N·m；报告=%12")
+            .arg(result.completed ? QStringLiteral("通过") : QStringLiteral("未通过"))
+            .arg(result.staticTensionRows).arg(result.validTraceRows)
+            .arg(result.staticTensionCommittedRows)
+            .arg(result.staticTensionBatchFailureRows)
+            .arg(result.staticTensionErrorMismatchRows)
+            .arg(result.staticTensionQuantizationViolationRows)
+            .arg(result.staticTensionSlewViolationRows)
+            .arg(result.staticTensionMaximumAbsErrorN, 0, 'f', 6)
+            .arg(result.staticTensionMaximumQuantumResidualNm, 0, 'g', 6)
+            .arg(result.staticTensionMaximumSlewExcessNm, 0, 'g', 6)
+            .arg(result.resultCsvPath);
+    if(!result.errorMessage.isEmpty())
+        result.summary += QStringLiteral("；原因=%1").arg(result.errorMessage);
+    return result;
+}
 }
 
 ForceInteractionKinematicLogAnalysisResult
@@ -108,6 +323,11 @@ ForceInteractionKinematicLogAnalyzer::analyze(
         result.errorMessage = QStringLiteral("无法读取运行记录：%1").arg(source.errorString());
         result.summary = QStringLiteral("六维力交互运动学验算失败：%1").arg(result.errorMessage);
         return result;
+    }
+    const QByteArray prefix = source.peek(8192);
+    if(prefix.contains("execution_mode=static_tension_torque_m3")){
+        source.close();
+        return analyzeStaticTensionRecord(request.csvPath);
     }
     if(request.referenceCableLengthMm.size() != kAxisCount ||
             request.initialPoseMmRad.size() < kPoseCount ||

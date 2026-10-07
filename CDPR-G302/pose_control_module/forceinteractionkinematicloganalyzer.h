@@ -31,6 +31,7 @@ struct ForceInteractionKinematicLogAnalysisRequest
 struct ForceInteractionKinematicLogAnalysisResult
 {
     bool completed = false;
+    bool staticTensionMode = false;
     quint64 dataRows = 0;
     quint64 validTraceRows = 0;
     quint64 solvedRows = 0;
@@ -49,6 +50,15 @@ struct ForceInteractionKinematicLogAnalysisResult
     double shadowMinimumTensionMarginN =
             std::numeric_limits<double>::infinity();
     double shadowMaximumWrenchResidual = 0.0;
+    quint64 staticTensionRows = 0;
+    quint64 staticTensionCommittedRows = 0;
+    quint64 staticTensionBatchFailureRows = 0;
+    quint64 staticTensionErrorMismatchRows = 0;
+    quint64 staticTensionQuantizationViolationRows = 0;
+    quint64 staticTensionSlewViolationRows = 0;
+    double staticTensionMaximumAbsErrorN = 0.0;
+    double staticTensionMaximumQuantumResidualNm = 0.0;
+    double staticTensionMaximumSlewExcessNm = 0.0;
     qint64 traceHostAnchorOffsetUs = 0;
     QString csvPath;
     QString resultCsvPath;

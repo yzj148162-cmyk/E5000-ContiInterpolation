@@ -1903,8 +1903,35 @@ bool ControlWorker::prepareForceInteractionRuntime(
                         "%1需要G302标准八轴Runtime Trace拓扑，请选择8电机/张力变送器从站1009配置")
                     .arg(forceInteractionStageName(runtimeConfig.stage)));
     }
+    const bool staticTensionMode = runtimeConfig.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
+    if(staticTensionMode){
+        std::shared_ptr<ForceInteractionMocapPoseStore> mocapStore;
+        {
+            QMutexLocker lock(&forceInteractionMocapStoreMutex);
+            mocapStore = forceInteractionMocapPoseStore;
+        }
+        const ForceInteractionMocapPose mocap = mocapStore ?
+                    mocapStore->latest() : ForceInteractionMocapPose{};
+        const qint64 nowUs = monotonicNowUs();
+        const qint64 mocapAgeUs = mocap.receivedMonotonicUs > 0 ?
+                    nowUs - mocap.receivedMonotonicUs : -1;
+        if(!mocapStore || !mocap.valid || mocapAgeUs < 0 ||
+                mocapAgeUs > runtimeConfig.tensionControlMocapTimeoutUs){
+            if(errorMessage){
+                *errorMessage = QStringLiteral(
+                            "M3启动拒绝：Nokov位姿不可靠或已超时，帧龄=%1 us，上限=%2 us")
+                        .arg(mocapAgeUs)
+                        .arg(runtimeConfig.tensionControlMocapTimeoutUs);
+            }
+            return false;
+        }
+    }
     const HardwareInterface::RuntimeTraceUsageProfile expectedProfile =
-            forceInteractionTraceProfile(runtimeConfig.stage);
+            staticTensionMode ?
+                HardwareInterface::RuntimeTraceUsageProfile::
+                    ForceInteractionStaticTensionTorque :
+                forceInteractionTraceProfile(runtimeConfig.stage);
     if(hardwareInterface->runtimeTraceUsageProfile() != expectedProfile){
         return fail(QStringLiteral("%1 Runtime Trace profile尚未准备")
                     .arg(forceInteractionStageName(runtimeConfig.stage)));
@@ -1920,9 +1947,9 @@ bool ControlWorker::prepareForceInteractionRuntime(
                         .arg(axis));
         }
         const double configuredVelocityLimit = cfg.axes[axis].motorVelMax;
-        if(!std::isfinite(configuredVelocityLimit) ||
+        if(!staticTensionMode && (!std::isfinite(configuredVelocityLimit) ||
                 configuredVelocityLimit <= 0.0 ||
-                runtimeConfig.velocityLimit > configuredVelocityLimit + 1.0e-12){
+                runtimeConfig.velocityLimit > configuredVelocityLimit + 1.0e-12)){
             return fail(QStringLiteral("%1速度上限超过轴%2既有安全上限")
                         .arg(forceInteractionStageName(runtimeConfig.stage))
                         .arg(axis));
@@ -1947,7 +1974,8 @@ bool ControlWorker::prepareForceInteractionRuntime(
     forceInteractionTensionShadowExpired = 0;
     forceInteractionTensionShadowMaximumCalculationUs = 0;
     forceInteractionTensionShadowInvalidReasons.clear();
-    if(runtimeConfig.stage == ForceInteractionRuntimeStage::StageD &&
+    if(!staticTensionMode &&
+            runtimeConfig.stage == ForceInteractionRuntimeStage::StageD &&
             runtimeConfig.mechanicalMode ==
                 ForceInteractionMechanicalMode::D1PhysicalCabled &&
             runtimeConfig.translationOnly &&
@@ -2015,6 +2043,30 @@ bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
             forceInteractionRuntimeControl.currentConfig();
     const ForceInteractionWrenchSourceKind source = runtimeConfig.wrenchSourceKind;
     const QString stage = forceInteractionStageName(runtimeConfig.stage);
+    const bool staticTensionMode = runtimeConfig.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
+    if(staticTensionMode){
+        std::shared_ptr<ForceInteractionMocapPoseStore> mocapStore;
+        {
+            QMutexLocker lock(&forceInteractionMocapStoreMutex);
+            mocapStore = forceInteractionMocapPoseStore;
+        }
+        const ForceInteractionMocapPose mocap = mocapStore ?
+                    mocapStore->latest() : ForceInteractionMocapPose{};
+        const qint64 nowUs = monotonicNowUs();
+        const qint64 mocapAgeUs = mocap.receivedMonotonicUs > 0 ?
+                    nowUs - mocap.receivedMonotonicUs : -1;
+        if(!mocapStore || !mocap.valid || mocapAgeUs < 0 ||
+                mocapAgeUs > runtimeConfig.tensionControlMocapTimeoutUs){
+            if(errorMessage){
+                *errorMessage = QStringLiteral(
+                            "M3启动拒绝：Nokov位姿不可靠或已超时，帧龄=%1 us，上限=%2 us")
+                        .arg(mocapAgeUs)
+                        .arg(runtimeConfig.tensionControlMocapTimeoutUs);
+            }
+            return false;
+        }
+    }
     if(!hardwareInterface || !cfg.systemRunning || !cfg.useLeadshine ||
             !hardwareInterface->isLSConnected() ||
             cfg.forceThreadEnabled || cfg.pvtActiveOrPaused ||
@@ -2054,9 +2106,9 @@ bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
             return false;
         }
         const double configuredVelocityLimit = cfg.axes[axis].motorVelMax;
-        if(!std::isfinite(configuredVelocityLimit) ||
+        if(!staticTensionMode && (!std::isfinite(configuredVelocityLimit) ||
                 configuredVelocityLimit <= 0.0 ||
-                requestedVelocityLimit > configuredVelocityLimit + 1.0e-12){
+                requestedVelocityLimit > configuredVelocityLimit + 1.0e-12)){
             if(errorMessage){
                 *errorMessage = QStringLiteral(
                             "%1启动时轴%2既有速度安全上限已失效或变小")
@@ -2069,8 +2121,12 @@ bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
         publishForceInteractionRuntimeStatus();
         return false;
     }
-    if(!hardwareInterface->setRuntimeTraceUsageProfile(
-                forceInteractionTraceProfile(runtimeConfig.stage))){
+    const HardwareInterface::RuntimeTraceUsageProfile runtimeProfile =
+            staticTensionMode ?
+                HardwareInterface::RuntimeTraceUsageProfile::
+                    ForceInteractionStaticTensionTorque :
+                forceInteractionTraceProfile(runtimeConfig.stage);
+    if(!hardwareInterface->setRuntimeTraceUsageProfile(runtimeProfile)){
         forceInteractionRuntimeControl.stop(true,
                                              QStringLiteral("%1 Runtime Trace配置失败")
                                              .arg(stage));
@@ -2086,7 +2142,7 @@ bool ControlWorker::startForceInteractionRuntime(QString* errorMessage)
         return false;
     }
     const std::vector<int> axes{0, 1, 2, 3, 4, 5, 6, 7};
-    hardwareInterface->resetMotorVelBatchFastState(axes);
+    if(!staticTensionMode) hardwareInterface->resetMotorVelBatchFastState(axes);
     publishForceInteractionRuntimeStatus();
     return true;
 }
@@ -2106,6 +2162,9 @@ void ControlWorker::stopForceInteractionRuntime(bool emergency,
 
     const ForceInteractionWrenchSourceKind source =
             forceInteractionRuntimeControl.currentConfig().wrenchSourceKind;
+    const bool staticTensionMode =
+            forceInteractionRuntimeControl.currentConfig().executionMode ==
+                ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
     const std::vector<int> axes{0, 1, 2, 3, 4, 5, 6, 7};
     if(hardwareInterface && forceInteractionRuntimeControl.isActive()){
         if(emergency){
@@ -2118,7 +2177,7 @@ void ControlWorker::stopForceInteractionRuntime(bool emergency,
                 emergency = true;
             }
         }
-        hardwareInterface->resetMotorVelBatchFastState(axes);
+        if(!staticTensionMode) hardwareInterface->resetMotorVelBatchFastState(axes);
     }
     if(hardwareInterface &&
             source != ForceInteractionWrenchSourceKind::RealFtTrace){
@@ -3070,6 +3129,9 @@ void ControlWorker::processForceInteractionRuntime(
                         forceInteractionRuntimeControl.currentConfig().stage)));
         return;
     }
+    const bool staticTensionMode =
+            forceInteractionRuntimeControl.currentConfig().executionMode ==
+                ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
 
     ForceInteractionRuntimeFeedback feedback;
     feedback.wallClockUs = traceSnapshot.wallClockUs;
@@ -3088,6 +3150,8 @@ void ControlWorker::processForceInteractionRuntime(
     feedback.safetyRelativePosition.fill(nan);
     feedback.safetyRelativePositionFromTrace.fill(false);
     feedback.actualVelocity.fill(nan);
+    feedback.actualTorqueNm.fill(nan);
+    feedback.actualTorqueValid.fill(false);
     feedback.cableTensionN.fill(nan);
     feedback.cableTensionValid.fill(false);
     feedback.motorStatusWord.fill(0);
@@ -3099,12 +3163,26 @@ void ControlWorker::processForceInteractionRuntime(
                 RuntimeTraceUsageProfile::ForceInteractionVelocityWithFtRuntime ||
             traceSnapshot.usageProfile == HardwareInterface::
                 RuntimeTraceUsageProfile::ForceInteractionPhysicalRuntime;
+    feedback.staticTensionRuntimeProfileActive =
+            traceSnapshot.usageProfile == HardwareInterface::
+                RuntimeTraceUsageProfile::ForceInteractionStaticTensionTorque;
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         if(axis < static_cast<int>(traceSnapshot.motorPosition.size())){
             feedback.actualPosition[axis] = traceSnapshot.motorPosition[axis];
         }
         if(axis < static_cast<int>(traceSnapshot.motorActualVelocity.size())){
             feedback.actualVelocity[axis] = traceSnapshot.motorActualVelocity[axis];
+        }
+        if(axis < static_cast<int>(traceSnapshot.motorTorqueNm.size())){
+            feedback.actualTorqueNm[axis] = traceSnapshot.motorTorqueNm[axis];
+        }
+        if(axis < static_cast<int>(traceSnapshot.motorTorqueValid.size()) &&
+                axis < static_cast<int>(
+                    traceSnapshot.motorTorqueFrameMonotonicUs.size())){
+            feedback.actualTorqueValid[axis] =
+                    traceSnapshot.motorTorqueValid[axis] &&
+                    traceSnapshot.motorTorqueFrameMonotonicUs[axis] ==
+                        traceSnapshot.monotonicUs;
         }
         if(axis < static_cast<int>(
                 traceSnapshot.motorSafetyRelativePosition.size())){
@@ -3131,12 +3209,20 @@ void ControlWorker::processForceInteractionRuntime(
             feedback.motorStateMachine[axis] =
                     traceSnapshot.motorStateMachine[axis];
         }
-        if(axis < static_cast<int>(traceSnapshot.forceSensorValue.size()) &&
-                std::isfinite(traceSnapshot.forceSensorValue[axis])){
-            feedback.cableTensionN[axis] = traceSnapshot.forceSensorValue[axis];
-            const bool sameFrame = axis < static_cast<int>(
+        const int tensionSensorIndex = staticTensionMode &&
+                axis < static_cast<int>(cfg.axes.size()) ?
+                    cfg.axes[axis].sensorIndex : axis;
+        if(tensionSensorIndex >= 0 &&
+                tensionSensorIndex < static_cast<int>(
+                    traceSnapshot.forceSensorValue.size()) &&
+                std::isfinite(traceSnapshot.forceSensorValue[tensionSensorIndex])){
+            // 2026-10-07: M3的PID/转矩命令按电机轴排列；只在M3分支应用
+            // 已有轴—张力通道映射。速度D1的记录仍保持原传感器通道顺序。
+            feedback.cableTensionN[axis] =
+                    traceSnapshot.forceSensorValue[tensionSensorIndex];
+            const bool sameFrame = tensionSensorIndex < static_cast<int>(
                         traceSnapshot.forceSensorFrameMonotonicUs.size()) &&
-                    traceSnapshot.forceSensorFrameMonotonicUs[axis] ==
+                    traceSnapshot.forceSensorFrameMonotonicUs[tensionSensorIndex] ==
                         traceSnapshot.monotonicUs;
             feedback.cableTensionValid[axis] = sameFrame;
         }
@@ -3283,6 +3369,7 @@ void ControlWorker::processForceInteractionRuntime(
             }
         }
     }
+    ForceInteractionRuntimeStep dispatchedStep = step;
     const std::vector<int> axes{0, 1, 2, 3, 4, 5, 6, 7};
     bool commandOk = true;
     qint64 apiDurationUs = 0;
@@ -3296,6 +3383,31 @@ void ControlWorker::processForceInteractionRuntime(
         if(!commandOk){
             hardwareInterface->emergencyStopAxes(axes);
         }
+    }
+    else if(step.action == ForceInteractionRuntimeStep::Action::StartTorqueBatch){
+        const std::vector<double> torque(step.commandTorqueNm.begin(),
+                                         step.commandTorqueNm.end());
+        const auto batch = hardwareInterface->motorTorqueStartBatchFast(axes, torque);
+        commandOk = batch.success;
+        dispatchedStep.reason = batch.message;
+        apiDurationUs = batch.apiDurationUs;
+    }
+    else if(step.action == ForceInteractionRuntimeStep::Action::CommandTorqueBatch ||
+            step.action == ForceInteractionRuntimeStep::Action::UnloadTorqueBatch){
+        const std::vector<double> torque(step.commandTorqueNm.begin(),
+                                         step.commandTorqueNm.end());
+        const qint64 deadlineUs = step.commandDeadlineUs;
+        const auto batch = hardwareInterface->motorTorqueChangeBatchFast(
+                    axes, torque, deadlineUs, 4000);
+        commandOk = batch.success;
+        dispatchedStep.reason = batch.message;
+        apiDurationUs = batch.apiDurationUs;
+    }
+    else if(step.action == ForceInteractionRuntimeStep::Action::ReturnPositionHold){
+        commandOk = hardwareInterface->motorTorqueReturnToPositionHold(axes);
+        dispatchedStep.reason = commandOk ?
+                    QStringLiteral("M3已恢复八轴位置保持") :
+                    QStringLiteral("M3恢复八轴位置保持失败");
     }
     else{
         const std::vector<double> command(step.commandVelocity.begin(),
@@ -3313,14 +3425,25 @@ void ControlWorker::processForceInteractionRuntime(
             hardwareInterface->emergencyStopAxes(axes);
         }
     }
-    apiDurationUs = apiTimer.nsecsElapsed() / 1000;
+    if(apiDurationUs <= 0) apiDurationUs = apiTimer.nsecsElapsed() / 1000;
+    if(!commandOk && step.action !=
+            ForceInteractionRuntimeStep::Action::EmergencyStop){
+        hardwareInterface->emergencyStopAxes(axes);
+    }
     const qint64 fullCycleUs = std::max<qint64>(0, monotonicNowUs() - nowUs);
-    forceInteractionRuntimeControl.noteCommandResult(step, commandOk,
+    forceInteractionRuntimeControl.noteCommandResult(dispatchedStep, commandOk,
                                                      apiDurationUs, fullCycleUs);
-    const bool terminal = step.action !=
-            ForceInteractionRuntimeStep::Action::CommandVelocity || !commandOk;
+    const bool continuingAction = step.action ==
+            ForceInteractionRuntimeStep::Action::CommandVelocity ||
+            step.action == ForceInteractionRuntimeStep::Action::StartTorqueBatch ||
+            step.action == ForceInteractionRuntimeStep::Action::CommandTorqueBatch ||
+            step.action == ForceInteractionRuntimeStep::Action::UnloadTorqueBatch;
+    const bool terminal = !continuingAction || !commandOk;
     if(terminal){
-        hardwareInterface->resetMotorVelBatchFastState(axes);
+        if(forceInteractionRuntimeControl.currentConfig().executionMode ==
+                ForceInteractionExecutionMode::OnlineVelocity){
+            hardwareInterface->resetMotorVelBatchFastState(axes);
+        }
         if(statusAfterStep.wrenchSourceKind !=
                 ForceInteractionWrenchSourceKind::RealFtTrace){
             hardwareInterface->setRuntimeTraceUsageProfile(

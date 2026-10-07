@@ -136,11 +136,14 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
     if(machineTemplateName.compare(QStringLiteral("G302"), Qt::CaseInsensitive) != 0){
         return fail(QStringLiteral("六维力交互实机运行仅允许G302模板"));
     }
+    const bool staticTensionMode = executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
     if(stage == ForceInteractionRuntimeStage::StageD){
-        if(wrenchSourceKind != ForceInteractionWrenchSourceKind::RealFtTrace ||
+        if((!staticTensionMode &&
+            wrenchSourceKind != ForceInteractionWrenchSourceKind::RealFtTrace) ||
                 mechanicalMode == ForceInteractionMechanicalMode::NotApplicable ||
                 !tensionTraceRequired){
-            return fail(QStringLiteral("阶段D必须使用真实F/T、明确D0/D1机械状态并启用八路张力Trace"));
+            return fail(QStringLiteral("阶段D必须明确D0/D1机械状态并启用八路张力Trace；速度后端还必须使用真实F/T"));
         }
         if(mechanicalMode == ForceInteractionMechanicalMode::D1PhysicalCabled){
             if(!globalTensionSafetyEnabled || globalMinimumCableTensionN <= 0.0){
@@ -162,13 +165,27 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
             }
         }
     }
+    if(staticTensionMode){
+        if(stage != ForceInteractionRuntimeStage::StageD ||
+                mechanicalMode != ForceInteractionMechanicalMode::D1PhysicalCabled ||
+                !translationOnly || !tensionControlMocapEnabled || periodUs != 5000){
+            return fail(QStringLiteral(
+                        "M3仅允许阶段D1、仅平动、Nokov反馈和5 ms控制周期"));
+        }
+        QString tensionError;
+        if(!staticTension.validate(&tensionError)){
+            return fail(QStringLiteral("M3静态张力配置无效：%1").arg(tensionError));
+        }
+    }
     if(periodUs < 1000 || periodUs > 20000){
         return fail(QStringLiteral("控制周期必须位于1~20 ms"));
     }
-    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
-        if(!traceDelayValid[axis] || !std::isfinite(traceDelayMs[axis]) ||
-                traceDelayMs[axis] < 0.0 || traceDelayMs[axis] > 20.0){
-            return fail(QStringLiteral("轴%1缺少与当前硬件模板匹配的有效Trace延迟标定").arg(axis));
+    if(!staticTensionMode){
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            if(!traceDelayValid[axis] || !std::isfinite(traceDelayMs[axis]) ||
+                    traceDelayMs[axis] < 0.0 || traceDelayMs[axis] > 20.0){
+                return fail(QStringLiteral("轴%1缺少与当前硬件模板匹配的有效Trace延迟标定").arg(axis));
+            }
         }
     }
     if(!initialState.poseValid || rigidBody.massKg <= 0.0){
@@ -200,7 +217,8 @@ bool ForceInteractionRuntimeConfig::validate(QString* errorMessage) const
         return fail(QStringLiteral("初始位姿不满足动平台几何硬边界：%1")
                     .arg(initialWorkspace.reason));
     }
-    if(!finiteArray(motorUnitPerRadian) || velocityLimit <= 0.0 ||
+    if(!finiteArray(motorUnitPerRadian) ||
+            (!staticTensionMode && velocityLimit <= 0.0) ||
             followingErrorLimit <= 0.0 ||
             correctionVelocityLimit < 0.0 || integralLimit < 0.0 ||
             onlineChangeTimeS < 0.0 || traceTimeoutUs <= 0 ||
@@ -240,6 +258,8 @@ bool ForceInteractionRuntimeControl::prepare(
         return false;
     }
     QString error;
+    const bool staticTensionMode = config.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
     if(!config.validate(&error) ||
             (config.wrenchSourceKind ==
                  ForceInteractionWrenchSourceKind::Simulated &&
@@ -267,6 +287,11 @@ bool ForceInteractionRuntimeControl::prepare(
         }
         return false;
     }
+    if(staticTensionMode && !tensionRuntime_.prepare(config.staticTension, &error)){
+        if(errorMessage) *errorMessage = error;
+        return false;
+    }
+    if(!staticTensionMode) tensionRuntime_.reset();
     config_ = config;
     if(config.wrenchSourceKind != ForceInteractionWrenchSourceKind::RealFtTrace){
         wrenchConditioner_.reset();
@@ -277,6 +302,7 @@ bool ForceInteractionRuntimeControl::prepare(
     status_.wrenchSourceKind = config.wrenchSourceKind;
     status_.stage = config.stage;
     status_.mechanicalMode = config.mechanicalMode;
+    status_.executionMode = config.executionMode;
     status_.globalMinimumCableTensionN = config.globalMinimumCableTensionN;
     status_.globalMaximumCableTensionN = config.globalMaximumCableTensionN;
     status_.frozenFtSoftwareZero = config.ftSoftwareZero;
@@ -296,6 +322,8 @@ bool ForceInteractionRuntimeControl::prepare(
     startTraceSequence_ = 0;
     brakingState_ = ForceInteractionPlatformState{};
     controlledStopReason_.clear();
+    lastCommittedTorqueNm_.fill(0.0);
+    staticTensionTargetVersion_ = 1;
     integral_.fill(0.0);
     previousError_.fill(0.0);
     referenceHistory_.clear();
@@ -355,7 +383,11 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
             (config_.mechanicalMode ==
              ForceInteractionMechanicalMode::D1PhysicalCabled ?
                  QStringLiteral("d1_physical_cabled") :
-                 QStringLiteral("not_applicable"));
+                  QStringLiteral("not_applicable"));
+    metadata.executionMode = config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental ?
+                QStringLiteral("static_tension_torque_m3") :
+                QStringLiteral("online_velocity");
     metadata.sourceName = config_.wrenchSourceKind ==
             ForceInteractionWrenchSourceKind::RealFtTrace ?
                 runtimeSourceName(config_.wrenchSourceKind) :
@@ -363,6 +395,15 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
     metadata.machineTemplateName = config_.machineTemplateName;
     metadata.controlPeriodS = config_.periodUs / 1000000.0;
     metadata.plannedDurationS = config_.maximumTestDurationS;
+    if(config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental){
+        metadata.staticTensionTorqueQuantumNm =
+                config_.staticTension.hardwareTorqueQuantumNm;
+        metadata.staticTensionTorqueSlewNmPerSec =
+                config_.staticTension.feedback.slewNmPerSec;
+        metadata.staticTensionParameterSource = QString::fromStdString(
+                    config_.staticTension.feedback.parameterSource);
+    }
     metadata.workspaceReplayEnabled = true;
     metadata.physicalWorkspace = config_.physicalWorkspace;
     metadata.workspaceSafety = config_.workspaceSafety;
@@ -394,8 +435,22 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
     startTraceSequence_ = 0;
     lastFtSampleCounterValid_ = false;
     lastFtCounterChangeUs_ = 0;
+    if(config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental){
+        QString tensionError;
+        if(!tensionRuntime_.beginTraceAcquisition(&tensionError)){
+            recorder_->requestFinish();
+            recorder_->finishAndWait();
+            recorder_.reset();
+            if(errorMessage) *errorMessage = tensionError;
+            return false;
+        }
+    }
     status_.state = ForceInteractionRuntimeStatus::State::WaitingForTrace;
-    status_.message = config_.wrenchSourceKind ==
+    status_.message = config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental ?
+                QStringLiteral("M3等待新鲜完整的位置/状态/转矩/张力同帧Trace") :
+            config_.wrenchSourceKind ==
             ForceInteractionWrenchSourceKind::RealFtTrace ?
                 QStringLiteral("等待新鲜完整的八轴＋F/T同帧Trace") :
                 QStringLiteral("等待新鲜完整的八轴Trace帧");
@@ -506,6 +561,28 @@ bool ForceInteractionRuntimeControl::realFtSample(
 bool ForceInteractionRuntimeControl::feedbackReady(
         const ForceInteractionRuntimeFeedback& feedback) const
 {
+    if(config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental){
+        return feedback.staticTensionRuntimeProfileActive &&
+                feedback.fromTrace && feedback.frameSequenceValid &&
+                feedback.timingReliable && feedback.fifoCaughtUp &&
+                !feedback.traceLost && feedback.frameCount > 0 &&
+                feedback.newestFrameAgeUs >= 0 &&
+                feedback.newestFrameAgeUs <= config_.traceTimeoutUs &&
+                finiteArray(feedback.actualPosition) &&
+                finiteArray(feedback.actualVelocity) &&
+                finiteArray(feedback.actualTorqueNm) &&
+                finiteArray(feedback.cableTensionN) &&
+                std::all_of(feedback.actualTorqueValid.cbegin(),
+                            feedback.actualTorqueValid.cend(),
+                            [](bool valid){ return valid; }) &&
+                std::all_of(feedback.cableTensionValid.cbegin(),
+                            feedback.cableTensionValid.cend(),
+                            [](bool valid){ return valid; }) &&
+                std::all_of(feedback.motorStateMachine.cbegin(),
+                            feedback.motorStateMachine.cend(),
+                            [](int state){ return state >= 0; });
+    }
     const bool motorFeedbackReady = feedback.fromTrace &&
             feedback.frameSequenceValid &&
             feedback.timingReliable && feedback.fifoCaughtUp &&
@@ -545,6 +622,31 @@ bool ForceInteractionRuntimeControl::requestControlledStop(
         const QString& reason, bool experimentFailure,
         ForceInteractionControlledStopCause cause)
 {
+    if(config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental){
+        if(status_.state == ForceInteractionRuntimeStatus::State::Braking){
+            status_.experimentValid = status_.experimentValid && !experimentFailure;
+            if(experimentFailure){
+                status_.safetyStopReason = reason;
+                status_.controlledStopCause = cause;
+            }
+            return true;
+        }
+        if(status_.state != ForceInteractionRuntimeStatus::State::Running){
+            return false;
+        }
+        QString tensionError;
+        if(!tensionRuntime_.requestControlledStop(&tensionError)) return false;
+        controlledStopReason_ = reason.isEmpty() ?
+                    QStringLiteral("M3请求受控停止") : reason;
+        status_.experimentValid = status_.experimentValid && !experimentFailure;
+        if(experimentFailure) status_.safetyStopReason = controlledStopReason_;
+        status_.controlledStopCause = cause;
+        status_.state = ForceInteractionRuntimeStatus::State::Braking;
+        status_.message = QStringLiteral("M3正在受控撤除张力修正：%1")
+                .arg(controlledStopReason_);
+        return true;
+    }
     if(status_.state == ForceInteractionRuntimeStatus::State::Braking){
         status_.experimentValid = status_.experimentValid && !experimentFailure;
         if(experimentFailure){
@@ -668,6 +770,195 @@ ForceInteractionRuntimeControl::advanceBrakingState(
     return next;
 }
 
+ForceInteractionRunRecord ForceInteractionRuntimeControl::staticTensionRecord(
+        const ForceInteractionRuntimeFeedback& feedback,
+        const ForceInteractionTensionRuntimeDiagnostic& diagnostic,
+        qint64 nowUs) const
+{
+    ForceInteractionRunRecord record;
+    record.stepIndex = status_.stepCount + 1;
+    record.elapsedS = hostStartUs_ > 0 ?
+                std::max<qint64>(0, nowUs - hostStartUs_) / 1000000.0 : 0.0;
+    record.modelElapsedS = record.elapsedS;
+    record.availabilityMask = ForceRecordAxisTrace | ForceRecordTiming |
+            ForceRecordCableTension | ForceRecordStaticTensionTorque;
+    record.stamp.hostMonotonicTimeUs = nowUs;
+    record.stamp.traceSequence = feedback.logicalFrameSequence;
+    record.stamp.traceTimeUs = feedback.monotonicUs;
+    record.stamp.traceValid = true;
+    record.staticTensionState = static_cast<int>(diagnostic.state);
+    record.staticTensionProposalSequence = diagnostic.proposalSequence;
+    record.staticTensionProposalValid = diagnostic.proposalValid;
+    record.staticTensionProposalCommitted = diagnostic.feedback.committed;
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        record.axisTracePosition[axis] = feedback.actualPosition[axis];
+        record.axisStatusWord[axis] = feedback.motorStatusWord[axis];
+        record.axisStateMachine[axis] = feedback.motorStateMachine[axis];
+        record.cableTensionN[axis] = feedback.cableTensionN[axis];
+        record.cableTensionValid[axis] = feedback.cableTensionValid[axis] ? 1 : 0;
+        record.staticTensionTargetN[axis] = diagnostic.feedback.targetN[axis];
+        record.staticTensionMeasuredN[axis] = feedback.cableTensionN[axis];
+        record.staticTensionErrorN[axis] = diagnostic.feedback.errorN[axis];
+        record.staticTensionCommandTorqueNm[axis] =
+                diagnostic.feedback.commandNm[axis];
+        record.staticTensionActualTorqueNm[axis] = feedback.actualTorqueNm[axis];
+    }
+    return record;
+}
+
+ForceInteractionRuntimeStep ForceInteractionRuntimeControl::stepStaticTension(
+        const ForceInteractionRuntimeFeedback& feedback, qint64 nowUs)
+{
+    ForceInteractionRuntimeStep output;
+    const bool ready = feedbackReady(feedback);
+    const bool fresh = ready && (!lastFrameSequenceValid_ ||
+                                feedback.logicalFrameSequence > lastFrameSequence_);
+    if(fresh){
+        lastGoodTraceUs_ = nowUs;
+        lastFrameSequence_ = feedback.logicalFrameSequence;
+        lastFrameSequenceValid_ = true;
+        status_.latestTraceSequence = feedback.logicalFrameSequence;
+        status_.actualPosition = feedback.actualPosition;
+        status_.actualTorqueNm = feedback.actualTorqueNm;
+        status_.cableTensionN = feedback.cableTensionN;
+        status_.cableTensionValid = feedback.cableTensionValid;
+        status_.motorStatusWord = feedback.motorStatusWord;
+        status_.motorStateMachine = feedback.motorStateMachine;
+    }
+    else{
+        const qint64 anchorUs = lastGoodTraceUs_ > 0 ? lastGoodTraceUs_ : waitStartUs_;
+        if(anchorUs > 0 && nowUs - anchorUs > config_.traceTimeoutUs){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = QStringLiteral(
+                        "M3可靠Trace超时：profile=%1，完整=%2，帧龄=%3 us，序号=%4")
+                    .arg(feedback.staticTensionRuntimeProfileActive ? 1 : 0)
+                    .arg(ready ? 1 : 0)
+                    .arg(feedback.newestFrameAgeUs)
+                    .arg(feedback.logicalFrameSequence);
+        }
+        return output;
+    }
+    if(feedback.traceSamplePeriodUs <= 0 ||
+            config_.periodUs % feedback.traceSamplePeriodUs != 0){
+        output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+        output.reason = QStringLiteral("M3控制周期%1 us不是Trace周期%2 us的整数倍")
+                .arg(config_.periodUs).arg(feedback.traceSamplePeriodUs);
+        return output;
+    }
+    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+        if(feedback.motorStateMachine[axis] != 4){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = QStringLiteral("M3轴%1不在Operation enabled：状态机=%2")
+                    .arg(axis).arg(feedback.motorStateMachine[axis]);
+            return output;
+        }
+    }
+
+    if(tensionRuntime_.state() == ForceInteractionTensionState::AcquiringReliableTrace){
+        ForceInteractionTensionEntrySnapshot entry;
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            entry.actualPositionUnit[axis] = feedback.actualPosition[axis];
+            entry.actualVelocityUnitPerSec[axis] = feedback.actualVelocity[axis];
+            entry.measuredTensionN[axis] = feedback.cableTensionN[axis];
+            entry.actualTorqueNm[axis] = feedback.actualTorqueNm[axis];
+            entry.operationEnabled[axis] = feedback.motorStateMachine[axis] == 4;
+            output.commandTorqueNm[axis] = feedback.actualTorqueNm[axis];
+            lastCommittedTorqueNm_[axis] = feedback.actualTorqueNm[axis];
+        }
+        entry.traceSequence = feedback.logicalFrameSequence;
+        entry.sampleUs = feedback.monotonicUs;
+        entry.sameFrame = true;
+        entry.reliable = true;
+        QString error;
+        if(!tensionRuntime_.qualifyEntry(entry, &error) ||
+                !tensionRuntime_.beginTorqueStart(&error)){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = error;
+            return output;
+        }
+        actualStartPosition_ = feedback.actualPosition;
+        status_.actualStartPosition = feedback.actualPosition;
+        hostStartUs_ = nowUs;
+        nextDueUs_ = nowUs + config_.periodUs;
+        output.action = ForceInteractionRuntimeStep::Action::StartTorqueBatch;
+        output.actualPosition = feedback.actualPosition;
+        output.record = staticTensionRecord(feedback,
+                                             tensionRuntime_.diagnostic(), nowUs);
+        return output;
+    }
+
+    if(hostStartUs_ > 0){
+        status_.elapsedS = std::max<qint64>(0, nowUs - hostStartUs_) / 1000000.0;
+        if(status_.state == ForceInteractionRuntimeStatus::State::Running &&
+                status_.elapsedS >= config_.maximumTestDurationS){
+            requestControlledStop(QStringLiteral("M3最长运行时间到达"), false,
+                                  ForceInteractionControlledStopCause::DurationReached);
+        }
+    }
+    if(nowUs < nextDueUs_) return output;
+    if(nowUs - nextDueUs_ >= config_.periodUs){
+        status_.missedCycleCount += static_cast<quint64>(
+                    (nowUs - nextDueUs_) / config_.periodUs);
+    }
+    do{ nextDueUs_ += config_.periodUs; }while(nextDueUs_ <= nowUs);
+
+    if(tensionRuntime_.state() == ForceInteractionTensionState::TargetTransition ||
+            tensionRuntime_.state() == ForceInteractionTensionState::StaticHolding){
+        ForceInteractionTensionRuntime::Vector8d measured;
+        ForceInteractionTensionRuntime::Vector8d committed;
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            measured[axis] = feedback.cableTensionN[axis];
+            committed[axis] = lastCommittedTorqueNm_[axis];
+        }
+        ForceInteractionTensionRuntimeDiagnostic diagnostic;
+        QString error;
+        if(!tensionRuntime_.propose(feedback.monotonicUs, measured, committed,
+                                    staticTensionTargetVersion_, diagnostic,
+                                    &error)){
+            output.action = ForceInteractionRuntimeStep::Action::EmergencyStop;
+            output.reason = error;
+            return output;
+        }
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            output.commandTorqueNm[axis] = diagnostic.feedback.commandNm[axis];
+        }
+        output.action = ForceInteractionRuntimeStep::Action::CommandTorqueBatch;
+        output.commandDeadlineUs = nextDueUs_;
+        output.actualPosition = feedback.actualPosition;
+        output.record = staticTensionRecord(feedback, diagnostic, nowUs);
+        return output;
+    }
+
+    if(tensionRuntime_.state() == ForceInteractionTensionState::CorrectionUnloading){
+        const double maximumStep = config_.staticTension.feedback.slewNmPerSec *
+                config_.periodUs / 1000000.0;
+        bool complete = true;
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            const double target = tensionRuntime_.entrySnapshot().actualTorqueNm[axis];
+            const double delta = target - lastCommittedTorqueNm_[axis];
+            const double step = std::clamp(delta, -maximumStep, maximumStep);
+            output.commandTorqueNm[axis] = lastCommittedTorqueNm_[axis] + step;
+            complete = complete && std::fabs(delta) <= maximumStep + 1.0e-12;
+        }
+        output.action = ForceInteractionRuntimeStep::Action::UnloadTorqueBatch;
+        output.commandDeadlineUs = nextDueUs_;
+        output.unloadComplete = complete;
+        output.actualPosition = feedback.actualPosition;
+        output.record = staticTensionRecord(feedback,
+                                             tensionRuntime_.diagnostic(), nowUs);
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            output.record.staticTensionCommandTorqueNm[axis] =
+                    output.commandTorqueNm[axis];
+        }
+        return output;
+    }
+    if(tensionRuntime_.state() == ForceInteractionTensionState::ReturningPositionHold){
+        output.action = ForceInteractionRuntimeStep::Action::ReturnPositionHold;
+        output.actualPosition = feedback.actualPosition;
+    }
+    return output;
+}
+
 ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
         const ForceInteractionRuntimeFeedback& feedback,
         qint64 nowUs)
@@ -675,6 +966,10 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::step(
     ForceInteractionRuntimeStep output;
     if(!isActive()){
         return output;
+    }
+    if(config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental){
+        return stepStaticTension(feedback, nowUs);
     }
     const bool ready = feedbackReady(feedback);
     const bool fresh = ready &&
@@ -1354,6 +1649,85 @@ void ForceInteractionRuntimeControl::noteCommandResult(
 {
     status_.latestApiUs = apiDurationUs;
     status_.maximumApiUs = std::max(status_.maximumApiUs, apiDurationUs);
+    if(config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental){
+        if(!commandOk){
+            const QString reason = step.reason.isEmpty() ?
+                        QStringLiteral("M3八轴转矩/回退批次失败") : step.reason;
+            tensionRuntime_.fail(reason);
+            setTerminal(ForceInteractionRuntimeStatus::State::Fault, reason);
+            return;
+        }
+        QString error;
+        if(step.action == ForceInteractionRuntimeStep::Action::StartTorqueBatch){
+            if(!tensionRuntime_.confirmTorqueStarted(&error)){
+                tensionRuntime_.fail(error);
+                setTerminal(ForceInteractionRuntimeStatus::State::Fault, error);
+                return;
+            }
+            lastCommittedTorqueNm_ = step.commandTorqueNm;
+            status_.state = ForceInteractionRuntimeStatus::State::Running;
+            status_.message = QStringLiteral("M3静态目标张力过渡中");
+            hostStartUs_ = step.record.stamp.hostMonotonicTimeUs;
+        }
+        else if(step.action ==
+                ForceInteractionRuntimeStep::Action::CommandTorqueBatch){
+            if(!tensionRuntime_.commitProposal(true, &error)){
+                tensionRuntime_.fail(error);
+                setTerminal(ForceInteractionRuntimeStatus::State::Fault, error);
+                return;
+            }
+            lastCommittedTorqueNm_ = step.commandTorqueNm;
+            status_.message = tensionRuntime_.state() ==
+                    ForceInteractionTensionState::StaticHolding ?
+                        QStringLiteral("M3静态张力保持中") :
+                        QStringLiteral("M3静态目标张力过渡中");
+        }
+        else if(step.action ==
+                ForceInteractionRuntimeStep::Action::UnloadTorqueBatch){
+            lastCommittedTorqueNm_ = step.commandTorqueNm;
+            if(step.unloadComplete &&
+                    !tensionRuntime_.markCorrectionUnloaded(&error)){
+                tensionRuntime_.fail(error);
+                setTerminal(ForceInteractionRuntimeStatus::State::Fault, error);
+                return;
+            }
+        }
+        else if(step.action ==
+                ForceInteractionRuntimeStep::Action::ReturnPositionHold){
+            if(!tensionRuntime_.markPositionHoldRestored(&error)){
+                tensionRuntime_.fail(error);
+                setTerminal(ForceInteractionRuntimeStatus::State::Fault, error);
+                return;
+            }
+            setTerminal(ForceInteractionRuntimeStatus::State::Completed,
+                        controlledStopReason_.isEmpty() ?
+                            QStringLiteral("M3已恢复位置保持") :
+                            controlledStopReason_);
+            return;
+        }
+        if(step.action == ForceInteractionRuntimeStep::Action::StartTorqueBatch ||
+                step.action == ForceInteractionRuntimeStep::Action::CommandTorqueBatch ||
+                step.action == ForceInteractionRuntimeStep::Action::UnloadTorqueBatch){
+            ForceInteractionRunRecord record = step.record;
+            record.staticTensionBatchSucceeded = true;
+            record.staticTensionBatchDurationUs = apiDurationUs;
+            record.hardwareApiDurationUs = apiDurationUs;
+            record.fullCycleDurationUs = fullCycleDurationUs;
+            if(step.action == ForceInteractionRuntimeStep::Action::CommandTorqueBatch){
+                record.staticTensionProposalCommitted = true;
+            }
+            if(recorder_){
+                recorder_->tryAppend(record);
+                status_.droppedRecordCount = recorder_->droppedCount();
+            }
+            ++status_.stepCount;
+            ++status_.commandCount;
+            status_.commandTorqueNm = step.commandTorqueNm;
+            status_.staticTensionDiagnostic = tensionRuntime_.diagnostic();
+        }
+        return;
+    }
     if(!commandOk){
         setTerminal(ForceInteractionRuntimeStatus::State::Fault,
                     step.action == ForceInteractionRuntimeStep::Action::CommandVelocity ?
@@ -1401,6 +1775,10 @@ void ForceInteractionRuntimeControl::stop(bool fault, const QString& reason)
 {
     if(status_.state == ForceInteractionRuntimeStatus::State::Idle){
         return;
+    }
+    if(config_.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental && fault){
+        tensionRuntime_.fail(reason);
     }
     setTerminal(fault ? ForceInteractionRuntimeStatus::State::Fault :
                         ForceInteractionRuntimeStatus::State::Stopped,
@@ -1470,6 +1848,9 @@ void ForceInteractionRuntimeControl::resetSession()
     lastFtSampleCounterValid_ = false;
     brakingState_ = ForceInteractionPlatformState{};
     controlledStopReason_.clear();
+    tensionRuntime_.reset();
+    lastCommittedTorqueNm_.fill(0.0);
+    staticTensionTargetVersion_ = 1;
 }
 
 bool ForceInteractionRuntimeControl::isActive() const

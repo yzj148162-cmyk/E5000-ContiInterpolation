@@ -19401,6 +19401,22 @@ void MainWindow::setupForceInteractionValidationTab()
     connect(ui->forceInteractionCommonControlPeriodComboBox,
             qOverload<int>(&QComboBox::currentIndexChanged), this,
             [this](int){ refreshForceInteractionTimingUi(); });
+    connect(ui->forceInteractionExecutionModeComboBox,
+            qOverload<int>(&QComboBox::currentIndexChanged), this,
+            [this](int index){
+        // 2026-10-07: M3只复用阶段D1入口。选择实验后端时把四个准入项
+        // 明确落到UI，避免准备时才用隐含默认值；退出M3不反向改写用户参数。
+        if(index == 1){
+            ui->forceInteractionActuatorProfileComboBox->setCurrentIndex(0);
+            ui->forceInteractionBusCycleComboBox->setCurrentIndex(1);
+            ui->forceInteractionCommonControlPeriodComboBox->setCurrentIndex(2);
+            ui->forceInteractionTranslationOnlyCheckBox->setChecked(true);
+            ui->forceInteractionStageDMechanicalModeComboBox->setCurrentIndex(1);
+            ui->forceInteractionStageDMocapModeComboBox->setCurrentIndex(1);
+        }
+        refreshForceInteractionTimingUi();
+        refreshForceInteractionRuntimeUi();
+    });
     connect(ui->tabWidget, &QTabWidget::currentChanged, this,
             [this](int){ refreshForceInteractionUnitAdmissionUi(); });
     connect(ui->forceInteractionKinematicAnalyzeButton,
@@ -20782,7 +20798,14 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
     config.machineTemplateName = QString::fromLatin1(profile.name);
     config.stage = stage;
     config.mechanicalMode = mechanicalMode;
-    config.wrenchSourceKind = sourceKind;
+    config.executionMode = ui->forceInteractionExecutionModeComboBox->currentIndex() == 1 ?
+                ForceInteractionExecutionMode::StaticTensionTorqueExperimental :
+                ForceInteractionExecutionMode::OnlineVelocity;
+    const bool staticTensionMode = config.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
+    // M3专用Trace不含F/T对象，冻结目标也不接收F/T/Newmark输入。
+    config.wrenchSourceKind = staticTensionMode ?
+                ForceInteractionWrenchSourceKind::Simulated : sourceKind;
     config.periodUs = selectedForceInteractionControlPeriodUs();
     config.maximumTestDurationS = stage == ForceInteractionRuntimeStage::StageD ?
                 ui->forceInteractionStageDDurationSpinBox->value() :
@@ -20800,7 +20823,7 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
             kMeasuredForceSensorToPlatformRotation;
     config.sensorTransform.sensorOriginInPlatformM =
             kMeasuredForceSensorOriginInPlatformM;
-    if(sourceKind == ForceInteractionWrenchSourceKind::RealFtTrace){
+    if(config.wrenchSourceKind == ForceInteractionWrenchSourceKind::RealFtTrace){
         if(!ftSnapshot || !ftSnapshot->preheat.zeroValid){
             fail(QStringLiteral("%1没有可冻结的有效F/T软件零点")
                  .arg(stage == ForceInteractionRuntimeStage::StageD ?
@@ -21029,6 +21052,77 @@ ForceInteractionRuntimeConfig MainWindow::forceInteractionRuntimeConfigFromUi(
                      .arg(tensionSafetyError));
                 return config;
             }
+            if(staticTensionMode){
+                ForceInteractionTensionShadowConfig staticTargetConfig =
+                        makeDefaultG302TranslationShadowConfig(
+                            config.rigidBody, config.kinematics,
+                            config.globalMinimumCableTensionN,
+                            ui->forceInteractionStageDTensionMaximumSpinBox->value(),
+                            34.5);
+                ForceInteractionTensionShadow staticTargetSolver;
+                QString staticTargetError;
+                if(!staticTargetSolver.configure(staticTargetConfig,
+                                                  &staticTargetError)){
+                    fail(QStringLiteral("M3静态目标配置失败：%1")
+                         .arg(staticTargetError));
+                    return config;
+                }
+                ForceInteractionTensionShadowInput staticTargetInput;
+                staticTargetInput.desired = config.initialState;
+                staticTargetInput.observed = config.initialState;
+                staticTargetInput.dtS = staticTargetConfig.outerPeriodS;
+                const ForceInteractionTensionShadowResult staticTarget =
+                        staticTargetSolver.evaluate(staticTargetInput);
+                if(!staticTarget.valid){
+                    fail(QStringLiteral("M3零交互力静态张力分配失败：%1")
+                         .arg(staticTarget.errorMessage));
+                    return config;
+                }
+                config.staticTension.feedback.enabled = true;
+                config.staticTension.feedback.independentTargetFeedforward = true;
+                config.staticTension.feedback.sharedExecutionReference = true;
+                config.staticTension.feedback.kp.setConstant(40.0);
+                config.staticTension.feedback.ki.setZero();
+                config.staticTension.feedback.kd.setZero();
+                config.staticTension.feedback.deadbandRatio = 0.0;
+                config.staticTension.feedback.torqueLimitNm = 34.5;
+                config.staticTension.feedback.slewNmPerSec = 6.0;
+                config.staticTension.feedback.periodUs = 5000;
+                config.staticTension.feedback.parameterSource =
+                        "M3 frozen Lite/G302 0525 seed 2026-10-07";
+                config.staticTension.bounds = staticTargetConfig.allocator;
+                config.staticTension.bounds.torqueSlewEnabled = true;
+                config.staticTension.bounds.hardwareTorqueSlewRate.setConstant(6.0);
+                config.staticTension.effectiveRadiusM =
+                        staticTargetConfig.effectiveRadiusMPerRad;
+                config.staticTension.frozenTargetTensionN =
+                        staticTarget.allocation.predictedTension;
+                config.staticTension.measuredSafetyMinimumN.setConstant(
+                            config.globalMinimumCableTensionN);
+                std::array<bool, kOnlineVelocityAxisCount> mappedSensors{};
+                for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+                    if(axis >= static_cast<int>(axisSensorIndexVec.size()) ||
+                            !axisSensorIndexVec[axis]){
+                        fail(QStringLiteral("M3轴%1缺少张力通道映射")
+                             .arg(axis + 1));
+                        return config;
+                    }
+                    const int sensorIndex = axisSensorIndexVec[axis]->value();
+                    if(sensorIndex < 0 || sensorIndex >= kOnlineVelocityAxisCount ||
+                            mappedSensors[static_cast<size_t>(sensorIndex)]){
+                        fail(QStringLiteral("M3轴%1的张力通道映射无效或重复")
+                             .arg(axis + 1));
+                        return config;
+                    }
+                    mappedSensors[static_cast<size_t>(sensorIndex)] = true;
+                    config.staticTension.measuredSafetyMaximumN[axis] =
+                            config.globalMaximumCableTensionN[sensorIndex];
+                }
+                config.staticTension.hardwareTorqueQuantumNm = 0.0345;
+                config.staticTension.maximumEntryTargetDifferenceN = 100.0;
+                config.staticTension.maximumEntryAbsVelocityUnitPerSec = 2.0;
+                config.staticTension.innerPeriodUs = 5000;
+            }
         }
     }
     config.recordingDirectory = QDir(uiEventLogDirPath()).filePath(
@@ -21139,9 +21233,12 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         ForceInteractionMechanicalMode mechanicalMode,
         ForceInteractionWrenchSourceKind sourceKind)
 {
-    const bool realFt = sourceKind ==
-            ForceInteractionWrenchSourceKind::RealFtTrace;
     const bool stageD = runtimeStage == ForceInteractionRuntimeStage::StageD;
+    const bool staticTensionMode = stageD &&
+            ui->forceInteractionExecutionModeComboBox->currentIndex() == 1;
+    const bool realFt = sourceKind ==
+            ForceInteractionWrenchSourceKind::RealFtTrace && !staticTensionMode;
+    const bool exclusiveTrace = realFt || staticTensionMode;
     const QString stage = stageD ? QStringLiteral("阶段D") :
             (realFt ? QStringLiteral("阶段C") : QStringLiteral("阶段B"));
     if(!requireForceInteractionDegreeUnit(
@@ -21167,10 +21264,12 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         displayInfo("阶段D准备失败：最终实机链只允许G302原执行器模板；临时执行器仅用于阶段B/C空转调试", "error");
         return;
     }
+    const int requiredMocapAgeMs = staticTensionMode ? 30 : 1000;
     if(stageD && ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1 &&
             (!motiveLocalHandlerThread || !motiveLocalHandlerThread->isInit ||
-             !motiveLocalHandlerThread->hasRecentRigidBody(1000))){
-        displayInfo("阶段D准备失败：已选择“Nokov反馈”，但最近1 s内没有可靠的三标记点重算位姿", "error");
+             !motiveLocalHandlerThread->hasRecentRigidBody(requiredMocapAgeMs))){
+        displayInfo(QStringLiteral("阶段D准备失败：已选择“Nokov反馈”，但最近%1 ms内没有可靠的三标记点重算位姿")
+                    .arg(requiredMocapAgeMs).toStdString(), "error");
         return;
     }
     if(currentRobotState(false).anyMotionRunning){
@@ -21205,23 +21304,27 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
 
     // 准备阶段先建立并读回专用Runtime Trace；随后配置构建直接读取硬件快照，
     // 不再依赖ControlWorker下一次周期才发布的缓存。
-    const bool tracePrepared = stageD ?
+    const bool tracePrepared = staticTensionMode ?
+                hardwareInterface.setForceInteractionStaticTensionTorqueTraceEnabled(true) :
+            stageD ?
                 hardwareInterface.setForceInteractionPhysicalRuntimeTraceEnabled(true) :
             realFt ? hardwareInterface.setForceInteractionRuntimeTraceWithFtEnabled(true) :
                 hardwareInterface.setForceInteractionRuntimeTraceProfileEnabled(true);
     if(!tracePrepared){
-        if(realFt){
+        if(exclusiveTrace){
             restoreForceInteractionFtMonitoringProfile();
         }
         displayInfo(QStringLiteral("%1准备失败：专用Runtime Trace配置或读回失败")
                     .arg(stage).toStdString(), "error");
         return;
     }
-    if(realFt){
+    if(exclusiveTrace){
         // 先暂时把Trace读取权从F/T后台服务交给本线程，用于构造首个完整
         // 八轴安全快照，避免两个线程同时推进同一个板卡FIFO。预检结束后
         // 会立即归还，等待用户点击启动期间F/T监测仍保持连续。
         setForceInteractionFtTraceConsumptionMode(
+                    staticTensionMode ? HardwareInterface::RuntimeTraceUsageProfile::
+                                  ForceInteractionStaticTensionTorque :
                     stageD ? HardwareInterface::RuntimeTraceUsageProfile::
                                   ForceInteractionPhysicalRuntime :
                              HardwareInterface::RuntimeTraceUsageProfile::
@@ -21239,6 +21342,7 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
     int preparedSafetyCount = 0;
     int preparedVelocityCount = 0;
     int preparedStateCount = 0;
+    int preparedTorqueCount = 0;
     int preparedTensionCount = 0;
     bool preparedTraceReady = false;
     do{
@@ -21248,6 +21352,7 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         preparedSafetyCount = 0;
         preparedVelocityCount = 0;
         preparedStateCount = 0;
+        preparedTorqueCount = 0;
         preparedTensionCount = 0;
         for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
             if(axis < static_cast<int>(preparedTraceSnapshot.motorPosition.size()) &&
@@ -21282,6 +21387,16 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
                     preparedTraceSnapshot.motorStateMachine[axis] == 4){
                 ++preparedStateCount;
             }
+            if(axis < static_cast<int>(preparedTraceSnapshot.motorTorqueNm.size()) &&
+                    axis < static_cast<int>(preparedTraceSnapshot.motorTorqueValid.size()) &&
+                    axis < static_cast<int>(preparedTraceSnapshot.
+                                             motorTorqueFrameMonotonicUs.size()) &&
+                    std::isfinite(preparedTraceSnapshot.motorTorqueNm[axis]) &&
+                    preparedTraceSnapshot.motorTorqueValid[axis] &&
+                    preparedTraceSnapshot.motorTorqueFrameMonotonicUs[axis] ==
+                        preparedTraceSnapshot.monotonicUs){
+                ++preparedTorqueCount;
+            }
             if(axis < static_cast<int>(
                     preparedTraceSnapshot.forceSensorValue.size()) &&
                     axis < static_cast<int>(preparedTraceSnapshot.
@@ -21293,7 +21408,9 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
             }
         }
         const bool expectedProfile = preparedTraceSnapshot.usageProfile ==
-                (stageD ? HardwareInterface::RuntimeTraceUsageProfile::
+                (staticTensionMode ? HardwareInterface::RuntimeTraceUsageProfile::
+                              ForceInteractionStaticTensionTorque :
+                 stageD ? HardwareInterface::RuntimeTraceUsageProfile::
                               ForceInteractionPhysicalRuntime :
                  realFt ? HardwareInterface::RuntimeTraceUsageProfile::
                               ForceInteractionVelocityWithFtRuntime :
@@ -21306,16 +21423,20 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
                 preparedTraceSnapshot.fifoCaughtUp &&
                 !preparedTraceSnapshot.traceLost &&
                 preparedPositionCount == kOnlineVelocityAxisCount &&
-                preparedSafetyCount == kOnlineVelocityAxisCount &&
-                preparedVelocityCount == kOnlineVelocityAxisCount &&
+                (staticTensionMode ||
+                 preparedSafetyCount == kOnlineVelocityAxisCount) &&
+                (staticTensionMode ||
+                 preparedVelocityCount == kOnlineVelocityAxisCount) &&
                 preparedStateCount == kOnlineVelocityAxisCount &&
+                (!staticTensionMode ||
+                 preparedTorqueCount == kOnlineVelocityAxisCount) &&
                 (!stageD || preparedTensionCount == kOnlineVelocityAxisCount);
         if(!preparedTraceReady && preparedTraceTimer.elapsed() < 1000){
             QThread::msleep(2);
         }
     }while(!preparedTraceReady && preparedTraceTimer.elapsed() < 1000);
     if(!preparedTraceReady){
-        if(realFt){
+        if(exclusiveTrace){
             restoreForceInteractionFtMonitoringProfile();
         }
         else{
@@ -21324,13 +21445,14 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
         }
         displayInfo(QStringLiteral(
                         "%1准备失败：专用Runtime Trace未形成完整八轴安全快照；"
-                        "位置/安全相对位置/速度/使能状态/张力=%2/%3/%4/%5/%6，"
-                        "来源/序号/时序/追平/丢帧=%7/%8/%9/%10/%11，帧龄=%12 us，耗时=%13 ms")
+                        "位置/安全相对位置/速度/使能状态/实际转矩/张力=%2/%3/%4/%5/%6/%7，"
+                        "来源/序号/时序/追平/丢帧=%8/%9/%10/%11/%12，帧龄=%13 us，耗时=%14 ms")
                     .arg(stage)
                     .arg(preparedPositionCount)
                     .arg(preparedSafetyCount)
                     .arg(preparedVelocityCount)
                     .arg(preparedStateCount)
+                    .arg(preparedTorqueCount)
                     .arg(preparedTensionCount)
                     .arg(preparedTraceSnapshot.fromTrace ? 1 : 0)
                     .arg(preparedTraceSnapshot.frameSequenceValid ? 1 : 0)
@@ -21357,7 +21479,7 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
                 runtimeStage, mechanicalMode, sourceKind,
                 realFt ? &ftSnapshot : nullptr, &errorMessage);
     if(!errorMessage.isEmpty()){
-        if(realFt){
+        if(exclusiveTrace){
             restoreForceInteractionFtMonitoringProfile();
         }
         else{
@@ -21373,10 +21495,18 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
             ForceInteractionMechanicalMode::D1PhysicalCabled){
         QStringList invalidTensions;
         for(int cable = 0; cable < kOnlineVelocityAxisCount; ++cable){
-            const double tension = preparedTraceSnapshot.forceSensorValue[cable];
+            const int sensorIndex = staticTensionMode &&
+                    cable < static_cast<int>(axisSensorIndexVec.size()) &&
+                    axisSensorIndexVec[cable] ?
+                        axisSensorIndexVec[cable]->value() : cable;
+            const double tension = sensorIndex >= 0 && sensorIndex <
+                    static_cast<int>(preparedTraceSnapshot.forceSensorValue.size()) ?
+                        preparedTraceSnapshot.forceSensorValue[sensorIndex] :
+                        std::numeric_limits<double>::quiet_NaN();
             if(!std::isfinite(tension) ||
                     tension < config.globalMinimumCableTensionN ||
-                    tension > config.globalMaximumCableTensionN[cable]){
+                    sensorIndex < 0 || sensorIndex >= kOnlineVelocityAxisCount ||
+                    tension > config.globalMaximumCableTensionN[sensorIndex]){
                 invalidTensions << QStringLiteral("绳%1=%2 N")
                         .arg(cable + 1).arg(tension, 0, 'f', 3);
             }
@@ -21401,7 +21531,7 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
     if(!prepared){
         forceInteractionRuntimePhysicalWorkspaceValid = false;
         forceInteractionRuntimeForwardKinematicsConfigValid = false;
-        if(realFt){
+        if(exclusiveTrace){
             restoreForceInteractionFtMonitoringProfile();
         }
         else{
@@ -21486,7 +21616,9 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
     forceInteractionRuntimeLastForwardIterationCount = 0;
     forceInteractionRuntimeLastForwardTraceSequence = 0;
     forceInteractionRuntimeLastForwardSolveMs = -1;
-    const QString inputDescription = realFt ?
+    const QString inputDescription = staticTensionMode ?
+                QStringLiteral("M3冻结静态目标（F/T/Newmark不参与命令）") :
+            realFt ?
                 QStringLiteral("真实F/T Trace，软件零点已冻结") :
                 QStringLiteral("模拟力=%1")
                     .arg(ui->forceInteractionModeComboBox->currentText());
@@ -21510,15 +21642,16 @@ void MainWindow::prepareForceInteractionRuntimeForSource(
                     .arg(config.globalMaximumCableTensionN[0], 0, 'f', 3) :
                 QString{};
     displayInfo(QStringLiteral(
-                    "%1已准备：执行器=%2，输入=%3，周期=%4 ms，最长运行=%5 s，PID=%6（当前固定关闭），末端加速度/制动a=%7 mm/s²，附加余量/急停线=%8/%9 mm，八轴公共加速度缩放=关闭%10%11；配置、初始位姿和输入参数已冻结，尚未下发速度命令")
+                    "%1已准备：执行器=%2，后端=%3，输入=%4，周期=%5 ms，最长运行=%6 s，末端加速度/制动a=%7 mm/s²，附加余量/急停线=%8/%9 mm，八轴公共加速度缩放=关闭%10%11；配置、初始位姿和输入参数已冻结，尚未下发电机命令")
                 .arg(stage)
                 .arg(runtimeState.forceInteractionGenericActuatorSessionActive ?
                          QStringLiteral("通用增量编码器8轴（临时）") :
                          QStringLiteral("G302原执行器"))
+                .arg(staticTensionMode ? QStringLiteral("M3静态在线张力控制") :
+                                         QStringLiteral("在线速度控制"))
                 .arg(inputDescription)
                 .arg(config.periodUs / 1000)
                 .arg(config.maximumTestDurationS, 0, 'f', 3)
-                .arg(config.pidEnabled ? QStringLiteral("开") : QStringLiteral("关"))
                 .arg(config.workspaceSafety.stoppingDecelerationMmPerSec2, 0, 'f', 3)
                 .arg(config.workspaceSafety.additionalSafetyMarginMm, 0, 'f', 3)
                 .arg(config.workspaceSafety.emergencyLineMarginMm, 0, 'f', 3)
@@ -21554,9 +21687,17 @@ void MainWindow::startPreparedForceInteractionRuntime(
         ForceInteractionRuntimeStage expectedStage,
         ForceInteractionWrenchSourceKind expectedSource)
 {
-    const bool realFt = expectedSource ==
-            ForceInteractionWrenchSourceKind::RealFtTrace;
     const bool stageD = expectedStage == ForceInteractionRuntimeStage::StageD;
+    const ForceInteractionRuntimeStatus preparedStatus = controlWorker ?
+                controlWorker->forceInteractionRuntimeStatus() :
+                ForceInteractionRuntimeStatus{};
+    const bool staticTensionMode = preparedStatus.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
+    const ForceInteractionWrenchSourceKind expectedRuntimeSource =
+            staticTensionMode ? ForceInteractionWrenchSourceKind::Simulated :
+                                expectedSource;
+    const bool realFt = expectedRuntimeSource ==
+            ForceInteractionWrenchSourceKind::RealFtTrace;
     const QString stage = stageD ? QStringLiteral("阶段D") :
             (realFt ? QStringLiteral("阶段C") : QStringLiteral("阶段B"));
     if(!controlWorker || !ccThread || !ccThread->isRunning()){
@@ -21564,11 +21705,9 @@ void MainWindow::startPreparedForceInteractionRuntime(
                     .arg(stage).toStdString(), "error");
         return;
     }
-    const ForceInteractionRuntimeStatus preparedStatus =
-            controlWorker->forceInteractionRuntimeStatus();
     if(preparedStatus.state != ForceInteractionRuntimeStatus::State::Prepared ||
             preparedStatus.stage != expectedStage ||
-            preparedStatus.wrenchSourceKind != expectedSource){
+            preparedStatus.wrenchSourceKind != expectedRuntimeSource){
         displayInfo(QStringLiteral("%1启动失败：请先在对应子页准备并冻结本次配置")
                     .arg(stage).toStdString(), "error");
         return;
@@ -21581,7 +21720,9 @@ void MainWindow::startPreparedForceInteractionRuntime(
                     .arg(stage, admissionError).toStdString(), "error");
         return;
     }
-    const QString motionName = stageD ? QStringLiteral("阶段D实机六维力交互") : realFt ?
+    const QString motionName = staticTensionMode ?
+                QStringLiteral("阶段D M3静态张力保持") :
+            stageD ? QStringLiteral("阶段D实机六维力交互") : realFt ?
                 QStringLiteral("真实六维力八轴空转") :
                 QStringLiteral("模拟六维力八轴空转");
     if(!ensureSafetyReadyForMotion(
@@ -21590,9 +21731,12 @@ void MainWindow::startPreparedForceInteractionRuntime(
         return;
     }
     if(!confirmMotorCommandFromUi(
+            staticTensionMode ? QStringLiteral("阶段D M3静态张力保持") :
             stageD ? QStringLiteral("阶段D实机六维力交互") :
             realFt ? QStringLiteral("真实六维力驱动八轴空转") :
                      QStringLiteral("模拟六维力驱动八轴空转"),
+            staticTensionMode ?
+                QStringLiteral("将切换八轴转矩后端，以准备时冻结的零交互力静态目标张力做短时保持；F/T和Newmark不参与命令。请确认平台已预紧、Nokov有效、张力边界和急停均已备妥。") :
             stageD ?
                 (preparedStatus.mechanicalMode == ForceInteractionMechanicalMode::D0MotorDryRun ?
                     QStringLiteral("将使用阶段D最终Trace、真实F/T、纯惯性Newmark、八绳运动学和八路张力记录驱动未接绞盘/绳索的八电机。D0不启用实物张力越限保护。") :
@@ -21629,7 +21773,7 @@ void MainWindow::startPreparedForceInteractionRuntime(
                         false, QStringLiteral("%1启动失败，撤销准备状态")
                             .arg(stage));
         }, Qt::BlockingQueuedConnection);
-        if(realFt){
+        if(realFt || staticTensionMode){
             restoreForceInteractionFtMonitoringProfile();
         }
         runtimeState.forceInteractionRuntimeActive = false;
@@ -21647,7 +21791,9 @@ void MainWindow::startPreparedForceInteractionRuntime(
     }
     setForceControlSelectionEnabled(false);
     updateCableHomeConfirmEnabled();
-    displayInfo((stageD ?
+    displayInfo((staticTensionMode ?
+                 QStringLiteral("阶段D M3已启动：等待可靠同帧八轴位置、状态、实际转矩与张力后，事务式进入静态张力保持") :
+                 stageD ?
                  QStringLiteral("阶段D已启动：ControlWorker已接管唯一Trace读取，等待可靠同帧八轴＋F/T＋八路张力后开始实机力交互") : realFt ?
                  QStringLiteral("阶段C已启动：ControlWorker已接管唯一Trace读取，等待可靠同帧八轴＋F/T数据后开始真实力—Newmark—八轴速度闭环") :
                  QStringLiteral("阶段B已启动：等待可靠同帧八轴Trace后开始模拟力—Newmark—八轴速度闭环"))
@@ -21664,7 +21810,9 @@ void MainWindow::stopForceInteractionRuntime(bool emergency,
                     controlWorker->forceInteractionRuntimeStatus() :
                     ForceInteractionRuntimeStatus{};
         if(status.wrenchSourceKind ==
-                ForceInteractionWrenchSourceKind::RealFtTrace){
+                ForceInteractionWrenchSourceKind::RealFtTrace ||
+                status.executionMode == ForceInteractionExecutionMode::
+                    StaticTensionTorqueExperimental){
             restoreForceInteractionFtMonitoringProfile();
         }
         runtimeState.forceInteractionRuntimeActive = false;
@@ -21710,6 +21858,8 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
     forceInteractionRuntimeFinalizing = true;
     const bool realFt = status.wrenchSourceKind ==
             ForceInteractionWrenchSourceKind::RealFtTrace;
+    const bool staticTensionMode = status.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
     const bool stageD = status.stage == ForceInteractionRuntimeStage::StageD;
     const QString stage = stageD ? QStringLiteral("阶段D") :
             (realFt ? QStringLiteral("阶段C") : QStringLiteral("阶段B"));
@@ -21719,6 +21869,7 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
         forceInteractionLastRunReplayContextValid = false;
         forceInteractionLastReplayConfigFile.clear();
         forceInteractionLastRunRecordFile = status.recordFile;
+        forceInteractionLastRunStaticTensionMode = staticTensionMode;
         forceInteractionLastRunKinematicsConfig =
                 forceInteractionRuntimeForwardKinematicsConfig;
         forceInteractionLastRunMotorUnitPerRadian =
@@ -21793,7 +21944,7 @@ void MainWindow::finalizeForceInteractionRuntimeSession(
     syncSafetyMonitorConfig(true);
     forceInteractionRuntimePhysicalWorkspaceValid = false;
     forceInteractionRuntimeForwardKinematicsConfigValid = false;
-    if(realFt){
+    if(realFt || staticTensionMode){
         // ControlWorker结束时先退出运动Trace；恢复预热监测原本使用的profile，
         // 继续采集、判稳和记录，但绝不重新使用本次运行冻结的零点配置。
         restoreForceInteractionFtMonitoringProfile();
@@ -21936,7 +22087,8 @@ void MainWindow::startForceInteractionKinematicLogAnalysis()
         displayInfo("六维力交互运行后验算未启动：本次程序会话中尚无可用运行记录", "warning");
         return;
     }
-    if(!forceInteractionLastRunKinematicContextValid){
+    if(!forceInteractionLastRunStaticTensionMode &&
+            !forceInteractionLastRunKinematicContextValid){
         displayInfo("六维力交互运行后验算未启动：最近运行缺少冻结的运动学参数", "warning");
         return;
     }
@@ -21963,6 +22115,11 @@ void MainWindow::startForceInteractionKinematicLogAnalysis()
         if(ui){
             ui->forceInteractionKinematicAnalyzeButton->setEnabled(true);
             ui->forceInteractionKinematicAnalyzeStatusLabel->setText(
+                        analysis.completed && analysis.staticTensionMode ?
+                            QStringLiteral("运行后验算：M3通过，有效/提交 %1/%2行，最大张力误差 %3 N")
+                            .arg(analysis.validTraceRows)
+                            .arg(analysis.staticTensionCommittedRows)
+                            .arg(analysis.staticTensionMaximumAbsErrorN, 0, 'f', 3) :
                         analysis.completed ?
                             QStringLiteral("运行后验算：已完成，平移RMS %1 mm，姿态RMS %2°")
                             .arg(analysis.translationRmsMm, 0, 'f', 3)
@@ -22123,6 +22280,10 @@ void MainWindow::refreshForceInteractionRuntimeUi()
             ForceInteractionWrenchSourceKind::RealFtTrace;
     const bool stageD = status.stage == ForceInteractionRuntimeStage::StageD;
     const bool stageC = status.stage == ForceInteractionRuntimeStage::StageC;
+    const bool selectedStaticTensionMode =
+            ui->forceInteractionExecutionModeComboBox->currentIndex() == 1;
+    const bool statusStaticTensionMode = status.executionMode ==
+            ForceInteractionExecutionMode::StaticTensionTorqueExperimental;
     const bool hardwareSessionReady = hardwareInterface.isLSConnected() &&
             runtimeState.systemRunning;
     const bool commonPrepareReady = hardwareSessionReady &&
@@ -22150,7 +22311,7 @@ void MainWindow::refreshForceInteractionRuntimeUi()
             admissionFt.sampleCounterValid && admissionFt.temperatureValid &&
             admissionFt.traceFrameSequenceValid && admissionFt.statusCode == 0u;
     ui->forceInteractionRuntimePrepareButton->setEnabled(
-                commonPrepareReady);
+                commonPrepareReady && !selectedStaticTensionMode);
     ui->forceInteractionRuntimeStartButton->setEnabled(
                 prepared && status.stage == ForceInteractionRuntimeStage::StageB);
     // “减速停止”在已准备但尚未启动时兼作“取消准备”，防止冻结配置后无处退出。
@@ -22159,7 +22320,8 @@ void MainWindow::refreshForceInteractionRuntimeUi()
     ui->forceInteractionRuntimeEmergencyButton->setEnabled(
                 active && status.stage == ForceInteractionRuntimeStage::StageB);
     ui->forceInteractionStageCPrepareButton->setEnabled(
-                commonPrepareReady && stageCAdmissionReady);
+                commonPrepareReady && stageCAdmissionReady &&
+                !selectedStaticTensionMode);
     ui->forceInteractionStageCStartButton->setEnabled(prepared && stageC &&
                                                        stageCAdmissionReady);
     ui->forceInteractionStageCStopButton->setEnabled(locked && stageC);
@@ -22180,11 +22342,23 @@ void MainWindow::refreshForceInteractionRuntimeUi()
             hasFinitePoseMatrix(currentRuntimeMotorHomePlatformPose);
     const bool stageDOriginalActuator =
             !runtimeState.forceInteractionGenericActuatorSessionActive;
+    const bool stageDM3UiReady = !selectedStaticTensionMode ||
+            (stageDD1 &&
+             ui->forceInteractionTranslationOnlyCheckBox->isChecked() &&
+             ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1 &&
+             selectedForceInteractionControlPeriodUs() == 5000);
     ui->forceInteractionStageDPrepareButton->setEnabled(
-                commonPrepareReady && stageCAdmissionReady && stageDTensionReady &&
-                stageDInitialPoseReady && stageDOriginalActuator);
+                commonPrepareReady &&
+                (selectedStaticTensionMode || stageCAdmissionReady) &&
+                stageDTensionReady && stageDInitialPoseReady &&
+                stageDOriginalActuator && stageDM3UiReady);
     ui->forceInteractionStageDStartButton->setEnabled(
-                prepared && stageD && stageCAdmissionReady);
+                prepared && stageD &&
+                (statusStaticTensionMode || stageCAdmissionReady));
+    ui->forceInteractionStageDStartButton->setText(
+                selectedStaticTensionMode ?
+                    QStringLiteral("启动静态张力保持") :
+                    QStringLiteral("启动实机力交互"));
     ui->forceInteractionStageDStopButton->setEnabled(locked && stageD);
     ui->forceInteractionStageDEmergencyButton->setEnabled(active && stageD);
     ui->forceInteractionStageDStopButton->setText(
@@ -22211,18 +22385,38 @@ void MainWindow::refreshForceInteractionRuntimeUi()
     QStringList stageDMissing;
     if(!stageDOriginalActuator) stageDMissing << QStringLiteral("G302原执行器模板");
     if(!stageDInitialPoseReady) stageDMissing << QStringLiteral("已确认初始位姿/八轴零点快照");
-    if(!stageCAdmissionReady) stageDMissing << QStringLiteral("真实F/T准入");
+    if(!selectedStaticTensionMode && !stageCAdmissionReady)
+        stageDMissing << QStringLiteral("真实F/T准入");
+    if(selectedStaticTensionMode && !stageDM3UiReady)
+        stageDMissing << QStringLiteral("M3要求D1、仅平动、Nokov和5 ms周期");
     if(!stageDTensionReady) stageDMissing << QStringLiteral("有效的全局SafetyMonitor张力保护");
     ui->forceInteractionStageDAdmissionLabel->setText(
                 stageDMissing.isEmpty() ?
                     QStringLiteral("阶段D准入条件已满足；请核对D0/D1机械状态后准备。") :
                     QStringLiteral("阶段D尚缺：%1。")
                         .arg(stageDMissing.join(QStringLiteral("、"))));
+    ui->forceInteractionExecutionModeComboBox->setEnabled(!locked);
+    ui->forceInteractionExecutionModeHintLabel->setText(
+                selectedStaticTensionMode ?
+                    QStringLiteral("M3实验后端：只允许阶段D1短时静态张力保持；F/T、Newmark和M2在线结果不参与命令，目标在准备时冻结。") :
+                    QStringLiteral("在线速度后端：阶段D由真实F/T—Newmark生成运动；这是当前已验证的默认路径。"));
     // 2026-10-06: 公共B/C/D参数已移出阶段B；真实F/T调理已移到F/T页。
     // 所有准备态、等待Trace、运行和制动态均冻结，结束/取消准备后统一恢复。
     const bool commonParametersEditable = !locked && forceInteractionDegreeUnitAdmitted();
     ui->forceInteractionCommonRuntimeParameterGroupBox->setEnabled(
                 commonParametersEditable);
+    ui->forceInteractionActuatorProfileComboBox->setEnabled(
+                !locked && !selectedStaticTensionMode);
+    ui->forceInteractionCommonControlPeriodComboBox->setEnabled(
+                !locked && !selectedStaticTensionMode);
+    ui->forceInteractionBusCycleComboBox->setEnabled(
+                !locked && !selectedStaticTensionMode);
+    ui->forceInteractionTranslationOnlyCheckBox->setEnabled(
+                !locked && !selectedStaticTensionMode);
+    ui->forceInteractionStageDMechanicalModeComboBox->setEnabled(
+                !locked && !selectedStaticTensionMode);
+    ui->forceInteractionStageDMocapModeComboBox->setEnabled(
+                !locked && !selectedStaticTensionMode);
     ui->forceInteractionRuntimeFeedForwardGainSpinBox->setEnabled(
                 commonParametersEditable &&
                 ui->forceInteractionRuntimeFeedForwardCheckBox->isChecked());
@@ -22243,6 +22437,12 @@ void MainWindow::refreshForceInteractionRuntimeUi()
     ui->forceInteractionRuntimeCorrectionLimitTitleLabel->setEnabled(false);
     ui->forceInteractionRuntimeCorrectionLimitSpinBox->setEnabled(false);
     refreshForceInteractionActuatorProfileUi();
+    // refreshForceInteractionActuatorProfileUi()会按模板常规规则恢复控件；
+    // M3冻结规则必须最后覆盖，避免实验后端下仍能改模板。
+    ui->forceInteractionActuatorProfileComboBox->setEnabled(
+                !locked && !selectedStaticTensionMode);
+    ui->forceInteractionBusCycleComboBox->setEnabled(
+                !locked && !selectedStaticTensionMode);
     const QString interactionClockText = realFt ?
                 (status.interactionTriggered ?
                      QStringLiteral("%1 s").arg(status.interactionElapsedS, 0, 'f', 3) :
@@ -22287,7 +22487,8 @@ void MainWindow::refreshForceInteractionRuntimeUi()
     int iterationCount = 0;
     const qint64 nowMs = QDateTime::currentMSecsSinceEpoch();
     bool forwardAttempted = false;
-    if((status.state == ForceInteractionRuntimeStatus::State::Running ||
+    if(!statusStaticTensionMode &&
+            (status.state == ForceInteractionRuntimeStatus::State::Running ||
         status.state == ForceInteractionRuntimeStatus::State::Braking) &&
             (forceInteractionRuntimeLastForwardSolveMs < 0 ||
              nowMs - forceInteractionRuntimeLastForwardSolveMs >= 200)){
@@ -22308,7 +22509,8 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                     status.latestTraceSequence;
         }
     }
-    else if(forceInteractionRuntimeLastForwardPose.size() >= 6){
+    else if(!statusStaticTensionMode &&
+            forceInteractionRuntimeLastForwardPose.size() >= 6){
         virtualPose = forceInteractionRuntimeLastForwardPose;
         equationCount = forceInteractionRuntimeLastForwardEquationCount;
         rmsCableResidualMm = forceInteractionRuntimeLastForwardRmsResidualMm;
@@ -22342,20 +22544,40 @@ void MainWindow::refreshForceInteractionRuntimeUi()
                 .arg(iterationCount)
                 .arg(forceInteractionRuntimeLastForwardTraceSequence);
     }
+    else if(statusStaticTensionMode){
+        detail += QStringLiteral("虚拟实际位姿：M3不执行编码器正运动学，Nokov仅用于低频安全监督\n");
+    }
     else{
         detail += forwardAttempted ?
                     QStringLiteral("虚拟实际位姿（5 Hz）：本次正运动学未收敛\n") :
                     QStringLiteral("虚拟实际位姿（5 Hz）：等待运行数据\n");
     }
-    detail += QStringLiteral("轴  期望位置  Trace位置  误差  速度命令\n");
-    for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
-        detail += QStringLiteral("%1  %2  %3  %4  %5\n")
-                .arg(axis)
-                .arg(status.referencePosition[axis], 0, 'f', 5)
-                .arg(status.actualPosition[axis], 0, 'f', 5)
-                .arg(status.referencePosition[axis] - status.actualPosition[axis],
-                     0, 'f', 5)
-                .arg(status.commandVelocity[axis], 0, 'f', 5);
+    if(statusStaticTensionMode){
+        detail += QStringLiteral("M3状态=%1，提案=%2，诊断=%3\n轴  冻结目标N  实测N  误差N  命令转矩Nm  实际转矩Nm\n")
+                .arg(static_cast<int>(status.staticTensionDiagnostic.state))
+                .arg(status.staticTensionDiagnostic.proposalSequence)
+                .arg(status.staticTensionDiagnostic.reason);
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            detail += QStringLiteral("%1  %2  %3  %4  %5  %6\n")
+                    .arg(axis)
+                    .arg(status.staticTensionDiagnostic.feedback.targetN[axis], 0, 'f', 3)
+                    .arg(status.cableTensionN[axis], 0, 'f', 3)
+                    .arg(status.staticTensionDiagnostic.feedback.errorN[axis], 0, 'f', 3)
+                    .arg(status.commandTorqueNm[axis], 0, 'f', 4)
+                    .arg(status.actualTorqueNm[axis], 0, 'f', 4);
+        }
+    }
+    else{
+        detail += QStringLiteral("轴  期望位置  Trace位置  误差  速度命令\n");
+        for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
+            detail += QStringLiteral("%1  %2  %3  %4  %5\n")
+                    .arg(axis)
+                    .arg(status.referencePosition[axis], 0, 'f', 5)
+                    .arg(status.actualPosition[axis], 0, 'f', 5)
+                    .arg(status.referencePosition[axis] - status.actualPosition[axis],
+                         0, 'f', 5)
+                    .arg(status.commandVelocity[axis], 0, 'f', 5);
+        }
     }
     detail += QStringLiteral(
                 "边界当前/全程最小余量=%1/%2 mm；当前停车触发距离=%3 mm；试验有效=%4%5\n"
@@ -40604,6 +40826,8 @@ bool MainWindow::syncSafetyMonitorConfig(bool forceApply,
             ui->forceInteractionStageDMocapModeComboBox->currentIndex() == 1;
     config.forceInteractionMocapBoundaryEnabled =
             stageDD1MocapBoundaryEnabled;
+    // Nokov以现有SafetyMonitor低频边界链监测；该配置快照不是10 ms原始
+    // 回调，继续沿用已验证的1 s失联门限，M3准备入口另要求30 ms新鲜帧。
     config.forceInteractionMocapTimeoutMs = 1000;
     config.forceInteractionMocapEmergencyMarginMm =
             ui->forceInteractionRuntimeEmergencyMarginSpinBox->value();

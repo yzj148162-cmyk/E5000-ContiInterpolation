@@ -44,6 +44,8 @@ bool ForceInteractionTensionRuntimeConfig::validate(QString* errorMessage) const
             std::abs(hardwareTorqueQuantumNm - 0.0345) <= 1.0e-9 &&
             std::isfinite(maximumEntryTargetDifferenceN) &&
             maximumEntryTargetDifferenceN > 0.0 &&
+            std::isfinite(maximumEntryAbsVelocityUnitPerSec) &&
+            maximumEntryAbsVelocityUnitPerSec > 0.0 &&
             innerPeriodUs == feedback.periodUs && innerPeriodUs == 5000;
     if(!valid && errorMessage){
         *errorMessage = QStringLiteral("M3配置无效：0525=%1，分配边界=%2；"
@@ -111,6 +113,7 @@ bool ForceInteractionTensionRuntime::qualifyEntry(
     }
     if(!snapshot.reliable || !snapshot.sameFrame || snapshot.traceSequence == 0 ||
             snapshot.sampleUs <= 0 || !snapshot.actualPositionUnit.allFinite() ||
+            !snapshot.actualVelocityUnitPerSec.allFinite() ||
             !snapshot.actualTorqueNm.allFinite() ||
             !allOperationEnabled(snapshot.operationEnabled)){
         return reject(errorMessage, QStringLiteral("M3进入快照不可靠、不完整或驱动未全部使能"));
@@ -118,6 +121,14 @@ bool ForceInteractionTensionRuntime::qualifyEntry(
     if(!within(snapshot.measuredTensionN, config_.measuredSafetyMinimumN,
                config_.measuredSafetyMaximumN)){
         return reject(errorMessage, QStringLiteral("M3进入张力超出冻结的全局准入边界"));
+    }
+    if(snapshot.actualVelocityUnitPerSec.cwiseAbs().maxCoeff() >
+            config_.maximumEntryAbsVelocityUnitPerSec){
+        return reject(errorMessage, QStringLiteral(
+                    "M3进入前八轴尚未静止：最大绝对速度=%1 unit/s，上限=%2 unit/s")
+                .arg(snapshot.actualVelocityUnitPerSec.cwiseAbs().maxCoeff(),
+                     0, 'f', 4)
+                .arg(config_.maximumEntryAbsVelocityUnitPerSec, 0, 'f', 4));
     }
     if(!within(snapshot.measuredTensionN, config_.bounds.tensionMinimum,
                config_.bounds.tensionMaximum)){

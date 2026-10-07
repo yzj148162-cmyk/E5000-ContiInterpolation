@@ -41,6 +41,10 @@ struct ForceInteractionRunMetadata
     QString executionMode = QStringLiteral("online_velocity");
     double controlPeriodS = 0.0;
     double plannedDurationS = 0.0;
+    // 2026-10-07: Frozen M3 parameters used only by the dedicated verifier.
+    double staticTensionTorqueQuantumNm = 0.0;
+    double staticTensionTorqueSlewNmPerSec = 0.0;
+    QString staticTensionParameterSource;
     bool workspaceReplayEnabled = false;
     PhysicalWorkspaceBoundaryConfig physicalWorkspace;
     DynamicWorkspaceSafetyConfig workspaceSafety;

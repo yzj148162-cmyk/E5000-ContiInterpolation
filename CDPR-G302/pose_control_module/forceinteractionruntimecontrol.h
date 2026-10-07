@@ -4,6 +4,7 @@
 #include "cdprdynamics.h"
 #include "compensatedcablekinematics.h"
 #include "forceinteractionrunrecorder.h"
+#include "forceinteractiontensionruntime.h"
 #include "forcewrenchconditioner.h"
 #include "ftsensortypes.h"
 #include "onlinevelocitycontrol.h"
@@ -36,6 +37,8 @@ struct ForceInteractionRuntimeConfig
     ForceInteractionRuntimeStage stage = ForceInteractionRuntimeStage::StageB;
     ForceInteractionMechanicalMode mechanicalMode =
             ForceInteractionMechanicalMode::NotApplicable;
+    ForceInteractionExecutionMode executionMode =
+            ForceInteractionExecutionMode::OnlineVelocity;
     ForceInteractionWrenchSourceKind wrenchSourceKind =
             ForceInteractionWrenchSourceKind::Simulated;
     int periodUs = 5000;
@@ -87,6 +90,7 @@ struct ForceInteractionRuntimeConfig
     DynamicWorkspaceSafetyConfig workspaceSafety;
     double brakingStopVelocityMmPerSec = 0.1;
     QString recordingDirectory;
+    ForceInteractionTensionRuntimeConfig staticTension;
 
     bool validate(QString* errorMessage = nullptr) const;
 };
@@ -98,6 +102,8 @@ struct ForceInteractionRuntimeFeedback
     OnlineVelocityAxisArray safetyRelativePosition{};
     std::array<bool, kOnlineVelocityAxisCount> safetyRelativePositionFromTrace{};
     OnlineVelocityAxisArray actualVelocity{};
+    OnlineVelocityAxisArray actualTorqueNm{};
+    std::array<bool, kOnlineVelocityAxisCount> actualTorqueValid{};
     std::array<quint16, kOnlineVelocityAxisCount> motorStatusWord{};
     std::array<int, kOnlineVelocityAxisCount> motorStateMachine{};
     FtSensorTraceSample ftSensor;
@@ -105,6 +111,7 @@ struct ForceInteractionRuntimeFeedback
     std::array<bool, kOnlineVelocityAxisCount> cableTensionValid{};
     quint32 traceFrameSequence = 0;
     bool ftRuntimeProfileActive = false;
+    bool staticTensionRuntimeProfileActive = false;
     qint64 wallClockUs = 0;
     qint64 monotonicUs = 0;
     qint64 newestFrameAgeUs = -1;
@@ -120,11 +127,18 @@ struct ForceInteractionRuntimeFeedback
 
 struct ForceInteractionRuntimeStep
 {
-    enum class Action { None, CommandVelocity, NormalStop, EmergencyStop };
+    enum class Action { None, CommandVelocity, StartTorqueBatch,
+                        CommandTorqueBatch, UnloadTorqueBatch,
+                        ReturnPositionHold, NormalStop, EmergencyStop };
     Action action = Action::None;
     QString reason;
     OnlineVelocityAxisArray commandVelocity{};
     OnlineVelocityAxisArray actualPosition{};
+    OnlineVelocityAxisArray commandTorqueNm{};
+    // 2026-10-07: M3转矩批次使用绝对控制时隙截止时间；硬件层在首轴写入前
+    // 核对剩余预算，禁止用“当前时刻+一个周期”掩盖已经迟到的命令。
+    qint64 commandDeadlineUs = 0;
+    bool unloadComplete = false;
     ForceInteractionRunRecord record;
 };
 
@@ -148,6 +162,8 @@ struct ForceInteractionRuntimeStatus
     ForceInteractionRuntimeStage stage = ForceInteractionRuntimeStage::StageB;
     ForceInteractionMechanicalMode mechanicalMode =
             ForceInteractionMechanicalMode::NotApplicable;
+    ForceInteractionExecutionMode executionMode =
+            ForceInteractionExecutionMode::OnlineVelocity;
     // 2026-10-05: D1准备时冻结的专属统一张力上下限，供全局
     // SafetyMonitor在运行期使用；D0及阶段B/C保持为0。
     double globalMinimumCableTensionN = 0.0;
@@ -205,6 +221,9 @@ struct ForceInteractionRuntimeStatus
     OnlineVelocityAxisArray safetyRelativeActualPosition{};
     OnlineVelocityAxisArray actualPosition{};
     OnlineVelocityAxisArray commandVelocity{};
+    OnlineVelocityAxisArray commandTorqueNm{};
+    OnlineVelocityAxisArray actualTorqueNm{};
+    ForceInteractionTensionRuntimeDiagnostic staticTensionDiagnostic;
     OnlineVelocityAxisArray cableTensionN{};
     std::array<bool, kOnlineVelocityAxisCount> cableTensionValid{};
     std::array<quint16, kOnlineVelocityAxisCount> motorStatusWord{};
@@ -261,6 +280,12 @@ private:
                       ForceInteractionWrenchSample& sample,
                       qint64& sampleAgeUs,
                       QString* errorMessage = nullptr);
+    ForceInteractionRuntimeStep stepStaticTension(
+            const ForceInteractionRuntimeFeedback& feedback, qint64 nowUs);
+    ForceInteractionRunRecord staticTensionRecord(
+            const ForceInteractionRuntimeFeedback& feedback,
+            const ForceInteractionTensionRuntimeDiagnostic& diagnostic,
+            qint64 nowUs) const;
 
     ForceInteractionRuntimeConfig config_;
     ForceInteractionRuntimeStatus status_;
@@ -295,6 +320,9 @@ private:
     bool lastFtSampleCounterValid_ = false;
     ForceInteractionPlatformState brakingState_;
     QString controlledStopReason_;
+    ForceInteractionTensionRuntime tensionRuntime_;
+    OnlineVelocityAxisArray lastCommittedTorqueNm_{};
+    quint64 staticTensionTargetVersion_ = 1;
 };
 
 #endif // FORCEINTERACTIONRUNTIMECONTROL_H
