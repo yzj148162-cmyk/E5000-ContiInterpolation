@@ -52,6 +52,14 @@ enum class ForceInteractionWrenchSourceKind : quint8
     RealFtTrace
 };
 
+// 2026-10-07：阶段D执行后端在“准备阶段D”时冻结。默认值必须继续是
+// 已验证的在线速度链；M3静态张力后端只在专用准入流程中显式选择。
+enum class ForceInteractionExecutionMode : quint8
+{
+    OnlineVelocity = 0,
+    StaticTensionTorqueExperimental
+};
+
 // wrench = [Fx,Fy,Fz,Mx,My,Mz]，单位依次为 N 和 N·m。
 struct ForceInteractionWrenchSample
 {

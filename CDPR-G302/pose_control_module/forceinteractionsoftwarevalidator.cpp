@@ -2,6 +2,7 @@
 
 #include "forceinteractionrunrecorder.h"
 #include "forceinteractionruntimecontrol.h"
+#include "forceinteractiontensionruntime.h"
 #include "forceinteractiontensionshadowvalidator.h"
 #include "forwardkinematicssolver.h"
 #include "ftsensorpreheatmonitor.h"
@@ -79,6 +80,14 @@ bool runCoreSelfChecks(const ForceInteractionValidationConfig& configuration,
         if(errorMessage){
             *errorMessage = QStringLiteral("在线张力M0纯算法自检失败：%1")
                     .arg(tensionShadowError);
+        }
+        return false;
+    }
+    QString tensionRuntimeError;
+    if(!ForceInteractionTensionRuntime::runSelfChecks(&tensionRuntimeError)){
+        if(errorMessage){
+            *errorMessage = QStringLiteral("在线张力M3纯状态自检失败：%1")
+                    .arg(tensionRuntimeError);
         }
         return false;
     }

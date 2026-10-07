@@ -54,6 +54,7 @@ SOURCES += \
     pose_control_module/forceinteractionrunrecorder.cpp \
     pose_control_module/forceinteractionruntimecontrol.cpp \
     pose_control_module/forceinteractionsoftwarevalidator.cpp \
+    pose_control_module/forceinteractiontensionruntime.cpp \
     pose_control_module/forceinteractiontensionshadow.cpp \
     pose_control_module/forceinteractiontensionshadowreplay.cpp \
     pose_control_module/forceinteractiontensionshadowworker.cpp \
@@ -140,6 +141,7 @@ HEADERS += \
     pose_control_module/forceinteractionrunrecorder.h \
     pose_control_module/forceinteractionruntimecontrol.h \
     pose_control_module/forceinteractionsoftwarevalidator.h \
+    pose_control_module/forceinteractiontensionruntime.h \
     pose_control_module/forceinteractiontensionshadow.h \
     pose_control_module/forceinteractiontensionshadowreplay.h \
     pose_control_module/forceinteractiontensionshadowworker.h \
