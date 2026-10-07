@@ -1294,6 +1294,7 @@ bool shouldAppendDiagnosticRawSample(bool fullRecording,
 ControlWorker::ControlWorker(HardwareInterface* hardware, QObject* parent)
     : QObject(parent),
       hardwareInterface(hardware),
+      forceInteractionTorqueHardware(hardware),
       traceDelayCalibrationRunner(hardware)
 {
 }
@@ -3387,24 +3388,27 @@ void ControlWorker::processForceInteractionRuntime(
     else if(step.action == ForceInteractionRuntimeStep::Action::StartTorqueBatch){
         const std::vector<double> torque(step.commandTorqueNm.begin(),
                                          step.commandTorqueNm.end());
-        const auto batch = hardwareInterface->motorTorqueStartBatchFast(axes, torque);
+        const auto batch = forceInteractionTorqueHardware.start(
+                    axes, torque, step.commandDeadlineUs, 4000);
         commandOk = batch.success;
         dispatchedStep.reason = batch.message;
         apiDurationUs = batch.apiDurationUs;
+        dispatchedStep.batchReport = batch;
     }
     else if(step.action == ForceInteractionRuntimeStep::Action::CommandTorqueBatch ||
             step.action == ForceInteractionRuntimeStep::Action::UnloadTorqueBatch){
         const std::vector<double> torque(step.commandTorqueNm.begin(),
                                          step.commandTorqueNm.end());
         const qint64 deadlineUs = step.commandDeadlineUs;
-        const auto batch = hardwareInterface->motorTorqueChangeBatchFast(
+        const auto batch = forceInteractionTorqueHardware.update(
                     axes, torque, deadlineUs, 4000);
         commandOk = batch.success;
         dispatchedStep.reason = batch.message;
         apiDurationUs = batch.apiDurationUs;
+        dispatchedStep.batchReport = batch;
     }
     else if(step.action == ForceInteractionRuntimeStep::Action::ReturnPositionHold){
-        commandOk = hardwareInterface->motorTorqueReturnToPositionHold(axes);
+        commandOk = forceInteractionTorqueHardware.returnToPositionHold(axes);
         dispatchedStep.reason = commandOk ?
                     QStringLiteral("M3已恢复八轴位置保持") :
                     QStringLiteral("M3恢复八轴位置保持失败");

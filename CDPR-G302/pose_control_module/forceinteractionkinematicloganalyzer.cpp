@@ -113,6 +113,23 @@ bool metadataNumber(const QString& line, const QString& key, double* value)
     return true;
 }
 
+QString metadataText(const QString& line, const QString& key)
+{
+    const QString token = key + '=';
+    const int begin = line.indexOf(token);
+    if(begin < 0) return {};
+    const int valueBegin = begin + token.size();
+    const int comma = line.indexOf(',', valueBegin);
+    QString value = line.mid(valueBegin, comma < 0 ? -1 : comma - valueBegin)
+            .trimmed();
+    if(value.size() >= 2 && value.front() == QLatin1Char('"') &&
+            value.back() == QLatin1Char('"')){
+        value = value.mid(1, value.size() - 2);
+        value.replace(QStringLiteral("\"\""), QStringLiteral("\""));
+    }
+    return value;
+}
+
 ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
         const QString& csvPath)
 {
@@ -137,6 +154,10 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
     double recorderAccepted = -1.0;
     double recorderWritten = -1.0;
     double recorderDropped = -1.0;
+    bool schemaV16 = false;
+    QString parameterVersion;
+    QString parameterHash;
+    QString configHash;
     QFileInfo sourceInfo(csvPath);
     result.resultCsvPath = sourceInfo.dir().filePath(
                 sourceInfo.completeBaseName() +
@@ -163,6 +184,8 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
     while(!input.atEnd()){
         const QString line = input.readLine();
         if(line.startsWith('#')){
+            if(line.trimmed() == QStringLiteral(
+                       "# schema=force_interaction_run_v16")) schemaV16 = true;
             metadataNumber(line, QStringLiteral("static_tension_torque_quantum_nm"),
                            &quantumNm);
             metadataNumber(line, QStringLiteral("static_tension_torque_slew_nm_s"),
@@ -177,6 +200,15 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
                            &recorderWritten);
             metadataNumber(line, QStringLiteral("recorder_dropped"),
                            &recorderDropped);
+            const QString parsedVersion = metadataText(
+                        line, QStringLiteral("static_tension_parameter_version"));
+            if(!parsedVersion.isEmpty()) parameterVersion = parsedVersion;
+            const QString parsedParameterHash = metadataText(
+                        line, QStringLiteral("static_tension_parameter_hash"));
+            if(!parsedParameterHash.isEmpty()) parameterHash = parsedParameterHash;
+            const QString parsedConfigHash = metadataText(
+                        line, QStringLiteral("static_tension_config_hash"));
+            if(!parsedConfigHash.isEmpty()) configHash = parsedConfigHash;
             continue;
         }
         if(line.trimmed().isEmpty()) continue;
@@ -189,6 +221,10 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
         const QStringList values = line.split(',');
         qint64 availability = 0, traceValid = 0, traceSequence = 0, hostUs = 0;
         qint64 proposalCommitted = 0, batchSucceeded = 0;
+        qint64 batchPartial = 0, batchDeferred = 0, sameFrame = 0;
+        qint64 sourceSequence = 0, sourceUs = 0, sourceAgeUs = -1;
+        qint64 queueWaitUs = 0, budgetCheckedUs = 0, budgetRemainingUs = 0;
+        qint64 firstCommandUs = 0, lastCommandUs = 0, deadlineUs = 0;
         if(!integer64(values, header.indexOf("availability_mask"), &availability) ||
                 !(quint32(availability) & ForceRecordStaticTensionTorque)){
             continue;
@@ -204,6 +240,48 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
                 integer64(values, header.indexOf(
                               "static_tension_batch_succeeded"),
                           &batchSucceeded);
+        if(schemaV16){
+            rowComplete = rowComplete &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_batch_partial"),
+                              &batchPartial) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_batch_deferred_before_write"),
+                              &batchDeferred) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_batch_queue_wait_us"),
+                              &queueWaitUs) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_batch_budget_checked_us"),
+                              &budgetCheckedUs) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_batch_budget_remaining_us"),
+                              &budgetRemainingUs) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_batch_first_command_us"),
+                              &firstCommandUs) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_batch_last_command_us"),
+                              &lastCommandUs) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_command_deadline_us"),
+                              &deadlineUs) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_trace_same_frame"),
+                              &sameFrame) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_object_source_trace_sequence"),
+                              &sourceSequence) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_object_source_trace_us"),
+                              &sourceUs) &&
+                    integer64(values, header.indexOf(
+                                  "static_tension_object_age_us"),
+                              &sourceAgeUs) &&
+                    sameFrame != 0 &&
+                    sourceSequence == traceSequence && sourceUs > 0 &&
+                    sourceAgeUs >= 0;
+        }
         std::array<double, kAxisCount> command{};
         double maximumError = 0.0;
         double maximumQuantumResidual = 0.0;
@@ -214,6 +292,9 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
         for(int axis = 0; axis < kAxisCount; ++axis){
             double target = 0.0, measured = 0.0, recordedError = 0.0;
             double actualTorque = 0.0;
+            double executionTarget = 0.0, entryTorque = 0.0;
+            double baseTorque = 0.0, pidCorrection = 0.0;
+            double prelimitTorque = 0.0, continuousTorque = 0.0;
             qint64 tensionValid = 0;
             rowComplete = rowComplete &&
                     number(values, header.indexOf(QStringLiteral(
@@ -232,6 +313,27 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
                     integer64(values, header.indexOf(QStringLiteral(
                                "cable_tension_valid_%1").arg(axis)),
                               &tensionValid) && tensionValid != 0;
+            if(schemaV16){
+                rowComplete = rowComplete &&
+                        number(values, header.indexOf(QStringLiteral(
+                                   "static_tension_execution_target_n_%1").arg(axis)),
+                               &executionTarget) &&
+                        number(values, header.indexOf(QStringLiteral(
+                                   "static_tension_entry_torque_nm_%1").arg(axis)),
+                               &entryTorque) &&
+                        number(values, header.indexOf(QStringLiteral(
+                                   "static_tension_base_torque_nm_%1").arg(axis)),
+                               &baseTorque) &&
+                        number(values, header.indexOf(QStringLiteral(
+                                   "static_tension_pid_correction_torque_nm_%1").arg(axis)),
+                               &pidCorrection) &&
+                        number(values, header.indexOf(QStringLiteral(
+                                   "static_tension_prelimit_torque_nm_%1").arg(axis)),
+                               &prelimitTorque) &&
+                        number(values, header.indexOf(QStringLiteral(
+                                   "static_tension_continuous_torque_nm_%1").arg(axis)),
+                               &continuousTorque);
+            }
             if(!rowComplete) break;
             maximumError = std::max(maximumError, std::abs(recordedError));
             if(std::abs(recordedError - (target - measured)) > 1.0e-6)
@@ -258,7 +360,11 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
         }
         ++result.validTraceRows;
         if(proposalCommitted != 0) ++result.staticTensionCommittedRows;
-        const bool batchOk = batchSucceeded != 0;
+        const bool batchOk = batchSucceeded != 0 && batchPartial == 0 &&
+                batchDeferred == 0 && queueWaitUs >= 0 &&
+                budgetCheckedUs > 0 && budgetRemainingUs >= 0 &&
+                firstCommandUs > 0 && lastCommandUs >= firstCommandUs &&
+                deadlineUs > 0;
         if(!batchOk) ++result.staticTensionBatchFailureRows;
         if(!errorConsistent) ++result.staticTensionErrorMismatchRows;
         if(!quantized) ++result.staticTensionQuantizationViolationRows;
@@ -280,6 +386,10 @@ ForceInteractionKinematicLogAnalysisResult analyzeStaticTensionRecord(
     }
     if(quantumNm <= 0.0 || slewNmPerSec <= 0.0){
         result.errorMessage = QStringLiteral("M3记录缺少冻结的转矩量化或斜率参数");
+    }
+    else if(schemaV16 && (parameterVersion != QStringLiteral("m3_0525_static_v1") ||
+                         parameterHash.size() != 64 || configHash.size() != 64)){
+        result.errorMessage = QStringLiteral("M3 v16记录缺少冻结参数版本或SHA-256哈希");
     }
     else if(terminalPresent != 1.0 || terminalExperimentValid != 1.0){
         result.errorMessage = QStringLiteral("M3记录缺少有效的终态摘要");

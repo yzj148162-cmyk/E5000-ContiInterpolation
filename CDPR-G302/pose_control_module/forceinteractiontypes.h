@@ -60,6 +60,23 @@ enum class ForceInteractionExecutionMode : quint8
     StaticTensionTorqueExperimental
 };
 
+// Hardware-independent batch result shared by the M3 coordinator, runtime
+// recorder and ControlWorker.  No SDK type crosses this boundary.
+struct ForceInteractionTorqueBatchReport
+{
+    bool success = false;
+    bool partialCommand = false;
+    bool deferredBeforeWrite = false;
+    qint64 hardwareQueueWaitUs = 0;
+    qint64 budgetCheckedUs = 0;
+    qint64 budgetRemainingUs = 0;
+    int failedLogicalAxis = -1;
+    qint64 firstCommandMonotonicUs = 0;
+    qint64 lastCommandMonotonicUs = 0;
+    qint64 apiDurationUs = 0;
+    QString message;
+};
+
 // wrench = [Fx,Fy,Fz,Mx,My,Mz]，单位依次为 N 和 N·m。
 struct ForceInteractionWrenchSample
 {

@@ -183,7 +183,7 @@ bool ForceInteractionReplayExporter::writeJson(
                 QDateTime::currentDateTime().toString(Qt::ISODateWithMs));
     root.insert(QStringLiteral("run_id"), csvInfo.completeBaseName());
     root.insert(QStringLiteral("csv_file"), csvInfo.fileName());
-    QString csvSchema = QStringLiteral("force_interaction_run_v15");
+    QString csvSchema = QStringLiteral("force_interaction_run_v16");
     QFile csvFile(context.csvPath);
     if(csvFile.open(QIODevice::ReadOnly | QIODevice::Text)){
         const QString firstLine = QString::fromUtf8(csvFile.readLine()).trimmed();

@@ -4858,7 +4858,9 @@ bool HardwareInterface::motorTorqueChange(int index, double torqueNm)
 
 HardwareInterface::TorqueBatchResult HardwareInterface::motorTorqueStartBatchFast(
         const std::vector<int>& motorIndex,
-        const std::vector<double>& torqueNm)
+        const std::vector<double>& torqueNm,
+        qint64 deadlineUs,
+        qint64 executionBudgetUs)
 {
     const qint64 queuedUs = monotonicNowUs();
     return runOnHardwareThread([&]() -> TorqueBatchResult {
@@ -4902,9 +4904,28 @@ HardwareInterface::TorqueBatchResult HardwareInterface::motorTorqueStartBatchFas
                             axis, false);
             }
         }
+        const qint64 dispatchUs = monotonicNowUs();
+        result.budgetCheckedUs = dispatchUs;
+        result.budgetRemainingUs = deadlineUs > 0 ? deadlineUs - dispatchUs : 0;
+        if(deadlineUs > 0 && executionBudgetUs > 0 &&
+                result.budgetRemainingUs < executionBudgetUs){
+            result.deferredBeforeWrite = true;
+            return fail(QStringLiteral(
+                            "八轴转矩启动在首轴写入前因预算不足而放弃：%1/%2 us")
+                        .arg(result.budgetRemainingUs).arg(executionBudgetUs),
+                        -1, false);
+        }
         for(size_t command = 0; command < motorIndex.size(); ++command){
+            const qint64 callUs = monotonicNowUs();
+            if((deadlineUs > 0 && callUs >= deadlineUs) ||
+                    (executionBudgetUs > 0 &&
+                     callUs - apiStartedUs >= executionBudgetUs)){
+                return fail(QStringLiteral("八轴转矩启动在轴%1前超过截止时间")
+                            .arg(motorIndex[command]), motorIndex[command],
+                            command > 0);
+            }
             if(result.firstCommandMonotonicUs <= 0)
-                result.firstCommandMonotonicUs = monotonicNowUs();
+                result.firstCommandMonotonicUs = callUs;
             if(!motorTorqueStart(motorIndex[command], torqueNm[command])){
                 result.lastCommandMonotonicUs = monotonicNowUs();
                 return fail(QStringLiteral("八轴转矩启动在轴%1失败")
@@ -4912,6 +4933,12 @@ HardwareInterface::TorqueBatchResult HardwareInterface::motorTorqueStartBatchFas
                             command > 0);
             }
             result.lastCommandMonotonicUs = monotonicNowUs();
+        }
+        if((deadlineUs > 0 && result.lastCommandMonotonicUs > deadlineUs) ||
+                (executionBudgetUs > 0 &&
+                 result.lastCommandMonotonicUs - apiStartedUs > executionBudgetUs)){
+            return fail(QStringLiteral("八轴转矩启动完成时已经超过截止时间"),
+                        -1, true);
         }
         result.success = true;
         result.message = QStringLiteral("八轴转矩模式已事务式启动");

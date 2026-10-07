@@ -138,6 +138,7 @@ struct ForceInteractionRuntimeStep
     // 2026-10-07: M3转矩批次使用绝对控制时隙截止时间；硬件层在首轴写入前
     // 核对剩余预算，禁止用“当前时刻+一个周期”掩盖已经迟到的命令。
     qint64 commandDeadlineUs = 0;
+    ForceInteractionTorqueBatchReport batchReport;
     bool unloadComplete = false;
     ForceInteractionRunRecord record;
 };

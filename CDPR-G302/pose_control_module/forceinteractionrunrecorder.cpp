@@ -245,7 +245,7 @@ void ForceInteractionRunRecorder::run()
     stream.setEncoding(QStringConverter::Utf8);
     stream.setRealNumberNotation(QTextStream::FixedNotation);
     stream.setRealNumberPrecision(9);
-    stream << "# schema=force_interaction_run_v15\n"
+    stream << "# schema=force_interaction_run_v16\n"
            << "# created="
            << QDateTime::currentDateTime().toString(Qt::ISODateWithMs) << '\n'
            << "# stage=" << csvSafe(metadata_.stage)
@@ -261,7 +261,13 @@ void ForceInteractionRunRecorder::run()
            << ",static_tension_torque_slew_nm_s="
            << metadata_.staticTensionTorqueSlewNmPerSec
            << ",static_tension_parameter_source="
-           << csvSafe(metadata_.staticTensionParameterSource) << '\n'
+           << csvSafe(metadata_.staticTensionParameterSource)
+           << ",static_tension_parameter_version="
+           << csvSafe(metadata_.staticTensionParameterVersion)
+           << ",static_tension_parameter_hash="
+           << csvSafe(metadata_.staticTensionParameterHash)
+           << ",static_tension_config_hash="
+           << csvSafe(metadata_.staticTensionConfigHash) << '\n'
            << "# availability_mask:1=sensor_wrench,2=platform_wrench,4=desired_state,"
               "8=cable_kinematics,16=forward_kinematics,32=axis_reference,"
               "64=axis_command,128=axis_trace,256=timing,512=ft_diagnostics,"
@@ -380,16 +386,41 @@ void ForceInteractionRunRecorder::run()
                      kForceInteractionCableCount);
     stream << ",static_tension_state,static_tension_proposal_sequence,"
               "static_tension_proposal_valid,static_tension_proposal_committed,"
-              "static_tension_batch_succeeded,static_tension_batch_duration_us";
+              "static_tension_batch_succeeded,static_tension_batch_duration_us,"
+              "static_tension_batch_partial,static_tension_batch_deferred_before_write,"
+              "static_tension_batch_queue_wait_us,static_tension_batch_budget_checked_us,"
+              "static_tension_batch_budget_remaining_us,static_tension_batch_failed_axis,"
+              "static_tension_batch_first_command_us,static_tension_batch_last_command_us,"
+              "static_tension_command_deadline_us,static_tension_command_lateness_us,"
+              "static_tension_trace_same_frame,static_tension_object_source_trace_sequence,"
+              "static_tension_object_source_trace_us,static_tension_object_age_us";
     writeGroupHeader(stream, "static_tension_target_n",
                      kForceInteractionCableCount);
     writeGroupHeader(stream, "static_tension_measured_n",
                      kForceInteractionCableCount);
     writeGroupHeader(stream, "static_tension_error_n",
                      kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_execution_target_n",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_entry_torque_nm",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_base_torque_nm",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_pid_correction_torque_nm",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_prelimit_torque_nm",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_continuous_torque_nm",
+                     kForceInteractionCableCount);
     writeGroupHeader(stream, "static_tension_command_torque_nm",
                      kForceInteractionCableCount);
     writeGroupHeader(stream, "static_tension_actual_torque_nm",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_pid_clipped",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_slew_limited",
+                     kForceInteractionCableCount);
+    writeGroupHeader(stream, "static_tension_hardware_limited",
                      kForceInteractionCableCount);
     stream << ",calculation_us,hardware_api_us,full_cycle_us\n";
     ready_.release();
@@ -495,12 +526,35 @@ void ForceInteractionRunRecorder::run()
                    << ',' << (record.staticTensionProposalValid ? 1 : 0)
                    << ',' << (record.staticTensionProposalCommitted ? 1 : 0)
                    << ',' << (record.staticTensionBatchSucceeded ? 1 : 0)
-                   << ',' << record.staticTensionBatchDurationUs;
+                   << ',' << record.staticTensionBatchDurationUs
+                   << ',' << (record.staticTensionBatchPartial ? 1 : 0)
+                   << ',' << (record.staticTensionBatchDeferredBeforeWrite ? 1 : 0)
+                   << ',' << record.staticTensionBatchQueueWaitUs
+                   << ',' << record.staticTensionBatchBudgetCheckedUs
+                   << ',' << record.staticTensionBatchBudgetRemainingUs
+                   << ',' << record.staticTensionBatchFailedAxis
+                   << ',' << record.staticTensionBatchFirstCommandUs
+                   << ',' << record.staticTensionBatchLastCommandUs
+                   << ',' << record.staticTensionCommandDeadlineUs
+                   << ',' << record.staticTensionCommandLatenessUs
+                   << ',' << (record.staticTensionTraceSameFrame ? 1 : 0)
+                   << ',' << record.staticTensionObjectSourceTraceSequence
+                   << ',' << record.staticTensionObjectSourceTraceUs
+                   << ',' << record.staticTensionObjectAgeUs;
             writeArray(stream, record.staticTensionTargetN);
             writeArray(stream, record.staticTensionMeasuredN);
             writeArray(stream, record.staticTensionErrorN);
+            writeArray(stream, record.staticTensionExecutionTargetN);
+            writeArray(stream, record.staticTensionEntryTorqueNm);
+            writeArray(stream, record.staticTensionBaseTorqueNm);
+            writeArray(stream, record.staticTensionPidCorrectionTorqueNm);
+            writeArray(stream, record.staticTensionPrelimitTorqueNm);
+            writeArray(stream, record.staticTensionContinuousTorqueNm);
             writeArray(stream, record.staticTensionCommandTorqueNm);
             writeArray(stream, record.staticTensionActualTorqueNm);
+            writeArray(stream, record.staticTensionPidClipped);
+            writeArray(stream, record.staticTensionSlewLimited);
+            writeArray(stream, record.staticTensionHardwareLimited);
             stream << ',' << record.calculationDurationUs
                    << ',' << record.hardwareApiDurationUs
                    << ',' << record.fullCycleDurationUs << '\n';

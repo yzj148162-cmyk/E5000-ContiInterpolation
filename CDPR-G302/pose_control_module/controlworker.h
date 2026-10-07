@@ -23,6 +23,7 @@
 #include "onlinevelocitycontrol.h"
 #include "endpointremotecontrol.h"
 #include "forceinteractionruntimecontrol.h"
+#include "forceinteractiontorquehardware.h"
 #include "forceinteractionmocappose.h"
 #include "forceinteractiontensionshadowworker.h"
 #include "tracedelaycalibrationrunner.h"
@@ -569,6 +570,7 @@ private:
             QString* errorMessage = nullptr);
 
     HardwareInterface* hardwareInterface = nullptr;
+    ForceInteractionTorqueHardware forceInteractionTorqueHardware;
     TraceDelayCalibrationRunner traceDelayCalibrationRunner;
     QTimer* timer = nullptr;
     mutable QMutex configMutex;

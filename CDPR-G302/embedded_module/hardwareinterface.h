@@ -725,7 +725,9 @@ public:
     // 后任一失败均标记partialCommand并触发现有全轴安全急停。
     TorqueBatchResult motorTorqueStartBatchFast(
             const std::vector<int>& motorIndex,
-            const std::vector<double>& torqueNm);
+            const std::vector<double>& torqueNm,
+            qint64 deadlineUs,
+            qint64 executionBudgetUs);
     TorqueBatchResult motorTorqueChangeBatchFast(
             const std::vector<int>& motorIndex,
             const std::vector<double>& torqueNm,

@@ -1,12 +1,72 @@
 #include "forceinteractionruntimecontrol.h"
 
 #include <QElapsedTimer>
+#include <QCryptographicHash>
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 
 namespace {
+
+void appendHashValue(QByteArray& bytes, double value)
+{
+    bytes += QByteArray::number(value, 'g', 17);
+    bytes += ';';
+}
+
+template<typename Derived>
+void appendHashVector(QByteArray& bytes, const Eigen::MatrixBase<Derived>& values)
+{
+    for(Eigen::Index index = 0; index < values.size(); ++index)
+        appendHashValue(bytes, values.derived().data()[index]);
+}
+
+QString sha256Hex(const QByteArray& bytes)
+{
+    return QString::fromLatin1(QCryptographicHash::hash(
+                                  bytes, QCryptographicHash::Sha256).toHex());
+}
+
+QString staticTensionParameterHash(
+        const ForceInteractionTensionRuntimeConfig& config)
+{
+    QByteArray bytes("m3_0525_static_v1;");
+    bytes += config.feedback.enabled ? "1;" : "0;";
+    bytes += config.feedback.independentTargetFeedforward ? "1;" : "0;";
+    bytes += config.feedback.sharedExecutionReference ? "1;" : "0;";
+    appendHashVector(bytes, config.feedback.kp);
+    appendHashVector(bytes, config.feedback.ki);
+    appendHashVector(bytes, config.feedback.kd);
+    appendHashValue(bytes, config.feedback.deadbandRatio);
+    appendHashValue(bytes, config.feedback.torqueLimitNm);
+    appendHashValue(bytes, config.feedback.slewNmPerSec);
+    appendHashValue(bytes, config.feedback.periodUs);
+    bytes += QByteArray::fromStdString(config.feedback.parameterSource) + ';';
+    return sha256Hex(bytes);
+}
+
+QString staticTensionConfigHash(
+        const ForceInteractionTensionRuntimeConfig& config)
+{
+    QByteArray bytes = staticTensionParameterHash(config).toLatin1() + ';';
+    appendHashVector(bytes, config.bounds.tensionMinimum);
+    appendHashVector(bytes, config.bounds.tensionMaximum);
+    appendHashVector(bytes, config.bounds.hardwareTorqueMinimum);
+    appendHashVector(bytes, config.bounds.hardwareTorqueMaximum);
+    appendHashVector(bytes, config.bounds.hardwareDirection);
+    appendHashVector(bytes, config.bounds.hardwareTorqueSlewRate);
+    bytes += config.bounds.torqueSlewEnabled ? "1;" : "0;";
+    appendHashVector(bytes, config.effectiveRadiusM);
+    appendHashVector(bytes, config.frozenTargetTensionN);
+    appendHashVector(bytes, config.measuredSafetyMinimumN);
+    appendHashVector(bytes, config.measuredSafetyMaximumN);
+    appendHashValue(bytes, config.hardwareTorqueQuantumNm);
+    appendHashValue(bytes, config.maximumEntryTargetDifferenceN);
+    appendHashValue(bytes, config.maximumEntryAbsVelocityUnitPerSec);
+    appendHashValue(bytes, config.innerPeriodUs);
+    return sha256Hex(bytes);
+}
 
 bool finiteArray(const OnlineVelocityAxisArray& values)
 {
@@ -403,6 +463,12 @@ bool ForceInteractionRuntimeControl::start(qint64 nowUs, QString* errorMessage)
                 config_.staticTension.feedback.slewNmPerSec;
         metadata.staticTensionParameterSource = QString::fromStdString(
                     config_.staticTension.feedback.parameterSource);
+        metadata.staticTensionParameterVersion =
+                QStringLiteral("m3_0525_static_v1");
+        metadata.staticTensionParameterHash =
+                staticTensionParameterHash(config_.staticTension);
+        metadata.staticTensionConfigHash =
+                staticTensionConfigHash(config_.staticTension);
     }
     metadata.workspaceReplayEnabled = true;
     metadata.physicalWorkspace = config_.physicalWorkspace;
@@ -790,6 +856,12 @@ ForceInteractionRunRecord ForceInteractionRuntimeControl::staticTensionRecord(
     record.staticTensionProposalSequence = diagnostic.proposalSequence;
     record.staticTensionProposalValid = diagnostic.proposalValid;
     record.staticTensionProposalCommitted = diagnostic.feedback.committed;
+    record.staticTensionTraceSameFrame = feedback.fromTrace &&
+            feedback.staticTensionRuntimeProfileActive &&
+            feedback.frameSequenceValid && feedback.timingReliable;
+    record.staticTensionObjectSourceTraceSequence = feedback.logicalFrameSequence;
+    record.staticTensionObjectSourceTraceUs = feedback.monotonicUs;
+    record.staticTensionObjectAgeUs = feedback.newestFrameAgeUs;
     for(int axis = 0; axis < kOnlineVelocityAxisCount; ++axis){
         record.axisTracePosition[axis] = feedback.actualPosition[axis];
         record.axisStatusWord[axis] = feedback.motorStatusWord[axis];
@@ -799,9 +871,27 @@ ForceInteractionRunRecord ForceInteractionRuntimeControl::staticTensionRecord(
         record.staticTensionTargetN[axis] = diagnostic.feedback.targetN[axis];
         record.staticTensionMeasuredN[axis] = feedback.cableTensionN[axis];
         record.staticTensionErrorN[axis] = diagnostic.feedback.errorN[axis];
+        record.staticTensionExecutionTargetN[axis] =
+                diagnostic.feedback.executionTargetN[axis];
+        record.staticTensionEntryTorqueNm[axis] =
+                diagnostic.feedback.entryTorqueNm[axis];
+        record.staticTensionBaseTorqueNm[axis] =
+                diagnostic.feedback.appliedBaseNm[axis];
+        record.staticTensionPidCorrectionTorqueNm[axis] =
+                diagnostic.feedback.correctionNm[axis];
+        record.staticTensionPrelimitTorqueNm[axis] =
+                diagnostic.feedback.requestNm[axis];
+        record.staticTensionContinuousTorqueNm[axis] =
+                diagnostic.feedback.continuousNm[axis];
         record.staticTensionCommandTorqueNm[axis] =
                 diagnostic.feedback.commandNm[axis];
         record.staticTensionActualTorqueNm[axis] = feedback.actualTorqueNm[axis];
+        record.staticTensionPidClipped[axis] =
+                diagnostic.feedback.pidClipped[axis] ? 1 : 0;
+        record.staticTensionSlewLimited[axis] =
+                diagnostic.feedback.signalSlewLimited[axis] ? 1 : 0;
+        record.staticTensionHardwareLimited[axis] =
+                diagnostic.feedback.hardwareLimited[axis] ? 1 : 0;
     }
     return record;
 }
@@ -881,6 +971,7 @@ ForceInteractionRuntimeStep ForceInteractionRuntimeControl::stepStaticTension(
         hostStartUs_ = nowUs;
         nextDueUs_ = nowUs + config_.periodUs;
         output.action = ForceInteractionRuntimeStep::Action::StartTorqueBatch;
+        output.commandDeadlineUs = nextDueUs_;
         output.actualPosition = feedback.actualPosition;
         output.record = staticTensionRecord(feedback,
                                              tensionRuntime_.diagnostic(), nowUs);
@@ -1651,7 +1742,47 @@ void ForceInteractionRuntimeControl::noteCommandResult(
     status_.maximumApiUs = std::max(status_.maximumApiUs, apiDurationUs);
     if(config_.executionMode ==
             ForceInteractionExecutionMode::StaticTensionTorqueExperimental){
+        const bool batchAction = step.action ==
+                    ForceInteractionRuntimeStep::Action::StartTorqueBatch ||
+                step.action == ForceInteractionRuntimeStep::Action::CommandTorqueBatch ||
+                step.action == ForceInteractionRuntimeStep::Action::UnloadTorqueBatch;
+        const auto appendBatchRecord = [&](bool succeeded, bool committed){
+            if(!batchAction) return;
+            ForceInteractionRunRecord record = step.record;
+            record.staticTensionBatchSucceeded = succeeded;
+            record.staticTensionBatchDurationUs = apiDurationUs;
+            record.staticTensionBatchPartial = step.batchReport.partialCommand;
+            record.staticTensionBatchDeferredBeforeWrite =
+                    step.batchReport.deferredBeforeWrite;
+            record.staticTensionBatchQueueWaitUs =
+                    step.batchReport.hardwareQueueWaitUs;
+            record.staticTensionBatchBudgetCheckedUs =
+                    step.batchReport.budgetCheckedUs;
+            record.staticTensionBatchBudgetRemainingUs =
+                    step.batchReport.budgetRemainingUs;
+            record.staticTensionBatchFailedAxis =
+                    step.batchReport.failedLogicalAxis;
+            record.staticTensionBatchFirstCommandUs =
+                    step.batchReport.firstCommandMonotonicUs;
+            record.staticTensionBatchLastCommandUs =
+                    step.batchReport.lastCommandMonotonicUs;
+            record.staticTensionCommandDeadlineUs = step.commandDeadlineUs;
+            record.staticTensionCommandLatenessUs =
+                    step.commandDeadlineUs > 0 &&
+                    step.batchReport.lastCommandMonotonicUs > step.commandDeadlineUs ?
+                        step.batchReport.lastCommandMonotonicUs -
+                            step.commandDeadlineUs : 0;
+            record.staticTensionProposalCommitted = committed;
+            record.hardwareApiDurationUs = apiDurationUs;
+            record.fullCycleDurationUs = fullCycleDurationUs;
+            if(recorder_){
+                recorder_->tryAppend(record);
+                status_.droppedRecordCount = recorder_->droppedCount();
+            }
+            ++status_.stepCount;
+        };
         if(!commandOk){
+            appendBatchRecord(false, false);
             const QString reason = step.reason.isEmpty() ?
                         QStringLiteral("M3八轴转矩/回退批次失败") : step.reason;
             tensionRuntime_.fail(reason);
@@ -1706,22 +1837,9 @@ void ForceInteractionRuntimeControl::noteCommandResult(
                             controlledStopReason_);
             return;
         }
-        if(step.action == ForceInteractionRuntimeStep::Action::StartTorqueBatch ||
-                step.action == ForceInteractionRuntimeStep::Action::CommandTorqueBatch ||
-                step.action == ForceInteractionRuntimeStep::Action::UnloadTorqueBatch){
-            ForceInteractionRunRecord record = step.record;
-            record.staticTensionBatchSucceeded = true;
-            record.staticTensionBatchDurationUs = apiDurationUs;
-            record.hardwareApiDurationUs = apiDurationUs;
-            record.fullCycleDurationUs = fullCycleDurationUs;
-            if(step.action == ForceInteractionRuntimeStep::Action::CommandTorqueBatch){
-                record.staticTensionProposalCommitted = true;
-            }
-            if(recorder_){
-                recorder_->tryAppend(record);
-                status_.droppedRecordCount = recorder_->droppedCount();
-            }
-            ++status_.stepCount;
+        if(batchAction){
+            appendBatchRecord(true, step.action ==
+                              ForceInteractionRuntimeStep::Action::CommandTorqueBatch);
             ++status_.commandCount;
             status_.commandTorqueNm = step.commandTorqueNm;
             status_.staticTensionDiagnostic = tensionRuntime_.diagnostic();

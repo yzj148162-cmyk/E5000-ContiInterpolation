@@ -45,6 +45,9 @@ struct ForceInteractionRunMetadata
     double staticTensionTorqueQuantumNm = 0.0;
     double staticTensionTorqueSlewNmPerSec = 0.0;
     QString staticTensionParameterSource;
+    QString staticTensionParameterVersion;
+    QString staticTensionParameterHash;
+    QString staticTensionConfigHash;
     bool workspaceReplayEnabled = false;
     PhysicalWorkspaceBoundaryConfig physicalWorkspace;
     DynamicWorkspaceSafetyConfig workspaceSafety;
@@ -168,8 +171,9 @@ struct ForceInteractionRunRecord
     std::array<double, kForceInteractionCableCount>
             tensionShadowNominalTorqueNm{};
 
-    // 2026-10-07: M3 static-tension torque diagnostics. These columns are
-    // present in v15 for every run, but are valid only when availabilityMask
+    // 2026-10-07: M3 static-tension torque diagnostics. The baseline block is
+    // present from v15; batch timing, same-frame provenance and detailed 0525
+    // internals are added in v16. Values are valid only when availabilityMask
     // contains ForceRecordStaticTensionTorque.
     int staticTensionState = 0;
     quint64 staticTensionProposalSequence = 0;
@@ -177,6 +181,20 @@ struct ForceInteractionRunRecord
     bool staticTensionProposalCommitted = false;
     bool staticTensionBatchSucceeded = false;
     qint64 staticTensionBatchDurationUs = 0;
+    bool staticTensionBatchPartial = false;
+    bool staticTensionBatchDeferredBeforeWrite = false;
+    qint64 staticTensionBatchQueueWaitUs = 0;
+    qint64 staticTensionBatchBudgetCheckedUs = 0;
+    qint64 staticTensionBatchBudgetRemainingUs = 0;
+    int staticTensionBatchFailedAxis = -1;
+    qint64 staticTensionBatchFirstCommandUs = 0;
+    qint64 staticTensionBatchLastCommandUs = 0;
+    qint64 staticTensionCommandDeadlineUs = 0;
+    qint64 staticTensionCommandLatenessUs = 0;
+    bool staticTensionTraceSameFrame = false;
+    quint64 staticTensionObjectSourceTraceSequence = 0;
+    qint64 staticTensionObjectSourceTraceUs = 0;
+    qint64 staticTensionObjectAgeUs = -1;
     std::array<double, kForceInteractionCableCount>
             staticTensionTargetN{};
     std::array<double, kForceInteractionCableCount>
@@ -184,9 +202,27 @@ struct ForceInteractionRunRecord
     std::array<double, kForceInteractionCableCount>
             staticTensionErrorN{};
     std::array<double, kForceInteractionCableCount>
+            staticTensionExecutionTargetN{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionEntryTorqueNm{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionBaseTorqueNm{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionPidCorrectionTorqueNm{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionPrelimitTorqueNm{};
+    std::array<double, kForceInteractionCableCount>
+            staticTensionContinuousTorqueNm{};
+    std::array<double, kForceInteractionCableCount>
             staticTensionCommandTorqueNm{};
     std::array<double, kForceInteractionCableCount>
             staticTensionActualTorqueNm{};
+    std::array<int, kForceInteractionCableCount>
+            staticTensionPidClipped{};
+    std::array<int, kForceInteractionCableCount>
+            staticTensionSlewLimited{};
+    std::array<int, kForceInteractionCableCount>
+            staticTensionHardwareLimited{};
 
     qint64 calculationDurationUs = 0;
     qint64 hardwareApiDurationUs = 0;
